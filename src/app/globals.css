@@ -1,0 +1,24 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-navy: #050072;
+  --color-periwinkle: #6366E0;
+  --color-dark-card: #182031;
+  --color-gold: #E0A23C;
+  --color-background: #F4F4F9;
+}
+
+body {
+  background-color: var(--color-background);
+  font-family: "Pretendard", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 모바일 웹뷰 최적화 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
