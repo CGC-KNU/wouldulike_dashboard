@@ -1,54 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+
+interface Restaurant {
+  restaurant_id: number;
+  name: string;
+}
 
 export default function VerifyPinPage() {
   const router = useRouter();
-  const [restaurantQuery, setRestaurantQuery] = useState("");
-  const [selectedRestaurant, setSelectedRestaurant] = useState<{
-    id: number;
-    name: string;
-  } | null>(null);
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<Restaurant[]>([]);
+  const [selected, setSelected] = useState<Restaurant | null>(null);
+  const [searching, setSearching] = useState(false);
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [restaurants, setRestaurants] = useState<{ id: number; name: string }[]>([]);
-  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const searchRestaurants = async (query: string) => {
-    if (query.length < 1) {
-      setRestaurants([]);
+  // 검색어 변경 시 debounce 300ms 후 API 호출
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.trim().length < 1) {
+      setSuggestions([]);
       return;
     }
-    setSearching(true);
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/restaurants/affiliate-restaurants/?search=${encodeURIComponent(query)}`
-      );
-      const data = await res.json();
-      setRestaurants(data.results?.slice(0, 10) || []);
-    } catch {
-      setRestaurants([]);
-    } finally {
-      setSearching(false);
-    }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const cookieRes = await fetch("/api/auth/restaurants?" + new URLSearchParams({ search: query.trim() }));
+        const data = await cookieRes.json();
+        setSuggestions((data.restaurants ?? []).slice(0, 10));
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  const handleSelect = (r: Restaurant) => {
+    setSelected(r);
+    setQuery("");
+    setSuggestions([]);
+    setPin("");
+    setError("");
   };
 
   const handleVerify = async () => {
-    if (!selectedRestaurant || pin.length !== 4) return;
+    if (!selected || pin.length !== 4) return;
     setLoading(true);
     setError("");
-
     try {
       const res = await fetch("/api/auth/verify-owner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurantId: selectedRestaurant.id, pin }),
+        body: JSON.stringify({ restaurantId: selected.restaurant_id, pin }),
       });
-
       const data = await res.json();
-
       if (data.success) {
         router.replace("/dashboard");
       } else {
@@ -73,19 +86,18 @@ export default function VerifyPinPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm p-6 flex flex-col gap-5">
-          {/* 식당 검색 */}
+          {/* 매장 선택 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               매장 선택
             </label>
-            {selectedRestaurant ? (
+
+            {selected ? (
               <div className="flex items-center justify-between px-4 py-3 bg-periwinkle/10 rounded-xl border border-periwinkle">
-                <span className="font-medium text-navy">
-                  {selectedRestaurant.name}
-                </span>
+                <span className="font-medium text-navy">{selected.name}</span>
                 <button
                   onClick={() => {
-                    setSelectedRestaurant(null);
+                    setSelected(null);
                     setPin("");
                     setError("");
                   }}
@@ -98,37 +110,40 @@ export default function VerifyPinPage() {
               <div className="relative">
                 <input
                   type="text"
-                  value={restaurantQuery}
-                  onChange={(e) => {
-                    setRestaurantQuery(e.target.value);
-                    searchRestaurants(e.target.value);
-                  }}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
                   placeholder="매장명 검색..."
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-periwinkle"
+                  autoComplete="off"
                 />
-                {restaurants.length > 0 && (
-                  <div className="absolute top-full mt-1 w-full bg-white border border-gray-100 rounded-xl shadow-md z-10 max-h-48 overflow-y-auto">
-                    {restaurants.map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => {
-                          setSelectedRestaurant(r);
-                          setRestaurantQuery("");
-                          setRestaurants([]);
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0"
-                      >
-                        {r.name}
-                      </button>
-                    ))}
+                {searching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
                   </div>
+                )}
+                {suggestions.length > 0 && (
+                  <ul className="absolute top-full mt-1 w-full bg-white border border-gray-100 rounded-xl shadow-md z-10 max-h-52 overflow-y-auto">
+                    {suggestions.map((r) => (
+                      <li key={r.restaurant_id}>
+                        <button
+                          onClick={() => handleSelect(r)}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                        >
+                          {r.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!searching && query.length >= 1 && suggestions.length === 0 && (
+                  <p className="mt-1.5 text-xs text-gray-400">검색 결과가 없습니다.</p>
                 )}
               </div>
             )}
           </div>
 
           {/* PIN 입력 */}
-          {selectedRestaurant && (
+          {selected && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 4자리 PIN
@@ -139,27 +154,29 @@ export default function VerifyPinPage() {
                 maxLength={4}
                 value={pin}
                 onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, "");
-                  setPin(v);
+                  setPin(e.target.value.replace(/\D/g, ""));
                   setError("");
                 }}
                 placeholder="• • • •"
+                autoFocus
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center text-xl tracking-widest focus:outline-none focus:border-periwinkle"
               />
-              {error && (
-                <p className="mt-1.5 text-xs text-red-500">{error}</p>
-              )}
+              {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
             </div>
           )}
 
           <button
             onClick={handleVerify}
-            disabled={!selectedRestaurant || pin.length !== 4 || loading}
+            disabled={!selected || pin.length !== 4 || loading}
             className="w-full py-3 bg-periwinkle text-white font-semibold rounded-xl disabled:opacity-40 hover:bg-navy transition-colors"
           >
             {loading ? "확인 중..." : "인증하기"}
           </button>
         </div>
+
+        <p className="mt-4 text-center text-xs text-gray-400">
+          PIN 번호를 모르면 우주라이크 팀에 문의해주세요.
+        </p>
       </div>
     </main>
   );

@@ -24,17 +24,18 @@ function KakaoCallbackInner() {
         });
 
         const data = await res.json();
+        console.log("[callback] status:", res.status, "body:", JSON.stringify(data));
 
         if (data.requiresPinVerification) {
-          // 처음 가입 → PIN 인증 페이지로
           router.replace("/auth/verify-pin");
         } else if (data.success) {
-          // 기존 점주 계정 → 대시보드로
           router.replace("/dashboard");
         } else {
-          router.replace("/login?error=not_owner");
+          const msg = encodeURIComponent(data.message || `http_${res.status}`);
+          router.replace(`/login?error=${msg}`);
         }
-      } catch {
+      } catch (e) {
+        console.error("[callback] fetch error:", e);
         router.replace("/login?error=server");
       }
     };
