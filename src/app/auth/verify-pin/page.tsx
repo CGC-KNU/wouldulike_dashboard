@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface Restaurant {
   restaurant_id: number;
@@ -176,6 +177,15 @@ export default function VerifyPinPage() {
 
         <p className="mt-4 text-center text-xs text-gray-400">
           PIN 번호를 모르면 우주라이크 팀에 문의해주세요.
+        </p>
+
+        <p className="mt-6 text-center">
+          <Link
+            href="/auth/admin-login"
+            className="text-xs text-gray-300 hover:text-gray-500 transition-colors"
+          >
+            관리자 접속
+          </Link>
         </p>
       </div>
     </main>
