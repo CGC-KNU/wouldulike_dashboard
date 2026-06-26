@@ -37,6 +37,27 @@ export default function LoginPage() {
           점주로 등록된 계정만 이용할 수 있습니다
         </p>
       </div>
+
+      {/* 개발 환경 전용 빠른 접속 */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="mt-6 w-full max-w-sm bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <p className="text-xs font-semibold text-amber-700 mb-2">🛠 개발 환경 빠른 접속</p>
+          <div className="flex gap-2">
+            <a
+              href="/api/auth/dev-login?mode=owner"
+              className="flex-1 py-2 text-center text-xs font-semibold bg-white border border-amber-300 rounded-xl text-amber-800 hover:bg-amber-100 transition-colors"
+            >
+              👤 사장님 (정든밤)
+            </a>
+            <a
+              href="/api/auth/dev-login?mode=admin"
+              className="flex-1 py-2 text-center text-xs font-semibold bg-white border border-amber-300 rounded-xl text-amber-800 hover:bg-amber-100 transition-colors"
+            >
+              🔧 관리자
+            </a>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
