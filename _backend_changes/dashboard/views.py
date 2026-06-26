@@ -171,13 +171,24 @@ class AppTokenView(APIView):
 
 class AdminLoginView(APIView):
     """
-    관리자(is_staff) 계정으로 대시보드 로그인
+    환경변수 기반 관리자 로그인 (DASHBOARD_ADMIN_USERNAME / DASHBOARD_ADMIN_PASSWORD)
     POST /api/dashboard/auth/admin-login/
     Body: { username, password }
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
+        import os
+        admin_username = os.getenv("DASHBOARD_ADMIN_USERNAME", "")
+        admin_password = os.getenv("DASHBOARD_ADMIN_PASSWORD", "")
+
+        if not admin_username or not admin_password:
+            logger.error("AdminLogin: DASHBOARD_ADMIN_USERNAME/PASSWORD not set")
+            return Response(
+                {"success": False, "message": "관리자 계정이 설정되지 않았습니다."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         username = (request.data.get("username") or "").strip()
         password = request.data.get("password") or ""
 
@@ -187,20 +198,24 @@ class AdminLoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user = django_authenticate(request=None, username=username, password=password)
-
-        if not user or not (user.is_staff or user.is_superuser):
+        if username != admin_username or password != admin_password:
             logger.warning(f"AdminLogin failed for username={username!r}")
             return Response(
                 {"success": False, "message": "아이디 또는 비밀번호가 올바르지 않습니다."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # JWT 발급용 더미 관리자 유저 (kakao_id=0 으로 고정)
+        user, _ = User.objects.get_or_create(
+            kakao_id=0,
+            defaults={"username": "0", "is_staff": True, "is_superuser": True},
+        )
+
         refresh = RefreshToken.for_user(user)
         refresh["is_owner"] = True
         refresh["is_admin"] = True
 
-        logger.info(f"AdminLogin success for username={username!r} user_id={user.pk}")
+        logger.info(f"AdminLogin success for username={username!r}")
         return Response({
             "success": True,
             "access": str(refresh.access_token),
