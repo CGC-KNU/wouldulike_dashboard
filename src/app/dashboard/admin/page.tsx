@@ -1,24 +1,17 @@
-// 관리자 대시보드 홈
-// 실제 데이터는 추후 API 연동 — 현재는 더미
+"use client";
+
+import { useEffect, useState } from "react";
+
+interface Restaurant {
+  restaurant_id: number;
+  name: string;
+}
 
 const DUMMY_CAMPAIGNS = [
   { id: 1, restaurant: "정든밤", title: "여름 특가 10% 쿠폰", submitted: "2026-06-24", status: "검수중" },
   { id: 2, restaurant: "봄봄김밥", title: "단골 무료 음료 이벤트", submitted: "2026-06-23", status: "검수중" },
   { id: 3, restaurant: "오마카세 숲", title: "주말 한정 세트 할인", submitted: "2026-06-22", status: "반영됨" },
 ];
-
-const DUMMY_RESTAURANTS = [
-  { id: 101, name: "정든밤", tier: "BOOST", owners: 1 },
-  { id: 102, name: "봄봄김밥", tier: "FREE", owners: 2 },
-  { id: 103, name: "오마카세 숲", tier: "CONTENT", owners: 1 },
-  { id: 104, name: "새벽감성", tier: "FREE", owners: 0 },
-];
-
-const TIER_STYLE: Record<string, string> = {
-  FREE: "bg-gray-100 text-gray-600",
-  BOOST: "bg-amber-100 text-amber-700",
-  CONTENT: "bg-indigo-100 text-indigo-700",
-};
 
 const STATUS_STYLE: Record<string, string> = {
   검수중: "bg-amber-100 text-amber-700",
@@ -27,13 +20,24 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export default function AdminHomePage() {
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/dashboard/restaurants")
+      .then((r) => r.json())
+      .then((data) => setRestaurants(data.restaurants ?? []))
+      .catch(() => setRestaurants([]))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="px-4 pt-4 max-w-2xl mx-auto">
       {/* 요약 카드 */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         {[
-          { label: "전체 식당", value: 4 },
-          { label: "검수 대기", value: 2 },
+          { label: "전체 식당", value: loading ? "—" : restaurants.length },
+          { label: "검수 대기", value: DUMMY_CAMPAIGNS.filter((c) => c.status === "검수중").length },
           { label: "이번 달 활성 유저", value: 317 },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-2xl p-4 shadow-sm">
@@ -86,31 +90,34 @@ export default function AdminHomePage() {
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">제휴 식당</h2>
-          <span className="text-xs text-gray-400">{DUMMY_RESTAURANTS.length}개</span>
+          <span className="text-xs text-gray-400">
+            {loading ? "로딩 중..." : `${restaurants.length}개`}
+          </span>
         </div>
-        <ul className="divide-y divide-gray-50">
-          {DUMMY_RESTAURANTS.map((r) => (
-            <li key={r.id} className="flex items-center px-4 py-3 gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800">{r.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">점주 {r.owners}명</p>
-              </div>
-              <span
-                className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                  TIER_STYLE[r.tier]
-                }`}
-              >
-                {r.tier}
-              </span>
-              <a
-                href={`/dashboard/owner?rid=${r.id}`}
-                className="text-xs text-periwinkle font-semibold hover:text-navy transition-colors shrink-0"
-              >
-                사장님 뷰 →
-              </a>
-            </li>
-          ))}
-        </ul>
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : restaurants.length === 0 ? (
+          <p className="text-center text-sm text-gray-400 py-8">식당 목록을 불러오지 못했습니다.</p>
+        ) : (
+          <ul className="divide-y divide-gray-50">
+            {restaurants.map((r) => (
+              <li key={r.restaurant_id} className="flex items-center px-4 py-3 gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800">{r.name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">ID: {r.restaurant_id}</p>
+                </div>
+                <a
+                  href={`/dashboard/owner?rid=${r.restaurant_id}`}
+                  className="text-xs text-periwinkle font-semibold hover:text-navy transition-colors shrink-0"
+                >
+                  사장님 뷰 →
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
