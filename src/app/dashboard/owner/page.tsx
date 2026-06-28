@@ -164,7 +164,7 @@ export default async function OwnerHomePage() {
           {[
             { label: "쿠폰 관리", href: "/dashboard/owner/coupons", emoji: "🎟" },
             { label: "캠페인", href: "/dashboard/owner/marketing", emoji: "📣" },
-            { label: "홍보 키트", href: "/dashboard/owner/marketing", emoji: "🪄" },
+            { label: "식당 정보", href: "/dashboard/owner/restaurant", emoji: "🏠" },
           ].map(({ label, href, emoji }) => (
             <a
               key={label}
