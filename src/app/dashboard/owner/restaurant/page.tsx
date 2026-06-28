@@ -64,6 +64,12 @@ const FIELD_META: {
 
 export default function RestaurantEditPage() {
   const router = useRouter();
+  const searchParams = new URLSearchParams(
+    typeof window !== "undefined" ? window.location.search : ""
+  );
+  const rid = searchParams.get("rid");
+  const ridQuery = rid ? `?rid=${rid}` : "";
+
   const [info, setInfo] = useState<RestaurantInfo | null>(null);
   const [draft, setDraft] = useState<Partial<RestaurantInfo>>({});
   const [loading, setLoading] = useState(true);
@@ -73,7 +79,7 @@ export default function RestaurantEditPage() {
   const originalRef = useRef<RestaurantInfo | null>(null);
 
   useEffect(() => {
-    fetch("/api/dashboard/restaurant")
+    fetch(`/api/dashboard/restaurant${ridQuery}`)
       .then((r) => r.json())
       .then((data) => {
         setInfo(data);
@@ -101,7 +107,7 @@ export default function RestaurantEditPage() {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/dashboard/restaurant", {
+      const res = await fetch(`/api/dashboard/restaurant${ridQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

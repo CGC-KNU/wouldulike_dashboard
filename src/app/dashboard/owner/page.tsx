@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import { IS_DEV, DEV_STATS } from "@/lib/dev";
 
 interface Stats {
   revisit_this_month: number;
@@ -11,15 +10,15 @@ interface Stats {
   month: string;
 }
 
-async function fetchStats(token: string): Promise<Stats | null> {
+async function fetchStats(token: string, rid?: string): Promise<Stats | null> {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/stats/`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      }
-    );
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/stats/`);
+    if (rid) url.searchParams.set("restaurant_id", rid);
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
     if (!res.ok) return null;
     const data = await res.json();
     return {
@@ -33,15 +32,12 @@ async function fetchStats(token: string): Promise<Stats | null> {
   }
 }
 
-// 간단한 sparkline SVG (더미 데이터)
 function Sparkline({ values }: { values: number[] }) {
   const max = Math.max(...values, 1);
   const w = 80;
   const h = 28;
   const step = w / (values.length - 1);
-  const pts = values
-    .map((v, i) => `${i * step},${h - (v / max) * h}`)
-    .join(" ");
+  const pts = values.map((v, i) => `${i * step},${h - (v / max) * h}`).join(" ");
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none">
       <polyline
@@ -62,20 +58,39 @@ const TIER_COLORS: Record<string, string> = {
   CONTENT: "bg-indigo-500 text-white",
 };
 
-export default async function OwnerHomePage() {
+const SPARKLINE_DUMMY = [5, 12, 8, 20, 15, 24];
+
+export default async function OwnerHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ rid?: string }>;
+}) {
+  const { rid } = await searchParams;
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value ?? "";
+  const stats = await fetchStats(token, rid);
 
-  const stats: Stats =
-    IS_DEV
-      ? DEV_STATS as unknown as Stats
-      : (await fetchStats(token)) ?? (DEV_STATS as unknown as Stats);
+  if (!stats) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+        <p className="text-gray-400 text-sm">
+          식당 정보를 불러오지 못했습니다.
+        </p>
+        {rid && (
+          <p className="text-xs text-gray-300 mt-1">restaurant_id: {rid}</p>
+        )}
+      </div>
+    );
+  }
 
   const month = stats.month
-    ? new Date(stats.month + "-01").toLocaleDateString("ko-KR", { year: "numeric", month: "long" })
+    ? new Date(stats.month + "-01").toLocaleDateString("ko-KR", {
+        year: "numeric",
+        month: "long",
+      })
     : "";
 
-  const sparkData = [5, 12, 8, 20, 15, 24]; // 더미 sparkline
+  const ridParam = rid ? `?rid=${rid}` : "";
 
   return (
     <div className="px-4 pt-4 max-w-lg mx-auto">
@@ -94,7 +109,7 @@ export default async function OwnerHomePage() {
         </span>
       </div>
 
-      {/* 다크 히어로 카드 — 재방문 단골 */}
+      {/* 다크 히어로 카드 */}
       <div
         className="rounded-2xl p-5 mb-4 text-white"
         style={{ background: "linear-gradient(135deg,#0A0676 0%,#182031 100%)" }}
@@ -112,7 +127,7 @@ export default async function OwnerHomePage() {
             </p>
           </div>
           <div className="opacity-80">
-            <Sparkline values={sparkData} />
+            <Sparkline values={SPARKLINE_DUMMY} />
           </div>
         </div>
       </div>
@@ -162,9 +177,9 @@ export default async function OwnerHomePage() {
         </div>
         <div className="grid grid-cols-3 divide-x divide-gray-50">
           {[
-            { label: "쿠폰 관리", href: "/dashboard/owner/coupons", emoji: "🎟" },
-            { label: "캠페인", href: "/dashboard/owner/marketing", emoji: "📣" },
-            { label: "식당 정보", href: "/dashboard/owner/restaurant", emoji: "🏠" },
+            { label: "쿠폰 관리", href: `/dashboard/owner/coupons${ridParam}`, emoji: "🎟" },
+            { label: "캠페인", href: `/dashboard/owner/marketing${ridParam}`, emoji: "📣" },
+            { label: "식당 정보", href: `/dashboard/owner/restaurant${ridParam}`, emoji: "🏠" },
           ].map(({ label, href, emoji }) => (
             <a
               key={label}
@@ -178,10 +193,10 @@ export default async function OwnerHomePage() {
         </div>
       </div>
 
-      {/* BOOST 업셀 스트립 */}
+      {/* BOOST 업셀 */}
       {stats.tier === "FREE" && (
         <a
-          href="/dashboard/owner/plan"
+          href={`/dashboard/owner/plan${ridParam}`}
           className="block w-full rounded-2xl p-4 mb-6 text-white text-sm"
           style={{ background: "linear-gradient(90deg,#6366E0,#0A0676)" }}
         >

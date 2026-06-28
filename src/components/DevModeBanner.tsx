@@ -2,39 +2,41 @@
 
 import Link from "next/link";
 
-interface DevModeBannerProps {
+interface AdminViewBannerProps {
   currentMode: "owner" | "admin";
+  rid?: string; // 사장님 뷰에서 조회 중인 restaurant_id
 }
 
 /**
- * 개발 환경 전용 상단 배너 — 사장님/관리자 모드 전환
+ * 관리자 계정 전용 — 사장님/관리자 뷰 전환 배너
+ * is_admin JWT 클레임이 있는 경우 layout에서 렌더링
  */
-export default function DevModeBanner({ currentMode }: DevModeBannerProps) {
-  if (process.env.NODE_ENV !== "development") return null;
+export default function AdminViewBanner({ currentMode, rid }: AdminViewBannerProps) {
+  const ownerHref = rid ? `/dashboard/owner?rid=${rid}` : "/dashboard/owner";
 
   return (
-    <div className="w-full bg-amber-400 text-amber-900 text-xs flex items-center justify-between px-4 py-1.5">
-      <span className="font-mono font-semibold">🛠 DEV · 정든밤</span>
+    <div className="w-full bg-[#0A0676] text-white text-xs flex items-center justify-between px-4 py-1.5">
+      <span className="font-mono font-semibold opacity-70">관리자 모드</span>
       <div className="flex gap-2">
         <Link
-          href="/dashboard/owner"
+          href={ownerHref}
           className={`px-2.5 py-0.5 rounded-full font-semibold transition-colors ${
             currentMode === "owner"
-              ? "bg-amber-900 text-amber-100"
-              : "bg-amber-200 hover:bg-amber-300 text-amber-900"
+              ? "bg-white text-[#0A0676]"
+              : "bg-white/20 hover:bg-white/30 text-white"
           }`}
         >
-          👤 사장님
+          👤 사장님 뷰
         </Link>
         <Link
           href="/dashboard/admin"
           className={`px-2.5 py-0.5 rounded-full font-semibold transition-colors ${
             currentMode === "admin"
-              ? "bg-amber-900 text-amber-100"
-              : "bg-amber-200 hover:bg-amber-300 text-amber-900"
+              ? "bg-white text-[#0A0676]"
+              : "bg-white/20 hover:bg-white/30 text-white"
           }`}
         >
-          🔧 관리자
+          🔧 관리자 뷰
         </Link>
       </div>
     </div>

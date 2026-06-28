@@ -1,9 +1,9 @@
-import DevModeBanner from "@/components/DevModeBanner";
+import AdminViewBanner from "@/components/DevModeBanner";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <DevModeBanner currentMode="admin" />
+      <AdminViewBanner currentMode="admin" />
       {/* 관리자 헤더 */}
       <header className="bg-[#0A0676] text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">

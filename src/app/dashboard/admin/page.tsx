@@ -102,6 +102,12 @@ export default function AdminHomePage() {
               >
                 {r.tier}
               </span>
+              <a
+                href={`/dashboard/owner?rid=${r.id}`}
+                className="text-xs text-periwinkle font-semibold hover:text-navy transition-colors shrink-0"
+              >
+                사장님 뷰 →
+              </a>
             </li>
           ))}
         </ul>
