@@ -1,30 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
-const NAV_ITEMS = [
-  { href: "/dashboard/owner", label: "홈", icon: HomeIcon },
-  { href: "/dashboard/owner/analytics", label: "분석", icon: ChartIcon },
-  { href: "/dashboard/owner/coupons", label: "쿠폰·스탬프", icon: CouponIcon },
-  { href: "/dashboard/owner/marketing", label: "마케팅", icon: MegaphoneIcon },
-  { href: "/dashboard/owner/plan", label: "플랜", icon: PlanIcon },
+const NAV_BASE = [
+  { base: "/dashboard/owner", label: "홈", icon: HomeIcon, exact: true },
+  { base: "/dashboard/owner/analytics", label: "분석", icon: ChartIcon, exact: false },
+  { base: "/dashboard/owner/coupons", label: "쿠폰·스탬프", icon: CouponIcon, exact: false },
+  { base: "/dashboard/owner/marketing", label: "마케팅", icon: MegaphoneIcon, exact: false },
+  { base: "/dashboard/owner/plan", label: "플랜", icon: PlanIcon, exact: false },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const rid = searchParams.get("rid");
+  const ridParam = rid ? `?rid=${rid}` : "";
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 safe-area-pb">
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active =
-            href === "/dashboard/owner"
-              ? pathname === "/dashboard/owner"
-              : pathname.startsWith(href);
+        {NAV_BASE.map(({ base, label, icon: Icon, exact }) => {
+          const active = exact ? pathname === base : pathname.startsWith(base);
+          const href = `${base}${ridParam}`;
           return (
             <Link
-              key={href}
+              key={base}
               href={href}
               className={`flex flex-col items-center gap-0.5 flex-1 py-2 ${
                 active ? "text-periwinkle" : "text-gray-400"
