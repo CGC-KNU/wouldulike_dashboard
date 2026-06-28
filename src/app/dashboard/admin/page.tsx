@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 interface Restaurant {
   restaurant_id: number;
@@ -22,14 +22,29 @@ const STATUS_STYLE: Record<string, string> = {
 export default function AdminHomePage() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    fetch("/api/dashboard/restaurants")
+  const fetchRestaurants = useCallback((query: string) => {
+    setLoading(true);
+    const url = query
+      ? `/api/dashboard/restaurants?search=${encodeURIComponent(query)}`
+      : "/api/dashboard/restaurants";
+    fetch(url)
       .then((r) => r.json())
       .then((data) => setRestaurants(data.restaurants ?? []))
       .catch(() => setRestaurants([]))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchRestaurants("");
+  }, [fetchRestaurants]);
+
+  // 300ms 디바운스
+  useEffect(() => {
+    const timer = setTimeout(() => fetchRestaurants(search), 300);
+    return () => clearTimeout(timer);
+  }, [search, fetchRestaurants]);
 
   return (
     <div className="px-4 pt-4 max-w-2xl mx-auto">
@@ -88,10 +103,17 @@ export default function AdminHomePage() {
 
       {/* 식당 목록 */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">제휴 식당</h2>
-          <span className="text-xs text-gray-400">
-            {loading ? "로딩 중..." : `${restaurants.length}개`}
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-700 shrink-0">제휴 식당</h2>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="식당명 검색..."
+            className="flex-1 text-xs px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+          />
+          <span className="text-xs text-gray-400 shrink-0">
+            {loading ? "..." : `${restaurants.length}개`}
           </span>
         </div>
         {loading ? (
