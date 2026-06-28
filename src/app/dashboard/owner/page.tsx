@@ -1,4 +1,6 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { decodeJwt } from "@/lib/jwt";
 
 interface Stats {
   revisit_this_month: number;
@@ -68,6 +70,15 @@ export default async function OwnerHomePage({
   const { rid } = await searchParams;
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value ?? "";
+
+  // 관리자 JWT인데 rid 없으면 admin 페이지로 리다이렉트
+  try {
+    const payload = decodeJwt<{ is_admin?: boolean }>(token);
+    if (payload.is_admin && !rid) redirect("/dashboard/admin");
+  } catch {
+    // 파싱 실패 무시
+  }
+
   const stats = await fetchStats(token, rid);
 
   if (!stats) {
