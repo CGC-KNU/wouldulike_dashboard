@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import ImageUploader from "@/components/ImageUploader";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -262,6 +263,76 @@ function RestaurantDrawer({
         </div>
       </div>
     </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   배너 / 팝업 이미지 설정
+═══════════════════════════════════════════════════ */
+function BannerPopupSection() {
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [popupUrl, setPopupUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/dashboard/admin/banner-popup")
+      .then((r) => r.json())
+      .then((data) => {
+        setBannerUrl(data.banner_url || null);
+        setPopupUrl(data.popup_url || null);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function saveImage(type: "banner" | "popup", urls: string[]) {
+    const url = urls[0] ?? null;
+    const res = await fetch("/api/dashboard/admin/banner-popup", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        type === "banner" ? { banner_url: url } : { popup_url: url }
+      ),
+    });
+    if (!res.ok) throw new Error("저장 실패");
+    if (type === "banner") setBannerUrl(url);
+    else setPopupUrl(url);
+  }
+
+  if (loading) return null;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-5">
+      <div className="px-4 py-3 border-b border-gray-50">
+        <h2 className="text-sm font-semibold text-gray-700">앱 콘텐츠 이미지</h2>
+        <p className="text-xs text-gray-400 mt-0.5">배너와 팝업에 표시될 이미지를 관리합니다.</p>
+      </div>
+      <div className="p-4 flex flex-col gap-6">
+        {/* 배너 */}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">배너</p>
+          <ImageUploader
+            initialUrls={bannerUrl ? [bannerUrl] : []}
+            onSave={(urls) => saveImage("banner", urls)}
+            maxImages={1}
+            uploadType="banner"
+            label="배너"
+          />
+        </div>
+        <hr className="border-gray-100" />
+        {/* 팝업 */}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">팝업</p>
+          <ImageUploader
+            initialUrls={popupUrl ? [popupUrl] : []}
+            onSave={(urls) => saveImage("popup", urls)}
+            maxImages={1}
+            uploadType="popup"
+            label="팝업"
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -555,6 +626,9 @@ export default function AdminHomePage() {
           </ul>
         )}
       </div>
+
+      {/* 배너 / 팝업 이미지 */}
+      <BannerPopupSection />
 
       {/* 비밀번호 설정 */}
       <PasswordSection />
