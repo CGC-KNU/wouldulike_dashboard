@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import ImageUploader from "@/components/ImageUploader";
 
 interface RestaurantInfo {
   restaurant_id: number;
@@ -12,6 +13,7 @@ interface RestaurantInfo {
   url: string;
   address: string;
   category: string;
+  s3_image_urls: string[];
 }
 
 const FIELD_META: {
@@ -82,7 +84,7 @@ export default function RestaurantEditPage() {
     fetch(`/api/dashboard/restaurant${ridQuery}`)
       .then((r) => r.json())
       .then((data) => {
-        setInfo(data);
+        setInfo({ ...data, s3_image_urls: data.s3_image_urls ?? [] });
         originalRef.current = data;
         setDraft({
           phone_number: data.phone_number,
@@ -232,6 +234,28 @@ export default function RestaurantEditPage() {
           <span className="text-gray-500 font-medium">우주라이크 팀</span>에 문의해주세요.
         </p>
       </div>
+
+      {/* 식당 사진 */}
+      {info && (
+        <div className="mt-8">
+          <label className="block text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">
+            식당 사진
+          </label>
+          <ImageUploader
+            restaurantId={info.restaurant_id}
+            initialUrls={info.s3_image_urls}
+            onSave={async (urls) => {
+              const res = await fetch(`/api/dashboard/restaurant${ridQuery}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ s3_image_urls: urls }),
+              });
+              if (!res.ok) throw new Error("저장 실패");
+              setInfo((prev) => prev ? { ...prev, s3_image_urls: urls } : prev);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
