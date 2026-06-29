@@ -167,30 +167,40 @@ function RestaurantDrawer({
 
           {/* 액션 버튼 */}
           <div className="flex flex-col gap-2">
-            <a
-              href={`/dashboard/owner?rid=${r.restaurant_id}`}
-              className="w-full py-3 rounded-xl bg-periwinkle text-white text-sm font-bold text-center hover:bg-navy transition-colors"
-            >
-              사장님 모드로 전환
-            </a>
+            {/* 주요 액션 행 */}
+            <div className="flex gap-2">
+              <a
+                href={`/dashboard/owner?rid=${r.restaurant_id}`}
+                className="flex-1 py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold text-center hover:bg-navy transition-colors"
+              >
+                사장님 모드
+              </a>
+              <a
+                href={`/dashboard/admin/restaurants/${r.restaurant_id}`}
+                className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold text-center hover:bg-gray-200 transition-colors"
+              >
+                자세히 보기 →
+              </a>
+            </div>
 
+            {/* 비활성화 — 작게 */}
             <button
               onClick={toggleAffiliate}
               disabled={actionPending}
-              className={`w-full py-3 rounded-xl text-sm font-bold transition-colors ${
+              className={`w-full py-2 rounded-lg text-xs font-semibold transition-colors ${
                 r.is_affiliate === false
                   ? "bg-green-50 text-green-600 hover:bg-green-100"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  : "bg-gray-50 text-gray-400 hover:bg-gray-100"
               }`}
             >
               {actionPending ? "처리 중..." : r.is_affiliate === false ? "활성화" : "비활성화"}
             </button>
 
-            {/* 삭제 플로우 */}
+            {/* 삭제 — 최하단 텍스트 링크 스타일 */}
             {deleteStep === null && (
               <button
                 onClick={() => setDeleteStep("confirm1")}
-                className="w-full py-3 rounded-xl bg-red-50 text-red-500 text-sm font-bold hover:bg-red-100 transition-colors"
+                className="text-xs text-gray-300 hover:text-red-400 transition-colors py-1 text-center"
               >
                 식당 삭제
               </button>
