@@ -6,6 +6,7 @@ interface Restaurant {
   restaurant_id: number;
   name: string;
   tier: string | null;
+  is_affiliate?: boolean;
 }
 
 type SortKey = "name" | "tier" | "id";
@@ -50,6 +51,8 @@ export default function AdminHomePage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [actionPending, setActionPending] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Restaurant | null>(null);
 
   const fetchRestaurants = useCallback((query: string) => {
     setLoading(true);
@@ -63,14 +66,50 @@ export default function AdminHomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    fetchRestaurants("");
-  }, [fetchRestaurants]);
-
+  useEffect(() => { fetchRestaurants(""); }, [fetchRestaurants]);
   useEffect(() => {
     const timer = setTimeout(() => fetchRestaurants(search), 300);
     return () => clearTimeout(timer);
   }, [search, fetchRestaurants]);
+
+  async function toggleAffiliate(r: Restaurant) {
+    setActionPending(r.restaurant_id);
+    try {
+      const res = await fetch(`/api/dashboard/admin/restaurants/${r.restaurant_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_affiliate: !r.is_affiliate }),
+      });
+      if (res.ok) {
+        setRestaurants((prev) =>
+          prev.map((x) =>
+            x.restaurant_id === r.restaurant_id
+              ? { ...x, is_affiliate: !r.is_affiliate }
+              : x
+          )
+        );
+      }
+    } finally {
+      setActionPending(null);
+    }
+  }
+
+  async function deleteRestaurant(r: Restaurant) {
+    setActionPending(r.restaurant_id);
+    setConfirmDelete(null);
+    try {
+      const res = await fetch(`/api/dashboard/admin/restaurants/${r.restaurant_id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setRestaurants((prev) =>
+          prev.filter((x) => x.restaurant_id !== r.restaurant_id)
+        );
+      }
+    } finally {
+      setActionPending(null);
+    }
+  }
 
   const sorted = sortRestaurants(restaurants, sortKey, sortDir);
 
@@ -194,34 +233,92 @@ export default function AdminHomePage() {
           </p>
         ) : (
           <ul className="divide-y divide-gray-50">
-            {sorted.map((r) => (
-              <li key={r.restaurant_id} className="flex items-center px-4 py-3 gap-2">
-                <span className="w-10 text-xs text-gray-400 shrink-0">{r.restaurant_id}</span>
-                <p className="flex-1 text-sm font-medium text-gray-800 truncate">{r.name}</p>
-                <div className="w-24 flex justify-end">
-                  {r.tier ? (
-                    <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        TIER_STYLE[r.tier] ?? "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {r.tier}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-gray-300">미등록</span>
-                  )}
-                </div>
-                <a
-                  href={`/dashboard/owner?rid=${r.restaurant_id}`}
-                  className="w-16 text-right text-xs text-periwinkle font-semibold hover:text-navy transition-colors shrink-0"
+            {sorted.map((r) => {
+              const isPending = actionPending === r.restaurant_id;
+              const inactive = r.is_affiliate === false;
+              return (
+                <li
+                  key={r.restaurant_id}
+                  className={`flex items-center px-4 py-3 gap-2 ${inactive ? "opacity-50" : ""}`}
                 >
-                  뷰 →
-                </a>
-              </li>
-            ))}
+                  <span className="w-10 text-xs text-gray-400 shrink-0">{r.restaurant_id}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{r.name}</p>
+                    {inactive && (
+                      <span className="text-[10px] text-red-400 font-medium">비활성</span>
+                    )}
+                  </div>
+                  <div className="w-20 flex justify-end">
+                    {r.tier ? (
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          TIER_STYLE[r.tier] ?? "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {r.tier}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-300">미등록</span>
+                    )}
+                  </div>
+                  <a
+                    href={`/dashboard/owner?rid=${r.restaurant_id}`}
+                    className="text-xs text-periwinkle font-semibold hover:text-navy transition-colors shrink-0"
+                  >
+                    뷰
+                  </a>
+                  <button
+                    onClick={() => toggleAffiliate(r)}
+                    disabled={isPending}
+                    className={`text-xs font-semibold px-2 py-1 rounded-lg transition-colors shrink-0 ${
+                      inactive
+                        ? "bg-green-50 text-green-600 hover:bg-green-100"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    }`}
+                  >
+                    {isPending ? "…" : inactive ? "활성화" : "비활성화"}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(r)}
+                    disabled={isPending}
+                    className="text-xs font-semibold px-2 py-1 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors shrink-0"
+                  >
+                    삭제
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
+
+      {/* 삭제 확인 모달 */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="text-base font-bold text-gray-800 mb-2">식당 삭제</h3>
+            <p className="text-sm text-gray-500 mb-1">
+              <span className="font-semibold text-gray-800">{confirmDelete.name}</span>을(를) 삭제하면
+              복구할 수 없습니다.
+            </p>
+            <p className="text-xs text-red-400 mb-6">연결된 OwnerProfile 데이터도 함께 삭제될 수 있습니다.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => deleteRestaurant(confirmDelete)}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
