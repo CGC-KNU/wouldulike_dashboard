@@ -36,12 +36,17 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const token = await getToken();
+  const body = await req.json().catch(() => ({}));
 
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/admin/restaurants/${id}/`,
     {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
       cache: "no-store",
     }
   );
