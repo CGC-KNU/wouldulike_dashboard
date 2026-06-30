@@ -398,15 +398,30 @@ function ContentTab() {
   const [bannerUrls, setBannerUrls] = useState<string[]>([]);
   const [popupUrls, setPopupUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+
+  // S3 복구 관련
+  const [s3Scanning, setS3Scanning] = useState(false);
+  const [s3Data, setS3Data] = useState<{ banners: string[]; popups: string[] } | null>(null);
+  const [s3Error, setS3Error] = useState("");
+  const [s3Importing, setS3Importing] = useState(false);
+
+  // 진단 (DB 키 확인)
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugData, setDebugData] = useState<{ key: string; value_preview: string | null }[] | null>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/dashboard/admin/banner-popup")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         setBannerUrls(data.banner_urls ?? []);
         setPopupUrls(data.popup_urls ?? []);
       })
-      .catch(() => {})
+      .catch((e) => setFetchError(String(e)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -416,7 +431,10 @@ function ContentTab() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ banner_urls: urls }),
     });
-    if (!res.ok) throw new Error("저장 실패");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail ?? `저장 실패 (HTTP ${res.status})`);
+    }
     setBannerUrls(urls);
   }
 
@@ -426,8 +444,54 @@ function ContentTab() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ popup_urls: urls }),
     });
-    if (!res.ok) throw new Error("저장 실패");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail ?? `저장 실패 (HTTP ${res.status})`);
+    }
     setPopupUrls(urls);
+  }
+
+  async function scanS3() {
+    setS3Scanning(true);
+    setS3Error("");
+    setS3Data(null);
+    try {
+      const res = await fetch("/api/dashboard/admin/banner-popup/s3-scan");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setS3Data({ banners: data.banners ?? [], popups: data.popups ?? [] });
+    } catch (e) {
+      setS3Error(String(e));
+    } finally {
+      setS3Scanning(false);
+    }
+  }
+
+  async function importFromS3() {
+    if (!s3Data) return;
+    setS3Importing(true);
+    try {
+      if (s3Data.banners.length > 0) await saveBanner(s3Data.banners);
+      if (s3Data.popups.length > 0) await savePopup(s3Data.popups);
+      setS3Data(null);
+    } catch (e) {
+      setS3Error(String(e));
+    } finally {
+      setS3Importing(false);
+    }
+  }
+
+  async function loadDebug() {
+    setDebugLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/admin/config-debug");
+      const data = await res.json();
+      setDebugData(data.records ?? []);
+    } catch {
+      setDebugData([]);
+    } finally {
+      setDebugLoading(false);
+    }
   }
 
   if (loading) {
@@ -438,8 +502,122 @@ function ContentTab() {
     );
   }
 
+  const isEmpty = bannerUrls.length === 0 && popupUrls.length === 0;
+
   return (
     <div className="flex flex-col gap-4">
+      {/* 오류 또는 데이터 없음 — S3 복구 패널 */}
+      {(fetchError || isEmpty) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <p className="text-sm font-semibold text-amber-700 mb-1">
+            {fetchError ? "데이터 로드 오류" : "등록된 이미지가 없습니다"}
+          </p>
+          <p className="text-xs text-amber-600 mb-3">
+            {fetchError
+              ? `${fetchError} — DB 저장이 실패했을 수 있습니다.`
+              : "이전에 업로드한 파일이 S3에 남아 있다면 아래에서 복구할 수 있습니다."}
+          </p>
+
+          {/* S3 스캔 */}
+          {!s3Data && (
+            <button
+              onClick={scanS3}
+              disabled={s3Scanning}
+              className="w-full py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-60 transition-colors"
+            >
+              {s3Scanning ? "S3 스캔 중..." : "S3에서 파일 찾기"}
+            </button>
+          )}
+          {s3Error && <p className="text-xs text-red-500 mt-2">{s3Error}</p>}
+
+          {s3Data && (
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-amber-700 mb-2">
+                S3 발견: 배너 {s3Data.banners.length}개 · 팝업 {s3Data.popups.length}개
+              </p>
+              {s3Data.banners.length === 0 && s3Data.popups.length === 0 ? (
+                <p className="text-xs text-amber-600">S3에도 파일이 없습니다. 새로 업로드해 주세요.</p>
+              ) : (
+                <>
+                  {/* 배너 미리보기 */}
+                  {s3Data.banners.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-xs text-amber-600 mb-1">배너</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {s3Data.banners.map((url) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={url} src={url} alt="" className="w-24 h-14 object-cover rounded-lg bg-gray-200" />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {s3Data.popups.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-xs text-amber-600 mb-1">팝업</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {s3Data.popups.map((url) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={url} src={url} alt="" className="w-24 h-14 object-cover rounded-lg bg-gray-200" />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => setS3Data(null)}
+                      className="flex-1 py-2 rounded-xl border border-amber-300 text-amber-700 text-sm font-semibold"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={importFromS3}
+                      disabled={s3Importing}
+                      className="flex-1 py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-60 transition-colors"
+                    >
+                      {s3Importing ? "저장 중..." : "DB에 저장하기"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* 진단: AdminConfig 키 목록 */}
+          <button
+            onClick={() => {
+              setShowDebug((s) => !s);
+              if (!showDebug && !debugData) loadDebug();
+            }}
+            className="mt-3 text-xs text-amber-500 underline"
+          >
+            {showDebug ? "진단 숨기기" : "DB 키 목록 확인 (진단)"}
+          </button>
+          {showDebug && (
+            <div className="mt-2 bg-white rounded-xl p-3 border border-amber-100">
+              <p className="text-xs font-semibold text-gray-600 mb-2">AdminConfig 전체 레코드</p>
+              {debugLoading ? (
+                <p className="text-xs text-gray-400">로딩 중...</p>
+              ) : debugData && debugData.length > 0 ? (
+                <ul className="flex flex-col gap-1.5">
+                  {debugData.map((rec) => (
+                    <li key={rec.key} className="text-xs font-mono bg-gray-50 rounded px-2 py-1">
+                      <span className="text-indigo-600">{rec.key}</span>
+                      {rec.value_preview && (
+                        <span className="text-gray-400 ml-2 break-all">{rec.value_preview.slice(0, 80)}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  {debugData === null ? "로드 전" : "레코드 없음 (테이블 비어 있음)"}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 배너 */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
