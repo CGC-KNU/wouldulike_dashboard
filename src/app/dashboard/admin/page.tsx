@@ -18,6 +18,7 @@ interface Stats {
 }
 type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
+type Tab = "restaurants" | "content" | "settings";
 
 /* ─── 상수 ─── */
 const TIER_ORDER: Record<string, number> = { CONTENT: 3, BOOST: 2, FREE: 1 };
@@ -36,6 +37,23 @@ const CAMPAIGN_STATUS_STYLE: Record<string, string> = {
   반영됨: "bg-green-100 text-green-700",
   종료: "bg-gray-100 text-gray-500",
 };
+
+/* ─── 유틸 ─── */
+function parseS3Info(url: string): { name: string; uploadedAt: string | null } {
+  try {
+    const filename = decodeURIComponent(url.split("/").pop() ?? "");
+    const match = filename.match(/^(\d{8})_(\d{6})_(.+)_[a-f0-9]{6}\.\w+$/);
+    if (match) {
+      const [, date, time, rawName] = match;
+      const d = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+      const t = `${time.slice(0, 2)}:${time.slice(2, 4)}`;
+      return { name: rawName.replace(/_/g, " ") || filename, uploadedAt: `${d} ${t}` };
+    }
+    return { name: filename, uploadedAt: null };
+  } catch {
+    return { name: url, uploadedAt: null };
+  }
+}
 
 function sortRestaurants(list: Restaurant[], key: SortKey, dir: SortDir) {
   return [...list].sort((a, b) => {
@@ -63,8 +81,6 @@ function RestaurantDrawer({
 }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-
-  // 삭제 단계: null → "confirm1" → "confirm2(2차PW입력)" → "deleting"
   const [deleteStep, setDeleteStep] = useState<null | "confirm1" | "confirm2">(null);
   const [secondaryPw, setSecondaryPw] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -106,18 +122,12 @@ function RestaurantDrawer({
 
   return (
     <>
-      {/* 배경 오버레이 */}
       <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-
-      {/* 드로어 */}
       <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-xl max-h-[85vh] overflow-y-auto">
-        {/* 핸들 */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-gray-200" />
         </div>
-
         <div className="px-5 pb-8 pt-2">
-          {/* 식당 헤더 */}
           <div className="flex items-start justify-between mb-4">
             <div>
               <h2 className="text-lg font-bold text-navy">{r.name}</h2>
@@ -138,7 +148,6 @@ function RestaurantDrawer({
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-1">✕</button>
           </div>
 
-          {/* 통계 */}
           <div className="bg-gray-50 rounded-xl p-4 mb-4">
             <p className="text-xs font-semibold text-gray-500 mb-3">이번 달 통계</p>
             {statsLoading ? (
@@ -166,9 +175,7 @@ function RestaurantDrawer({
             )}
           </div>
 
-          {/* 액션 버튼 */}
           <div className="flex flex-col gap-2">
-            {/* 주요 액션 행 */}
             <div className="flex gap-2">
               <a
                 href={`/dashboard/owner?rid=${r.restaurant_id}`}
@@ -183,8 +190,6 @@ function RestaurantDrawer({
                 자세히 보기 →
               </a>
             </div>
-
-            {/* 비활성화 — 작게 */}
             <button
               onClick={toggleAffiliate}
               disabled={actionPending}
@@ -196,8 +201,6 @@ function RestaurantDrawer({
             >
               {actionPending ? "처리 중..." : r.is_affiliate === false ? "활성화" : "비활성화"}
             </button>
-
-            {/* 삭제 — 최하단 텍스트 링크 스타일 */}
             {deleteStep === null && (
               <button
                 onClick={() => setDeleteStep("confirm1")}
@@ -206,7 +209,6 @@ function RestaurantDrawer({
                 식당 삭제
               </button>
             )}
-
             {deleteStep === "confirm1" && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-4">
                 <p className="text-sm font-semibold text-red-600 mb-1">정말 삭제하시겠습니까?</p>
@@ -214,22 +216,11 @@ function RestaurantDrawer({
                   <strong>{r.name}</strong> 식당이 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
                 </p>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => setDeleteStep(null)}
-                    className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 bg-white"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={() => { setDeleteStep("confirm2"); setDeleteError(""); }}
-                    className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-bold"
-                  >
-                    계속
-                  </button>
+                  <button onClick={() => setDeleteStep(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 bg-white">취소</button>
+                  <button onClick={() => { setDeleteStep("confirm2"); setDeleteError(""); }} className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-bold">계속</button>
                 </div>
               </div>
             )}
-
             {deleteStep === "confirm2" && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-4">
                 <p className="text-sm font-semibold text-red-600 mb-3">2차 비밀번호를 입력하세요</p>
@@ -243,17 +234,8 @@ function RestaurantDrawer({
                 />
                 {deleteError && <p className="text-xs text-red-500 mb-2">{deleteError}</p>}
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => { setDeleteStep(null); setSecondaryPw(""); setDeleteError(""); }}
-                    className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 bg-white"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={confirmDelete}
-                    disabled={actionPending}
-                    className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-bold disabled:opacity-60"
-                  >
+                  <button onClick={() => { setDeleteStep(null); setSecondaryPw(""); setDeleteError(""); }} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 bg-white">취소</button>
+                  <button onClick={confirmDelete} disabled={actionPending} className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-bold disabled:opacity-60">
                     {actionPending ? "삭제 중..." : "삭제 확인"}
                   </button>
                 </div>
@@ -267,68 +249,237 @@ function RestaurantDrawer({
 }
 
 /* ═══════════════════════════════════════════════════
-   배너 / 팝업 이미지 설정
+   미디어 매니저 (배너 / 팝업 공용)
 ═══════════════════════════════════════════════════ */
-function BannerPopupSection() {
-  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
-  const [popupUrl, setPopupUrl] = useState<string | null>(null);
+function MediaManager({
+  title,
+  initialUrls,
+  uploadType,
+  maxItems = 10,
+  onSave,
+}: {
+  title: string;
+  initialUrls: string[];
+  uploadType: "banner" | "popup";
+  maxItems?: number;
+  onSave: (urls: string[]) => Promise<void>;
+}) {
+  const [urls, setUrls] = useState<string[]>(initialUrls);
+  const [showUploader, setShowUploader] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  // parent initialUrls 변경 시 내부 state 동기화
+  useEffect(() => {
+    setUrls(initialUrls);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(initialUrls)]);
+
+  const isDirty = JSON.stringify(urls) !== JSON.stringify(initialUrls);
+
+  async function save(nextUrls = urls) {
+    setSaving(true);
+    setError("");
+    try {
+      await onSave(nextUrls);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setError("저장에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function remove(idx: number) {
+    setUrls((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <div>
+      {/* 등록된 이미지 목록 */}
+      {urls.length > 0 ? (
+        <div className="flex flex-col gap-2 mb-4">
+          {urls.map((url, i) => {
+            const info = parseS3Info(url);
+            return (
+              <div key={url} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt={info.name}
+                  className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-gray-700 truncate">{info.name}</p>
+                  {info.uploadedAt && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">{info.uploadedAt} 업로드</p>
+                  )}
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] text-periwinkle hover:underline"
+                  >
+                    원본 보기 →
+                  </a>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-[10px] text-gray-300">#{i + 1}</span>
+                  <button
+                    onClick={() => remove(i)}
+                    className="text-xs text-gray-300 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-8 bg-gray-50 rounded-xl mb-4">
+          <p className="text-xs text-gray-400">등록된 {title}이 없습니다.</p>
+        </div>
+      )}
+
+      {/* 추가 업로더 토글 */}
+      {urls.length < maxItems && (
+        <div className="mb-3">
+          <button
+            onClick={() => setShowUploader((s) => !s)}
+            className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
+          >
+            {showUploader ? "▲ 닫기" : `+ ${title} 추가`}
+          </button>
+          {showUploader && (
+            <div className="mt-2 p-3 bg-gray-50 rounded-xl">
+              <ImageUploader
+                initialUrls={[]}
+                onSave={async (newUrls) => {
+                  const merged = [...urls, ...newUrls];
+                  setUrls(merged);
+                  setShowUploader(false);
+                  await save(merged);
+                }}
+                maxImages={maxItems - urls.length}
+                uploadType={uploadType}
+                label={title}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
+
+      {/* 삭제 후 변경사항 저장 버튼 */}
+      {isDirty && !showUploader && (
+        <button
+          onClick={() => save()}
+          disabled={saving}
+          className="w-full py-2.5 rounded-xl text-sm font-bold bg-periwinkle text-white hover:bg-navy transition-colors disabled:opacity-60"
+        >
+          {saving ? "저장 중..." : "변경사항 저장"}
+        </button>
+      )}
+      {saved && !isDirty && (
+        <p className="text-xs text-green-600 text-center py-1">✓ 저장되었습니다</p>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   탭: 배너 & 팝업
+═══════════════════════════════════════════════════ */
+function ContentTab() {
+  const [bannerUrls, setBannerUrls] = useState<string[]>([]);
+  const [popupUrls, setPopupUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/dashboard/admin/banner-popup")
       .then((r) => r.json())
       .then((data) => {
-        setBannerUrl(data.banner_url || null);
-        setPopupUrl(data.popup_url || null);
+        setBannerUrls(data.banner_urls ?? []);
+        setPopupUrls(data.popup_urls ?? []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  async function saveImage(type: "banner" | "popup", urls: string[]) {
-    const url = urls[0] ?? null;
+  async function saveBanner(urls: string[]) {
     const res = await fetch("/api/dashboard/admin/banner-popup", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        type === "banner" ? { banner_url: url } : { popup_url: url }
-      ),
+      body: JSON.stringify({ banner_urls: urls }),
     });
     if (!res.ok) throw new Error("저장 실패");
-    if (type === "banner") setBannerUrl(url);
-    else setPopupUrl(url);
+    setBannerUrls(urls);
   }
 
-  if (loading) return null;
+  async function savePopup(urls: string[]) {
+    const res = await fetch("/api/dashboard/admin/banner-popup", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ popup_urls: urls }),
+    });
+    if (!res.ok) throw new Error("저장 실패");
+    setPopupUrls(urls);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-5">
-      <div className="px-4 py-3 border-b border-gray-50">
-        <h2 className="text-sm font-semibold text-gray-700">앱 콘텐츠 이미지</h2>
-        <p className="text-xs text-gray-400 mt-0.5">배너와 팝업에 표시될 이미지를 관리합니다.</p>
-      </div>
-      <div className="p-4 flex flex-col gap-6">
-        {/* 배너 */}
-        <div>
-          <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">배너</p>
-          <ImageUploader
-            initialUrls={bannerUrl ? [bannerUrl] : []}
-            onSave={(urls) => saveImage("banner", urls)}
-            maxImages={1}
+    <div className="flex flex-col gap-4">
+      {/* 배너 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">배너</h2>
+            <p className="text-xs text-gray-400 mt-0.5">앱 메인화면 슬라이드에 표시</p>
+          </div>
+          <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            {bannerUrls.length} / 10
+          </span>
+        </div>
+        <div className="p-4">
+          <MediaManager
+            title="배너"
+            initialUrls={bannerUrls}
             uploadType="banner"
-            label="배너"
+            maxItems={10}
+            onSave={saveBanner}
           />
         </div>
-        <hr className="border-gray-100" />
-        {/* 팝업 */}
-        <div>
-          <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">팝업</p>
-          <ImageUploader
-            initialUrls={popupUrl ? [popupUrl] : []}
-            onSave={(urls) => saveImage("popup", urls)}
-            maxImages={1}
+      </div>
+
+      {/* 팝업 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">팝업</h2>
+            <p className="text-xs text-gray-400 mt-0.5">앱 실행 시 표시되는 팝업 이미지</p>
+          </div>
+          <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            {popupUrls.length} / 5
+          </span>
+        </div>
+        <div className="p-4">
+          <MediaManager
+            title="팝업"
+            initialUrls={popupUrls}
             uploadType="popup"
-            label="팝업"
+            maxItems={5}
+            onSave={savePopup}
           />
         </div>
       </div>
@@ -337,9 +488,9 @@ function BannerPopupSection() {
 }
 
 /* ═══════════════════════════════════════════════════
-   비밀번호 변경 섹션
+   탭: 비밀번호 / 관리자 설정
 ═══════════════════════════════════════════════════ */
-function PasswordSection() {
+function SettingsTab() {
   const [activeForm, setActiveForm] = useState<null | "main" | "secondary">(null);
   const [form, setForm] = useState({ current: "", next: "", next2: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -367,7 +518,7 @@ function PasswordSection() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-8">
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50">
         <h2 className="text-sm font-semibold text-gray-700">관리자 비밀번호</h2>
       </div>
@@ -377,8 +528,6 @@ function PasswordSection() {
             {msg.text}
           </p>
         )}
-
-        {/* 일반 비밀번호 */}
         <button
           onClick={() => { setActiveForm(activeForm === "main" ? null : "main"); setMsg(null); }}
           className="text-left text-sm font-medium text-gray-700 py-2 flex items-center justify-between"
@@ -388,7 +537,7 @@ function PasswordSection() {
         </button>
         {activeForm === "main" && (
           <div className="flex flex-col gap-2 pb-2">
-            {["현재 비밀번호", "새 비밀번호", "새 비밀번호 확인"].map((label, i) => {
+            {(["현재 비밀번호", "새 비밀번호", "새 비밀번호 확인"] as const).map((label, i) => {
               const key = (["current", "next", "next2"] as const)[i];
               return (
                 <input
@@ -401,11 +550,7 @@ function PasswordSection() {
                 />
               );
             })}
-            <button
-              onClick={() => submit("main")}
-              disabled={saving}
-              className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60"
-            >
+            <button onClick={() => submit("main")} disabled={saving} className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
               {saving ? "저장 중..." : "저장"}
             </button>
           </div>
@@ -413,7 +558,6 @@ function PasswordSection() {
 
         <hr className="border-gray-100" />
 
-        {/* 2차 비밀번호 */}
         <button
           onClick={() => { setActiveForm(activeForm === "secondary" ? null : "secondary"); setMsg(null); }}
           className="text-left text-sm font-medium text-gray-700 py-2 flex items-center justify-between"
@@ -423,32 +567,10 @@ function PasswordSection() {
         </button>
         {activeForm === "secondary" && (
           <div className="flex flex-col gap-2 pb-2">
-            <input
-              type="password"
-              placeholder="현재 2차 비밀번호 (최초 설정 시 빈칸)"
-              value={form.current}
-              onChange={(e) => setForm((f) => ({ ...f, current: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-            />
-            <input
-              type="password"
-              placeholder="새 2차 비밀번호"
-              value={form.next}
-              onChange={(e) => setForm((f) => ({ ...f, next: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-            />
-            <input
-              type="password"
-              placeholder="새 2차 비밀번호 확인"
-              value={form.next2}
-              onChange={(e) => setForm((f) => ({ ...f, next2: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-            />
-            <button
-              onClick={() => submit("secondary")}
-              disabled={saving}
-              className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60"
-            >
+            <input type="password" placeholder="현재 2차 비밀번호 (최초 설정 시 빈칸)" value={form.current} onChange={(e) => setForm((f) => ({ ...f, current: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+            <input type="password" placeholder="새 2차 비밀번호" value={form.next} onChange={(e) => setForm((f) => ({ ...f, next: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+            <input type="password" placeholder="새 2차 비밀번호 확인" value={form.next2} onChange={(e) => setForm((f) => ({ ...f, next2: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+            <button onClick={() => submit("secondary")} disabled={saving} className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
               {saving ? "저장 중..." : "저장"}
             </button>
           </div>
@@ -459,9 +581,9 @@ function PasswordSection() {
 }
 
 /* ═══════════════════════════════════════════════════
-   메인 페이지
+   탭: 식당 관리
 ═══════════════════════════════════════════════════ */
-export default function AdminHomePage() {
+function RestaurantsTab() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -503,9 +625,7 @@ export default function AdminHomePage() {
     if (!selected) return;
     const next = { ...selected, ...updated };
     setSelected(next);
-    setRestaurants((prev) =>
-      prev.map((r) => (r.restaurant_id === next.restaurant_id ? next : r))
-    );
+    setRestaurants((prev) => prev.map((r) => (r.restaurant_id === next.restaurant_id ? next : r)));
   }
 
   function handleDeleted(id: number) {
@@ -513,9 +633,9 @@ export default function AdminHomePage() {
   }
 
   return (
-    <div className="px-4 pt-4 max-w-2xl mx-auto">
+    <>
       {/* 요약 카드 */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         {[
           { label: "전체 식당", value: loading ? "—" : restaurants.length },
           { label: "검수 대기", value: DUMMY_CAMPAIGNS.filter((c) => c.status === "검수중").length },
@@ -529,7 +649,7 @@ export default function AdminHomePage() {
       </div>
 
       {/* 캠페인 검수 */}
-      <div className="bg-white rounded-2xl shadow-sm mb-5 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">캠페인 검수</h2>
           <span className="text-xs text-amber-600 font-semibold">
@@ -558,8 +678,7 @@ export default function AdminHomePage() {
       </div>
 
       {/* 식당 목록 */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-5">
-        {/* 검색 헤더 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-3">
           <h2 className="text-sm font-semibold text-gray-700 shrink-0">제휴 식당</h2>
           <input
@@ -571,8 +690,6 @@ export default function AdminHomePage() {
           />
           <span className="text-xs text-gray-400 shrink-0">{loading ? "..." : `${sorted.length}개`}</span>
         </div>
-
-        {/* 정렬 헤더 */}
         <div className="flex items-center px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
           <button onClick={() => toggleSort("id")} className="w-10 text-left font-medium hover:text-navy">
             ID <SortIcon k="id" />
@@ -584,8 +701,6 @@ export default function AdminHomePage() {
             플랜 <SortIcon k="tier" />
           </button>
         </div>
-
-        {/* 목록 */}
         {loading ? (
           <div className="flex items-center justify-center py-10">
             <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
@@ -627,13 +742,6 @@ export default function AdminHomePage() {
         )}
       </div>
 
-      {/* 배너 / 팝업 이미지 */}
-      <BannerPopupSection />
-
-      {/* 비밀번호 설정 */}
-      <PasswordSection />
-
-      {/* 식당 드로어 */}
       {selected && (
         <RestaurantDrawer
           r={selected}
@@ -642,6 +750,45 @@ export default function AdminHomePage() {
           onDeleted={handleDeleted}
         />
       )}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   메인 페이지
+═══════════════════════════════════════════════════ */
+const TABS: { key: Tab; label: string }[] = [
+  { key: "restaurants", label: "식당 관리" },
+  { key: "content", label: "배너 & 팝업" },
+  { key: "settings", label: "관리자 설정" },
+];
+
+export default function AdminHomePage() {
+  const [activeTab, setActiveTab] = useState<Tab>("restaurants");
+
+  return (
+    <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
+      {/* 탭 헤더 */}
+      <div className="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-5">
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex-1 py-2 text-xs font-semibold rounded-xl transition-all ${
+              activeTab === key
+                ? "bg-white text-navy shadow-sm"
+                : "text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* 탭 컨텐츠 */}
+      {activeTab === "restaurants" && <RestaurantsTab />}
+      {activeTab === "content" && <ContentTab />}
+      {activeTab === "settings" && <SettingsTab />}
     </div>
   );
 }
