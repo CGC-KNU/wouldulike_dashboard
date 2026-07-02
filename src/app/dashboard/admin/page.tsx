@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import ImageUploader from "@/components/ImageUploader";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -15,6 +14,26 @@ interface Stats {
   loyal_total: number;
   coupon_redeemed_this_month: number;
   stamp_earned_this_month: number;
+}
+interface TrendItem {
+  id: number;
+  title: string;
+  description: string;
+  image_url: string | null;
+  blog_link: string;
+  display_order: number;
+  created_at: string;
+}
+interface PopupItem {
+  id: number;
+  title: string;
+  image_url: string;
+  instagram_url: string;
+  start_at: string;
+  end_at: string;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
 }
 type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
@@ -39,22 +58,6 @@ const CAMPAIGN_STATUS_STYLE: Record<string, string> = {
 };
 
 /* ─── 유틸 ─── */
-function parseS3Info(url: string): { name: string; uploadedAt: string | null } {
-  try {
-    const filename = decodeURIComponent(url.split("/").pop() ?? "");
-    const match = filename.match(/^(\d{8})_(\d{6})_(.+)_[a-f0-9]{6}\.\w+$/);
-    if (match) {
-      const [, date, time, rawName] = match;
-      const d = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
-      const t = `${time.slice(0, 2)}:${time.slice(2, 4)}`;
-      return { name: rawName.replace(/_/g, " ") || filename, uploadedAt: `${d} ${t}` };
-    }
-    return { name: filename, uploadedAt: null };
-  } catch {
-    return { name: url, uploadedAt: null };
-  }
-}
-
 function sortRestaurants(list: Restaurant[], key: SortKey, dir: SortDir) {
   return [...list].sort((a, b) => {
     let cmp = 0;
@@ -249,143 +252,537 @@ function RestaurantDrawer({
 }
 
 /* ═══════════════════════════════════════════════════
-   미디어 매니저 (배너 / 팝업 공용)
+   인라인 이미지 업로드 필드 (폼 내부용)
 ═══════════════════════════════════════════════════ */
-function MediaManager({
-  title,
-  initialUrls,
+function ImagePickerField({
+  value,
+  onChange,
   uploadType,
-  maxItems = 10,
-  onSave,
 }: {
-  title: string;
-  initialUrls: string[];
-  uploadType: "banner" | "popup";
-  maxItems?: number;
-  onSave: (urls: string[]) => Promise<void>;
+  value: string;
+  onChange: (url: string) => void;
+  uploadType: "trend" | "popup";
 }) {
-  const [urls, setUrls] = useState<string[]>(initialUrls);
-  const [showUploader, setShowUploader] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const ref = useCallback((input: HTMLInputElement | null) => { if (input) input.value = ""; }, []);
 
-  // parent initialUrls 변경 시 내부 state 동기화
-  useEffect(() => {
-    setUrls(initialUrls);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initialUrls)]);
-
-  const isDirty = JSON.stringify(urls) !== JSON.stringify(initialUrls);
-
-  async function save(nextUrls = urls) {
-    setSaving(true);
-    setError("");
+  async function handleFile(file: File) {
+    setUploading(true);
+    setErr("");
     try {
-      await onSave(nextUrls);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch {
-      setError("저장에 실패했습니다.");
+      // 압축 (canvas)
+      const compressed = await new Promise<Blob>((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const MAX = 1400;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          let q = 0.85;
+          const step = () => {
+            canvas.toBlob((blob) => {
+              if (!blob) { reject(new Error("변환 실패")); return; }
+              if (blob.size <= 200 * 1024 || q <= 0.3) { resolve(blob); return; }
+              q -= 0.1;
+              step();
+            }, "image/jpeg", q);
+          };
+          step();
+        };
+        img.onerror = reject;
+        img.src = url;
+      });
+      // presign
+      const presRes = await fetch("/api/dashboard/images/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, content_type: "image/jpeg", upload_type: uploadType }),
+      });
+      if (!presRes.ok) throw new Error("presign 실패");
+      const { upload_url, public_url } = await presRes.json();
+      // S3 PUT
+      const putRes = await fetch(upload_url, { method: "PUT", body: compressed, headers: { "Content-Type": "image/jpeg" } });
+      if (!putRes.ok) throw new Error("업로드 실패");
+      onChange(public_url);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        className="relative w-full h-32 rounded-xl border-2 border-dashed border-gray-200 overflow-hidden cursor-pointer hover:border-periwinkle transition-colors"
+        onClick={() => document.getElementById(`img-pick-${uploadType}`)?.click()}
+      >
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-1">
+            <span className="text-2xl text-gray-300">📷</span>
+            <span className="text-xs text-gray-400">클릭하여 이미지 선택</span>
+          </div>
+        )}
+        {uploading && (
+          <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+            <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {value && !uploading && (
+          <div className="absolute bottom-1 right-1">
+            <span className="text-[10px] bg-black/50 text-white px-1.5 py-0.5 rounded">변경</span>
+          </div>
+        )}
+      </div>
+      <input
+        id={`img-pick-${uploadType}`}
+        ref={ref}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+      />
+      {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   배너(Trend) 섹션
+═══════════════════════════════════════════════════ */
+const EMPTY_TREND = { title: "", description: "", image_url: "", blog_link: "", display_order: 0 };
+
+function TrendForm({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial?: Partial<TrendItem>;
+  onSave: (data: typeof EMPTY_TREND) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({ ...EMPTY_TREND, ...initial, image_url: initial?.image_url ?? "" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const set = (k: keyof typeof EMPTY_TREND, v: string | number) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  async function submit() {
+    if (!form.title.trim()) { setErr("제목을 입력해주세요."); return; }
+    setSaving(true);
+    setErr("");
+    try {
+      await onSave(form);
+    } catch (e) {
+      setErr(String(e));
     } finally {
       setSaving(false);
     }
   }
 
-  function remove(idx: number) {
-    setUrls((prev) => prev.filter((_, i) => i !== idx));
+  return (
+    <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl">
+      <ImagePickerField value={form.image_url} onChange={(u) => set("image_url", u)} uploadType="trend" />
+      <input
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+        placeholder="제목 *"
+        value={form.title}
+        onChange={(e) => set("title", e.target.value)}
+      />
+      <textarea
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle resize-none"
+        placeholder="설명"
+        rows={2}
+        value={form.description}
+        onChange={(e) => set("description", e.target.value)}
+      />
+      <input
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+        placeholder="블로그 링크 (https://...)"
+        value={form.blog_link}
+        onChange={(e) => set("blog_link", e.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-500 shrink-0">노출 순서</label>
+        <input
+          type="number"
+          className="w-20 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+          value={form.display_order}
+          onChange={(e) => set("display_order", Number(e.target.value))}
+        />
+        <span className="text-xs text-gray-400">(작을수록 먼저 표시)</span>
+      </div>
+      {err && <p className="text-xs text-red-500">{err}</p>}
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 bg-white">
+          취소
+        </button>
+        <button onClick={submit} disabled={saving} className="flex-1 py-2 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BannerSection() {
+  const [items, setItems] = useState<TrendItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    fetch("/api/dashboard/admin/trends")
+      .then((r) => r.json())
+      .then((d) => setItems(Array.isArray(d) ? d : []))
+      .catch(() => setErr("불러오기 실패"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function create(data: typeof EMPTY_TREND) {
+    const res = await fetch("/api/dashboard/admin/trends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "생성 실패");
+    setItems((prev) => [...prev, d]);
+    setShowForm(false);
   }
+
+  async function update(id: number, data: typeof EMPTY_TREND) {
+    const res = await fetch(`/api/dashboard/admin/trends/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "수정 실패");
+    setItems((prev) => prev.map((t) => (t.id === id ? d : t)));
+    setEditId(null);
+  }
+
+  async function remove(id: number) {
+    if (!confirm("배너를 삭제할까요?")) return;
+    const res = await fetch(`/api/dashboard/admin/trends/${id}`, { method: "DELETE" });
+    if (!res.ok) { setErr("삭제 실패"); return; }
+    setItems((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div>
-      {/* 등록된 이미지 목록 */}
-      {urls.length > 0 ? (
-        <div className="flex flex-col gap-2 mb-4">
-          {urls.map((url, i) => {
-            const info = parseS3Info(url);
-            return (
-              <div key={url} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={url}
-                  alt={info.name}
-                  className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-700 truncate">{info.name}</p>
-                  {info.uploadedAt && (
-                    <p className="text-[10px] text-gray-400 mt-0.5">{info.uploadedAt} 업로드</p>
-                  )}
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-periwinkle hover:underline"
-                  >
-                    원본 보기 →
+      {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
+      <div className="flex flex-col gap-2 mb-3">
+        {items.map((t) =>
+          editId === t.id ? (
+            <TrendForm
+              key={t.id}
+              initial={{ ...t }}
+              onSave={(d) => update(t.id, d)}
+              onCancel={() => setEditId(null)}
+            />
+          ) : (
+            <div key={t.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5">
+              {t.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.image_url} alt={t.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
+              ) : (
+                <div className="w-20 h-12 rounded-lg bg-gray-200 shrink-0 flex items-center justify-center">
+                  <span className="text-gray-400 text-xs">없음</span>
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800 truncate">{t.title}</p>
+                {t.description && <p className="text-xs text-gray-400 truncate mt-0.5">{t.description}</p>}
+                {t.blog_link && (
+                  <a href={t.blog_link} target="_blank" rel="noopener noreferrer" className="text-[10px] text-periwinkle hover:underline">
+                    블로그 →
                   </a>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-[10px] text-gray-300">#{i + 1}</span>
-                  <button
-                    onClick={() => remove(i)}
-                    className="text-xs text-gray-300 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded hover:bg-red-50"
-                  >
-                    삭제
-                  </button>
-                </div>
+                )}
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-center py-8 bg-gray-50 rounded-xl mb-4">
-          <p className="text-xs text-gray-400">등록된 {title}이 없습니다.</p>
-        </div>
-      )}
-
-      {/* 추가 업로더 토글 */}
-      {urls.length < maxItems && (
-        <div className="mb-3">
-          <button
-            onClick={() => setShowUploader((s) => !s)}
-            className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
-          >
-            {showUploader ? "▲ 닫기" : `+ ${title} 추가`}
-          </button>
-          {showUploader && (
-            <div className="mt-2 p-3 bg-gray-50 rounded-xl">
-              <ImageUploader
-                initialUrls={[]}
-                onSave={async (newUrls) => {
-                  const merged = [...urls, ...newUrls];
-                  setUrls(merged);
-                  setShowUploader(false);
-                  await save(merged);
-                }}
-                maxImages={maxItems - urls.length}
-                uploadType={uploadType}
-                label={title}
-              />
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] text-gray-300 mr-1">순서 {t.display_order}</span>
+                <button onClick={() => setEditId(t.id)} className="text-xs text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded hover:bg-gray-100">
+                  수정
+                </button>
+                <button onClick={() => remove(t.id)} className="text-xs text-gray-300 hover:text-red-400 px-1.5 py-1 rounded hover:bg-red-50">
+                  삭제
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      )}
-
-      {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
-
-      {/* 삭제 후 변경사항 저장 버튼 */}
-      {isDirty && !showUploader && (
+          )
+        )}
+        {items.length === 0 && !showForm && (
+          <div className="text-center py-6 bg-gray-50 rounded-xl">
+            <p className="text-xs text-gray-400">등록된 배너가 없습니다.</p>
+          </div>
+        )}
+      </div>
+      {showForm ? (
+        <TrendForm onSave={create} onCancel={() => setShowForm(false)} />
+      ) : (
         <button
-          onClick={() => save()}
-          disabled={saving}
-          className="w-full py-2.5 rounded-xl text-sm font-bold bg-periwinkle text-white hover:bg-navy transition-colors disabled:opacity-60"
+          onClick={() => setShowForm(true)}
+          className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
         >
-          {saving ? "저장 중..." : "변경사항 저장"}
+          + 배너 추가
         </button>
       )}
-      {saved && !isDirty && (
-        <p className="text-xs text-green-600 text-center py-1">✓ 저장되었습니다</p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   팝업(PopupCampaign) 섹션
+═══════════════════════════════════════════════════ */
+const toLocalDT = (iso: string) => iso ? iso.slice(0, 16).replace(" ", "T") : "";
+const EMPTY_POPUP = { title: "", image_url: "", instagram_url: "", start_at: "", end_at: "", is_active: true, display_order: 0 };
+
+function PopupForm({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial?: Partial<PopupItem>;
+  onSave: (data: typeof EMPTY_POPUP) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({
+    ...EMPTY_POPUP,
+    ...initial,
+    image_url: initial?.image_url ?? "",
+    start_at: initial?.start_at ? toLocalDT(initial.start_at) : "",
+    end_at: initial?.end_at ? toLocalDT(initial.end_at) : "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const set = (k: keyof typeof EMPTY_POPUP, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function submit() {
+    if (!form.title.trim()) { setErr("제목을 입력해주세요."); return; }
+    if (!form.image_url) { setErr("이미지를 업로드해주세요."); return; }
+    if (!form.start_at || !form.end_at) { setErr("기간을 입력해주세요."); return; }
+    setSaving(true);
+    setErr("");
+    try {
+      await onSave(form);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl">
+      <ImagePickerField value={form.image_url} onChange={(u) => set("image_url", u)} uploadType="popup" />
+      <input
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+        placeholder="제목 *"
+        value={form.title}
+        onChange={(e) => set("title", e.target.value)}
+      />
+      <input
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+        placeholder="인스타그램 링크 (https://...)"
+        value={form.instagram_url}
+        onChange={(e) => set("instagram_url", e.target.value)}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">시작일시 *</label>
+          <input
+            type="datetime-local"
+            className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            value={form.start_at}
+            onChange={(e) => set("start_at", e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">종료일시 *</label>
+          <input
+            type="datetime-local"
+            className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            value={form.end_at}
+            onChange={(e) => set("end_at", e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} className="w-4 h-4 accent-periwinkle" />
+          <span className="text-xs text-gray-600">활성화</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500">노출 순서</label>
+          <input
+            type="number"
+            className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            value={form.display_order}
+            onChange={(e) => set("display_order", Number(e.target.value))}
+          />
+        </div>
+      </div>
+      {err && <p className="text-xs text-red-500">{err}</p>}
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 bg-white">취소</button>
+        <button onClick={submit} disabled={saving} className="flex-1 py-2 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PopupSection() {
+  const [items, setItems] = useState<PopupItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    fetch("/api/dashboard/admin/popup-campaigns")
+      .then((r) => r.json())
+      .then((d) => setItems(Array.isArray(d) ? d : []))
+      .catch(() => setErr("불러오기 실패"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function create(data: typeof EMPTY_POPUP) {
+    const res = await fetch("/api/dashboard/admin/popup-campaigns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "생성 실패");
+    setItems((prev) => [...prev, d]);
+    setShowForm(false);
+  }
+
+  async function update(id: number, data: typeof EMPTY_POPUP) {
+    const res = await fetch(`/api/dashboard/admin/popup-campaigns/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "수정 실패");
+    setItems((prev) => prev.map((p) => (p.id === id ? d : p)));
+    setEditId(null);
+  }
+
+  async function remove(id: number) {
+    if (!confirm("팝업을 삭제할까요?")) return;
+    const res = await fetch(`/api/dashboard/admin/popup-campaigns/${id}`, { method: "DELETE" });
+    if (!res.ok) { setErr("삭제 실패"); return; }
+    setItems((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  async function toggleActive(p: PopupItem) {
+    const res = await fetch(`/api/dashboard/admin/popup-campaigns/${p.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !p.is_active }),
+    });
+    const d = await res.json();
+    if (res.ok) setItems((prev) => prev.map((x) => (x.id === p.id ? d : x)));
+  }
+
+  const fmtDate = (iso: string) => iso ? iso.slice(0, 10) : "";
+  const now = new Date().toISOString();
+
+  if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
+
+  return (
+    <div>
+      {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
+      <div className="flex flex-col gap-2 mb-3">
+        {items.map((p) =>
+          editId === p.id ? (
+            <PopupForm
+              key={p.id}
+              initial={p}
+              onSave={(d) => update(p.id, d)}
+              onCancel={() => setEditId(null)}
+            />
+          ) : (
+            <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5">
+              {p.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.image_url} alt={p.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
+              ) : (
+                <div className="w-20 h-12 rounded-lg bg-gray-200 shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <p className="text-sm font-medium text-gray-800 truncate">{p.title}</p>
+                  {p.end_at < now ? (
+                    <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full shrink-0">종료</span>
+                  ) : p.is_active ? (
+                    <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full shrink-0">활성</span>
+                  ) : (
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">비활성</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-400">{fmtDate(p.start_at)} ~ {fmtDate(p.end_at)}</p>
+                {p.instagram_url && (
+                  <a href={p.instagram_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-periwinkle hover:underline">
+                    인스타그램 →
+                  </a>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => toggleActive(p)}
+                  className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                    p.is_active ? "text-gray-400 hover:text-amber-500 hover:bg-amber-50" : "text-green-500 hover:bg-green-50"
+                  }`}
+                >
+                  {p.is_active ? "중단" : "활성"}
+                </button>
+                <button onClick={() => setEditId(p.id)} className="text-xs text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded hover:bg-gray-100">
+                  수정
+                </button>
+                <button onClick={() => remove(p.id)} className="text-xs text-gray-300 hover:text-red-400 px-1.5 py-1 rounded hover:bg-red-50">
+                  삭제
+                </button>
+              </div>
+            </div>
+          )
+        )}
+        {items.length === 0 && !showForm && (
+          <div className="text-center py-6 bg-gray-50 rounded-xl">
+            <p className="text-xs text-gray-400">등록된 팝업이 없습니다.</p>
+          </div>
+        )}
+      </div>
+      {showForm ? (
+        <PopupForm onSave={create} onCancel={() => setShowForm(false)} />
+      ) : (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
+        >
+          + 팝업 추가
+        </button>
       )}
     </div>
   );
@@ -395,270 +792,30 @@ function MediaManager({
    탭: 배너 & 팝업
 ═══════════════════════════════════════════════════ */
 function ContentTab() {
-  const [bannerUrls, setBannerUrls] = useState<string[]>([]);
-  const [popupUrls, setPopupUrls] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState("");
-
-  // S3 복구 관련
-  const [s3Scanning, setS3Scanning] = useState(false);
-  const [s3Data, setS3Data] = useState<{ banners: string[]; popups: string[] } | null>(null);
-  const [s3Error, setS3Error] = useState("");
-  const [s3Importing, setS3Importing] = useState(false);
-
-  // 진단 (DB 키 확인)
-  const [showDebug, setShowDebug] = useState(false);
-  const [debugData, setDebugData] = useState<{ key: string; value_preview: string | null }[] | null>(null);
-  const [debugLoading, setDebugLoading] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/dashboard/admin/banner-popup")
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data) => {
-        setBannerUrls(data.banner_urls ?? []);
-        setPopupUrls(data.popup_urls ?? []);
-      })
-      .catch((e) => setFetchError(String(e)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function saveBanner(urls: string[]) {
-    const res = await fetch("/api/dashboard/admin/banner-popup", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ banner_urls: urls }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail ?? `저장 실패 (HTTP ${res.status})`);
-    }
-    setBannerUrls(urls);
-  }
-
-  async function savePopup(urls: string[]) {
-    const res = await fetch("/api/dashboard/admin/banner-popup", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ popup_urls: urls }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail ?? `저장 실패 (HTTP ${res.status})`);
-    }
-    setPopupUrls(urls);
-  }
-
-  async function scanS3() {
-    setS3Scanning(true);
-    setS3Error("");
-    setS3Data(null);
-    try {
-      const res = await fetch("/api/dashboard/admin/banner-popup/s3-scan");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setS3Data({ banners: data.banners ?? [], popups: data.popups ?? [] });
-    } catch (e) {
-      setS3Error(String(e));
-    } finally {
-      setS3Scanning(false);
-    }
-  }
-
-  async function importFromS3() {
-    if (!s3Data) return;
-    setS3Importing(true);
-    try {
-      if (s3Data.banners.length > 0) await saveBanner(s3Data.banners);
-      if (s3Data.popups.length > 0) await savePopup(s3Data.popups);
-      setS3Data(null);
-    } catch (e) {
-      setS3Error(String(e));
-    } finally {
-      setS3Importing(false);
-    }
-  }
-
-  async function loadDebug() {
-    setDebugLoading(true);
-    try {
-      const res = await fetch("/api/dashboard/admin/config-debug");
-      const data = await res.json();
-      setDebugData(data.records ?? []);
-    } catch {
-      setDebugData([]);
-    } finally {
-      setDebugLoading(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  const isEmpty = bannerUrls.length === 0 && popupUrls.length === 0;
-
   return (
     <div className="flex flex-col gap-4">
-      {/* 오류 또는 데이터 없음 — S3 복구 패널 */}
-      {(fetchError || isEmpty) && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-amber-700 mb-1">
-            {fetchError ? "데이터 로드 오류" : "등록된 이미지가 없습니다"}
-          </p>
-          <p className="text-xs text-amber-600 mb-3">
-            {fetchError
-              ? `${fetchError} — DB 저장이 실패했을 수 있습니다.`
-              : "이전에 업로드한 파일이 S3에 남아 있다면 아래에서 복구할 수 있습니다."}
-          </p>
-
-          {/* S3 스캔 */}
-          {!s3Data && (
-            <button
-              onClick={scanS3}
-              disabled={s3Scanning}
-              className="w-full py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-60 transition-colors"
-            >
-              {s3Scanning ? "S3 스캔 중..." : "S3에서 파일 찾기"}
-            </button>
-          )}
-          {s3Error && <p className="text-xs text-red-500 mt-2">{s3Error}</p>}
-
-          {s3Data && (
-            <div className="mt-3">
-              <p className="text-xs font-semibold text-amber-700 mb-2">
-                S3 발견: 배너 {s3Data.banners.length}개 · 팝업 {s3Data.popups.length}개
-              </p>
-              {s3Data.banners.length === 0 && s3Data.popups.length === 0 ? (
-                <p className="text-xs text-amber-600">S3에도 파일이 없습니다. 새로 업로드해 주세요.</p>
-              ) : (
-                <>
-                  {/* 배너 미리보기 */}
-                  {s3Data.banners.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-xs text-amber-600 mb-1">배너</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {s3Data.banners.map((url) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={url} src={url} alt="" className="w-24 h-14 object-cover rounded-lg bg-gray-200" />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {s3Data.popups.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-xs text-amber-600 mb-1">팝업</p>
-                      <div className="flex gap-2 flex-wrap">
-                        {s3Data.popups.map((url) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={url} src={url} alt="" className="w-24 h-14 object-cover rounded-lg bg-gray-200" />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => setS3Data(null)}
-                      className="flex-1 py-2 rounded-xl border border-amber-300 text-amber-700 text-sm font-semibold"
-                    >
-                      취소
-                    </button>
-                    <button
-                      onClick={importFromS3}
-                      disabled={s3Importing}
-                      className="flex-1 py-2 rounded-xl bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-60 transition-colors"
-                    >
-                      {s3Importing ? "저장 중..." : "DB에 저장하기"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* 진단: AdminConfig 키 목록 */}
-          <button
-            onClick={() => {
-              setShowDebug((s) => !s);
-              if (!showDebug && !debugData) loadDebug();
-            }}
-            className="mt-3 text-xs text-amber-500 underline"
-          >
-            {showDebug ? "진단 숨기기" : "DB 키 목록 확인 (진단)"}
-          </button>
-          {showDebug && (
-            <div className="mt-2 bg-white rounded-xl p-3 border border-amber-100">
-              <p className="text-xs font-semibold text-gray-600 mb-2">AdminConfig 전체 레코드</p>
-              {debugLoading ? (
-                <p className="text-xs text-gray-400">로딩 중...</p>
-              ) : debugData && debugData.length > 0 ? (
-                <ul className="flex flex-col gap-1.5">
-                  {debugData.map((rec) => (
-                    <li key={rec.key} className="text-xs font-mono bg-gray-50 rounded px-2 py-1">
-                      <span className="text-indigo-600">{rec.key}</span>
-                      {rec.value_preview && (
-                        <span className="text-gray-400 ml-2 break-all">{rec.value_preview.slice(0, 80)}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-gray-400">
-                  {debugData === null ? "로드 전" : "레코드 없음 (테이블 비어 있음)"}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* 배너 */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-gray-700">배너</h2>
-            <p className="text-xs text-gray-400 mt-0.5">앱 메인화면 슬라이드에 표시</p>
+            <p className="text-xs text-gray-400 mt-0.5">앱 메인화면 슬라이드 · GET /trends/trend_list/</p>
           </div>
-          <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-            {bannerUrls.length} / 10
-          </span>
         </div>
         <div className="p-4">
-          <MediaManager
-            title="배너"
-            initialUrls={bannerUrls}
-            uploadType="banner"
-            maxItems={10}
-            onSave={saveBanner}
-          />
+          <BannerSection />
         </div>
       </div>
-
       {/* 팝업 */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-gray-700">팝업</h2>
-            <p className="text-xs text-gray-400 mt-0.5">앱 실행 시 표시되는 팝업 이미지</p>
+            <p className="text-xs text-gray-400 mt-0.5">앱 실행 시 표시 · GET /trends/popup_campaigns/</p>
           </div>
-          <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-            {popupUrls.length} / 5
-          </span>
         </div>
         <div className="p-4">
-          <MediaManager
-            title="팝업"
-            initialUrls={popupUrls}
-            uploadType="popup"
-            maxItems={5}
-            onSave={savePopup}
-          />
+          <PopupSection />
         </div>
       </div>
     </div>
