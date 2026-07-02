@@ -437,28 +437,69 @@ function TrendForm({
 
 function BannerSection() {
   const [items, setItems] = useState<TrendItem[]>([]);
+  const [savedIds, setSavedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  const orderChanged = JSON.stringify(items.map((t) => t.id)) !== JSON.stringify(savedIds);
 
   useEffect(() => {
     fetch("/api/dashboard/admin/trends")
       .then((r) => r.json())
-      .then((d) => setItems(Array.isArray(d) ? d : []))
+      .then((d) => {
+        const list = Array.isArray(d) ? d : [];
+        setItems(list);
+        setSavedIds(list.map((t: TrendItem) => t.id));
+      })
       .catch(() => setErr("불러오기 실패"))
       .finally(() => setLoading(false));
   }, []);
+
+  function move(idx: number, dir: -1 | 1) {
+    const next = idx + dir;
+    if (next < 0 || next >= items.length) return;
+    setItems((prev) => {
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
+  }
+
+  async function saveOrder() {
+    setSavingOrder(true);
+    setErr("");
+    try {
+      await Promise.all(
+        items.map((t, idx) =>
+          fetch(`/api/dashboard/admin/trends/${t.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ display_order: idx }),
+          })
+        )
+      );
+      setItems((prev) => prev.map((t, idx) => ({ ...t, display_order: idx })));
+      setSavedIds(items.map((t) => t.id));
+    } catch {
+      setErr("순서 저장에 실패했습니다.");
+    } finally {
+      setSavingOrder(false);
+    }
+  }
 
   async function create(data: typeof EMPTY_TREND) {
     const res = await fetch("/api/dashboard/admin/trends", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, display_order: items.length }),
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.detail ?? "생성 실패");
     setItems((prev) => [...prev, d]);
+    setSavedIds((prev) => [...prev, d.id]);
     setShowForm(false);
   }
 
@@ -479,6 +520,7 @@ function BannerSection() {
     const res = await fetch(`/api/dashboard/admin/trends/${id}`, { method: "DELETE" });
     if (!res.ok) { setErr("삭제 실패"); return; }
     setItems((prev) => prev.filter((t) => t.id !== id));
+    setSavedIds((prev) => prev.filter((x) => x !== id));
   }
 
   if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
@@ -487,7 +529,7 @@ function BannerSection() {
     <div>
       {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
       <div className="flex flex-col gap-2 mb-3">
-        {items.map((t) =>
+        {items.map((t, idx) =>
           editId === t.id ? (
             <TrendForm
               key={t.id}
@@ -496,7 +538,24 @@ function BannerSection() {
               onCancel={() => setEditId(null)}
             />
           ) : (
-            <div key={t.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5">
+            <div key={t.id} className="flex items-center gap-2 bg-gray-50 rounded-xl p-2.5">
+              {/* 순서 이동 버튼 */}
+              <div className="flex flex-col gap-0.5 shrink-0">
+                <button
+                  onClick={() => move(idx, -1)}
+                  disabled={idx === 0}
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => move(idx, 1)}
+                  disabled={idx === items.length - 1}
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                >
+                  ▼
+                </button>
+              </div>
               {t.image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={t.image_url} alt={t.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
@@ -515,7 +574,6 @@ function BannerSection() {
                 )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <span className="text-[10px] text-gray-300 mr-1">순서 {t.display_order}</span>
                 <button onClick={() => setEditId(t.id)} className="text-xs text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded hover:bg-gray-100">
                   수정
                 </button>
@@ -532,6 +590,16 @@ function BannerSection() {
           </div>
         )}
       </div>
+      {/* 순서 저장 버튼 */}
+      {orderChanged && !showForm && (
+        <button
+          onClick={saveOrder}
+          disabled={savingOrder}
+          className="w-full py-2.5 mb-2 rounded-xl bg-navy text-white text-sm font-bold hover:bg-navy/90 disabled:opacity-60 transition-colors"
+        >
+          {savingOrder ? "저장 중..." : "순서 저장"}
+        </button>
+      )}
       {showForm ? (
         <TrendForm onSave={create} onCancel={() => setShowForm(false)} />
       ) : (
@@ -652,28 +720,69 @@ function PopupForm({
 
 function PopupSection() {
   const [items, setItems] = useState<PopupItem[]>([]);
+  const [savedIds, setSavedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  const orderChanged = JSON.stringify(items.map((p) => p.id)) !== JSON.stringify(savedIds);
 
   useEffect(() => {
     fetch("/api/dashboard/admin/popup-campaigns")
       .then((r) => r.json())
-      .then((d) => setItems(Array.isArray(d) ? d : []))
+      .then((d) => {
+        const list = Array.isArray(d) ? d : [];
+        setItems(list);
+        setSavedIds(list.map((p: PopupItem) => p.id));
+      })
       .catch(() => setErr("불러오기 실패"))
       .finally(() => setLoading(false));
   }, []);
+
+  function move(idx: number, dir: -1 | 1) {
+    const next = idx + dir;
+    if (next < 0 || next >= items.length) return;
+    setItems((prev) => {
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
+  }
+
+  async function saveOrder() {
+    setSavingOrder(true);
+    setErr("");
+    try {
+      await Promise.all(
+        items.map((p, idx) =>
+          fetch(`/api/dashboard/admin/popup-campaigns/${p.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ display_order: idx }),
+          })
+        )
+      );
+      setItems((prev) => prev.map((p, idx) => ({ ...p, display_order: idx })));
+      setSavedIds(items.map((p) => p.id));
+    } catch {
+      setErr("순서 저장에 실패했습니다.");
+    } finally {
+      setSavingOrder(false);
+    }
+  }
 
   async function create(data: typeof EMPTY_POPUP) {
     const res = await fetch("/api/dashboard/admin/popup-campaigns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, display_order: items.length }),
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.detail ?? "생성 실패");
     setItems((prev) => [...prev, d]);
+    setSavedIds((prev) => [...prev, d.id]);
     setShowForm(false);
   }
 
@@ -694,6 +803,7 @@ function PopupSection() {
     const res = await fetch(`/api/dashboard/admin/popup-campaigns/${id}`, { method: "DELETE" });
     if (!res.ok) { setErr("삭제 실패"); return; }
     setItems((prev) => prev.filter((p) => p.id !== id));
+    setSavedIds((prev) => prev.filter((x) => x !== id));
   }
 
   async function toggleActive(p: PopupItem) {
@@ -715,7 +825,7 @@ function PopupSection() {
     <div>
       {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
       <div className="flex flex-col gap-2 mb-3">
-        {items.map((p) =>
+        {items.map((p, idx) =>
           editId === p.id ? (
             <PopupForm
               key={p.id}
@@ -724,7 +834,24 @@ function PopupSection() {
               onCancel={() => setEditId(null)}
             />
           ) : (
-            <div key={p.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5">
+            <div key={p.id} className="flex items-center gap-2 bg-gray-50 rounded-xl p-2.5">
+              {/* 순서 이동 버튼 */}
+              <div className="flex flex-col gap-0.5 shrink-0">
+                <button
+                  onClick={() => move(idx, -1)}
+                  disabled={idx === 0}
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => move(idx, 1)}
+                  disabled={idx === items.length - 1}
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                >
+                  ▼
+                </button>
+              </div>
               {p.image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={p.image_url} alt={p.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
@@ -774,6 +901,16 @@ function PopupSection() {
           </div>
         )}
       </div>
+      {/* 순서 저장 버튼 */}
+      {orderChanged && !showForm && (
+        <button
+          onClick={saveOrder}
+          disabled={savingOrder}
+          className="w-full py-2.5 mb-2 rounded-xl bg-navy text-white text-sm font-bold hover:bg-navy/90 disabled:opacity-60 transition-colors"
+        >
+          {savingOrder ? "저장 중..." : "순서 저장"}
+        </button>
+      )}
       {showForm ? (
         <PopupForm onSave={create} onCancel={() => setShowForm(false)} />
       ) : (
