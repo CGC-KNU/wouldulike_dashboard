@@ -58,11 +58,11 @@ function ridQ(rid: string | null) {
 
 /* ─── benefit_json 표시 ─────────────────────────────── */
 function benefitLabel(bj: Record<string, unknown>): string {
-  if (!bj || typeof bj !== "object") return "";
+  if (!bj || typeof bj !== "object" || Object.keys(bj).length === 0) return "";
   const { type, value, max } = bj as { type?: string; value?: number; max?: number };
   if (type === "fixed") return `${(value ?? 0).toLocaleString()}원 할인`;
   if (type === "percent") return `${value}% 할인${max ? ` (최대 ${max.toLocaleString()}원)` : ""}`;
-  return JSON.stringify(bj);
+  return "";
 }
 
 /* ════════════════════════════════════════════════════
@@ -496,74 +496,58 @@ function StampRuleSection({ rid }: { rid: string | null }) {
               </button>
             ))}
           </div>
-          {/* 스탬프 시각화 */}
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {Array.from({ length: cycleTarget }).map((_, i) => (
-              <div
-                key={i}
-                className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold ${
-                  thresholds.some((t) => t.stamps === i + 1)
-                    ? "border-amber-400 bg-amber-400 text-white"
-                    : "border-gray-200 text-gray-300"
-                }`}
-              >
-                {thresholds.some((t) => t.stamps === i + 1) ? "★" : i + 1}
-              </div>
-            ))}
-          </div>
-          <p className="text-[10px] text-gray-400 mt-1">별표(★)는 보상이 지급되는 시점</p>
-        </div>
-
-        {/* 보상 구간 */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-gray-500 font-medium">보상 구간</label>
-            <button
-              onClick={addThreshold}
-              className="text-[10px] text-periwinkle font-semibold hover:underline"
-            >
-              + 추가
-            </button>
-          </div>
-          {thresholds.length === 0 && (
-            <p className="text-xs text-gray-400 py-2">보상 구간을 추가해주세요.</p>
-          )}
-          <div className="flex flex-col gap-2">
-            {thresholds.map((t, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
-                <div className="flex items-center gap-1 shrink-0">
-                  <input
-                    type="number"
-                    min={1}
-                    max={cycleTarget}
-                    value={t.stamps}
-                    onChange={(e) => updateThreshold(idx, "stamps", e.target.value)}
-                    className="w-16 text-sm border border-gray-200 rounded-xl px-2 py-1.5 text-center focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
-                  />
-                  <span className="text-xs text-gray-400">개째</span>
-                </div>
-                <select
-                  value={t.coupon_type_code}
-                  onChange={(e) => updateThreshold(idx, "coupon_type_code", e.target.value)}
-                  className="flex-1 text-xs border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 bg-white"
-                >
-                  <option value="">쿠폰 타입 선택</option>
-                  {couponTypes
-                    .filter((ct) => ct.code.startsWith("STAMP"))
-                    .map((ct) => (
-                      <option key={ct.code} value={ct.code}>
-                        {ct.code} · {ct.title}
-                      </option>
-                    ))}
-                </select>
-                <button
-                  onClick={() => removeThreshold(idx)}
-                  className="text-gray-300 hover:text-red-400 transition-colors p-1"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+          {/* 인터랙티브 보상 구간 설정 */}
+          <div className="mt-3">
+            <p className="text-[10px] text-gray-400 mb-2">보상을 받을 스탬프 위치를 탭하세요 · ★ 다시 탭하면 제거</p>
+            <div className="flex flex-wrap gap-2">
+              {Array.from({ length: cycleTarget }).map((_, i) => {
+                const pos = i + 1;
+                const tIdx = thresholds.findIndex((t) => t.stamps === pos);
+                const isReward = tIdx >= 0;
+                const autoCode = `STAMP_REWARD_${pos}`;
+                const codeExists = couponTypes.some((ct) => ct.code === autoCode);
+                const benefit = benefits.find((b) => b.coupon_type_code === autoCode);
+                const label = benefit
+                  ? benefit.title.length > 8
+                    ? benefit.title.slice(0, 8) + "…"
+                    : benefit.title
+                  : autoCode;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      if (isReward) {
+                        setThresholds((prev) => prev.filter((_, fi) => fi !== tIdx));
+                      } else if (codeExists) {
+                        setThresholds((prev) =>
+                          [...prev, { stamps: pos, coupon_type_code: autoCode }].sort(
+                            (a, b) => a.stamps - b.stamps
+                          )
+                        );
+                      }
+                    }}
+                    disabled={!isReward && !codeExists}
+                    title={isReward ? `${pos}개째 보상 제거` : codeExists ? `${pos}개째에 보상 추가` : "코드 없음"}
+                    className={`flex flex-col items-center justify-center rounded-2xl border-2 transition-all ${
+                      isReward
+                        ? "border-amber-400 bg-amber-400 text-white w-14 min-h-[60px] px-1 py-2 shadow-sm"
+                        : codeExists
+                        ? "border-gray-200 text-gray-400 hover:border-amber-300 hover:bg-amber-50/60 w-10 h-10"
+                        : "border-gray-100 text-gray-200 w-10 h-10 cursor-not-allowed"
+                    }`}
+                  >
+                    <span className="text-sm font-bold leading-none">
+                      {isReward ? "★" : pos}
+                    </span>
+                    {isReward && (
+                      <span className="text-[8px] text-center text-white/90 leading-tight mt-1 break-words max-w-[52px] px-0.5">
+                        {label}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
