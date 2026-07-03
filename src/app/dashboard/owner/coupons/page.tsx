@@ -1,126 +1,696 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-const STAMP_SLOTS = [3, 5, 7, 10];
-
-type CampaignStatus = "검수중" | "반영됨" | "종료";
-
-interface Campaign {
+/* ─── 타입 ─────────────────────────────────────────── */
+interface CouponBenefit {
   id: number;
+  coupon_type_code: string;
+  coupon_type_title: string;
+  benefit_json: Record<string, unknown>;
   title: string;
-  status: CampaignStatus;
-  date: string;
+  subtitle: string;
+  notes: string;
+  sort_order: number;
+  active: boolean;
+  updated_at: string;
 }
 
-const STATUS_STYLE: Record<CampaignStatus, string> = {
-  검수중: "bg-amber-100 text-amber-700",
-  반영됨: "bg-green-100 text-green-700",
-  종료: "bg-gray-100 text-gray-500",
-};
+interface CouponType {
+  id: number;
+  code: string;
+  title: string;
+  benefit_json: Record<string, unknown>;
+  valid_days: number;
+}
 
-const DUMMY_CAMPAIGNS: Campaign[] = [
-  { id: 1, title: "여름 특가 쿠폰 10%", status: "검수중", date: "06.24" },
-  { id: 2, title: "단골 감사 무료 음료", status: "반영됨", date: "06.10" },
-  { id: 3, title: "5월 스탬프 2배 이벤트", status: "종료", date: "05.31" },
-];
+interface StampThreshold {
+  stamps: number;
+  coupon_type_code: string;
+}
 
-export default function CouponsPage() {
-  const [couponOn, setCouponOn] = useState(true);
-  const [stampSlot, setStampSlot] = useState(5);
+interface StampRule {
+  id: number;
+  restaurant_id: number;
+  rule_type: "THRESHOLD" | "VISIT";
+  config_json: {
+    thresholds?: StampThreshold[];
+    cycle_target?: number;
+    notes?: string;
+  };
+  active: boolean;
+  updated_at: string;
+}
+
+/* ─── rid 헬퍼 ─────────────────────────────────────── */
+function useRid() {
+  const [rid, setRid] = useState<string | null>(null);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    setRid(p.get("rid"));
+  }, []);
+  return rid;
+}
+function ridQ(rid: string | null) {
+  return rid ? `?rid=${rid}` : "";
+}
+
+/* ─── benefit_json 표시 ─────────────────────────────── */
+function benefitLabel(bj: Record<string, unknown>): string {
+  if (!bj || typeof bj !== "object") return "";
+  const { type, value, max } = bj as { type?: string; value?: number; max?: number };
+  if (type === "fixed") return `${(value ?? 0).toLocaleString()}원 할인`;
+  if (type === "percent") return `${value}% 할인${max ? ` (최대 ${max.toLocaleString()}원)` : ""}`;
+  return JSON.stringify(bj);
+}
+
+/* ════════════════════════════════════════════════════
+   섹션 1: 쿠폰 혜택 (RestaurantCouponBenefit)
+════════════════════════════════════════════════════ */
+function BenefitForm({
+  couponTypes,
+  initial,
+  onSave,
+  onCancel,
+}: {
+  couponTypes: CouponType[];
+  initial?: Partial<CouponBenefit>;
+  onSave: (data: Omit<CouponBenefit, "id" | "updated_at" | "benefit_json" | "coupon_type_title">) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [couponTypeCode, setCouponTypeCode] = useState(initial?.coupon_type_code ?? "");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [subtitle, setSubtitle] = useState(initial?.subtitle ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [active, setActive] = useState(initial?.active ?? true);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const selectedCt = couponTypes.find((ct) => ct.code === couponTypeCode);
+
+  const handleSubmit = async () => {
+    if (!couponTypeCode) { setErr("쿠폰 타입을 선택해주세요."); return; }
+    if (!title.trim()) { setErr("제목을 입력해주세요."); return; }
+    setLoading(true);
+    setErr("");
+    try {
+      await onSave({ coupon_type_code: couponTypeCode, title, subtitle, notes, sort_order: initial?.sort_order ?? 0, active });
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
-      <h1 className="text-lg font-bold text-navy mb-4">쿠폰·스탬프</h1>
+    <div className="bg-periwinkle/5 border border-periwinkle/20 rounded-2xl p-4 flex flex-col gap-3">
+      {/* 쿠폰 타입 */}
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">쿠폰 타입 *</label>
+        <select
+          value={couponTypeCode}
+          onChange={(e) => {
+            setCouponTypeCode(e.target.value);
+            const ct = couponTypes.find((c) => c.code === e.target.value);
+            if (ct && !title) setTitle(ct.title);
+          }}
+          disabled={!!initial?.coupon_type_code}
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 bg-white disabled:bg-gray-50"
+        >
+          <option value="">-- 선택 --</option>
+          {couponTypes.map((ct) => (
+            <option key={ct.code} value={ct.code}>
+              {ct.code} · {ct.title}
+            </option>
+          ))}
+        </select>
+        {selectedCt && (
+          <p className="text-[10px] text-periwinkle mt-1">{benefitLabel(selectedCt.benefit_json)}</p>
+        )}
+      </div>
 
-      {/* 쿠폰 ON/OFF */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-gray-800">쿠폰 발급</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {couponOn ? "현재 쿠폰이 활성화되어 있습니다." : "쿠폰이 비활성화되었습니다."}
-            </p>
+      {/* 제목 */}
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">제목 *</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="예: 우주라이크 쿠폰 1,000원 할인"
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+        />
+      </div>
+
+      {/* 부제목 */}
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">부제목</label>
+        <input
+          value={subtitle}
+          onChange={(e) => setSubtitle(e.target.value)}
+          placeholder="예: 1인 이상 방문 시"
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+        />
+      </div>
+
+      {/* 사용 조건 메모 */}
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">사용 조건</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="예: 최소 주문 1만원 이상, 1인 1회 사용 가능"
+          rows={2}
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 resize-none"
+        />
+      </div>
+
+      {/* 활성 */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setActive((v) => !v)}
+          className={`relative w-10 h-5 rounded-full transition-colors ${active ? "bg-periwinkle" : "bg-gray-200"}`}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
+        </button>
+        <span className="text-xs text-gray-500">{active ? "활성" : "비활성"}</span>
+      </div>
+
+      {err && <p className="text-xs text-red-500">{err}</p>}
+
+      <div className="flex gap-2">
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="flex-1 py-2.5 bg-navy text-white text-sm font-semibold rounded-xl hover:bg-navy/90 disabled:opacity-60 transition-colors"
+        >
+          {loading ? "저장 중..." : "저장"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2.5 text-sm text-gray-400 rounded-xl hover:bg-gray-100 transition-colors"
+        >
+          취소
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CouponBenefitsSection({ rid }: { rid: string | null }) {
+  const [benefits, setBenefits] = useState<CouponBenefit[]>([]);
+  const [couponTypes, setCouponTypes] = useState<CouponType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+
+  const rq = ridQ(rid);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [bRes, tRes] = await Promise.all([
+        fetch(`/api/dashboard/coupon-benefits${rq}`),
+        fetch(`/api/dashboard/coupon-types${rq}`),
+      ]);
+      const [bData, tData] = await Promise.all([bRes.json(), tRes.json()]);
+      setBenefits(Array.isArray(bData) ? bData : []);
+      setCouponTypes(Array.isArray(tData) ? tData : []);
+    } catch {
+      setErr("불러오기 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, [rq]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function create(data: Omit<CouponBenefit, "id" | "updated_at" | "benefit_json" | "coupon_type_title">) {
+    const res = await fetch(`/api/dashboard/coupon-benefits${rq}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...data, sort_order: benefits.length }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "생성 실패");
+    setBenefits((prev) => [...prev, d]);
+    setShowForm(false);
+  }
+
+  async function update(id: number, data: Omit<CouponBenefit, "id" | "updated_at" | "benefit_json" | "coupon_type_title">) {
+    const res = await fetch(`/api/dashboard/coupon-benefits/${id}${rq}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "수정 실패");
+    setBenefits((prev) => prev.map((b) => (b.id === id ? d : b)));
+    setEditId(null);
+  }
+
+  async function remove(id: number) {
+    if (!confirm("이 쿠폰 혜택을 삭제할까요?")) return;
+    const res = await fetch(`/api/dashboard/coupon-benefits/${id}${rq}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) { setErr("삭제 실패"); return; }
+    setBenefits((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  async function toggleActive(b: CouponBenefit) {
+    const res = await fetch(`/api/dashboard/coupon-benefits/${b.id}${rq}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !b.active }),
+    });
+    const d = await res.json();
+    if (res.ok) setBenefits((prev) => prev.map((x) => (x.id === b.id ? d : x)));
+  }
+
+  if (loading) return (
+    <div className="flex justify-center py-6">
+      <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {err && <p className="text-xs text-red-500">{err}</p>}
+
+      {benefits.length === 0 && !showForm && (
+        <div className="text-center py-8 bg-gray-50 rounded-2xl">
+          <p className="text-sm text-gray-400">등록된 쿠폰 혜택이 없습니다.</p>
+          <p className="text-xs text-gray-300 mt-1">아래 버튼으로 첫 혜택을 등록해보세요.</p>
+        </div>
+      )}
+
+      {benefits.map((b) =>
+        editId === b.id ? (
+          <BenefitForm
+            key={b.id}
+            couponTypes={couponTypes}
+            initial={b}
+            onSave={(data) => update(b.id, data)}
+            onCancel={() => setEditId(null)}
+          />
+        ) : (
+          <div key={b.id} className={`bg-white border rounded-2xl p-4 shadow-sm ${b.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className="text-[10px] font-mono bg-periwinkle/10 text-periwinkle px-2 py-0.5 rounded-full">
+                    {b.coupon_type_code}
+                  </span>
+                  {b.active ? (
+                    <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
+                  ) : (
+                    <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>
+                  )}
+                </div>
+                <p className="text-sm font-semibold text-gray-800">{b.title}</p>
+                {b.subtitle && <p className="text-xs text-gray-500 mt-0.5">{b.subtitle}</p>}
+                {b.notes && (
+                  <p className="text-[10px] text-gray-400 mt-1 bg-gray-50 rounded-lg px-2 py-1">
+                    {b.notes}
+                  </p>
+                )}
+                <p className="text-[10px] text-periwinkle mt-1">{benefitLabel(b.benefit_json)}</p>
+              </div>
+              <div className="flex flex-col gap-1 shrink-0">
+                <button
+                  onClick={() => toggleActive(b)}
+                  className="text-[10px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:border-periwinkle hover:text-periwinkle transition-colors"
+                >
+                  {b.active ? "중단" : "재개"}
+                </button>
+                <button
+                  onClick={() => setEditId(b.id)}
+                  className="text-[10px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:border-periwinkle hover:text-periwinkle transition-colors"
+                >
+                  수정
+                </button>
+                <button
+                  onClick={() => remove(b.id)}
+                  className="text-[10px] px-2 py-1 rounded-lg border border-gray-100 text-gray-300 hover:border-red-200 hover:text-red-400 transition-colors"
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
           </div>
-          {/* 토글 */}
+        )
+      )}
+
+      {showForm ? (
+        <BenefitForm
+          couponTypes={couponTypes}
+          onSave={create}
+          onCancel={() => setShowForm(false)}
+        />
+      ) : (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-2xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
+        >
+          + 쿠폰 혜택 추가
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   섹션 2: 스탬프 규칙 (StampRewardRule)
+════════════════════════════════════════════════════ */
+function StampRuleSection({ rid }: { rid: string | null }) {
+  const [rule, setRule] = useState<StampRule | null>(null);
+  const [couponTypes, setCouponTypes] = useState<CouponType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  // 편집 상태
+  const [cycleTarget, setCycleTarget] = useState(10);
+  const [thresholds, setThresholds] = useState<StampThreshold[]>([]);
+  const [ruleActive, setRuleActive] = useState(true);
+  const [notes, setNotes] = useState("");
+
+  const rq = ridQ(rid);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [rRes, tRes] = await Promise.all([
+        fetch(`/api/dashboard/stamp-rule${rq}`),
+        fetch(`/api/dashboard/coupon-types${rq}`),
+      ]);
+      const [rData, tData] = await Promise.all([rRes.json(), tRes.json()]);
+      if (rRes.ok) setRule(rData);
+      else setRule(null);
+      setCouponTypes(Array.isArray(tData) ? tData : []);
+    } catch {
+      setErr("불러오기 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, [rq]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function startEdit() {
+    const cfg = rule?.config_json ?? {};
+    setCycleTarget(cfg.cycle_target ?? 10);
+    setThresholds(cfg.thresholds ? [...cfg.thresholds] : []);
+    setRuleActive(rule?.active ?? true);
+    setNotes(cfg.notes ?? "");
+    setEditing(true);
+  }
+
+  function addThreshold() {
+    setThresholds((prev) => [...prev, { stamps: (prev[prev.length - 1]?.stamps ?? 0) + 1, coupon_type_code: "" }]);
+  }
+
+  function removeThreshold(idx: number) {
+    setThresholds((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateThreshold(idx: number, field: keyof StampThreshold, value: string | number) {
+    setThresholds((prev) => prev.map((t, i) => i === idx ? { ...t, [field]: field === "stamps" ? Number(value) : value } : t));
+  }
+
+  async function saveRule() {
+    setSaving(true);
+    setErr("");
+    try {
+      const config_json = {
+        cycle_target: cycleTarget,
+        thresholds,
+        ...(notes ? { notes } : {}),
+      };
+      const res = await fetch(`/api/dashboard/stamp-rule${rq}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rule_type: "THRESHOLD", config_json, active: ruleActive }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.detail ?? "저장 실패");
+      setRule(d);
+      setEditing(false);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return (
+    <div className="flex justify-center py-6">
+      <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (editing) {
+    return (
+      <div className="bg-periwinkle/5 border border-periwinkle/20 rounded-2xl p-4 flex flex-col gap-4">
+        {/* 스탬프 목표 */}
+        <div>
+          <label className="text-xs text-gray-500 mb-2 block font-medium">스탬프 목표 (만땅 개수)</label>
+          <div className="flex gap-2 flex-wrap">
+            {[3, 5, 7, 10, 12, 15].map((n) => (
+              <button
+                key={n}
+                onClick={() => setCycleTarget(n)}
+                className={`px-3 py-1.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                  cycleTarget === n
+                    ? "border-periwinkle bg-periwinkle/10 text-periwinkle"
+                    : "border-gray-100 text-gray-400 hover:border-gray-200"
+                }`}
+              >
+                {n}개
+              </button>
+            ))}
+          </div>
+          {/* 스탬프 시각화 */}
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {Array.from({ length: cycleTarget }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold ${
+                  thresholds.some((t) => t.stamps === i + 1)
+                    ? "border-amber-400 bg-amber-400 text-white"
+                    : "border-gray-200 text-gray-300"
+                }`}
+              >
+                {thresholds.some((t) => t.stamps === i + 1) ? "★" : i + 1}
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">별표(★)는 보상이 지급되는 시점</p>
+        </div>
+
+        {/* 보상 구간 */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-gray-500 font-medium">보상 구간</label>
+            <button
+              onClick={addThreshold}
+              className="text-[10px] text-periwinkle font-semibold hover:underline"
+            >
+              + 추가
+            </button>
+          </div>
+          {thresholds.length === 0 && (
+            <p className="text-xs text-gray-400 py-2">보상 구간을 추가해주세요.</p>
+          )}
+          <div className="flex flex-col gap-2">
+            {thresholds.map((t, idx) => (
+              <div key={idx} className="flex gap-2 items-center">
+                <div className="flex items-center gap-1 shrink-0">
+                  <input
+                    type="number"
+                    min={1}
+                    max={cycleTarget}
+                    value={t.stamps}
+                    onChange={(e) => updateThreshold(idx, "stamps", e.target.value)}
+                    className="w-16 text-sm border border-gray-200 rounded-xl px-2 py-1.5 text-center focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+                  />
+                  <span className="text-xs text-gray-400">개째</span>
+                </div>
+                <select
+                  value={t.coupon_type_code}
+                  onChange={(e) => updateThreshold(idx, "coupon_type_code", e.target.value)}
+                  className="flex-1 text-xs border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 bg-white"
+                >
+                  <option value="">쿠폰 타입 선택</option>
+                  {couponTypes
+                    .filter((ct) => ct.code.startsWith("STAMP"))
+                    .map((ct) => (
+                      <option key={ct.code} value={ct.code}>
+                        {ct.code} · {ct.title}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  onClick={() => removeThreshold(idx)}
+                  className="text-gray-300 hover:text-red-400 transition-colors p-1"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 운영 메모 */}
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">운영 메모 (앱 표시용)</label>
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="예: 스탬프 1개 = 방문 1회"
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+          />
+        </div>
+
+        {/* 활성 */}
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setCouponOn((v) => !v)}
-            className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${
-              couponOn ? "bg-periwinkle" : "bg-gray-200"
-            }`}
+            onClick={() => setRuleActive((v) => !v)}
+            className={`relative w-10 h-5 rounded-full transition-colors ${ruleActive ? "bg-periwinkle" : "bg-gray-200"}`}
           >
-            <span
-              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-300 ${
-                couponOn ? "translate-x-6" : "translate-x-0.5"
-              }`}
-            />
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${ruleActive ? "translate-x-5" : "translate-x-0.5"}`} />
+          </button>
+          <span className="text-xs text-gray-500">스탬프 규칙 {ruleActive ? "활성" : "비활성"}</span>
+        </div>
+
+        {err && <p className="text-xs text-red-500">{err}</p>}
+
+        <div className="flex gap-2">
+          <button
+            onClick={saveRule}
+            disabled={saving}
+            className="flex-1 py-2.5 bg-navy text-white text-sm font-semibold rounded-xl hover:bg-navy/90 disabled:opacity-60 transition-colors"
+          >
+            {saving ? "저장 중..." : "저장"}
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            className="px-4 py-2.5 text-sm text-gray-400 rounded-xl hover:bg-gray-100 transition-colors"
+          >
+            취소
           </button>
         </div>
       </div>
+    );
+  }
 
-      {/* 스탬프 슬롯 선택 */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-        <p className="text-sm font-semibold text-gray-800 mb-3">스탬프 목표</p>
-        <div className="flex gap-2">
-          {STAMP_SLOTS.map((n) => (
-            <button
-              key={n}
-              onClick={() => setStampSlot(n)}
-              className={`flex-1 py-2 text-sm font-semibold rounded-xl border-2 transition-colors ${
-                stampSlot === n
-                  ? "border-periwinkle bg-periwinkle/10 text-periwinkle"
-                  : "border-gray-100 text-gray-400 hover:border-gray-200"
-              }`}
-            >
-              {n}개
-            </button>
-          ))}
+  // 보기 모드
+  if (!rule) {
+    return (
+      <div className="text-center py-8 bg-gray-50 rounded-2xl">
+        <p className="text-sm text-gray-500 mb-1">설정된 스탬프 규칙이 없습니다.</p>
+        <p className="text-xs text-gray-400 mb-4">규칙을 설정하면 앱에 스탬프 카드가 노출됩니다.</p>
+        <button
+          onClick={startEdit}
+          className="px-5 py-2 bg-periwinkle text-white text-sm font-semibold rounded-xl hover:bg-periwinkle/90 transition-colors"
+        >
+          스탬프 규칙 설정
+        </button>
+      </div>
+    );
+  }
+
+  const cfg = rule.config_json;
+  const target = cfg.cycle_target ?? 10;
+  const thresholdList = cfg.thresholds ?? [];
+
+  return (
+    <div className={`bg-white border rounded-2xl p-4 shadow-sm ${rule.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-800">스탬프 {target}개 만땅</span>
+          {rule.active ? (
+            <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
+          ) : (
+            <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>
+          )}
         </div>
-        <p className="text-xs text-gray-400 mt-2">
-          {stampSlot}개 적립 시 쿠폰 1매 자동 지급
-        </p>
+        <button
+          onClick={startEdit}
+          className="text-xs text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          수정
+        </button>
+      </div>
 
-        {/* 스탬프 시각화 */}
-        <div className="flex flex-wrap gap-2 mt-3">
-          {Array.from({ length: stampSlot }).map((_, i) => (
+      {/* 스탬프 시각화 */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {Array.from({ length: target }).map((_, i) => {
+          const isReward = thresholdList.some((t) => t.stamps === i + 1);
+          return (
             <div
               key={i}
-              className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
-                i < 3
-                  ? "border-periwinkle bg-periwinkle text-white"
-                  : "border-gray-200 text-gray-300"
+              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold ${
+                isReward
+                  ? "border-amber-400 bg-amber-400 text-white"
+                  : "border-periwinkle/30 text-periwinkle/50"
               }`}
             >
-              {i < 3 ? "✓" : ""}
+              {isReward ? "★" : i + 1}
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      {/* 캠페인 목록 */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
-        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">캠페인</h2>
-          <button className="text-xs text-periwinkle font-semibold">+ 추가</button>
-        </div>
-        <ul className="divide-y divide-gray-50">
-          {DUMMY_CAMPAIGNS.map((c) => (
-            <li key={c.id} className="flex items-center px-4 py-3 gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{c.title}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{c.date}</p>
+      {/* 보상 구간 목록 */}
+      {thresholdList.length > 0 && (
+        <div className="flex flex-col gap-1 mb-2">
+          {thresholdList.map((t, i) => {
+            const ct = couponTypes.find((c) => c.code === t.coupon_type_code);
+            return (
+              <div key={i} className="flex items-center gap-2 text-xs text-gray-600">
+                <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold shrink-0 text-[10px]">
+                  {t.stamps}
+                </span>
+                <span>{t.coupon_type_code}</span>
+                {ct && <span className="text-gray-400">· {ct.title}</span>}
               </div>
-              <span
-                className={`text-xs font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${
-                  STATUS_STYLE[c.status]
-                }`}
-              >
-                {c.status}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {cfg.notes && <p className="text-[10px] text-gray-400 bg-gray-50 rounded-lg px-2 py-1">{cfg.notes}</p>}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   메인 페이지
+════════════════════════════════════════════════════ */
+export default function CouponsPage() {
+  const rid = useRid();
+
+  return (
+    <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
+      <h1 className="text-lg font-bold text-navy mb-5">쿠폰·스탬프</h1>
+
+      {/* 쿠폰 혜택 섹션 */}
+      <section className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">쿠폰 혜택</h2>
+          <span className="text-[10px] text-gray-400">앱에서 사용자에게 발급되는 혜택</span>
+        </div>
+        <CouponBenefitsSection rid={rid} />
+      </section>
+
+      {/* 스탬프 규칙 섹션 */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">스탬프 규칙</h2>
+          <span className="text-[10px] text-gray-400">방문 적립 → 보상 쿠폰 자동 지급</span>
+        </div>
+        <StampRuleSection rid={rid} />
+      </section>
     </div>
   );
 }
