@@ -43,11 +43,12 @@ interface StampRule {
 }
 
 /* ─── rid 헬퍼 ─────────────────────────────────────── */
+// undefined = 아직 초기화 안 됨, null = ?rid 파라미터 없음, string = rid 값
 function useRid() {
-  const [rid, setRid] = useState<string | null>(null);
+  const [rid, setRid] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    setRid(p.get("rid"));
+    setRid(p.get("rid")); // null or "33"
   }, []);
   return rid;
 }
@@ -207,16 +208,18 @@ function CouponBenefitsSection({ rid }: { rid: string | null }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setErr("");
     try {
       const [bRes, tRes] = await Promise.all([
         fetch(`/api/dashboard/coupon-benefits${rq}`),
         fetch(`/api/dashboard/coupon-types${rq}`),
       ]);
       const [bData, tData] = await Promise.all([bRes.json(), tRes.json()]);
+      if (!bRes.ok) throw new Error(bData?.detail ?? "쿠폰 혜택 불러오기 실패");
       setBenefits(Array.isArray(bData) ? bData : []);
       setCouponTypes(Array.isArray(tData) ? tData : []);
-    } catch {
-      setErr("불러오기 실패");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "불러오기 실패");
     } finally {
       setLoading(false);
     }
@@ -378,17 +381,20 @@ function StampRuleSection({ rid }: { rid: string | null }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setErr("");
     try {
       const [rRes, tRes] = await Promise.all([
         fetch(`/api/dashboard/stamp-rule${rq}`),
         fetch(`/api/dashboard/coupon-types${rq}`),
       ]);
       const [rData, tData] = await Promise.all([rRes.json(), tRes.json()]);
+      // 404 = 규칙 없음, 다른 에러는 throw
       if (rRes.ok) setRule(rData);
-      else setRule(null);
+      else if (rRes.status === 404) setRule(null);
+      else throw new Error(rData?.detail ?? "스탬프 규칙 불러오기 실패");
       setCouponTypes(Array.isArray(tData) ? tData : []);
-    } catch {
-      setErr("불러오기 실패");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "불러오기 실패");
     } finally {
       setLoading(false);
     }
@@ -669,6 +675,19 @@ function StampRuleSection({ rid }: { rid: string | null }) {
 ════════════════════════════════════════════════════ */
 export default function CouponsPage() {
   const rid = useRid();
+
+  // rid가 undefined = 아직 URL 파싱 전 (클라이언트 마운트 대기 중)
+  // 이 상태에서 섹션이 마운트되면 restaurant_id 없이 API를 호출해 빈 화면 깜빡임 발생
+  if (rid === undefined) {
+    return (
+      <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
+        <h1 className="text-lg font-bold text-navy mb-5">쿠폰·스탬프</h1>
+        <div className="flex justify-center py-10">
+          <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
