@@ -37,7 +37,7 @@ interface PopupItem {
 }
 type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
-type Tab = "restaurants" | "content" | "settings";
+type Tab = "restaurants" | "content" | "notifications" | "settings";
 
 /* ─── 상수 ─── */
 const TIER_ORDER: Record<string, number> = { CONTENT: 3, BOOST: 2, FREE: 1 };
@@ -926,6 +926,272 @@ function PopupSection() {
 }
 
 /* ═══════════════════════════════════════════════════
+   탭: 알림 관리
+═══════════════════════════════════════════════════ */
+const TEST_KAKAO_ID = 4424485763;
+
+interface PushNotification {
+  id: number;
+  title: string;
+  body: string;
+  content: string;
+  scheduled_time: string;
+  sent: boolean;
+  sent_at: string | null;
+  target_kakao_ids: number[] | null;
+  test_only: boolean;
+  created_at: string;
+}
+
+function fmtKST(iso: string) {
+  return new Date(iso).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// KST 기준 현재 시각을 datetime-local input 기본값으로 변환
+function nowKSTInput() {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 16);
+}
+
+function NotificationsTab() {
+  const [notifications, setNotifications] = useState<PushNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  // 폼 상태
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [scheduledTime, setScheduledTime] = useState(nowKSTInput);
+  const [testOnly, setTestOnly] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [formErr, setFormErr] = useState("");
+
+  // 즉시발송 상태
+  const [sendingId, setSendingId] = useState<number | null>(null);
+  const [sendResult, setSendResult] = useState<{ id: number; msg: string } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/dashboard/admin/notifications");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail ?? "불러오기 실패");
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "불러오기 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function create() {
+    if (!title.trim()) { setFormErr("제목을 입력하세요."); return; }
+    setSubmitting(true);
+    setFormErr("");
+    try {
+      // datetime-local 값은 KST 기준이므로 UTC로 변환
+      const kstDate = new Date(scheduledTime + ":00");
+      const utcIso = new Date(kstDate.getTime() - 9 * 60 * 60 * 1000).toISOString();
+      const res = await fetch("/api/dashboard/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, body, scheduled_time: utcIso, test_only: testOnly }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail ?? "생성 실패");
+      setNotifications((prev) => [data, ...prev]);
+      setTitle("");
+      setBody("");
+      setScheduledTime(nowKSTInput());
+    } catch (e: unknown) {
+      setFormErr(e instanceof Error ? e.message : "생성 실패");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function remove(id: number) {
+    if (!confirm("이 알림 예약을 삭제할까요?")) return;
+    const res = await fetch(`/api/dashboard/admin/notifications/${id}`, { method: "DELETE" });
+    if (res.ok || res.status === 204) {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } else {
+      const d = await res.json();
+      alert(d?.detail ?? "삭제 실패");
+    }
+  }
+
+  async function sendNow(id: number) {
+    setSendingId(id);
+    setSendResult(null);
+    try {
+      const res = await fetch(`/api/dashboard/admin/notifications/${id}/send-now`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail ?? "발송 실패");
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === id ? { ...n, sent: true, sent_at: data.notification?.sent_at ?? null } : n
+        )
+      );
+      setSendResult({ id, msg: `발송 완료 — 성공 ${data.success}건 / 실패 ${data.failure}건 (토큰 ${data.tokens_tried}개)` });
+    } catch (e: unknown) {
+      setSendResult({ id, msg: `오류: ${e instanceof Error ? e.message : "발송 실패"}` });
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* 알림 작성 폼 */}
+      <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-gray-700">알림 예약</h2>
+
+        {/* 테스트 모드 배너 */}
+        <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${
+          testOnly ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-red-50 text-red-600 border border-red-200"
+        }`}>
+          <span>{testOnly ? `🧪 테스트 모드 — 카카오 ID ${TEST_KAKAO_ID}에게만 발송됩니다` : "⚠️ 전체 발송 모드 — 앱 전체 사용자에게 발송됩니다"}</span>
+          <button
+            onClick={() => setTestOnly((v) => !v)}
+            className={`ml-auto shrink-0 relative w-9 h-5 rounded-full transition-colors ${testOnly ? "bg-amber-400" : "bg-red-500"}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${testOnly ? "translate-x-0.5" : "translate-x-4"}`} />
+          </button>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">제목 *</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="알림 제목"
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">내용</label>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="알림 본문 내용 (선택)"
+            rows={3}
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 resize-none"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">발송 예약 시간 (KST)</label>
+          <input
+            type="datetime-local"
+            value={scheduledTime}
+            onChange={(e) => setScheduledTime(e.target.value)}
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+          />
+          <p className="text-[10px] text-gray-400 mt-1">Cloud Scheduler가 매 5분 주기로 예약된 알림을 자동 발송합니다.</p>
+        </div>
+
+        {formErr && <p className="text-xs text-red-500">{formErr}</p>}
+
+        <button
+          onClick={create}
+          disabled={submitting}
+          className="w-full py-2.5 bg-navy text-white text-sm font-semibold rounded-xl hover:bg-navy/90 disabled:opacity-60 transition-colors"
+        >
+          {submitting ? "예약 중..." : "알림 예약"}
+        </button>
+      </div>
+
+      {/* 예약 목록 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">예약 / 발송 내역</h2>
+          <button onClick={load} className="text-[10px] text-gray-400 hover:text-periwinkle">새로고침</button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : err ? (
+          <p className="text-xs text-red-500 px-4 py-4">{err}</p>
+        ) : notifications.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-8">예약된 알림이 없습니다.</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {notifications.map((n) => (
+              <div key={n.id} className={`px-4 py-3 ${n.sent ? "opacity-60" : ""}`}>
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      {n.sent ? (
+                        <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">발송됨</span>
+                      ) : (
+                        <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">예약</span>
+                      )}
+                      {n.test_only ? (
+                        <span className="text-[10px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">테스트</span>
+                      ) : (
+                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">전체발송</span>
+                      )}
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800 truncate">{n.title}</p>
+                    {n.body && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>}
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      예약: {fmtKST(n.scheduled_time)}
+                      {n.sent_at && ` · 발송: ${fmtKST(n.sent_at)}`}
+                    </p>
+                    {/* 발송 결과 인라인 표시 */}
+                    {sendResult?.id === n.id && (
+                      <p className={`text-[10px] mt-1 ${sendResult.msg.startsWith("오류") ? "text-red-500" : "text-green-600"}`}>
+                        {sendResult.msg}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    {!n.sent && (
+                      <button
+                        onClick={() => sendNow(n.id)}
+                        disabled={sendingId === n.id}
+                        className="text-[10px] px-2 py-1.5 bg-periwinkle text-white rounded-lg hover:bg-periwinkle/90 disabled:opacity-60 transition-colors font-semibold"
+                      >
+                        {sendingId === n.id ? "발송 중..." : "지금 발송"}
+                      </button>
+                    )}
+                    {!n.sent && (
+                      <button
+                        onClick={() => remove(n.id)}
+                        className="text-[10px] px-2 py-1 rounded-lg border border-gray-100 text-gray-300 hover:border-red-200 hover:text-red-400 transition-colors"
+                      >
+                        삭제
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
    탭: 배너 & 팝업
 ═══════════════════════════════════════════════════ */
 function ContentTab() {
@@ -1232,6 +1498,7 @@ function RestaurantsTab() {
 const TABS: { key: Tab; label: string }[] = [
   { key: "restaurants", label: "식당 관리" },
   { key: "content", label: "배너 & 팝업" },
+  { key: "notifications", label: "알림" },
   { key: "settings", label: "관리자 설정" },
 ];
 
@@ -1260,6 +1527,7 @@ export default function AdminHomePage() {
       {/* 탭 컨텐츠 */}
       {activeTab === "restaurants" && <RestaurantsTab />}
       {activeTab === "content" && <ContentTab />}
+      {activeTab === "notifications" && <NotificationsTab />}
       {activeTab === "settings" && <SettingsTab />}
     </div>
   );

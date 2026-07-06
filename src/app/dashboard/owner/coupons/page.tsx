@@ -448,8 +448,11 @@ function StampRuleSection({ rid }: { rid: string | null }) {
     setSaving(true);
     setErr("");
     try {
+      const autoCycleTarget = thresholds.length > 0
+        ? Math.max(...thresholds.map((t) => t.stamps))
+        : cycleTarget;
       const config_json = {
-        cycle_target: cycleTarget,
+        cycle_target: autoCycleTarget,
         thresholds,
         ...(notes ? { notes } : {}),
       };
@@ -476,79 +479,110 @@ function StampRuleSection({ rid }: { rid: string | null }) {
   );
 
   if (editing) {
+    const autoCycleTarget = thresholds.length > 0
+      ? Math.max(...thresholds.map((t) => t.stamps))
+      : cycleTarget;
+
     return (
       <div className="bg-periwinkle/5 border border-periwinkle/20 rounded-2xl p-4 flex flex-col gap-4">
-        {/* 스탬프 목표 */}
+        {/* 보상 구간 리스트 */}
         <div>
-          <label className="text-xs text-gray-500 mb-2 block font-medium">스탬프 목표 (만땅 개수)</label>
-          <div className="flex gap-2 flex-wrap">
-            {[3, 5, 7, 10].map((n) => (
-              <button
-                key={n}
-                onClick={() => setCycleTarget(n)}
-                className={`px-3 py-1.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
-                  cycleTarget === n
-                    ? "border-periwinkle bg-periwinkle/10 text-periwinkle"
-                    : "border-gray-100 text-gray-400 hover:border-gray-200"
-                }`}
-              >
-                {n}개
-              </button>
-            ))}
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-xs text-gray-500 font-medium">보상 구간</label>
+            <button
+              onClick={() => {
+                const maxStamp = thresholds.length > 0
+                  ? Math.max(...thresholds.map((t) => t.stamps))
+                  : 0;
+                const next = maxStamp + 1;
+                if (next > 10) return;
+                setThresholds((prev) =>
+                  [...prev, { stamps: next, coupon_type_code: `STAMP_REWARD_${next}` }]
+                    .sort((a, b) => a.stamps - b.stamps)
+                );
+              }}
+              className="text-[11px] bg-periwinkle/10 text-periwinkle font-semibold px-3 py-1 rounded-lg hover:bg-periwinkle/20 transition-colors"
+            >
+              + 구간 추가
+            </button>
           </div>
-          {/* 인터랙티브 보상 구간 설정 */}
-          <div className="mt-3">
-            <p className="text-[10px] text-gray-400 mb-2">보상을 받을 스탬프 위치를 탭하세요 · ★ 다시 탭하면 제거</p>
-            <div className="flex flex-wrap gap-2">
-              {Array.from({ length: cycleTarget }).map((_, i) => {
-                const pos = i + 1;
-                const tIdx = thresholds.findIndex((t) => t.stamps === pos);
-                const isReward = tIdx >= 0;
-                const autoCode = `STAMP_REWARD_${pos}`;
-                const codeExists = couponTypes.some((ct) => ct.code === autoCode);
+
+          {thresholds.length === 0 ? (
+            <div className="text-center py-6 bg-white/60 rounded-xl border border-dashed border-gray-200">
+              <p className="text-xs text-gray-400">구간이 없습니다.</p>
+              <p className="text-[10px] text-gray-300 mt-0.5">+ 구간 추가를 눌러 시작하세요.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              {thresholds.map((t, idx) => {
+                const autoCode = `STAMP_REWARD_${t.stamps}`;
                 const benefit = benefits.find((b) => b.coupon_type_code === autoCode);
-                const label = benefit
-                  ? benefit.title.length > 8
-                    ? benefit.title.slice(0, 8) + "…"
-                    : benefit.title
-                  : autoCode;
                 return (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      if (isReward) {
-                        setThresholds((prev) => prev.filter((_, fi) => fi !== tIdx));
-                      } else if (codeExists) {
-                        setThresholds((prev) =>
-                          [...prev, { stamps: pos, coupon_type_code: autoCode }].sort(
-                            (a, b) => a.stamps - b.stamps
-                          )
-                        );
-                      }
-                    }}
-                    disabled={!isReward && !codeExists}
-                    title={isReward ? `${pos}개째 보상 제거` : codeExists ? `${pos}개째에 보상 추가` : "코드 없음"}
-                    className={`flex flex-col items-center justify-center rounded-2xl border-2 transition-all ${
-                      isReward
-                        ? "border-amber-400 bg-amber-400 text-white w-14 min-h-[60px] px-1 py-2 shadow-sm"
-                        : codeExists
-                        ? "border-gray-200 text-gray-400 hover:border-amber-300 hover:bg-amber-50/60 w-10 h-10"
-                        : "border-gray-100 text-gray-200 w-10 h-10 cursor-not-allowed"
-                    }`}
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 px-3 py-3 border-b border-gray-50 last:border-0"
                   >
-                    <span className="text-sm font-bold leading-none">
-                      {isReward ? "★" : pos}
-                    </span>
-                    {isReward && (
-                      <span className="text-[8px] text-center text-white/90 leading-tight mt-1 break-words max-w-[52px] px-0.5">
-                        {label}
-                      </span>
-                    )}
-                  </button>
+                    {/* 스탬프 수 입력 */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={t.stamps}
+                        onChange={(e) => {
+                          const n = Math.max(1, Math.min(10, Number(e.target.value)));
+                          setThresholds((prev) =>
+                            prev
+                              .map((x, i) =>
+                                i === idx
+                                  ? { stamps: n, coupon_type_code: `STAMP_REWARD_${n}` }
+                                  : x
+                              )
+                              .sort((a, b) => a.stamps - b.stamps)
+                          );
+                        }}
+                        className="w-12 text-sm font-semibold border border-gray-200 rounded-xl px-2 py-1.5 text-center focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+                      />
+                      <span className="text-xs text-gray-400 shrink-0">개째</span>
+                    </div>
+
+                    {/* 연결된 혜택 내용 */}
+                    <div className="flex-1 min-w-0">
+                      {benefit ? (
+                        <>
+                          <p className="text-xs font-medium text-gray-700 truncate">{benefit.title}</p>
+                          {benefitLabel(benefit.benefit_json) && (
+                            <p className="text-[10px] text-periwinkle">{benefitLabel(benefit.benefit_json)}</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[10px] text-amber-500">혜택 미설정 ({autoCode})</p>
+                      )}
+                    </div>
+
+                    {/* 삭제 */}
+                    <button
+                      onClick={() =>
+                        setThresholds((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                      className="text-gray-300 hover:text-red-400 transition-colors p-1 shrink-0"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 );
               })}
             </div>
-          </div>
+          )}
+
+          {/* 만땅 개수 자동 표시 */}
+          {thresholds.length > 0 && (
+            <div className="mt-2.5 flex items-center gap-2 bg-amber-50 rounded-xl px-3 py-2">
+              <span className="text-[10px] text-amber-500">스탬프 만땅</span>
+              <span className="text-sm font-bold text-amber-600">{autoCycleTarget}개</span>
+              <span className="text-[10px] text-amber-400">· 최대 구간 기준 자동 설정</span>
+            </div>
+          )}
         </div>
 
         {/* 운영 메모 */}
