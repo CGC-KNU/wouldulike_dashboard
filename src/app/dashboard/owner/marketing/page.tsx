@@ -1,9 +1,31 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+
 export default function MarketingPage() {
+  const searchParams = useSearchParams();
+  const rid = searchParams.get("rid");
+  const ridParam = rid ? `?rid=${rid}` : "";
+
   return (
     <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
       <h1 className="text-lg font-bold text-navy mb-4">마케팅</h1>
+
+      {/* 알림 예약 — 찜 사용자 대상 */}
+      <Link
+        href={`/dashboard/owner/notifications${ridParam}`}
+        className="flex items-center gap-3 w-full px-4 py-4 bg-white rounded-2xl shadow-sm mb-4 hover:bg-periwinkle/5 transition-colors"
+      >
+        <span className="text-2xl">🔔</span>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-gray-800">알림 예약</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            찜한 사용자에게 정오·저녁 시간대 알림 발송 예약
+          </p>
+        </div>
+        <span className="text-gray-300 text-sm">›</span>
+      </Link>
 
       {/* QR / 포스터 홍보 키트 — FREE */}
       <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">

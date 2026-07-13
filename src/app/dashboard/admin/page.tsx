@@ -961,7 +961,181 @@ function nowKSTInput() {
   return kst.toISOString().slice(0, 16);
 }
 
+/* ═══════════════════════════════════════════════════
+   식당 알림 캘린더 패널 (관리자)
+═══════════════════════════════════════════════════ */
+interface RestaurantSchedule {
+  id: number;
+  restaurant_id: number;
+  restaurant_name: string;
+  date: string;
+  slot: "noon" | "evening";
+  content: string;
+  scheduled_datetime: string;
+  sent: boolean;
+  sent_at: string | null;
+}
+
+const R_SLOT_LABEL: Record<string, string> = { noon: "정오 12:00", evening: "저녁 18:00" };
+const R_SLOT_DOT:   Record<string, string> = { noon: "bg-amber-400", evening: "bg-indigo-400" };
+const R_SLOT_BG:    Record<string, string> = { noon: "bg-amber-50 text-amber-700", evening: "bg-indigo-50 text-indigo-700" };
+const DAY_KO2 = ["일", "월", "화", "수", "목", "금", "토"];
+
+function RestaurantCalendarPanel() {
+  const today = new Date();
+  const [year, setYear]       = useState(today.getFullYear());
+  const [month, setMonth]     = useState(today.getMonth() + 1);
+  const [schedules, setSchedules] = useState<RestaurantSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/admin/restaurant-notifications?year=${year}&month=${month}`);
+      if (res.ok) setSchedules(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, [year, month]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function prevMonth() { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); }
+  function nextMonth() { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); }
+
+  async function deleteSchedule(id: number) {
+    if (!confirm("이 식당 알림 예약을 삭제할까요?")) return;
+    const res = await fetch(`/api/dashboard/admin/restaurant-notifications/${id}`, { method: "DELETE" });
+    if (res.ok || res.status === 204) {
+      setSchedules(prev => prev.filter(s => s.id !== id));
+    } else {
+      const d = await res.json();
+      alert(d?.detail ?? "삭제 실패");
+    }
+  }
+
+  // 월 그리드 계산
+  const firstDay     = new Date(year, month - 1, 1).getDay();
+  const daysInMonth  = new Date(year, month, 0).getDate();
+  const totalCells   = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+  const dateStr = (d: number) =>
+    `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const getSched = (d: number, slot: "noon" | "evening") =>
+    schedules.find(s => s.date === dateStr(d) && s.slot === slot);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="bg-white rounded-2xl shadow-sm p-4">
+        {/* 월 네비 */}
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">‹</button>
+          <span className="text-sm font-bold text-gray-700">{year}년 {month}월</span>
+          <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">›</button>
+        </div>
+        {/* 범례 */}
+        <div className="flex gap-4 mb-3">
+          {(["noon", "evening"] as const).map(slot => (
+            <div key={slot} className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${R_SLOT_DOT[slot]}`} />
+              <span className="text-xs text-gray-500">{R_SLOT_LABEL[slot]}</span>
+            </div>
+          ))}
+        </div>
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* 요일 헤더 */}
+            <div className="grid grid-cols-7 mb-1">
+              {DAY_KO2.map(d => (
+                <div key={d} className="text-[10px] text-center text-gray-400 font-medium py-1">{d}</div>
+              ))}
+            </div>
+            {/* 날짜 그리드 */}
+            <div className="grid grid-cols-7 gap-0.5">
+              {Array.from({ length: totalCells }, (_, i) => {
+                const day = i - firstDay + 1;
+                if (day < 1 || day > daysInMonth) return <div key={i} className="min-h-[60px]" />;
+                const ds     = dateStr(day);
+                const isToday = ds === todayStr;
+                const isPast  = ds < todayStr;
+                const noon = getSched(day, "noon");
+                const eve  = getSched(day, "evening");
+                return (
+                  <div key={i} className={`border border-gray-100 rounded-lg p-1 min-h-[60px] ${isPast ? "bg-gray-50" : "bg-white"}`}>
+                    <div className={`text-[10px] font-semibold mb-1 ${isToday ? "text-periwinkle" : isPast ? "text-gray-300" : "text-gray-600"}`}>
+                      {day}
+                    </div>
+                    {/* 정오 */}
+                    {noon ? (
+                      <div className={`text-[8px] rounded px-1 py-0.5 mb-0.5 flex items-center gap-0.5 ${noon.sent ? "bg-gray-100 text-gray-400" : "bg-amber-50 text-amber-700"}`}>
+                        <span className="truncate flex-1">{noon.restaurant_name}</span>
+                        {!noon.sent && <button onClick={() => deleteSchedule(noon.id)} className="shrink-0 text-red-400 hover:text-red-600">×</button>}
+                      </div>
+                    ) : <div className="h-4 mb-0.5" />}
+                    {/* 저녁 */}
+                    {eve ? (
+                      <div className={`text-[8px] rounded px-1 py-0.5 flex items-center gap-0.5 ${eve.sent ? "bg-gray-100 text-gray-400" : "bg-indigo-50 text-indigo-700"}`}>
+                        <span className="truncate flex-1">{eve.restaurant_name}</span>
+                        {!eve.sent && <button onClick={() => deleteSchedule(eve.id)} className="shrink-0 text-red-400 hover:text-red-600">×</button>}
+                      </div>
+                    ) : <div className="h-4" />}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 예약 리스트 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-700">{month}월 식당 알림 예약 ({schedules.length}건)</h3>
+          <button onClick={load} className="text-[10px] text-gray-400 hover:text-periwinkle">새로고침</button>
+        </div>
+        {schedules.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-6">예약된 식당 알림이 없습니다</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {[...schedules]
+              .sort((a, b) => new Date(a.scheduled_datetime).getTime() - new Date(b.scheduled_datetime).getTime())
+              .map(s => (
+                <div key={s.id} className="px-4 py-3 flex items-start gap-3">
+                  <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${s.sent ? "bg-gray-300" : R_SLOT_DOT[s.slot]}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400 mb-0.5">{s.date} · {R_SLOT_LABEL[s.slot]}</p>
+                    <p className="text-sm font-semibold text-gray-800">{s.restaurant_name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{s.content}</p>
+                  </div>
+                  <div className="shrink-0">
+                    {s.sent ? (
+                      <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">발송됨</span>
+                    ) : (
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${R_SLOT_BG[s.slot]}`}>예약</span>
+                        <button onClick={() => deleteSchedule(s.id)} className="text-[10px] text-red-400 hover:text-red-600">삭제</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   탭: 알림 (푸시 알림 + 식당 알림 캘린더)
+═══════════════════════════════════════════════════ */
 function NotificationsTab() {
+  const [subTab, setSubTab] = useState<"push" | "restaurant">("push");
   const [notifications, setNotifications] = useState<PushNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -1055,7 +1229,28 @@ function NotificationsTab() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
+      {/* 서브탭 */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-0.5">
+        {([
+          { key: "push", label: "푸시 알림" },
+          { key: "restaurant", label: "식당 알림 캘린더" },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setSubTab(key)}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              subTab === key ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "restaurant" && <RestaurantCalendarPanel />}
+
+      {subTab === "push" && <div className="flex flex-col gap-5">
       {/* 알림 작성 폼 */}
       <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-gray-700">알림 예약</h2>
@@ -1187,6 +1382,7 @@ function NotificationsTab() {
           </div>
         )}
       </div>
+      </div>}
     </div>
   );
 }
