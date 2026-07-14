@@ -7,6 +7,7 @@ interface Stats {
   loyal_total: number;
   coupon_redeemed_this_month: number;
   stamp_earned_this_month: number;
+  wishlist_count: number;
   restaurant_name: string;
   tier: string;
   month: string;
@@ -140,6 +141,12 @@ export default async function OwnerHomePage({
           <div className="opacity-80">
             <Sparkline values={SPARKLINE_DUMMY} />
           </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2">
+          <span className="text-sm">♡</span>
+          <span className="text-xs text-white/60">찜한 사용자</span>
+          <span className="text-sm font-semibold text-white">{stats.wishlist_count ?? 0}명</span>
+          <span className="ml-auto text-[10px] text-white/40">알림 예약 시 발송 대상</span>
         </div>
       </div>
 
