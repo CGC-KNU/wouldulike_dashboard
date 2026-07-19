@@ -1937,9 +1937,10 @@ function SettingsTab() {
   }
 
   return (
+    <div className="flex flex-col gap-0">
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-50">
-        <h2 className="text-sm font-semibold text-gray-700">관리자 비밀번호</h2>
+        <h2 className="text-sm font-semibold text-gray-700">슈퍼어드민 비밀번호</h2>
       </div>
       <div className="p-4 flex flex-col gap-2">
         {msg && (
@@ -1995,6 +1996,139 @@ function SettingsTab() {
           </div>
         )}
       </div>
+    </div>
+    <AdminAccountsSection />
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   관리자 계정 관리 섹션
+═══════════════════════════════════════════════════ */
+interface AdminAccountItem { username: string; created_at: string; }
+
+function AdminAccountsSection() {
+  const [accounts, setAccounts] = useState<AdminAccountItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newId, setNewId] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [err, setErr] = useState("");
+  const [resetTarget, setResetTarget] = useState<string | null>(null);
+  const [resetPw, setResetPw] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dashboard/admin/accounts");
+      if (res.ok) setAccounts(await res.json());
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function create() {
+    if (!newId.trim() || !newPw) { setErr("아이디와 비밀번호를 입력해주세요."); return; }
+    setCreating(true); setErr("");
+    const res = await fetch("/api/dashboard/admin/accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: newId.trim(), password: newPw }),
+    });
+    const data = await res.json();
+    if (res.ok) { setAccounts((prev) => [...prev, data]); setNewId(""); setNewPw(""); }
+    else setErr(data.detail ?? "생성 실패");
+    setCreating(false);
+  }
+
+  async function remove(username: string) {
+    if (!confirm(`"${username}" 계정을 삭제할까요?`)) return;
+    const res = await fetch(`/api/dashboard/admin/accounts/${username}`, { method: "DELETE" });
+    if (res.ok || res.status === 204) setAccounts((prev) => prev.filter((a) => a.username !== username));
+    else alert("삭제 실패");
+  }
+
+  async function resetPassword() {
+    if (!resetTarget || !resetPw) return;
+    setResetting(true);
+    const res = await fetch(`/api/dashboard/admin/accounts/${resetTarget}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_password: resetPw }),
+    });
+    setResetting(false);
+    if (res.ok) { alert("비밀번호가 변경되었습니다."); setResetTarget(null); setResetPw(""); }
+    else { const d = await res.json(); alert(d.detail ?? "변경 실패"); }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-4">
+      <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700">관리자 계정</h2>
+          <p className="text-xs text-gray-400 mt-0.5">최대 8명 · 환경변수 슈퍼어드민 별도</p>
+        </div>
+        <span className="text-xs text-gray-400">{accounts.length}/8</span>
+      </div>
+      {loading ? (
+        <div className="flex justify-center py-4"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
+      ) : accounts.length === 0 ? (
+        <p className="text-xs text-gray-400 text-center py-4">추가된 관리자 계정이 없습니다</p>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {accounts.map((a) => (
+            <div key={a.username} className="px-4 py-2.5 flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-800 flex-1">{a.username}</span>
+              <button
+                onClick={() => { setResetTarget(a.username); setResetPw(""); }}
+                className="text-[10px] text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg border border-gray-100 hover:border-periwinkle/40"
+              >
+                비번 초기화
+              </button>
+              <button
+                onClick={() => remove(a.username)}
+                className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
+              >
+                삭제
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {resetTarget && (
+        <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2">
+          <p className="text-xs font-semibold text-amber-700">{resetTarget} 비밀번호 초기화</p>
+          <input
+            type="password"
+            value={resetPw}
+            onChange={(e) => setResetPw(e.target.value)}
+            placeholder="새 비밀번호 (4자 이상)"
+            className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none bg-white"
+          />
+          <div className="flex gap-2">
+            <button onClick={() => { setResetTarget(null); setResetPw(""); }} className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
+            <button onClick={resetPassword} disabled={resetting} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-60">
+              {resetting ? "변경 중..." : "변경"}
+            </button>
+          </div>
+        </div>
+      )}
+      {accounts.length < 8 && (
+        <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
+          {err && <p className="text-xs text-red-500">{err}</p>}
+          <div className="flex gap-2">
+            <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="새 아이디"
+              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="비밀번호"
+              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+          </div>
+          <button onClick={create} disabled={creating}
+            className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
+            {creating ? "추가 중..." : "계정 추가"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
