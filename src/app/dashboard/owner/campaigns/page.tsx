@@ -66,6 +66,11 @@ function fmtKST(iso: string) {
   });
 }
 
+function fmtShort(iso: string) {
+  const d = new Date(iso + "T00:00:00");
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
 /* ═══════════════════════════════════════════════════════ */
 export default function OwnerCampaignsPage() {
   const searchParams = useSearchParams();
@@ -74,6 +79,11 @@ export default function OwnerCampaignsPage() {
   const [slots, setSlots] = useState<SlotWeek[]>([]);
   const [history, setHistory] = useState<CampaignApp[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 캘린더 월 상태
+  const today = new Date();
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth() + 1);
 
   /* 신청 폼 상태 */
   const [formOpen, setFormOpen] = useState(false);
@@ -156,25 +166,42 @@ export default function OwnerCampaignsPage() {
     load();
   }
 
-  /* 슬롯 아이콘 */
-  function SlotDots({ week }: { week: SlotWeek }) {
-    return (
-      <div className="flex gap-0.5 mt-1">
-        {Array.from({ length: week.max_slots }).map((_, i) => (
-          <span
-            key={i}
-            className={`w-2 h-2 rounded-full ${i < week.occupied_slots ? "bg-periwinkle" : "bg-gray-200"}`}
-          />
-        ))}
-      </div>
-    );
-  }
-
   /* 기존 신청 있는 주인지 */
   function getExistingApp(weekStart: string) {
     return history.find(
       (a) => a.week_start === weekStart && a.status !== "CANCELLED" && a.status !== "REJECTED"
     );
+  }
+
+  // 캘린더 주 배열 빌드 (월요일 시작)
+  const calWeeks = (() => {
+    const firstDay = new Date(calYear, calMonth - 1, 1);
+    const firstDayOfWeek = (firstDay.getDay() + 6) % 7;
+    const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+    const totalWeeks = Math.ceil((firstDayOfWeek + daysInMonth) / 7);
+    const calStart = new Date(calYear, calMonth - 1, 1 - firstDayOfWeek);
+    const result: { date: Date; inMonth: boolean; dateStr: string }[][] = [];
+    for (let w = 0; w < totalWeeks; w++) {
+      const weekDays: { date: Date; inMonth: boolean; dateStr: string }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const dt = new Date(calStart);
+        dt.setDate(calStart.getDate() + w * 7 + d);
+        const inMonth = dt.getMonth() + 1 === calMonth && dt.getFullYear() === calYear;
+        const ds = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+        weekDays.push({ date: dt, inMonth, dateStr: ds });
+      }
+      result.push(weekDays);
+    }
+    return result;
+  })();
+
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+  function prevCalMonth() {
+    if (calMonth === 1) { setCalYear((y) => y - 1); setCalMonth(12); } else setCalMonth((m) => m - 1);
+  }
+  function nextCalMonth() {
+    if (calMonth === 12) { setCalYear((y) => y + 1); setCalMonth(1); } else setCalMonth((m) => m + 1);
   }
 
   return (
@@ -184,57 +211,114 @@ export default function OwnerCampaignsPage() {
         1주일 단위로 캠페인을 신청하면 승인 후 앱 접속 고객에게 쿠폰이 자동 발급됩니다.
       </p>
 
-      {/* ── 슬롯 캘린더 ── */}
+      {/* ── 월간 캘린더 ── */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-6">
-        <div className="px-4 py-3 border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-gray-700">신청 가능한 주</h2>
-          <p className="text-xs text-gray-400 mt-0.5">슬롯이 남아 있고 1주일 이상 남은 주만 신청 가능합니다</p>
+        {/* 월 네비 */}
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <button onClick={prevCalMonth} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 text-sm">‹</button>
+          <span className="text-sm font-semibold text-gray-700">{calYear}년 {calMonth}월</span>
+          <button onClick={nextCalMonth} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 text-sm">›</button>
         </div>
-        {loading ? (
-          <div className="p-6 text-center text-sm text-gray-400">불러오는 중…</div>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {slots.map((week) => {
-              const existing = getExistingApp(week.week_start);
-              const isFull = week.available_slots <= 0;
-              const isPastDeadline = !week.can_apply && !existing;
-              return (
-                <div key={week.week_start} className="px-4 py-3 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800">
-                      {fmtDate(week.week_start)} — {fmtDate(week.week_end)}
-                    </p>
-                    <SlotDots week={week} />
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {week.available_slots}/{week.max_slots} 슬롯 남음 · 신청 마감 {fmtDate(week.deadline)}
-                    </p>
-                  </div>
-                  {existing ? (
-                    <button
-                      onClick={() => setDetailApp(existing)}
-                      className={`text-xs px-3 py-1.5 rounded-full border font-medium ${STATUS_COLOR[existing.status]}`}
-                    >
-                      {STATUS_LABEL[existing.status]}
-                    </button>
-                  ) : isFull ? (
-                    <span className="text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-400 border border-red-200 font-medium">
-                      마감
-                    </span>
-                  ) : isPastDeadline ? (
-                    <span className="text-xs text-gray-300">기한 초과</span>
-                  ) : (
-                    <button
-                      onClick={() => openForm(week)}
-                      className="text-xs px-3 py-1.5 rounded-full bg-periwinkle text-white font-semibold hover:bg-periwinkle/80 transition-colors"
-                    >
-                      신청
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+
+        <div className="p-3">
+          {/* 요일 헤더 */}
+          <div className="grid grid-cols-7 mb-0.5">
+            {["월","화","수","목","금","토","일"].map((d) => (
+              <div key={d} className="text-[10px] text-center text-gray-400 py-1">{d}</div>
+            ))}
           </div>
-        )}
+
+          {loading ? (
+            <div className="py-6 text-center text-sm text-gray-400">불러오는 중…</div>
+          ) : (
+            <div>
+              {calWeeks.map((weekDays, wi) => {
+                const weekStart = weekDays[0].dateStr;
+                const slot = slots.find((s) => s.week_start === weekStart);
+                const existing = getExistingApp(weekStart);
+                const isFull = slot && slot.available_slots <= 0;
+                const canApply = slot?.can_apply && !existing && !isFull;
+
+                // 바 색상
+                let barCls = "bg-gray-50 border-gray-100 text-gray-300";
+                let barLabel = "";
+                let barAction: (() => void) | null = null;
+
+                if (existing) {
+                  const s = existing.status;
+                  if (s === "PENDING") { barCls = "bg-amber-50 border-amber-200 text-amber-700"; barLabel = "검토 중"; }
+                  else if (s === "APPROVED") { barCls = "bg-green-50 border-green-200 text-green-600"; barLabel = "승인됨"; }
+                  else if (s === "REJECTED_HOLD") { barCls = "bg-orange-50 border-orange-200 text-orange-600"; barLabel = "반려(재신청 가능)"; }
+                  else if (s === "REJECTED") { barCls = "bg-red-50 border-red-100 text-red-400"; barLabel = "반려"; }
+                  else { barCls = "bg-gray-100 border-gray-200 text-gray-400"; barLabel = "취소"; }
+                  barAction = () => setDetailApp(existing);
+                } else if (slot) {
+                  if (isFull) { barCls = "bg-red-50 border-red-100 text-red-400"; barLabel = "슬롯 마감"; }
+                  else if (!slot.can_apply) { barCls = "bg-gray-50 border-gray-100 text-gray-300"; barLabel = "기한 초과"; }
+                  else { barCls = "bg-periwinkle/5 border-periwinkle/30 text-periwinkle"; barLabel = `신청 가능 · ${slot.available_slots}슬롯`; barAction = () => openForm(slot); }
+                }
+
+                return (
+                  <div key={wi} className="mb-1">
+                    {/* 날짜 셀 */}
+                    <div className="grid grid-cols-7">
+                      {weekDays.map(({ date, inMonth, dateStr }) => {
+                        const isToday = dateStr === todayStr;
+                        return (
+                          <div key={dateStr} className="flex items-center justify-center h-7">
+                            <span className={`text-[11px] w-6 h-6 flex items-center justify-center rounded-full ${
+                              isToday
+                                ? "bg-periwinkle text-white font-bold"
+                                : inMonth
+                                ? "text-gray-700"
+                                : "text-gray-300"
+                            }`}>
+                              {date.getDate()}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* 주 요약 바 */}
+                    {(slot || existing) ? (
+                      barAction ? (
+                        <button
+                          onClick={barAction}
+                          className={`w-full mb-2 rounded-lg px-2.5 py-1.5 border flex items-center gap-2 hover:opacity-75 transition-opacity ${barCls}`}
+                        >
+                          {slot && (
+                            <div className="flex gap-0.5 shrink-0">
+                              {Array.from({ length: slot.max_slots }).map((_, i) => (
+                                <span key={i} className={`w-1.5 h-1.5 rounded-full ${i < slot.occupied_slots ? "bg-current opacity-70" : "bg-current opacity-20"}`} />
+                              ))}
+                            </div>
+                          )}
+                          <span className="text-[10px] font-medium flex-1">{barLabel}</span>
+                          {canApply && <span className="text-[10px] font-bold shrink-0">신청 →</span>}
+                        </button>
+                      ) : (
+                        <div className={`w-full mb-2 rounded-lg px-2.5 py-1.5 border flex items-center gap-2 ${barCls}`}>
+                          {slot && (
+                            <div className="flex gap-0.5 shrink-0">
+                              {Array.from({ length: slot.max_slots }).map((_, i) => (
+                                <span key={i} className={`w-1.5 h-1.5 rounded-full ${i < slot.occupied_slots ? "bg-current opacity-70" : "bg-current opacity-20"}`} />
+                              ))}
+                            </div>
+                          )}
+                          <span className="text-[10px] font-medium flex-1">{barLabel}</span>
+                        </div>
+                      )
+                    ) : (
+                      <div className="mb-2 h-7" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <p className="text-[10px] text-gray-400 text-center pb-3">슬롯이 남아 있고 1주일 이상 남은 주만 신청 가능합니다</p>
       </div>
 
       {/* ── 이력 ── */}

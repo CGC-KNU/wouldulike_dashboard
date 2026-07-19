@@ -1258,83 +1258,115 @@ function CampaignCalendarPanel() {
     return `${d.getMonth() + 1}월 ${d.getDate()}일`;
   }
 
+  const todayStr = (() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`;
+  })();
+
+  // 월 캘린더 주 배열 빌드 (월요일 시작)
+  const calWeeks = (() => {
+    const firstDay = new Date(year, month - 1, 1);
+    const firstDayOfWeek = (firstDay.getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const totalWeeks = Math.ceil((firstDayOfWeek + daysInMonth) / 7);
+    const calStart = new Date(year, month - 1, 1 - firstDayOfWeek);
+    const result: { date: Date; inMonth: boolean; dateStr: string }[][] = [];
+    for (let w = 0; w < totalWeeks; w++) {
+      const weekDays: { date: Date; inMonth: boolean; dateStr: string }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const dt = new Date(calStart);
+        dt.setDate(calStart.getDate() + w * 7 + d);
+        const inMonth = dt.getMonth() + 1 === month && dt.getFullYear() === year;
+        const ds = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+        weekDays.push({ date: dt, inMonth, dateStr: ds });
+      }
+      result.push(weekDays);
+    }
+    return result;
+  })();
+
   return (
     <div className="flex flex-col gap-4">
       {/* 월간 캘린더 */}
       <div className="bg-white rounded-2xl shadow-sm p-4">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">‹</button>
           <span className="text-sm font-bold text-gray-700">{year}년 {month}월 캠페인</span>
           <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">›</button>
+        </div>
+
+        {/* 요일 헤더 (월~일) */}
+        <div className="grid grid-cols-7 mb-0.5">
+          {["월","화","수","목","금","토","일"].map((d) => (
+            <div key={d} className="text-[10px] text-center text-gray-400 py-1">{d}</div>
+          ))}
         </div>
 
         {loading ? (
           <div className="flex justify-center py-6">
             <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : weeks.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-4">해당 월에 캠페인 데이터가 없습니다</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {weeks.map((w) => {
-              const pendingCount = w.applications.filter((a) => a.status === "PENDING").length;
-              const approvedCount = w.applications.filter((a) => a.status === "APPROVED").length;
+          <div>
+            {calWeeks.map((weekDays, wi) => {
+              const weekStart = weekDays[0].dateStr;
+              const w = weeks.find((g) => g.week_start === weekStart);
+              const pendingCount = w?.applications.filter((a) => a.status === "PENDING").length ?? 0;
+              const approvedCount = w?.applications.filter((a) => a.status === "APPROVED").length ?? 0;
+              const isFull = w && w.available_slots === 0;
+
+              let barCls = "bg-gray-50 border-gray-100 text-gray-400";
+              if (pendingCount > 0) barCls = "bg-amber-50 border-amber-200 text-amber-700";
+              else if (approvedCount > 0) barCls = "bg-green-50 border-green-200 text-green-600";
+              else if (isFull) barCls = "bg-red-50 border-red-100 text-red-400";
+              else if (w) barCls = "bg-periwinkle/5 border-periwinkle/20 text-gray-500";
+
               return (
-                <button
-                  key={w.week_start}
-                  onClick={() => setSelectedWeek(w)}
-                  className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-periwinkle/50 hover:bg-periwinkle/5 transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-gray-700">
-                      {fmtMD(w.week_start)} ~ {fmtMD(w.week_end)}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      {pendingCount > 0 && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold">
-                          검토 {pendingCount}
-                        </span>
-                      )}
-                      {approvedCount > 0 && (
-                        <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">
-                          승인 {approvedCount}
-                        </span>
-                      )}
-                      {w.applications.length === 0 && (
-                        <span className="text-[10px] text-gray-300">신청 없음</span>
-                      )}
-                    </div>
+                <div key={wi} className="mb-1">
+                  {/* 날짜 셀 행 */}
+                  <div className="grid grid-cols-7">
+                    {weekDays.map(({ date, inMonth, dateStr }) => {
+                      const isToday = dateStr === todayStr;
+                      return (
+                        <div key={dateStr} className="flex items-center justify-center h-7">
+                          <span className={`text-[11px] w-6 h-6 flex items-center justify-center rounded-full ${
+                            isToday
+                              ? "bg-periwinkle text-white font-bold"
+                              : inMonth
+                              ? "text-gray-700"
+                              : "text-gray-300"
+                          }`}>
+                            {date.getDate()}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {/* 슬롯 점 */}
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: w.max_slots }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={`w-3 h-3 rounded-full border ${
-                          i < w.occupied_slots
-                            ? "bg-periwinkle border-periwinkle"
-                            : "bg-gray-100 border-gray-200"
-                        }`}
-                      />
-                    ))}
-                    <span className="text-[10px] text-gray-400 ml-1">
-                      {w.occupied_slots}/{w.max_slots}
-                    </span>
-                  </div>
-                  {/* 식당 이름 chips */}
-                  {w.applications.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {w.applications.map((a) => (
-                        <span
-                          key={a.id}
-                          className={`text-[10px] px-2 py-0.5 rounded-full ${CAMP_STATUS_STYLE[a.status] ?? "bg-gray-100 text-gray-500"}`}
-                        >
-                          {a.restaurant_name}
-                        </span>
-                      ))}
-                    </div>
+                  {/* 주 요약 바 */}
+                  {w ? (
+                    <button
+                      onClick={() => setSelectedWeek(w)}
+                      className={`w-full mb-2 rounded-lg px-2.5 py-1.5 text-left border flex items-center gap-2 hover:opacity-75 transition-opacity ${barCls}`}
+                    >
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {Array.from({ length: w.max_slots }).map((_, i) => (
+                          <span
+                            key={i}
+                            className={`w-1.5 h-1.5 rounded-full ${i < w.occupied_slots ? "bg-current opacity-70" : "bg-current opacity-20"}`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[10px] font-medium flex-1 truncate">
+                        {w.applications.length === 0
+                          ? `${w.available_slots}/${w.max_slots} 슬롯`
+                          : `신청 ${w.applications.length}건${pendingCount > 0 ? ` · 검토 ${pendingCount}` : ""}${approvedCount > 0 ? ` · 승인 ${approvedCount}` : ""} · ${w.occupied_slots}/${w.max_slots}슬롯`}
+                      </span>
+                      {w.applications.length > 0 && <span className="text-[10px] opacity-50 shrink-0">›</span>}
+                    </button>
+                  ) : (
+                    <div className="mb-2 h-7" />
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -1585,8 +1617,8 @@ function RestaurantCalendarPanel() {
 /* ═══════════════════════════════════════════════════
    탭: 알림 (푸시 알림 + 식당 알림 캘린더)
 ═══════════════════════════════════════════════════ */
-function NotificationsTab() {
-  const [subTab, setSubTab] = useState<"push" | "restaurant" | "campaign">("push");
+function MarketingTab() {
+  const [subTab, setSubTab] = useState<"campaign" | "restaurant" | "push">("campaign");
   const [notifications, setNotifications] = useState<PushNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -1684,9 +1716,9 @@ function NotificationsTab() {
       {/* 서브탭 */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-0.5">
         {([
-          { key: "push", label: "푸시 알림" },
-          { key: "restaurant", label: "식당 알림" },
           { key: "campaign", label: "캠페인 캘린더" },
+          { key: "restaurant", label: "식당 알림" },
+          { key: "push", label: "푸시 알림" },
         ] as const).map(({ key, label }) => (
           <button
             key={key}
@@ -2147,7 +2179,7 @@ function RestaurantsTab() {
 const TABS: { key: Tab; label: string }[] = [
   { key: "restaurants", label: "식당 관리" },
   { key: "content", label: "배너 & 팝업" },
-  { key: "notifications", label: "알림" },
+  { key: "notifications", label: "마케팅" },
   { key: "settings", label: "관리자 설정" },
 ];
 
@@ -2176,7 +2208,7 @@ export default function AdminHomePage() {
       {/* 탭 컨텐츠 */}
       {activeTab === "restaurants" && <RestaurantsTab />}
       {activeTab === "content" && <ContentTab />}
-      {activeTab === "notifications" && <NotificationsTab />}
+      {activeTab === "notifications" && <MarketingTab />}
       {activeTab === "settings" && <SettingsTab />}
     </div>
   );
