@@ -39,6 +39,41 @@ type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
 type Tab = "restaurants" | "content" | "notifications" | "settings";
 
+interface CampaignApp {
+  id: number;
+  restaurant_id: number;
+  restaurant_name: string;
+  week_start: string;
+  week_end: string;
+  coupon_title: string;
+  coupon_subtitle: string | null;
+  coupon_notes: string | null;
+  benefit_type: string;
+  benefit_value: string | null;
+  benefit_label: string;
+  campaign_description: string | null;
+  status: string;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+}
+interface WeekGroup {
+  week_start: string;
+  week_end: string;
+  max_slots: number;
+  occupied_slots: number;
+  available_slots: number;
+  applications: CampaignApp[];
+}
+interface WeekConfig {
+  id: number;
+  week_start: string | null;
+  max_slots: number;
+  is_default: boolean;
+}
+type PlanLimits = { FREE: number; BOOST: number; CONTENT: number };
+
 /* ─── 상수 ─── */
 const TIER_ORDER: Record<string, number> = { CONTENT: 3, BOOST: 2, FREE: 1 };
 const TIER_STYLE: Record<string, string> = {
@@ -55,6 +90,17 @@ const CAMPAIGN_STATUS_STYLE: Record<string, string> = {
   검수중: "bg-amber-100 text-amber-700",
   반영됨: "bg-green-100 text-green-700",
   종료: "bg-gray-100 text-gray-500",
+};
+const CAMP_STATUS_LABEL: Record<string, string> = {
+  PENDING: "검토 중", APPROVED: "승인", REJECTED: "반려",
+  REJECTED_HOLD: "반려(재신청)", CANCELLED: "취소",
+};
+const CAMP_STATUS_STYLE: Record<string, string> = {
+  PENDING: "bg-amber-100 text-amber-700",
+  APPROVED: "bg-green-100 text-green-700",
+  REJECTED: "bg-red-100 text-red-600",
+  REJECTED_HOLD: "bg-orange-100 text-orange-700",
+  CANCELLED: "bg-gray-100 text-gray-500",
 };
 
 /* ─── 유틸 ─── */
@@ -84,6 +130,7 @@ function RestaurantDrawer({
 }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [campaignCount, setCampaignCount] = useState<number | null>(null);
   const [deleteStep, setDeleteStep] = useState<null | "confirm1" | "confirm2">(null);
   const [secondaryPw, setSecondaryPw] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -95,6 +142,10 @@ function RestaurantDrawer({
       .then((data) => setStats(data.stats ?? null))
       .catch(() => setStats(null))
       .finally(() => setStatsLoading(false));
+    fetch(`/api/dashboard/admin/campaigns/history?rid=${r.restaurant_id}`)
+      .then((res) => res.json())
+      .then((data: unknown[]) => setCampaignCount(Array.isArray(data) ? data.length : null))
+      .catch(() => setCampaignCount(null));
   }, [r.restaurant_id]);
 
   async function toggleAffiliate() {
@@ -172,6 +223,14 @@ function RestaurantDrawer({
                     </p>
                   </div>
                 ))}
+                {campaignCount !== null && (
+                  <div className="bg-white rounded-lg p-3 col-span-2">
+                    <p className="text-[10px] text-gray-400">캠페인 신청 이력</p>
+                    <p className="text-xl font-bold text-navy mt-0.5">
+                      {campaignCount}<span className="text-xs font-normal text-gray-400 ml-0.5">건</span>
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-xs text-gray-400 text-center py-1">통계를 불러오지 못했습니다.</p>
@@ -977,6 +1036,398 @@ interface RestaurantSchedule {
 }
 
 const R_SLOT_LABEL: Record<string, string> = { noon: "정오 12:00", evening: "저녁 18:00" };
+/* ═══════════════════════════════════════════════════
+   캠페인 주 상세 드로어
+═══════════════════════════════════════════════════ */
+function WeekDetailDrawer({
+  week,
+  onClose,
+  onAction,
+}: {
+  week: WeekGroup;
+  onClose: () => void;
+  onAction: (id: number, action: string, notes: string) => Promise<void>;
+}) {
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [acting, setActing] = useState<number | null>(null);
+
+  function getNote(id: number) { return notes[id] ?? ""; }
+  function setNote(id: number, v: string) { setNotes((prev) => ({ ...prev, [id]: v })); }
+
+  async function act(id: number, action: string) {
+    setActing(id);
+    await onAction(id, action, getNote(id));
+    setActing(null);
+  }
+
+  function fmtMD(dateStr: string) {
+    const d = new Date(dateStr + "T00:00:00");
+    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-xl max-h-[85vh] overflow-y-auto">
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-gray-200" />
+        </div>
+        <div className="px-5 pb-8 pt-2">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-bold text-navy">
+                {fmtMD(week.week_start)} ~ {fmtMD(week.week_end)}
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {week.occupied_slots}/{week.max_slots} 슬롯 · 신청 {week.applications.length}건
+              </p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+
+          {week.applications.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-8">이 주의 캠페인 신청이 없습니다</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {week.applications.map((app) => (
+                <div key={app.id} className="border border-gray-100 rounded-xl p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1 min-w-0 mr-2">
+                      <p className="text-sm font-bold text-gray-800">{app.restaurant_name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{app.coupon_title}</p>
+                      <p className="text-xs text-periwinkle mt-0.5">{app.benefit_label}</p>
+                    </div>
+                    <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold ${CAMP_STATUS_STYLE[app.status] ?? "bg-gray-100 text-gray-500"}`}>
+                      {CAMP_STATUS_LABEL[app.status] ?? app.status}
+                    </span>
+                  </div>
+
+                  {app.campaign_description && (
+                    <p className="text-xs text-gray-500 mb-2">{app.campaign_description}</p>
+                  )}
+                  {app.admin_notes && (
+                    <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 mb-2">
+                      관리자 메모: {app.admin_notes}
+                    </p>
+                  )}
+
+                  {app.status === "PENDING" && (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <textarea
+                        value={getNote(app.id)}
+                        onChange={(e) => setNote(app.id, e.target.value)}
+                        placeholder="관리자 메모 (선택)"
+                        rows={2}
+                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 resize-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => act(app.id, "approve")}
+                          disabled={acting === app.id}
+                          className="flex-1 py-2 rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 transition-colors disabled:opacity-60"
+                        >
+                          {acting === app.id ? "..." : "승인"}
+                        </button>
+                        <button
+                          onClick={() => act(app.id, "reject_hold")}
+                          disabled={acting === app.id}
+                          className="flex-1 py-2 rounded-lg bg-orange-400 text-white text-xs font-bold hover:bg-orange-500 transition-colors disabled:opacity-60"
+                        >
+                          {acting === app.id ? "..." : "반려(슬롯유지)"}
+                        </button>
+                        <button
+                          onClick={() => act(app.id, "reject")}
+                          disabled={acting === app.id}
+                          className="flex-1 py-2 rounded-lg bg-red-400 text-white text-xs font-bold hover:bg-red-500 transition-colors disabled:opacity-60"
+                        >
+                          {acting === app.id ? "..." : "반려"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   캠페인 캘린더 패널
+═══════════════════════════════════════════════════ */
+function CampaignCalendarPanel() {
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
+  const [weeks, setWeeks] = useState<WeekGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedWeek, setSelectedWeek] = useState<WeekGroup | null>(null);
+
+  // 설정
+  const [defaultSlots, setDefaultSlots] = useState<number | null>(null);
+  const [editSlots, setEditSlots] = useState("");
+  const [planLimits, setPlanLimits] = useState<PlanLimits | null>(null);
+  const [editLimits, setEditLimits] = useState<PlanLimits>({ FREE: 0, BOOST: 0, CONTENT: 0 });
+  const [savingSlots, setSavingSlots] = useState(false);
+  const [savingLimits, setSavingLimits] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const loadWeeks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/dashboard/admin/campaigns?year=${year}&month=${month}`);
+      if (res.ok) setWeeks(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, [year, month]);
+
+  useEffect(() => { loadWeeks(); }, [loadWeeks]);
+
+  useEffect(() => {
+    fetch("/api/dashboard/admin/campaigns/week-config")
+      .then((r) => r.json())
+      .then((configs: WeekConfig[]) => {
+        const def = configs.find((c) => c.is_default);
+        if (def) { setDefaultSlots(def.max_slots); setEditSlots(String(def.max_slots)); }
+      })
+      .catch(() => {});
+    fetch("/api/dashboard/admin/campaigns/plan-limits")
+      .then((r) => r.json())
+      .then((lim: PlanLimits) => { setPlanLimits(lim); setEditLimits(lim); })
+      .catch(() => {});
+  }, []);
+
+  async function handleAction(appId: number, action: string, adminNotes: string) {
+    const res = await fetch(`/api/dashboard/admin/campaigns/${appId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, admin_notes: adminNotes }),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      alert(d?.detail ?? "처리 실패");
+      return;
+    }
+    const updated: CampaignApp = await res.json();
+    setWeeks((prev) =>
+      prev.map((w) => ({
+        ...w,
+        applications: w.applications.map((a) => (a.id === updated.id ? updated : a)),
+      }))
+    );
+    setSelectedWeek((prev) =>
+      prev
+        ? { ...prev, applications: prev.applications.map((a) => (a.id === updated.id ? updated : a)) }
+        : null
+    );
+  }
+
+  async function saveSlots() {
+    setSavingSlots(true);
+    const res = await fetch("/api/dashboard/admin/campaigns/week-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_slots: Number(editSlots) }),
+    });
+    setSavingSlots(false);
+    if (res.ok) { setDefaultSlots(Number(editSlots)); alert("저장되었습니다."); }
+    else { const d = await res.json(); alert(d?.detail ?? "저장 실패"); }
+  }
+
+  async function saveLimits() {
+    setSavingLimits(true);
+    const res = await fetch("/api/dashboard/admin/campaigns/plan-limits", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editLimits),
+    });
+    setSavingLimits(false);
+    if (res.ok) { setPlanLimits(editLimits); alert("저장되었습니다."); }
+    else { const d = await res.json(); alert(d?.detail ?? "저장 실패"); }
+  }
+
+  function prevMonth() { if (month === 1) { setYear((y) => y - 1); setMonth(12); } else setMonth((m) => m - 1); }
+  function nextMonth() { if (month === 12) { setYear((y) => y + 1); setMonth(1); } else setMonth((m) => m + 1); }
+
+  function fmtMD(dateStr: string) {
+    const d = new Date(dateStr + "T00:00:00");
+    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* 월간 캘린더 */}
+      <div className="bg-white rounded-2xl shadow-sm p-4">
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">‹</button>
+          <span className="text-sm font-bold text-gray-700">{year}년 {month}월 캠페인</span>
+          <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">›</button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : weeks.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-4">해당 월에 캠페인 데이터가 없습니다</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {weeks.map((w) => {
+              const pendingCount = w.applications.filter((a) => a.status === "PENDING").length;
+              const approvedCount = w.applications.filter((a) => a.status === "APPROVED").length;
+              return (
+                <button
+                  key={w.week_start}
+                  onClick={() => setSelectedWeek(w)}
+                  className="w-full text-left p-3 rounded-xl border border-gray-100 hover:border-periwinkle/50 hover:bg-periwinkle/5 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-700">
+                      {fmtMD(w.week_start)} ~ {fmtMD(w.week_end)}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {pendingCount > 0 && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold">
+                          검토 {pendingCount}
+                        </span>
+                      )}
+                      {approvedCount > 0 && (
+                        <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">
+                          승인 {approvedCount}
+                        </span>
+                      )}
+                      {w.applications.length === 0 && (
+                        <span className="text-[10px] text-gray-300">신청 없음</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* 슬롯 점 */}
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: w.max_slots }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`w-3 h-3 rounded-full border ${
+                          i < w.occupied_slots
+                            ? "bg-periwinkle border-periwinkle"
+                            : "bg-gray-100 border-gray-200"
+                        }`}
+                      />
+                    ))}
+                    <span className="text-[10px] text-gray-400 ml-1">
+                      {w.occupied_slots}/{w.max_slots}
+                    </span>
+                  </div>
+                  {/* 식당 이름 chips */}
+                  {w.applications.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {w.applications.map((a) => (
+                        <span
+                          key={a.id}
+                          className={`text-[10px] px-2 py-0.5 rounded-full ${CAMP_STATUS_STYLE[a.status] ?? "bg-gray-100 text-gray-500"}`}
+                        >
+                          {a.restaurant_name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 캠페인 설정 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <button
+          onClick={() => setSettingsOpen((v) => !v)}
+          className="w-full px-4 py-3 flex items-center justify-between"
+        >
+          <span className="text-sm font-semibold text-gray-700">캠페인 설정</span>
+          <span className="text-gray-400 text-xs">{settingsOpen ? "▲" : "▼"}</span>
+        </button>
+        {settingsOpen && (
+          <div className="px-4 pb-4 flex flex-col gap-4 border-t border-gray-50">
+            {/* 기본 슬롯 수 */}
+            <div className="pt-4">
+              <p className="text-xs font-semibold text-gray-600 mb-2">주당 최대 슬롯 수 (기본값)</p>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={editSlots}
+                  onChange={(e) => setEditSlots(e.target.value)}
+                  className="w-20 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+                />
+                <span className="text-xs text-gray-400">슬롯 / 주</span>
+                <button
+                  onClick={saveSlots}
+                  disabled={savingSlots}
+                  className="ml-auto px-3 py-1.5 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
+                >
+                  {savingSlots ? "저장 중..." : "저장"}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                현재: {defaultSlots !== null ? `${defaultSlots}슬롯` : "—"} · 진행 중인 주는 변경 불가
+              </p>
+            </div>
+
+            {/* 플랜별 월간 한도 */}
+            <div className="border-t border-gray-50 pt-4">
+              <p className="text-xs font-semibold text-gray-600 mb-2">플랜별 월간 캠페인 신청 한도</p>
+              <div className="flex flex-col gap-2">
+                {(["FREE", "BOOST", "CONTENT"] as const).map((plan) => (
+                  <div key={plan} className="flex items-center gap-2">
+                    <span className={`text-xs font-bold w-16 ${
+                      plan === "FREE" ? "text-gray-500" : plan === "BOOST" ? "text-amber-600" : "text-indigo-600"
+                    }`}>
+                      {plan}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={editLimits[plan]}
+                      onChange={(e) => setEditLimits((prev) => ({ ...prev, [plan]: Number(e.target.value) }))}
+                      className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+                    />
+                    <span className="text-xs text-gray-400">건/월</span>
+                    {planLimits && planLimits[plan] !== editLimits[plan] && (
+                      <span className="text-[10px] text-amber-500">변경됨</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={saveLimits}
+                disabled={savingLimits}
+                className="mt-3 w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
+              >
+                {savingLimits ? "저장 중..." : "한도 저장"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 주 상세 드로어 */}
+      {selectedWeek && (
+        <WeekDetailDrawer
+          week={selectedWeek}
+          onClose={() => setSelectedWeek(null)}
+          onAction={handleAction}
+        />
+      )}
+    </div>
+  );
+}
+
 const R_SLOT_DOT:   Record<string, string> = { noon: "bg-amber-400", evening: "bg-indigo-400" };
 const R_SLOT_BG:    Record<string, string> = { noon: "bg-amber-50 text-amber-700", evening: "bg-indigo-50 text-indigo-700" };
 const DAY_KO2 = ["일", "월", "화", "수", "목", "금", "토"];
@@ -1135,7 +1586,7 @@ function RestaurantCalendarPanel() {
    탭: 알림 (푸시 알림 + 식당 알림 캘린더)
 ═══════════════════════════════════════════════════ */
 function NotificationsTab() {
-  const [subTab, setSubTab] = useState<"push" | "restaurant">("push");
+  const [subTab, setSubTab] = useState<"push" | "restaurant" | "campaign">("push");
   const [notifications, setNotifications] = useState<PushNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -1234,7 +1685,8 @@ function NotificationsTab() {
       <div className="flex gap-1 bg-gray-100 rounded-xl p-0.5">
         {([
           { key: "push", label: "푸시 알림" },
-          { key: "restaurant", label: "식당 알림 캘린더" },
+          { key: "restaurant", label: "식당 알림" },
+          { key: "campaign", label: "캠페인 캘린더" },
         ] as const).map(({ key, label }) => (
           <button
             key={key}
@@ -1249,6 +1701,7 @@ function NotificationsTab() {
       </div>
 
       {subTab === "restaurant" && <RestaurantCalendarPanel />}
+      {subTab === "campaign" && <CampaignCalendarPanel />}
 
       {subTab === "push" && <div className="flex flex-col gap-5">
       {/* 알림 작성 폼 */}
