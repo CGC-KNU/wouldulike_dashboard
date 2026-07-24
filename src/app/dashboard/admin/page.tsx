@@ -2003,13 +2003,21 @@ function SettingsTab() {
 }
 
 /* ═══════════════════════════════════════════════════
-   관리자 계정 관리 섹션
+   관리자 계정 관리 섹션 (슈퍼어드민 + 2차 인증)
 ═══════════════════════════════════════════════════ */
-interface AdminAccountItem { username: string; created_at: string; }
+interface AdminAccountItem { username: string; is_active: boolean; created_at: string; }
 
 function AdminAccountsSection() {
+  // 슈퍼어드민 여부
+  const [isSuperadmin, setIsSuperadmin] = useState<boolean | null>(null);
+  // 2차 인증 상태
+  const [unlocked, setUnlocked] = useState(false);
+  const [secPw, setSecPw] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [verifyErr, setVerifyErr] = useState("");
+  // 계정 목록
   const [accounts, setAccounts] = useState<AdminAccountItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [newId, setNewId] = useState("");
   const [newPw, setNewPw] = useState("");
   const [creating, setCreating] = useState(false);
@@ -2018,7 +2026,15 @@ function AdminAccountsSection() {
   const [resetPw, setResetPw] = useState("");
   const [resetting, setResetting] = useState(false);
 
-  const load = useCallback(async () => {
+  // 슈퍼어드민 여부 확인
+  useEffect(() => {
+    fetch("/api/dashboard/admin/me")
+      .then((r) => r.json())
+      .then((d) => setIsSuperadmin(!!d.is_superadmin))
+      .catch(() => setIsSuperadmin(false));
+  }, []);
+
+  const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/dashboard/admin/accounts");
@@ -2026,7 +2042,28 @@ function AdminAccountsSection() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // 2차 인증 성공 후 계정 목록 로드
+  useEffect(() => { if (unlocked) loadAccounts(); }, [unlocked, loadAccounts]);
+
+  async function verify2FA() {
+    if (!secPw) { setVerifyErr("2차 비밀번호를 입력해주세요."); return; }
+    setVerifying(true); setVerifyErr("");
+    const res = await fetch("/api/dashboard/admin/verify-secondary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: secPw }),
+    });
+    const data = await res.json();
+    setVerifying(false);
+    if (data.valid) {
+      setUnlocked(true);
+      setSecPw("");
+    } else if (data.not_set) {
+      setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 위 설정에서 먼저 등록해주세요.");
+    } else {
+      setVerifyErr(data.detail ?? "인증 실패");
+    }
+  }
 
   async function create() {
     if (!newId.trim() || !newPw) { setErr("아이디와 비밀번호를 입력해주세요."); return; }
@@ -2049,6 +2086,18 @@ function AdminAccountsSection() {
     else alert("삭제 실패");
   }
 
+  async function toggleActive(username: string, current: boolean) {
+    const res = await fetch(`/api/dashboard/admin/accounts/${username}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !current }),
+    });
+    if (res.ok) {
+      const d = await res.json();
+      setAccounts((prev) => prev.map((a) => a.username === username ? { ...a, is_active: d.is_active } : a));
+    }
+  }
+
   async function resetPassword() {
     if (!resetTarget || !resetPw) return;
     setResetting(true);
@@ -2062,72 +2111,133 @@ function AdminAccountsSection() {
     else { const d = await res.json(); alert(d.detail ?? "변경 실패"); }
   }
 
+  // 슈퍼어드민이 아니면 렌더링 안 함
+  if (isSuperadmin === null) return null;
+  if (!isSuperadmin) return null;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-4">
+      {/* 헤더 */}
       <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-gray-700">관리자 계정</h2>
-          <p className="text-xs text-gray-400 mt-0.5">최대 8명 · 환경변수 슈퍼어드민 별도</p>
+          <h2 className="text-sm font-semibold text-gray-700">관리자 계정 관리</h2>
+          <p className="text-xs text-gray-400 mt-0.5">슈퍼어드민 전용 · 최대 8명</p>
         </div>
-        <span className="text-xs text-gray-400">{accounts.length}/8</span>
+        {unlocked ? (
+          <span className="text-xs text-green-500 flex items-center gap-1">
+            🔓 <span>{accounts.length}/8</span>
+          </span>
+        ) : (
+          <span className="text-xs text-gray-400">🔒 잠김</span>
+        )}
       </div>
-      {loading ? (
-        <div className="flex justify-center py-4"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
-      ) : accounts.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-4">추가된 관리자 계정이 없습니다</p>
-      ) : (
-        <div className="divide-y divide-gray-50">
-          {accounts.map((a) => (
-            <div key={a.username} className="px-4 py-2.5 flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-800 flex-1">{a.username}</span>
-              <button
-                onClick={() => { setResetTarget(a.username); setResetPw(""); }}
-                className="text-[10px] text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg border border-gray-100 hover:border-periwinkle/40"
-              >
-                비번 초기화
-              </button>
-              <button
-                onClick={() => remove(a.username)}
-                className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
-              >
-                삭제
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      {resetTarget && (
-        <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2">
-          <p className="text-xs font-semibold text-amber-700">{resetTarget} 비밀번호 초기화</p>
-          <input
-            type="password"
-            value={resetPw}
-            onChange={(e) => setResetPw(e.target.value)}
-            placeholder="새 비밀번호 (4자 이상)"
-            className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none bg-white"
-          />
+
+      {/* 2차 인증 게이트 */}
+      {!unlocked ? (
+        <div className="p-4 flex flex-col gap-3">
+          <p className="text-xs text-gray-500">관리자 계정 목록과 권한을 관리하려면 2차 비밀번호를 입력하세요.</p>
+          {verifyErr && <p className="text-xs text-red-500">{verifyErr}</p>}
           <div className="flex gap-2">
-            <button onClick={() => { setResetTarget(null); setResetPw(""); }} className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
-            <button onClick={resetPassword} disabled={resetting} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-60">
-              {resetting ? "변경 중..." : "변경"}
+            <input
+              type="password"
+              value={secPw}
+              onChange={(e) => setSecPw(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") verify2FA(); }}
+              placeholder="2차 비밀번호"
+              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            />
+            <button
+              onClick={verify2FA}
+              disabled={verifying}
+              className="px-4 py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
+            >
+              {verifying ? "확인 중..." : "인증"}
             </button>
           </div>
         </div>
-      )}
-      {accounts.length < 8 && (
-        <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
-          {err && <p className="text-xs text-red-500">{err}</p>}
-          <div className="flex gap-2">
-            <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="새 아이디"
-              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="비밀번호"
-              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-          </div>
-          <button onClick={create} disabled={creating}
-            className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
-            {creating ? "추가 중..." : "계정 추가"}
-          </button>
-        </div>
+      ) : (
+        <>
+          {/* 계정 목록 */}
+          {loading ? (
+            <div className="flex justify-center py-4"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
+          ) : accounts.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-4">추가된 관리자 계정이 없습니다</p>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {accounts.map((a) => (
+                <div key={a.username} className="px-4 py-2.5 flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-800 flex-1">{a.username}</span>
+                  {/* 활성/비활성 뱃지 */}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                    a.is_active ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
+                  }`}>
+                    {a.is_active ? "활성" : "비활성"}
+                  </span>
+                  {/* 활성/비활성 토글 */}
+                  <button
+                    onClick={() => toggleActive(a.username, a.is_active)}
+                    className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
+                      a.is_active
+                        ? "text-amber-500 border-amber-100 hover:border-amber-400"
+                        : "text-green-500 border-green-100 hover:border-green-400"
+                    }`}
+                  >
+                    {a.is_active ? "비활성화" : "활성화"}
+                  </button>
+                  <button
+                    onClick={() => { setResetTarget(a.username); setResetPw(""); }}
+                    className="text-[10px] text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg border border-gray-100 hover:border-periwinkle/40"
+                  >
+                    비번 초기화
+                  </button>
+                  <button
+                    onClick={() => remove(a.username)}
+                    className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
+                  >
+                    삭제
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 비밀번호 초기화 인라인 폼 */}
+          {resetTarget && (
+            <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2">
+              <p className="text-xs font-semibold text-amber-700">{resetTarget} 비밀번호 초기화</p>
+              <input
+                type="password"
+                value={resetPw}
+                onChange={(e) => setResetPw(e.target.value)}
+                placeholder="새 비밀번호 (4자 이상)"
+                className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none bg-white"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => { setResetTarget(null); setResetPw(""); }} className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
+                <button onClick={resetPassword} disabled={resetting} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-60">
+                  {resetting ? "변경 중..." : "변경"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 새 계정 추가 */}
+          {accounts.length < 8 && (
+            <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
+              {err && <p className="text-xs text-red-500">{err}</p>}
+              <div className="flex gap-2">
+                <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="새 아이디"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+                <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="비밀번호"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+              </div>
+              <button onClick={create} disabled={creating}
+                className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
+                {creating ? "추가 중..." : "계정 추가"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
