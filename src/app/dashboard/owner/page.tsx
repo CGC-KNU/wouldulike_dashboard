@@ -161,6 +161,7 @@ export default async function OwnerHomePage({
   }
 
   const ridParam = rid ? `?rid=${rid}` : "";
+  const now = new Date();
 
   // 캠페인: 날짜 역순 정렬 후 최신 8건 (이번 주 + 주변 일정)
   const todayStr = now.toISOString().slice(0, 10);
@@ -183,7 +184,6 @@ export default async function OwnerHomePage({
     .slice(0, 2);
   const notifs = [...upcoming, ...past].slice(0, 5);
 
-  const now = new Date();
   const monthLabel = now.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
 
   return (
