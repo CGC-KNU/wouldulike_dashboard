@@ -1910,26 +1910,25 @@ function ContentTab() {
    탭: 비밀번호 / 관리자 설정
 ═══════════════════════════════════════════════════ */
 function SettingsTab() {
-  const [activeForm, setActiveForm] = useState<null | "main" | "secondary">(null);
+  const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ current: "", next: "", next2: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
-  async function submit(type: "main" | "secondary") {
+  async function submitMainPw() {
     if (form.next !== form.next2) { setMsg({ ok: false, text: "새 비밀번호가 일치하지 않습니다." }); return; }
     if (form.next.length < 4) { setMsg({ ok: false, text: "4자 이상 입력해주세요." }); return; }
-    setSaving(true);
-    setMsg(null);
+    setSaving(true); setMsg(null);
     const res = await fetch("/api/dashboard/admin/password", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, current_password: form.current, new_password: form.next }),
+      body: JSON.stringify({ type: "main", current_password: form.current, new_password: form.next }),
     });
     const data = await res.json();
     if (res.ok) {
       setMsg({ ok: true, text: "변경되었습니다." });
       setForm({ current: "", next: "", next2: "" });
-      setActiveForm(null);
+      setOpen(false);
     } else {
       setMsg({ ok: false, text: data.detail ?? "변경에 실패했습니다." });
     }
@@ -1937,67 +1936,51 @@ function SettingsTab() {
   }
 
   return (
-    <div className="flex flex-col gap-0">
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-50">
-        <h2 className="text-sm font-semibold text-gray-700">슈퍼어드민 비밀번호</h2>
+    <div className="flex flex-col gap-4">
+      {/* 로그인 비밀번호 변경 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50">
+          <h2 className="text-sm font-semibold text-gray-700">로그인 비밀번호</h2>
+          <p className="text-xs text-gray-400 mt-0.5">슈퍼어드민 계정의 로그인 비밀번호를 변경합니다</p>
+        </div>
+        <div className="p-4 flex flex-col gap-2">
+          {msg && (
+            <p className={`text-xs px-3 py-2 rounded-lg ${msg.ok ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+              {msg.text}
+            </p>
+          )}
+          <button
+            onClick={() => { setOpen((v) => !v); setMsg(null); }}
+            className="text-left text-sm font-medium text-gray-700 py-1 flex items-center justify-between"
+          >
+            비밀번호 변경
+            <span className="text-gray-400 text-xs">{open ? "▲" : "▶"}</span>
+          </button>
+          {open && (
+            <div className="flex flex-col gap-2 pt-1">
+              {(["현재 비밀번호", "새 비밀번호", "새 비밀번호 확인"] as const).map((label, i) => {
+                const key = (["current", "next", "next2"] as const)[i];
+                return (
+                  <input
+                    key={key}
+                    type="password"
+                    placeholder={label}
+                    value={form[key]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+                  />
+                );
+              })}
+              <button onClick={submitMainPw} disabled={saving} className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
+                {saving ? "저장 중..." : "저장"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-      <div className="p-4 flex flex-col gap-2">
-        {msg && (
-          <p className={`text-xs px-3 py-2 rounded-lg ${msg.ok ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
-            {msg.text}
-          </p>
-        )}
-        <button
-          onClick={() => { setActiveForm(activeForm === "main" ? null : "main"); setMsg(null); }}
-          className="text-left text-sm font-medium text-gray-700 py-2 flex items-center justify-between"
-        >
-          일반 비밀번호 변경
-          <span className="text-gray-400 text-xs">{activeForm === "main" ? "▲" : "▶"}</span>
-        </button>
-        {activeForm === "main" && (
-          <div className="flex flex-col gap-2 pb-2">
-            {(["현재 비밀번호", "새 비밀번호", "새 비밀번호 확인"] as const).map((label, i) => {
-              const key = (["current", "next", "next2"] as const)[i];
-              return (
-                <input
-                  key={key}
-                  type="password"
-                  placeholder={label}
-                  value={form[key]}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-                />
-              );
-            })}
-            <button onClick={() => submit("main")} disabled={saving} className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
-              {saving ? "저장 중..." : "저장"}
-            </button>
-          </div>
-        )}
 
-        <hr className="border-gray-100" />
-
-        <button
-          onClick={() => { setActiveForm(activeForm === "secondary" ? null : "secondary"); setMsg(null); }}
-          className="text-left text-sm font-medium text-gray-700 py-2 flex items-center justify-between"
-        >
-          2차 비밀번호 설정 (삭제 확인용)
-          <span className="text-gray-400 text-xs">{activeForm === "secondary" ? "▲" : "▶"}</span>
-        </button>
-        {activeForm === "secondary" && (
-          <div className="flex flex-col gap-2 pb-2">
-            <input type="password" placeholder="현재 2차 비밀번호 (최초 설정 시 빈칸)" value={form.current} onChange={(e) => setForm((f) => ({ ...f, current: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-            <input type="password" placeholder="새 2차 비밀번호" value={form.next} onChange={(e) => setForm((f) => ({ ...f, next: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-            <input type="password" placeholder="새 2차 비밀번호 확인" value={form.next2} onChange={(e) => setForm((f) => ({ ...f, next2: e.target.value }))} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-            <button onClick={() => submit("secondary")} disabled={saving} className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
-              {saving ? "저장 중..." : "저장"}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-    <AdminAccountsSection />
+      {/* 계정 관리 (2차 인증 필요) */}
+      <AdminAccountsSection />
     </div>
   );
 }
@@ -2059,7 +2042,7 @@ function AdminAccountsSection() {
       setUnlocked(true);
       setSecPw("");
     } else if (data.not_set) {
-      setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 위 설정에서 먼저 등록해주세요.");
+      setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
     } else {
       setVerifyErr(data.detail ?? "인증 실패");
     }

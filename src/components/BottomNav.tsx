@@ -5,9 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 const NAV_BASE = [
   { base: "/dashboard/owner", label: "홈", icon: HomeIcon, exact: true },
-  { base: "/dashboard/owner/analytics", label: "분석", icon: ChartIcon, exact: false },
-  { base: "/dashboard/owner/coupons", label: "쿠폰·스탬프", icon: CouponIcon, exact: false },
-  { base: "/dashboard/owner/marketing", label: "마케팅", icon: MegaphoneIcon, exact: false },
+  { base: "/dashboard/owner/restaurant", label: "식당", icon: StoreIcon, exact: false },
   { base: "/dashboard/owner/plan", label: "플랜", icon: PlanIcon, exact: false },
 ];
 
@@ -54,51 +52,29 @@ function HomeIcon({ active }: { active: boolean }) {
   );
 }
 
-function ChartIcon({ active }: { active: boolean }) {
+function StoreIcon({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
       <path
-        d="M4 20V14M9 20V8M14 20V12M19 20V4"
-        stroke="currentColor"
-        strokeWidth={active ? 2.5 : 1.8}
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function CouponIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <rect
-        x="2"
-        y="6"
-        width="20"
-        height="12"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth={active ? 2.5 : 1.8}
-      />
-      <path
-        d="M15 6V18M15 10H18M15 14H18"
-        stroke="currentColor"
-        strokeWidth={active ? 2.5 : 1.8}
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function MegaphoneIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M3 12H8L18 6V18L8 12H3V8H3V12ZM3 12V16"
+        d="M3 9l1-5h16l1 5"
         stroke="currentColor"
         strokeWidth={active ? 2.5 : 1.8}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      <path
+        d="M3 9h18M3 9c0 1.1-.9 2-2 2s-2-.9-2-2M21 9c0 1.1.9 2 2 2s2-.9 2-2M3 9c0 1.1.9 2 2 2s2-.9 2-2M9 9c0 1.1.9 2 2 2s2-.9 2-2M15 9c0 1.1.9 2 2 2s2-.9 2-2"
+        stroke="currentColor"
+        strokeWidth={active ? 2.5 : 1.8}
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 11v8a1 1 0 001 1h12a1 1 0 001-1v-8"
+        stroke="currentColor"
+        strokeWidth={active ? 2.5 : 1.8}
+        strokeLinecap="round"
+      />
+      <rect x="9" y="14" width="6" height="6" rx="0.5" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} />
     </svg>
   );
 }
@@ -106,12 +82,8 @@ function MegaphoneIcon({ active }: { active: boolean }) {
 function PlanIcon({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-        stroke="currentColor"
-        strokeWidth={active ? 2.5 : 1.8}
-        strokeLinejoin="round"
-      />
+      <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} />
+      <path d="M8 12h8M8 8h5M8 16h3" stroke="currentColor" strokeWidth={active ? 2.5 : 1.8} strokeLinecap="round" />
     </svg>
   );
 }
