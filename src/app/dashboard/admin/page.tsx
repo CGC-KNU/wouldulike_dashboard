@@ -81,16 +81,6 @@ const TIER_STYLE: Record<string, string> = {
   BOOST: "bg-amber-100 text-amber-700",
   CONTENT: "bg-indigo-100 text-indigo-700",
 };
-const DUMMY_CAMPAIGNS = [
-  { id: 1, restaurant: "정든밤", title: "여름 특가 10% 쿠폰", submitted: "2026-06-24", status: "검수중" },
-  { id: 2, restaurant: "봄봄김밥", title: "단골 무료 음료 이벤트", submitted: "2026-06-23", status: "검수중" },
-  { id: 3, restaurant: "오마카세 숲", title: "주말 한정 세트 할인", submitted: "2026-06-22", status: "반영됨" },
-];
-const CAMPAIGN_STATUS_STYLE: Record<string, string> = {
-  검수중: "bg-amber-100 text-amber-700",
-  반영됨: "bg-green-100 text-green-700",
-  종료: "bg-gray-100 text-gray-500",
-};
 const CAMP_STATUS_LABEL: Record<string, string> = {
   PENDING: "검토 중", APPROVED: "승인", REJECTED: "반려",
   REJECTED_HOLD: "반려(재신청)", CANCELLED: "취소",
@@ -136,6 +126,13 @@ function RestaurantDrawer({
   const [deleteError, setDeleteError] = useState("");
   const [actionPending, setActionPending] = useState(false);
 
+  // 홍보물 관리
+  const [posterUrl, setPosterUrl] = useState("");
+  const [qrUrl, setQrUrl] = useState("");
+  const [promoLoading, setPromoLoading] = useState(true);
+  const [promoSaving, setPromoSaving] = useState(false);
+  const [promoSaved, setPromoSaved] = useState(false);
+
   useEffect(() => {
     fetch(`/api/dashboard/stats?rid=${r.restaurant_id}`)
       .then((res) => res.json())
@@ -146,7 +143,27 @@ function RestaurantDrawer({
       .then((res) => res.json())
       .then((data: unknown[]) => setCampaignCount(Array.isArray(data) ? data.length : null))
       .catch(() => setCampaignCount(null));
+    fetch(`/api/dashboard/admin/promo-files/${r.restaurant_id}`)
+      .then((res) => res.json())
+      .then((data: { poster_url?: string; qr_url?: string }) => {
+        setPosterUrl(data.poster_url ?? "");
+        setQrUrl(data.qr_url ?? "");
+      })
+      .catch(() => {})
+      .finally(() => setPromoLoading(false));
   }, [r.restaurant_id]);
+
+  async function savePromoFiles() {
+    setPromoSaving(true);
+    setPromoSaved(false);
+    const res = await fetch(`/api/dashboard/admin/promo-files/${r.restaurant_id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ poster_url: posterUrl, qr_url: qrUrl }),
+    });
+    if (res.ok) setPromoSaved(true);
+    setPromoSaving(false);
+  }
 
   async function toggleAffiliate() {
     setActionPending(true);
@@ -234,6 +251,70 @@ function RestaurantDrawer({
               </div>
             ) : (
               <p className="text-xs text-gray-400 text-center py-1">통계를 불러오지 못했습니다.</p>
+            )}
+          </div>
+
+          {/* ── 홍보물 파일 관리 ── */}
+          <div className="bg-gray-50 rounded-xl p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-gray-500">홍보물 파일</p>
+              {!promoLoading && (
+                <div className="flex items-center gap-2">
+                  {(posterUrl || qrUrl) && (
+                    <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full">설정됨</span>
+                  )}
+                  {promoSaved && (
+                    <span className="text-[10px] text-periwinkle">저장됨 ✓</span>
+                  )}
+                </div>
+              )}
+            </div>
+            {promoLoading ? (
+              <div className="flex justify-center py-2">
+                <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div>
+                  <label className="text-[10px] text-gray-400 mb-1 block">포스터 URL</label>
+                  <input
+                    type="url"
+                    value={posterUrl}
+                    onChange={(e) => { setPosterUrl(e.target.value); setPromoSaved(false); }}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle transition-colors"
+                  />
+                  {posterUrl && (
+                    <a href={posterUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-[10px] text-periwinkle mt-0.5 inline-block hover:underline">
+                      미리보기 →
+                    </a>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400 mb-1 block">QR 스티커 URL</label>
+                  <input
+                    type="url"
+                    value={qrUrl}
+                    onChange={(e) => { setQrUrl(e.target.value); setPromoSaved(false); }}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle transition-colors"
+                  />
+                  {qrUrl && (
+                    <a href={qrUrl} target="_blank" rel="noopener noreferrer"
+                       className="text-[10px] text-periwinkle mt-0.5 inline-block hover:underline">
+                      미리보기 →
+                    </a>
+                  )}
+                </div>
+                <button
+                  onClick={savePromoFiles}
+                  disabled={promoSaving}
+                  className="mt-1 w-full py-2 rounded-lg bg-periwinkle text-white text-xs font-bold hover:bg-navy transition-colors disabled:opacity-60"
+                >
+                  {promoSaving ? "저장 중..." : "홍보물 URL 저장"}
+                </button>
+              </div>
             )}
           </div>
 
@@ -1623,6 +1704,12 @@ function MarketingTab() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  // 푸시 알림 2차 비번 잠금
+  const [pushUnlocked, setPushUnlocked] = useState(false);
+  const [pushSecPw, setPushSecPw] = useState("");
+  const [pushVerifying, setPushVerifying] = useState(false);
+  const [pushVerifyErr, setPushVerifyErr] = useState("");
+
   // 폼 상태
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -1650,7 +1737,28 @@ function MarketingTab() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // 푸시 알림은 잠금 해제 후에만 로드
+  useEffect(() => { if (pushUnlocked) load(); }, [pushUnlocked, load]);
+
+  async function verifyPush() {
+    if (!pushSecPw) { setPushVerifyErr("2차 비밀번호를 입력해주세요."); return; }
+    setPushVerifying(true); setPushVerifyErr("");
+    const res = await fetch("/api/dashboard/admin/verify-secondary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pushSecPw }),
+    });
+    const data = await res.json();
+    setPushVerifying(false);
+    if (data.valid) {
+      setPushUnlocked(true);
+      setPushSecPw("");
+    } else if (data.not_set) {
+      setPushVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
+    } else {
+      setPushVerifyErr(data.detail ?? "인증 실패");
+    }
+  }
 
   async function create() {
     if (!title.trim()) { setFormErr("제목을 입력하세요."); return; }
@@ -1735,7 +1843,33 @@ function MarketingTab() {
       {subTab === "restaurant" && <RestaurantCalendarPanel />}
       {subTab === "campaign" && <CampaignCalendarPanel />}
 
-      {subTab === "push" && <div className="flex flex-col gap-5">
+      {subTab === "push" && (!pushUnlocked ? (
+        <div className="bg-white rounded-2xl shadow-sm p-5 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🔒</span>
+            <p className="text-sm font-semibold text-gray-700">푸시 알림</p>
+          </div>
+          <p className="text-xs text-gray-500">접근하려면 2차 비밀번호를 입력하세요.</p>
+          {pushVerifyErr && <p className="text-xs text-red-500">{pushVerifyErr}</p>}
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={pushSecPw}
+              onChange={(e) => setPushSecPw(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") verifyPush(); }}
+              placeholder="2차 비밀번호"
+              className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            />
+            <button
+              onClick={verifyPush}
+              disabled={pushVerifying}
+              className="px-4 py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
+            >
+              {pushVerifying ? "확인 중..." : "인증"}
+            </button>
+          </div>
+        </div>
+      ) : <div className="flex flex-col gap-5">
       {/* 알림 작성 폼 */}
       <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-gray-700">알림 예약</h2>
@@ -1867,7 +2001,7 @@ function MarketingTab() {
           </div>
         )}
       </div>
-      </div>}
+      </div>)}
     </div>
   );
 }
@@ -2281,46 +2415,11 @@ function RestaurantsTab() {
   return (
     <>
       {/* 요약 카드 */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        {[
-          { label: "전체 식당", value: loading ? "—" : restaurants.length },
-          { label: "검수 대기", value: DUMMY_CAMPAIGNS.filter((c) => c.status === "검수중").length },
-          { label: "이번 달 활성 유저", value: 317 },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-2xl p-4 shadow-sm">
-            <p className="text-xs text-gray-400">{label}</p>
-            <p className="text-2xl font-bold text-navy mt-1">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* 캠페인 검수 */}
-      <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">캠페인 검수</h2>
-          <span className="text-xs text-amber-600 font-semibold">
-            {DUMMY_CAMPAIGNS.filter((c) => c.status === "검수중").length}건 대기
-          </span>
+      <div className="grid grid-cols-1 gap-3 mb-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <p className="text-xs text-gray-400">전체 식당</p>
+          <p className="text-2xl font-bold text-navy mt-1">{loading ? "—" : restaurants.length}</p>
         </div>
-        <ul className="divide-y divide-gray-50">
-          {DUMMY_CAMPAIGNS.map((c) => (
-            <li key={c.id} className="flex items-center px-4 py-3 gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{c.title}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{c.restaurant} · {c.submitted}</p>
-              </div>
-              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full shrink-0 ${CAMPAIGN_STATUS_STYLE[c.status]}`}>
-                {c.status}
-              </span>
-              {c.status === "검수중" && (
-                <div className="flex gap-1.5 shrink-0">
-                  <button className="text-xs px-3 py-1 bg-green-100 text-green-700 font-semibold rounded-lg">승인</button>
-                  <button className="text-xs px-3 py-1 bg-red-50 text-red-500 font-semibold rounded-lg">반려</button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
       </div>
 
       {/* 식당 목록 */}

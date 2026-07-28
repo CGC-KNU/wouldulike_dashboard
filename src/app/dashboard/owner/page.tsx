@@ -43,6 +43,11 @@ interface CouponBenefit {
   active: boolean;
 }
 
+interface PromoFiles {
+  poster_url: string;
+  qr_url: string;
+}
+
 /* ─── 데이터 패치 ──────────────────────────────────── */
 async function fetchStats(token: string, rid?: string): Promise<Stats | null> {
   try {
@@ -98,6 +103,19 @@ async function fetchNotifications(token: string): Promise<NotifSchedule[]> {
   return [...cur, ...next];
 }
 
+async function fetchPromoFiles(token: string, rid?: string): Promise<PromoFiles> {
+  try {
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/promo-files/`);
+    if (rid) url.searchParams.set("restaurant_id", rid);
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return { poster_url: "", qr_url: "" };
+    return await res.json();
+  } catch { return { poster_url: "", qr_url: "" }; }
+}
+
 async function fetchCoupons(token: string, rid?: string): Promise<CouponBenefit[]> {
   try {
     const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/coupon-benefits/`);
@@ -128,11 +146,12 @@ export default async function OwnerHomePage({
     if (payload.is_admin && !rid) redirect("/dashboard/admin");
   } catch { /* 무시 */ }
 
-  const [stats, campaigns, notifications, coupons] = await Promise.all([
+  const [stats, campaigns, notifications, coupons, promoFiles] = await Promise.all([
     fetchStats(token, rid),
     fetchCampaigns(token),
     fetchNotifications(token),
     fetchCoupons(token, rid),
+    fetchPromoFiles(token, rid),
   ]);
 
   if (!stats) {
@@ -151,6 +170,7 @@ export default async function OwnerHomePage({
       campaigns={campaigns}
       notifications={notifications}
       coupons={coupons}
+      promoFiles={promoFiles}
       ridParam={ridParam}
     />
   );

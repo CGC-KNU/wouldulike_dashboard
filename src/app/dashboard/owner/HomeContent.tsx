@@ -104,6 +104,11 @@ interface CouponBenefit {
   active: boolean;
 }
 
+interface PromoFiles {
+  poster_url: string;
+  qr_url: string;
+}
+
 /* ─── 상수 ────────────────────────────────────────── */
 const TIER_BADGE: Record<string, string> = {
   FREE:    "bg-gray-100 text-gray-500 border border-gray-200",
@@ -147,55 +152,70 @@ function benefitLabel(bj: Record<string, unknown>): string {
 }
 
 /* ─── 쿠폰 카드 ──────────────────────────────────── */
-function CouponCard({ coupon, restaurantName }: { coupon: CouponBenefit; restaurantName: string }) {
+function CouponCard({
+  coupon,
+  restaurantName,
+  href,
+}: {
+  coupon: CouponBenefit;
+  restaurantName: string;
+  href: string;
+}) {
   const bl = benefitLabel(coupon.benefit_json);
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-card via-[#0d1a35] to-navy p-5 text-white shadow-lg">
-      {/* 브랜드 퍼리윙클 장식 원 */}
-      <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-periwinkle/10" />
-      <div className="absolute -bottom-6 right-6 w-20 h-20 rounded-full bg-periwinkle/8" />
+    <Link href={href} className="block group">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-card via-[#0d1a35] to-navy p-5 text-white shadow-lg group-hover:shadow-xl transition-shadow duration-200">
+        {/* 브랜드 퍼리윙클 장식 원 */}
+        <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-periwinkle/10" />
+        <div className="absolute -bottom-6 right-6 w-20 h-20 rounded-full bg-periwinkle/8" />
 
-      <p className="text-[11px] text-gray-400 mb-1 font-medium tracking-wide">{restaurantName}</p>
-      <p className="text-xl font-extrabold leading-tight mb-1">{coupon.title}</p>
-      {bl && <p className="text-sm font-bold text-gold mb-2">{bl}</p>}
-      {coupon.subtitle && <p className="text-xs text-gray-400 mb-1">{coupon.subtitle}</p>}
-      {coupon.notes && (
-        <p className="text-[11px] text-gray-500 border-t border-white/10 mt-2 pt-2 leading-relaxed">
-          {coupon.notes}
-        </p>
-      )}
+        <div className="flex items-start justify-between mb-1">
+          <p className="text-[11px] text-gray-400 font-medium tracking-wide">{restaurantName}</p>
+          <span className="text-[10px] text-gray-500 flex items-center gap-1">
+            수정
+            <IC.ChevronRight size={10} />
+          </span>
+        </div>
+        <p className="text-xl font-extrabold leading-tight mb-1">{coupon.title}</p>
+        {bl && <p className="text-sm font-bold text-gold mb-2">{bl}</p>}
+        {coupon.subtitle && <p className="text-xs text-gray-400 mb-1">{coupon.subtitle}</p>}
+        {coupon.notes && (
+          <p className="text-[11px] text-gray-500 border-t border-white/10 mt-2 pt-2 leading-relaxed">
+            {coupon.notes}
+          </p>
+        )}
 
-      {/* 노치 효과 */}
-      <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-background" />
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-background" />
-    </div>
+        {/* 노치 효과 */}
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-background" />
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-background" />
+      </div>
+    </Link>
   );
 }
 
 /* ─── 홍보물 다운로드 블록 ───────────────────────── */
-function PromoMaterialsBlock() {
-  const [tapped, setTapped] = useState(false);
-
+function PromoMaterialsBlock({ promoFiles }: { promoFiles: PromoFiles }) {
   const items = [
-    { Icon: IC.Image, name: "포스터 (A4)", desc: "매장 비치용 인쇄 파일", iconCls: "bg-blue-50 text-blue-500" },
-    { Icon: IC.Qr,    name: "QR 스티커",   desc: "우주라이크 앱 QR 코드", iconCls: "bg-violet-50 text-violet-500" },
+    {
+      Icon: IC.Image,
+      name: "포스터 (A4)",
+      desc: "매장 비치용 인쇄 파일",
+      iconCls: "bg-blue-50 text-blue-500",
+      url: promoFiles.poster_url,
+    },
+    {
+      Icon: IC.Qr,
+      name: "QR 스티커",
+      desc: "우주라이크 앱 QR 코드",
+      iconCls: "bg-violet-50 text-violet-500",
+      url: promoFiles.qr_url,
+    },
   ];
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="px-4 pt-4 pb-3 border-b border-gray-50">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-periwinkle/10 flex items-center justify-center">
-            <IC.Box size={16} cls="text-periwinkle" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-gray-800">홍보물</h2>
-            <p className="text-[11px] text-gray-400 mt-0.5">포스터 · QR 스티커 · 현수막</p>
-          </div>
-        </div>
-      </div>
       <div className="px-4 py-3 flex flex-col gap-1">
-        {items.map(({ Icon, name, desc, iconCls }) => (
+        {items.map(({ Icon, name, desc, iconCls, url }) => (
           <div key={name} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
             <div className="flex items-center gap-3">
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${iconCls}`}>
@@ -206,20 +226,21 @@ function PromoMaterialsBlock() {
                 <p className="text-xs text-gray-400">{desc}</p>
               </div>
             </div>
-            <button
-              onClick={() => setTapped(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-periwinkle border border-periwinkle/25 px-3 py-1.5 rounded-xl hover:bg-periwinkle/5 active:scale-95 transition-all duration-150"
-            >
-              <IC.Download size={13} />
-              다운로드
-            </button>
+            {url ? (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs font-semibold text-periwinkle border border-periwinkle/25 px-3 py-1.5 rounded-xl hover:bg-periwinkle/5 active:scale-95 transition-all duration-150"
+              >
+                <IC.Download size={13} />
+                다운로드
+              </a>
+            ) : (
+              <span className="text-xs text-gray-300 px-2">준비 중</span>
+            )}
           </div>
         ))}
-        {tapped && (
-          <p className="text-[11px] text-center text-gray-400 py-1.5">
-            파일은 <span className="font-semibold text-gray-600">우주라이크 팀</span>에서 직접 제공합니다.
-          </p>
-        )}
       </div>
     </div>
   );
@@ -231,12 +252,14 @@ export default function HomeContent({
   campaigns,
   notifications,
   coupons,
+  promoFiles,
   ridParam,
 }: {
   stats: Stats;
   campaigns: CampaignApp[];
   notifications: NotifSchedule[];
   coupons: CouponBenefit[];
+  promoFiles: PromoFiles;
   ridParam: string;
 }) {
   const [monthOffset, setMonthOffset] = useState(0);
@@ -470,7 +493,11 @@ export default function HomeContent({
             적용 중인 쿠폰
           </p>
           {activeCoupon ? (
-            <CouponCard coupon={activeCoupon} restaurantName={stats.restaurant_name} />
+            <CouponCard
+              coupon={activeCoupon}
+              restaurantName={stats.restaurant_name}
+              href={`/dashboard/owner/restaurant${ridParam ? `${ridParam}&tab=coupon` : "?tab=coupon"}`}
+            />
           ) : (
             <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-center">
               <p className="text-xs text-gray-400">등록된 쿠폰이 없습니다</p>
@@ -486,7 +513,7 @@ export default function HomeContent({
       </div>
 
       {/* ── 홍보물 블록 ── */}
-      <PromoMaterialsBlock />
+      <PromoMaterialsBlock promoFiles={promoFiles} />
 
       {/* ── 통계 ── */}
       <div className="grid grid-cols-2 gap-3">
