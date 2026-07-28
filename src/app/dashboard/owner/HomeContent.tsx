@@ -3,6 +3,68 @@
 import { useState } from "react";
 import Link from "next/link";
 
+/* ─── SVG 아이콘 ─────────────────────────────────────── */
+const IC = {
+  Box: ({ size = 18, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+      <line x1="12" y1="22.08" x2="12" y2="12"/>
+    </svg>
+  ),
+  Image: ({ size = 18, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <circle cx="8.5" cy="8.5" r="1.5"/>
+      <polyline points="21 15 16 10 5 21"/>
+    </svg>
+  ),
+  Qr: ({ size = 18, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.75"/>
+      <rect x="14" y="2" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.75"/>
+      <rect x="2" y="14" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.75"/>
+      <rect x="4.5" y="4.5" width="3" height="3" rx="0.5" fill="currentColor"/>
+      <rect x="16.5" y="4.5" width="3" height="3" rx="0.5" fill="currentColor"/>
+      <rect x="4.5" y="16.5" width="3" height="3" rx="0.5" fill="currentColor"/>
+      <rect x="14" y="14" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
+      <rect x="18.5" y="14" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
+      <rect x="14" y="18.5" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
+      <rect x="18.5" y="18.5" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
+    </svg>
+  ),
+  Store: ({ size = 20, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  ),
+  Ticket: ({ size = 20, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
+      <line x1="9" y1="12" x2="15" y2="12"/>
+    </svg>
+  ),
+  Download: ({ size = 14, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  ),
+  Bell: ({ size = 13, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  ),
+  ChevronRight: ({ size = 14, cls = "" }: { size?: number; cls?: string }) => (
+    <svg width={size} height={size} className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  ),
+};
+
 /* ─── 타입 ────────────────────────────────────────── */
 interface Stats {
   revisit_this_month: number;
@@ -44,9 +106,9 @@ interface CouponBenefit {
 
 /* ─── 상수 ────────────────────────────────────────── */
 const TIER_BADGE: Record<string, string> = {
-  FREE:    "bg-gray-200 text-gray-600",
-  BOOST:   "bg-amber-400 text-amber-900",
-  CONTENT: "bg-indigo-500 text-white",
+  FREE:    "bg-gray-100 text-gray-500 border border-gray-200",
+  BOOST:   "bg-gold text-white",
+  CONTENT: "bg-periwinkle text-white",
 };
 
 const TIER_NAME: Record<string, string> = {
@@ -61,11 +123,11 @@ const CAMP_STATUS: Record<string, { label: string; cls: string }> = {
   CANCELLED:     { label: "취소",    cls: "bg-gray-100 text-gray-400 border-gray-200"    },
 };
 
-const CAMP_TYPE: Record<string, { week: number; label: string; icon: string; color: string; dotCls: string }> = {
-  BANNER:          { week: 1, label: "배너",           icon: "📌", color: "bg-sky-50 text-sky-700 border-sky-200",       dotCls: "bg-sky-400"    },
-  COUPON_CAMPAIGN: { week: 2, label: "한정쿠폰 캠페인", icon: "🎟", color: "bg-violet-50 text-violet-700 border-violet-200", dotCls: "bg-violet-400" },
-  MILEAGE_DOUBLE:  { week: 3, label: "마일리지 2배",    icon: "⚡", color: "bg-amber-50 text-amber-700 border-amber-200",  dotCls: "bg-amber-400"  },
-  INSTANT_BANNER:  { week: 4, label: "즉석 배너",       icon: "📣", color: "bg-rose-50 text-rose-700 border-rose-200",    dotCls: "bg-rose-400"   },
+const CAMP_TYPE: Record<string, { week: number; label: string; color: string; dotCls: string; badgeCls: string }> = {
+  BANNER:          { week: 1, label: "배너",           color: "bg-sky-50 text-sky-700 border-sky-200",         dotCls: "bg-sky-400",    badgeCls: "bg-sky-100 text-sky-700"       },
+  COUPON_CAMPAIGN: { week: 2, label: "한정쿠폰 캠페인", color: "bg-violet-50 text-violet-700 border-violet-200", dotCls: "bg-violet-400", badgeCls: "bg-violet-100 text-violet-700"  },
+  MILEAGE_DOUBLE:  { week: 3, label: "마일리지 2배",    color: "bg-amber-50 text-amber-700 border-amber-200",   dotCls: "bg-amber-400",  badgeCls: "bg-amber-100 text-amber-700"   },
+  INSTANT_BANNER:  { week: 4, label: "즉석 배너",       color: "bg-rose-50 text-rose-700 border-rose-200",     dotCls: "bg-rose-400",   badgeCls: "bg-rose-100 text-rose-700"     },
 };
 
 const SLOT_LABEL: Record<string, string> = { noon: "정오", evening: "저녁" };
@@ -88,24 +150,24 @@ function benefitLabel(bj: Record<string, unknown>): string {
 function CouponCard({ coupon, restaurantName }: { coupon: CouponBenefit; restaurantName: string }) {
   const bl = benefitLabel(coupon.benefit_json);
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-900 via-gray-800 to-navy p-5 text-white shadow-lg">
-      {/* 장식 원 */}
-      <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/5" />
-      <div className="absolute -bottom-4 -right-2 w-16 h-16 rounded-full bg-white/5" />
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-card via-[#0d1a35] to-navy p-5 text-white shadow-lg">
+      {/* 브랜드 퍼리윙클 장식 원 */}
+      <div className="absolute -top-8 -right-8 w-28 h-28 rounded-full bg-periwinkle/10" />
+      <div className="absolute -bottom-6 right-6 w-20 h-20 rounded-full bg-periwinkle/8" />
 
       <p className="text-[11px] text-gray-400 mb-1 font-medium tracking-wide">{restaurantName}</p>
       <p className="text-xl font-extrabold leading-tight mb-1">{coupon.title}</p>
-      {bl && <p className="text-sm font-semibold text-amber-300 mb-2">{bl}</p>}
+      {bl && <p className="text-sm font-bold text-gold mb-2">{bl}</p>}
       {coupon.subtitle && <p className="text-xs text-gray-400 mb-1">{coupon.subtitle}</p>}
       {coupon.notes && (
-        <p className="text-[10px] text-gray-500 border-t border-white/10 mt-2 pt-2">
-          ● {coupon.notes}
+        <p className="text-[11px] text-gray-500 border-t border-white/10 mt-2 pt-2 leading-relaxed">
+          {coupon.notes}
         </p>
       )}
 
-      {/* 좌우 노치 효과 */}
-      <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-gray-100" />
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-gray-100" />
+      {/* 노치 효과 */}
+      <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-background" />
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-background" />
     </div>
   );
 }
@@ -113,40 +175,48 @@ function CouponCard({ coupon, restaurantName }: { coupon: CouponBenefit; restaur
 /* ─── 홍보물 다운로드 블록 ───────────────────────── */
 function PromoMaterialsBlock() {
   const [tapped, setTapped] = useState(false);
+
+  const items = [
+    { Icon: IC.Image, name: "포스터 (A4)", desc: "매장 비치용 인쇄 파일", iconCls: "bg-blue-50 text-blue-500" },
+    { Icon: IC.Qr,    name: "QR 스티커",   desc: "우주라이크 앱 QR 코드", iconCls: "bg-violet-50 text-violet-500" },
+  ];
+
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="px-4 pt-4 pb-3 border-b border-gray-50">
-        <div className="flex items-center gap-2">
-          <span className="text-base">📦</span>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-periwinkle/10 flex items-center justify-center">
+            <IC.Box size={16} cls="text-periwinkle" />
+          </div>
           <div>
             <h2 className="text-sm font-bold text-gray-800">홍보물</h2>
             <p className="text-[11px] text-gray-400 mt-0.5">포스터 · QR 스티커 · 현수막</p>
           </div>
         </div>
       </div>
-      <div className="px-4 py-3 flex flex-col gap-2">
-        {[
-          { icon: "🖼", name: "포스터 (A4)", desc: "매장 비치용 인쇄 파일" },
-          { icon: "📱", name: "QR 스티커",   desc: "우주라이크 앱 QR 코드" },
-        ].map(({ icon, name, desc }) => (
-          <div key={name} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <div className="px-4 py-3 flex flex-col gap-1">
+        {items.map(({ Icon, name, desc, iconCls }) => (
+          <div key={name} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
             <div className="flex items-center gap-3">
-              <span className="text-xl">{icon}</span>
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${iconCls}`}>
+                <Icon size={16} />
+              </div>
               <div>
                 <p className="text-sm font-medium text-gray-700">{name}</p>
-                <p className="text-[10px] text-gray-400">{desc}</p>
+                <p className="text-xs text-gray-400">{desc}</p>
               </div>
             </div>
             <button
               onClick={() => setTapped(true)}
-              className="text-xs font-semibold text-periwinkle border border-periwinkle/30 px-3 py-1.5 rounded-xl hover:bg-periwinkle/5 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold text-periwinkle border border-periwinkle/25 px-3 py-1.5 rounded-xl hover:bg-periwinkle/5 active:scale-95 transition-all duration-150"
             >
+              <IC.Download size={13} />
               다운로드
             </button>
           </div>
         ))}
         {tapped && (
-          <p className="text-[11px] text-center text-gray-400 py-1">
+          <p className="text-[11px] text-center text-gray-400 py-1.5">
             파일은 <span className="font-semibold text-gray-600">우주라이크 팀</span>에서 직접 제공합니다.
           </p>
         )}
@@ -178,10 +248,10 @@ export default function HomeContent({
   // 선택된 월 계산
   const selDate  = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
   const selYear  = selDate.getFullYear();
-  const selMonth = selDate.getMonth(); // 0-indexed
+  const selMonth = selDate.getMonth();
   const monthLabel = selDate.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
 
-  // 선택된 달의 캠페인 (week_start 기준)
+  // 선택된 달의 캠페인
   const monthCamps = campaigns
     .filter((c) => {
       const ws = new Date(c.week_start);
@@ -200,7 +270,7 @@ export default function HomeContent({
     const sorted = [...campaigns].sort((a, b) => b.week_start.localeCompare(a.week_start));
     const groups: Record<string, CampaignApp[]> = {};
     sorted.forEach((c) => {
-      const key = c.week_start.slice(0, 7); // YYYY-MM
+      const key = c.week_start.slice(0, 7);
       if (!groups[key]) groups[key] = [];
       groups[key].push(c);
     });
@@ -220,29 +290,32 @@ export default function HomeContent({
     <div className="px-4 pt-5 max-w-lg mx-auto pb-8 flex flex-col gap-4">
 
       {/* ── 헤더 ── */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between pt-1">
         <div>
           <h1 className="text-xl font-bold text-navy leading-tight">{stats.restaurant_name}</h1>
           <p className="text-[11px] text-gray-400 mt-0.5">{monthLabel}</p>
         </div>
-        <span className={`text-xs font-bold px-2.5 py-1 rounded-full mt-1 ${TIER_BADGE[stats.tier] ?? "bg-gray-200 text-gray-600"}`}>
+        <span className={`text-xs font-bold px-2.5 py-1 rounded-full mt-1 ${TIER_BADGE[stats.tier] ?? TIER_BADGE.FREE}`}>
           {TIER_NAME[stats.tier] ?? stats.tier}
         </span>
       </div>
 
-      {/* ── 마케팅 현황 블록 ── */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      {/* ── 마케팅 현황 블록 (Primary Card) ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
 
         {/* 블록 헤더 + 월 네비게이터 */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-3">
-          <div>
-            <h2 className="text-sm font-bold text-gray-800">마케팅 현황</h2>
-            <p className="text-[11px] text-gray-400 mt-0.5">계약 일정에 따라 자동 운영됩니다</p>
+        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-50">
+          <div className="flex items-center gap-2.5">
+            <div className="w-1 h-6 rounded-full bg-periwinkle" />
+            <div>
+              <h2 className="text-sm font-bold text-gray-800">마케팅 현황</h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">계약 일정에 따라 자동 운영됩니다</p>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={() => setMonthOffset((v) => v - 1)}
-              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 19L9 12l6-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
@@ -251,31 +324,34 @@ export default function HomeContent({
             </span>
             <button
               onClick={() => setMonthOffset((v) => v + 1)}
-              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 19l6-7-6-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
           </div>
         </div>
 
-        {/* 이번 주 활성 캠페인 (현재 달일 때만) */}
+        {/* 이번 주 활성 캠페인 */}
         {isCurrentMonth && activeCampaign && (() => {
           const tp = CAMP_TYPE[activeCampaign.campaign_type] ?? CAMP_TYPE.COUPON_CAMPAIGN;
           return (
-            <div className="mx-4 mb-3">
-              <div className="rounded-2xl border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-3 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-16 h-16 rounded-full bg-green-100/50 -translate-y-4 translate-x-4" />
-                <div className="flex items-center gap-2 mb-1">
+            <div className="mx-4 mt-3 mb-1">
+              <div className="rounded-xl border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-3 relative overflow-hidden">
+                <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full bg-green-100/40" />
+                <div className="flex items-center gap-2 mb-1.5">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
                   </span>
                   <span className="text-xs font-bold text-green-700">이번 주 진행 중</span>
                 </div>
-                <p className="text-sm font-bold text-green-800">
-                  {tp.icon} {tp.week}주차 · {tp.label}
-                </p>
-                <p className="text-[11px] text-green-600 mt-0.5">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${tp.badgeCls}`}>
+                    {tp.week}주차
+                  </span>
+                  <p className="text-sm font-bold text-green-800">{tp.label}</p>
+                </div>
+                <p className="text-[11px] text-green-600 mt-1">
                   {fmtMD(activeCampaign.week_start)} ~ {fmtMD(activeCampaign.week_end)}
                 </p>
               </div>
@@ -284,7 +360,7 @@ export default function HomeContent({
         })()}
 
         {/* 이달 캠페인 일정 */}
-        <div className="px-4 pb-1">
+        <div className="px-4 pt-3 pb-1">
           <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
             {monthLabel} 캠페인 일정
           </p>
@@ -300,19 +376,16 @@ export default function HomeContent({
                 const isActive = c.week_start <= todayStr && todayStr <= c.week_end && c.status === "APPROVED";
                 const isPast   = c.week_end < todayStr;
                 return (
-                  <li key={c.id} className={`flex items-center gap-3 py-3 ${isPast && !isActive ? "opacity-50" : ""}`}>
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 ${tp.dotCls} bg-opacity-15`}>
-                      <span>{tp.icon}</span>
+                  <li key={c.id} className={`flex items-center gap-3 py-3 transition-opacity ${isPast && !isActive ? "opacity-40" : ""}`}>
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${tp.badgeCls}`}>
+                      {tp.week}주
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] text-gray-400">
                         {fmtMD(c.week_start)} ~ {fmtMD(c.week_end)}
                         {isActive && <span className="ml-1.5 text-green-600 font-semibold">● 진행중</span>}
                       </p>
-                      <p className="text-sm font-semibold text-gray-700 mt-0.5">
-                        <span className="text-gray-400 text-xs font-normal mr-1">{tp.week}주차</span>
-                        {tp.label}
-                      </p>
+                      <p className="text-sm font-semibold text-gray-700 mt-0.5">{tp.label}</p>
                     </div>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${st.cls}`}>
                       {st.label}
@@ -324,15 +397,15 @@ export default function HomeContent({
           )}
         </div>
 
-        {/* 예정 알림 (소형) */}
+        {/* 예정 알림 */}
         {upcomingNotifs.length > 0 && (
-          <div className="px-4 pb-2">
-            <div className="bg-blue-50 rounded-xl px-3 py-2.5">
+          <div className="px-4 pb-3">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
               <p className="text-[10px] font-semibold text-blue-400 mb-1.5 uppercase tracking-wide">예정 알림</p>
               {upcomingNotifs.map((n) => (
                 <div key={n.id} className="flex items-center gap-2 text-xs text-blue-700">
-                  <span>🔔</span>
-                  <span className="text-blue-500">{fmtMD(n.date)} {SLOT_LABEL[n.slot]}</span>
+                  <IC.Bell size={12} cls="text-blue-400 shrink-0" />
+                  <span className="text-blue-500 shrink-0">{fmtMD(n.date)} {SLOT_LABEL[n.slot]}</span>
                   {n.content && <span className="truncate text-blue-700">{n.content}</span>}
                 </div>
               ))}
@@ -346,7 +419,7 @@ export default function HomeContent({
           className="w-full flex items-center justify-center gap-1.5 py-3 text-[11px] font-semibold text-gray-400 hover:text-periwinkle border-t border-gray-50 transition-colors"
         >
           <span>{showHistory ? "이력 접기" : "캠페인 전체 이력 보기"}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={`transition-transform ${showHistory ? "rotate-180" : ""}`}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={`transition-transform duration-200 ${showHistory ? "rotate-180" : ""}`}>
             <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
@@ -365,18 +438,20 @@ export default function HomeContent({
                   return (
                     <div key={key}>
                       <p className="text-[11px] font-bold text-gray-500 mb-1.5">{label}</p>
-                      <div className="flex flex-col divide-y divide-gray-50 bg-gray-50 rounded-xl overflow-hidden">
+                      <div className="flex flex-col divide-y divide-gray-100 bg-gray-50 rounded-xl overflow-hidden">
                         {camps.map((c) => {
                           const tp = CAMP_TYPE[c.campaign_type] ?? CAMP_TYPE.COUPON_CAMPAIGN;
                           const st = CAMP_STATUS[c.status] ?? CAMP_STATUS.PENDING;
                           return (
                             <div key={c.id} className="flex items-center gap-2.5 px-3 py-2.5">
-                              <span className="text-sm">{tp.icon}</span>
+                              <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 ${tp.badgeCls}`}>
+                                {tp.week}
+                              </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[10px] text-gray-400">{fmtMD(c.week_start)}~{fmtMD(c.week_end)}</p>
-                                <p className="text-xs font-medium text-gray-700">{tp.week}주 · {tp.label}</p>
+                                <p className="text-xs font-medium text-gray-700">{tp.label}</p>
                               </div>
-                              <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 ${st.cls}`}>{st.label}</span>
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 ${st.cls}`}>{st.label}</span>
                             </div>
                           );
                         })}
@@ -390,29 +465,24 @@ export default function HomeContent({
         )}
 
         {/* 적용 쿠폰 */}
-        {activeCoupon && (
-          <div className="px-4 pb-4 border-t border-gray-100">
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mt-3 mb-2">
-              적용 중인 쿠폰
-            </p>
+        <div className="px-4 pb-4 border-t border-gray-100">
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mt-3 mb-2">
+            적용 중인 쿠폰
+          </p>
+          {activeCoupon ? (
             <CouponCard coupon={activeCoupon} restaurantName={stats.restaurant_name} />
-          </div>
-        )}
-
-        {/* 쿠폰 없음 안내 */}
-        {!activeCoupon && (
-          <div className="px-4 pb-4 border-t border-gray-100">
-            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mt-3 mb-2">
-              적용 중인 쿠폰
-            </p>
-            <div className="rounded-xl bg-gray-50 px-4 py-3 text-center">
+          ) : (
+            <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-center">
               <p className="text-xs text-gray-400">등록된 쿠폰이 없습니다</p>
-              <Link href={`/dashboard/owner/restaurant${ridParam}`} className="text-[11px] text-periwinkle font-medium mt-0.5 inline-block">
+              <Link
+                href={`/dashboard/owner/restaurant${ridParam ? `${ridParam}&tab=coupon` : "?tab=coupon"}`}
+                className="text-[11px] text-periwinkle font-medium mt-0.5 inline-block hover:underline"
+              >
                 쿠폰 등록하기 →
               </Link>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ── 홍보물 블록 ── */}
@@ -420,23 +490,31 @@ export default function HomeContent({
 
       {/* ── 통계 ── */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-2xl shadow-sm px-4 py-4 flex flex-col gap-1">
-          <p className="text-[11px] text-gray-400">이번 달 재방문</p>
-          <p className="text-2xl font-bold text-navy">
-            {stats.revisit_this_month}
-            <span className="text-sm font-normal text-gray-400 ml-1">명</span>
-          </p>
-          <p className="text-[10px] text-gray-400">
-            누적 단골 <span className="font-semibold text-gray-600">{stats.loyal_total}명</span>
-          </p>
+        {/* 재방문 */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="h-0.5 bg-periwinkle" />
+          <div className="px-4 py-4 flex flex-col gap-1">
+            <p className="text-[11px] text-gray-400">이번 달 재방문</p>
+            <p className="text-2xl font-bold text-navy">
+              {stats.revisit_this_month}
+              <span className="text-sm font-normal text-gray-400 ml-1">명</span>
+            </p>
+            <p className="text-xs text-gray-400">
+              누적 단골 <span className="font-semibold text-gray-600">{stats.loyal_total}명</span>
+            </p>
+          </div>
         </div>
-        <div className="bg-white rounded-2xl shadow-sm px-4 py-4 flex flex-col gap-1">
-          <p className="text-[11px] text-gray-400">찜한 사용자</p>
-          <p className="text-2xl font-bold text-navy">
-            {stats.wishlist_count ?? 0}
-            <span className="text-sm font-normal text-gray-400 ml-1">명</span>
-          </p>
-          <p className="text-[10px] text-gray-400">알림 발송 대상</p>
+        {/* 찜 */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="h-0.5 bg-gold" />
+          <div className="px-4 py-4 flex flex-col gap-1">
+            <p className="text-[11px] text-gray-400">찜한 사용자</p>
+            <p className="text-2xl font-bold text-navy">
+              {stats.wishlist_count ?? 0}
+              <span className="text-sm font-normal text-gray-400 ml-1">명</span>
+            </p>
+            <p className="text-xs text-gray-400">알림 발송 대상</p>
+          </div>
         </div>
       </div>
 
@@ -444,22 +522,26 @@ export default function HomeContent({
       <div className="grid grid-cols-2 gap-3">
         <Link
           href={`/dashboard/owner/restaurant${ridParam}`}
-          className="flex flex-col gap-2 bg-white rounded-2xl shadow-sm px-4 py-4 hover:bg-gray-50 transition-colors"
+          className="group flex flex-col gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-4 hover:border-periwinkle/30 hover:shadow-md transition-all duration-200"
         >
-          <span className="text-2xl">🏪</span>
+          <div className="w-10 h-10 rounded-xl bg-periwinkle/10 flex items-center justify-center text-periwinkle group-hover:bg-periwinkle/15 transition-colors">
+            <IC.Store size={20} />
+          </div>
           <div>
             <p className="text-sm font-bold text-gray-800">식당 정보</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">정보 수정 · PIN 변경</p>
+            <p className="text-xs text-gray-400 mt-0.5">정보 수정 · PIN 변경</p>
           </div>
         </Link>
         <Link
           href={`/dashboard/owner/restaurant${ridParam ? `${ridParam}&tab=coupon` : "?tab=coupon"}`}
-          className="flex flex-col gap-2 bg-white rounded-2xl shadow-sm px-4 py-4 hover:bg-gray-50 transition-colors"
+          className="group flex flex-col gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-4 hover:border-periwinkle/30 hover:shadow-md transition-all duration-200"
         >
-          <span className="text-2xl">🎟</span>
+          <div className="w-10 h-10 rounded-xl bg-navy/8 flex items-center justify-center text-navy group-hover:bg-navy/12 transition-colors">
+            <IC.Ticket size={20} />
+          </div>
           <div>
             <p className="text-sm font-bold text-gray-800">쿠폰 & 스탬프</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">쿠폰 수정 · 스탬프 확인</p>
+            <p className="text-xs text-gray-400 mt-0.5">쿠폰 수정 · 스탬프 확인</p>
           </div>
         </Link>
       </div>
