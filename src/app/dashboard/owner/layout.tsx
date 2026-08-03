@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
-import BottomNav from "@/components/BottomNav";
 import AdminViewBanner from "@/components/DevModeBanner";
+import { ViewModeProvider } from "@/contexts/ViewModeContext";
+import OwnerNavWrapper from "@/components/OwnerNavWrapper";
 
 export default async function OwnerLayout({
   children,
@@ -22,10 +23,11 @@ export default async function OwnerLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {isAdmin && <AdminViewBanner currentMode="owner" />}
-      <main className="flex-1 pb-20">{children}</main>
-      <BottomNav />
-    </div>
+    <ViewModeProvider>
+      <div className="min-h-screen bg-background">
+        {isAdmin && <AdminViewBanner currentMode="owner" />}
+        <OwnerNavWrapper>{children}</OwnerNavWrapper>
+      </div>
+    </ViewModeProvider>
   );
 }
