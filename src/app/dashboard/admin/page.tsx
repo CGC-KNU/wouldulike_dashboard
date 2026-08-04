@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import SatelliteTab from "./satellite/SatelliteTab";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -37,7 +38,21 @@ interface PopupItem {
 }
 type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
-type Tab = "restaurants" | "content" | "notifications" | "settings";
+type Tab = "restaurants" | "content" | "notifications" | "satellite" | "settings";
+
+type AdminRole = "SUPERADMIN" | "ADMIN" | "MARKETING";
+type SatelliteRole = "LEAD" | "MEMBER";
+
+interface AdminMe {
+  username: string;
+  display_name: string;
+  role: AdminRole;
+  satellite_role: SatelliteRole;
+  is_superadmin: boolean;
+  is_admin: boolean;
+  is_marketing: boolean;
+  account_id: number | null;
+}
 
 interface CampaignApp {
   id: number;
@@ -2120,30 +2135,53 @@ function SettingsTab() {
 }
 
 /* ═══════════════════════════════════════════════════
-   관리자 계정 관리 섹션 (슈퍼어드민 + 2차 인증)
+   대시보드 계정 관리 (슈퍼관리자 + 2차 인증)
+   관리자 / 마케팅 계정을 우주라이크 ID로 생성한다.
 ═══════════════════════════════════════════════════ */
-interface AdminAccountItem { username: string; is_active: boolean; created_at: string; }
+interface AdminAccountItem {
+  username: string;
+  display_name: string;
+  role: AdminRole;
+  satellite_role: SatelliteRole;
+  weekly_quota: number;
+  is_active: boolean;
+  has_password: boolean;
+  active_from: string | null;
+  active_until: string | null;
+  created_at: string;
+}
+interface RoleQuota { role: AdminRole; used: number; max: number; }
+
+const ROLE_META: Record<AdminRole, { label: string; cls: string }> = {
+  SUPERADMIN: { label: "슈퍼관리자", cls: "bg-navy text-white" },
+  ADMIN: { label: "관리자", cls: "bg-periwinkle/15 text-periwinkle" },
+  MARKETING: { label: "마케팅", cls: "bg-amber-100 text-amber-700" },
+};
+const ROLE_ORDER: AdminRole[] = ["SUPERADMIN", "ADMIN", "MARKETING"];
 
 function AdminAccountsSection() {
-  // 슈퍼어드민 여부
   const [isSuperadmin, setIsSuperadmin] = useState<boolean | null>(null);
-  // 2차 인증 상태
+  // 2차 인증
   const [unlocked, setUnlocked] = useState(false);
   const [secPw, setSecPw] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [verifyErr, setVerifyErr] = useState("");
-  // 계정 목록
+  // 목록
   const [accounts, setAccounts] = useState<AdminAccountItem[]>([]);
+  const [quota, setQuota] = useState<RoleQuota[]>([]);
   const [loading, setLoading] = useState(false);
+  // 신규 계정
   const [newId, setNewId] = useState("");
-  const [newPw, setNewPw] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState<AdminRole>("ADMIN");
+  const [newSatRole, setNewSatRole] = useState<SatelliteRole>("MEMBER");
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState("");
-  const [resetTarget, setResetTarget] = useState<string | null>(null);
-  const [resetPw, setResetPw] = useState("");
-  const [resetting, setResetting] = useState(false);
+  // 비밀번호 설정
+  const [pwTarget, setPwTarget] = useState<string | null>(null);
+  const [pwValue, setPwValue] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
 
-  // 슈퍼어드민 여부 확인
   useEffect(() => {
     fetch("/api/dashboard/admin/me")
       .then((r) => r.json())
@@ -2155,11 +2193,14 @@ function AdminAccountsSection() {
     setLoading(true);
     try {
       const res = await fetch("/api/dashboard/admin/accounts");
-      if (res.ok) setAccounts(await res.json());
+      if (res.ok) {
+        const d = await res.json();
+        setAccounts(d.accounts ?? []);
+        setQuota(d.quota ?? []);
+      }
     } finally { setLoading(false); }
   }, []);
 
-  // 2차 인증 성공 후 계정 목록 로드
   useEffect(() => { if (unlocked) loadAccounts(); }, [unlocked, loadAccounts]);
 
   async function verify2FA() {
@@ -2172,87 +2213,90 @@ function AdminAccountsSection() {
     });
     const data = await res.json();
     setVerifying(false);
-    if (data.valid) {
-      setUnlocked(true);
-      setSecPw("");
-    } else if (data.not_set) {
-      setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
-    } else {
-      setVerifyErr(data.detail ?? "인증 실패");
-    }
+    if (data.valid) { setUnlocked(true); setSecPw(""); }
+    else if (data.not_set) setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
+    else setVerifyErr(data.detail ?? "인증 실패");
   }
 
   async function create() {
-    if (!newId.trim() || !newPw) { setErr("아이디와 비밀번호를 입력해주세요."); return; }
+    if (!newId.trim()) { setErr("우주라이크 ID를 입력해주세요."); return; }
     setCreating(true); setErr("");
     const res = await fetch("/api/dashboard/admin/accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: newId.trim(), password: newPw }),
+      body: JSON.stringify({
+        username: newId.trim(),
+        display_name: newName.trim(),
+        role: newRole,
+        satellite_role: newSatRole,
+      }),
     });
     const data = await res.json();
-    if (res.ok) { setAccounts((prev) => [...prev, data]); setNewId(""); setNewPw(""); }
-    else setErr(data.detail ?? "생성 실패");
     setCreating(false);
+    if (res.ok) {
+      setNewId(""); setNewName("");
+      await loadAccounts();
+    } else setErr(data.detail ?? "생성 실패");
+  }
+
+  async function patchAccount(username: string, body: Record<string, unknown>) {
+    const res = await fetch(`/api/dashboard/admin/accounts/${username}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(d.detail ?? "변경 실패"); return false; }
+    setAccounts((prev) => prev.map((a) => (a.username === username ? { ...a, ...d } : a)));
+    return true;
   }
 
   async function remove(username: string) {
     if (!confirm(`"${username}" 계정을 삭제할까요?`)) return;
     const res = await fetch(`/api/dashboard/admin/accounts/${username}`, { method: "DELETE" });
-    if (res.ok || res.status === 204) setAccounts((prev) => prev.filter((a) => a.username !== username));
-    else alert("삭제 실패");
-  }
-
-  async function toggleActive(username: string, current: boolean) {
-    const res = await fetch(`/api/dashboard/admin/accounts/${username}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !current }),
-    });
-    if (res.ok) {
-      const d = await res.json();
-      setAccounts((prev) => prev.map((a) => a.username === username ? { ...a, is_active: d.is_active } : a));
+    if (res.ok || res.status === 204) {
+      setAccounts((prev) => prev.filter((a) => a.username !== username));
+      loadAccounts();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert(d.detail ?? "삭제 실패");
     }
   }
 
-  async function resetPassword() {
-    if (!resetTarget || !resetPw) return;
-    setResetting(true);
-    const res = await fetch(`/api/dashboard/admin/accounts/${resetTarget}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ new_password: resetPw }),
-    });
-    setResetting(false);
-    if (res.ok) { alert("비밀번호가 변경되었습니다."); setResetTarget(null); setResetPw(""); }
-    else { const d = await res.json(); alert(d.detail ?? "변경 실패"); }
+  async function savePassword() {
+    if (!pwTarget || pwValue.length < 4) return;
+    setPwSaving(true);
+    const ok = await patchAccount(pwTarget, { new_password: pwValue });
+    setPwSaving(false);
+    if (ok) { alert("비밀번호가 설정되었습니다."); setPwTarget(null); setPwValue(""); }
   }
 
-  // 슈퍼어드민이 아니면 렌더링 안 함
-  if (isSuperadmin === null) return null;
-  if (!isSuperadmin) return null;
+  if (isSuperadmin === null || !isSuperadmin) return null;
+
+  const totalUsed = quota.reduce((s, q) => s + q.used, 0);
+  const totalMax = quota.reduce((s, q) => s + q.max, 0);
+  const isFull = (role: AdminRole) => {
+    const q = quota.find((x) => x.role === role);
+    return q ? q.used >= q.max : false;
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-4">
       {/* 헤더 */}
       <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-gray-700">관리자 계정 관리</h2>
-          <p className="text-xs text-gray-400 mt-0.5">슈퍼어드민 전용 · 최대 8명</p>
+          <h2 className="text-sm font-semibold text-gray-700">대시보드 계정 관리</h2>
+          <p className="text-xs text-gray-400 mt-0.5">슈퍼관리자 전용 · 관리자 / 마케팅</p>
         </div>
-        {unlocked ? (
-          <span className="text-xs text-green-500 flex items-center gap-1">
-            🔓 <span>{accounts.length}/8</span>
-          </span>
-        ) : (
-          <span className="text-xs text-gray-400">🔒 잠김</span>
-        )}
+        <span className={`text-xs flex items-center gap-1 ${unlocked ? "text-green-500" : "text-gray-400"}`}>
+          {unlocked ? `🔓 ${totalUsed}/${totalMax}` : "🔒 잠김"}
+        </span>
       </div>
 
       {/* 2차 인증 게이트 */}
       {!unlocked ? (
         <div className="p-4 flex flex-col gap-3">
-          <p className="text-xs text-gray-500">관리자 계정 목록과 권한을 관리하려면 2차 비밀번호를 입력하세요.</p>
+          <p className="text-xs text-gray-500">계정 목록과 권한을 관리하려면 2차 비밀번호를 입력하세요.</p>
           {verifyErr && <p className="text-xs text-red-500">{verifyErr}</p>}
           <div className="flex gap-2">
             <input
@@ -2263,97 +2307,179 @@ function AdminAccountsSection() {
               placeholder="2차 비밀번호"
               className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
             />
-            <button
-              onClick={verify2FA}
-              disabled={verifying}
-              className="px-4 py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
-            >
+            <button onClick={verify2FA} disabled={verifying}
+              className="px-4 py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
               {verifying ? "확인 중..." : "인증"}
             </button>
           </div>
         </div>
       ) : (
         <>
+          {/* 정원 현황 */}
+          <div className="px-4 py-2.5 border-b border-gray-50 flex gap-2">
+            {quota.map((q) => (
+              <div key={q.role} className="flex-1 rounded-xl bg-gray-50 px-2.5 py-2">
+                <p className="text-[10px] text-gray-400">{ROLE_META[q.role].label}</p>
+                <p className={`text-sm font-bold ${q.used >= q.max ? "text-amber-600" : "text-gray-700"}`}>
+                  {q.used}<span className="text-[11px] font-normal text-gray-400">/{q.max}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+
           {/* 계정 목록 */}
           {loading ? (
-            <div className="flex justify-center py-4"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
+            <div className="flex justify-center py-5"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
           ) : accounts.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-4">추가된 관리자 계정이 없습니다</p>
+            <p className="text-xs text-gray-400 text-center py-5">등록된 계정이 없습니다</p>
           ) : (
             <div className="divide-y divide-gray-50">
               {accounts.map((a) => (
-                <div key={a.username} className="px-4 py-2.5 flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-800 flex-1">{a.username}</span>
-                  {/* 활성/비활성 뱃지 */}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    a.is_active ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
-                  }`}>
-                    {a.is_active ? "활성" : "비활성"}
-                  </span>
-                  {/* 활성/비활성 토글 */}
-                  <button
-                    onClick={() => toggleActive(a.username, a.is_active)}
-                    className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
-                      a.is_active
-                        ? "text-amber-500 border-amber-100 hover:border-amber-400"
-                        : "text-green-500 border-green-100 hover:border-green-400"
-                    }`}
-                  >
-                    {a.is_active ? "비활성화" : "활성화"}
-                  </button>
-                  <button
-                    onClick={() => { setResetTarget(a.username); setResetPw(""); }}
-                    className="text-[10px] text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg border border-gray-100 hover:border-periwinkle/40"
-                  >
-                    비번 초기화
-                  </button>
-                  <button
-                    onClick={() => remove(a.username)}
-                    className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
-                  >
-                    삭제
-                  </button>
+                <div key={a.username} className="px-4 py-3 flex flex-col gap-2">
+                  {/* 1행 — ID · 이름 · 배지 */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-800">{a.username}</span>
+                    {a.display_name && <span className="text-xs text-gray-400">{a.display_name}</span>}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${ROLE_META[a.role].cls}`}>
+                      {ROLE_META[a.role].label}
+                    </span>
+                    {a.satellite_role === "LEAD" && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-periwinkle/10 text-periwinkle">
+                        세틀 리드
+                      </span>
+                    )}
+                    {!a.has_password && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-50 text-red-500">
+                        비번 미설정
+                      </span>
+                    )}
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      a.is_active ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
+                    }`}>
+                      {a.is_active ? "활성" : "비활성"}
+                    </span>
+                  </div>
+
+                  {/* 2행 — 역할 조작 */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <select
+                      value={a.role}
+                      onChange={(e) => patchAccount(a.username, { role: e.target.value })}
+                      className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
+                    >
+                      {ROLE_ORDER.map((r) => (
+                        <option key={r} value={r}>{ROLE_META[r].label}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={a.satellite_role}
+                      onChange={(e) => patchAccount(a.username, { satellite_role: e.target.value })}
+                      className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
+                    >
+                      <option value="MEMBER">세틀 멤버</option>
+                      <option value="LEAD">세틀 리드</option>
+                    </select>
+                    <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                      주
+                      <input
+                        type="number" min={0} max={20}
+                        defaultValue={a.weekly_quota}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value);
+                          if (v !== a.weekly_quota) patchAccount(a.username, { weekly_quota: v });
+                        }}
+                        className="w-10 text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1 py-1 text-center focus:outline-none focus:border-periwinkle"
+                      />
+                      건
+                    </label>
+
+                    <button
+                      onClick={() => patchAccount(a.username, { is_active: !a.is_active })}
+                      className={`ml-auto text-[10px] px-2 py-1 rounded-lg border transition-colors ${
+                        a.is_active
+                          ? "text-amber-500 border-amber-100 hover:border-amber-400"
+                          : "text-green-500 border-green-100 hover:border-green-400"
+                      }`}
+                    >
+                      {a.is_active ? "비활성화" : "활성화"}
+                    </button>
+                    <button
+                      onClick={() => { setPwTarget(a.username); setPwValue(""); }}
+                      className="text-[10px] text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg border border-gray-100 hover:border-periwinkle/40"
+                    >
+                      {a.has_password ? "비번 변경" : "비번 설정"}
+                    </button>
+                    {a.role !== "MARKETING" && (
+                      <button
+                        onClick={() => remove(a.username)}
+                        className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
+                      >
+                        삭제
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* 비밀번호 초기화 인라인 폼 */}
-          {resetTarget && (
+          {/* 비밀번호 설정 인라인 폼 */}
+          {pwTarget && (
             <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2">
-              <p className="text-xs font-semibold text-amber-700">{resetTarget} 비밀번호 초기화</p>
+              <p className="text-xs font-semibold text-amber-700">{pwTarget} 비밀번호 설정</p>
               <input
                 type="password"
-                value={resetPw}
-                onChange={(e) => setResetPw(e.target.value)}
+                value={pwValue}
+                onChange={(e) => setPwValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") savePassword(); }}
                 placeholder="새 비밀번호 (4자 이상)"
                 className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none bg-white"
               />
               <div className="flex gap-2">
-                <button onClick={() => { setResetTarget(null); setResetPw(""); }} className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
-                <button onClick={resetPassword} disabled={resetting} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-60">
-                  {resetting ? "변경 중..." : "변경"}
+                <button onClick={() => { setPwTarget(null); setPwValue(""); }}
+                  className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
+                <button onClick={savePassword} disabled={pwSaving || pwValue.length < 4}
+                  className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-60">
+                  {pwSaving ? "저장 중..." : "설정"}
                 </button>
               </div>
             </div>
           )}
 
           {/* 새 계정 추가 */}
-          {accounts.length < 8 && (
-            <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
-              {err && <p className="text-xs text-red-500">{err}</p>}
-              <div className="flex gap-2">
-                <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="새 아이디"
-                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-                <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="비밀번호"
-                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-              </div>
-              <button onClick={create} disabled={creating}
-                className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
-                {creating ? "추가 중..." : "계정 추가"}
-              </button>
+          <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
+            <p className="text-[11px] font-semibold text-gray-500">계정 추가</p>
+            {err && <p className="text-xs text-red-500">{err}</p>}
+            <div className="flex gap-2">
+              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="우주라이크 ID"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="표시 이름"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
             </div>
-          )}
+            <div className="flex gap-2">
+              <select value={newRole} onChange={(e) => setNewRole(e.target.value as AdminRole)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle">
+                {ROLE_ORDER.map((r) => (
+                  <option key={r} value={r} disabled={isFull(r)}>
+                    {ROLE_META[r].label}{isFull(r) ? " (정원 초과)" : ""}
+                  </option>
+                ))}
+              </select>
+              <select value={newSatRole} onChange={(e) => setNewSatRole(e.target.value as SatelliteRole)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle">
+                <option value="MEMBER">세틀라이트 멤버</option>
+                <option value="LEAD">세틀라이트 리드</option>
+              </select>
+            </div>
+            <button onClick={create} disabled={creating || isFull(newRole)}
+              className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
+              {creating ? "추가 중..." : "계정 추가"}
+            </button>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              비밀번호 없이 생성됩니다. 생성 후 목록에서 &quot;비번 설정&quot;을 눌러 직접 지정하세요 —
+              설정 전까지는 로그인이 차단됩니다.
+            </p>
+          </div>
         </>
       )}
     </div>
@@ -2502,39 +2628,105 @@ function RestaurantsTab() {
 /* ═══════════════════════════════════════════════════
    메인 페이지
 ═══════════════════════════════════════════════════ */
-const TABS: { key: Tab; label: string }[] = [
-  { key: "restaurants", label: "식당 관리" },
-  { key: "content", label: "배너 & 팝업" },
-  { key: "notifications", label: "마케팅" },
-  { key: "settings", label: "관리자 설정" },
+const TABS: { key: Tab; label: string; roles: AdminRole[] }[] = [
+  { key: "restaurants", label: "식당 관리", roles: ["SUPERADMIN", "ADMIN"] },
+  { key: "content", label: "배너 & 팝업", roles: ["SUPERADMIN", "ADMIN"] },
+  { key: "notifications", label: "마케팅", roles: ["SUPERADMIN", "ADMIN"] },
+  { key: "satellite", label: "세틀라이트", roles: ["SUPERADMIN", "ADMIN", "MARKETING"] },
+  { key: "settings", label: "관리자 설정", roles: ["SUPERADMIN"] },
 ];
 
 export default function AdminHomePage() {
-  const [activeTab, setActiveTab] = useState<Tab>("restaurants");
+  const [me, setMe] = useState<AdminMe | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab | null>(null);
+
+  useEffect(() => {
+    fetch("/api/dashboard/admin/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: AdminMe | null) => {
+        if (!d) {
+          // 구 토큰 등으로 role 을 못 읽으면 최소 권한으로 취급
+          setMe({
+            username: "",
+            display_name: "",
+            role: "MARKETING",
+            satellite_role: "MEMBER",
+            is_superadmin: false,
+            is_admin: false,
+            is_marketing: true,
+            account_id: null,
+          });
+          return;
+        }
+        setMe(d);
+      })
+      .catch(() => setMe(null));
+  }, []);
+
+  // role 이 정해지면 기본 탭 결정 — 마케팅은 세틀라이트로 착지
+  useEffect(() => {
+    if (!me || activeTab) return;
+    const url = new URL(window.location.href);
+    const wanted = url.searchParams.get("tab") as Tab | null;
+    const allowed = TABS.filter((t) => t.roles.includes(me.role));
+    if (wanted && allowed.some((t) => t.key === wanted)) {
+      setActiveTab(wanted);
+    } else {
+      setActiveTab(allowed[0]?.key ?? "satellite");
+    }
+  }, [me, activeTab]);
+
+  if (!me || !activeTab) {
+    return (
+      <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
+        <div className="h-9 bg-gray-100 rounded-2xl animate-pulse mb-5" />
+        <div className="h-40 bg-white rounded-2xl border border-gray-100 animate-pulse" />
+      </div>
+    );
+  }
+
+  const visibleTabs = TABS.filter((t) => t.roles.includes(me.role));
+  const isSatelliteOnly = visibleTabs.length === 1 && visibleTabs[0].key === "satellite";
 
   return (
     <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
-      {/* 탭 헤더 */}
-      <div className="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-5">
-        {TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 py-2 text-xs font-semibold rounded-xl transition-all ${
-              activeTab === key
-                ? "bg-white text-navy shadow-sm"
-                : "text-gray-400 hover:text-gray-600"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* 마케팅 전용 계정이면 탭 바 대신 헤더를 보여준다 */}
+      {isSatelliteOnly ? (
+        <div className="flex items-center justify-between mb-5 px-1">
+          <div>
+            <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Satellite</p>
+            <h1 className="text-lg font-bold text-navy leading-tight">인스타그램 제작 콘솔</h1>
+          </div>
+          <span className="text-[11px] text-gray-400">
+            {me.display_name || me.username}
+            <span className="ml-1.5 text-[10px] font-semibold text-periwinkle">
+              {me.satellite_role === "LEAD" ? "리드" : "멤버"}
+            </span>
+          </span>
+        </div>
+      ) : (
+        <div className="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-5">
+          {visibleTabs.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 py-2 text-xs font-semibold rounded-xl transition-all ${
+                activeTab === key
+                  ? "bg-white text-navy shadow-sm"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 탭 컨텐츠 */}
       {activeTab === "restaurants" && <RestaurantsTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "notifications" && <MarketingTab />}
+      {activeTab === "satellite" && <SatelliteTab />}
       {activeTab === "settings" && <SettingsTab />}
     </div>
   );
