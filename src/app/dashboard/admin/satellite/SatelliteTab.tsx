@@ -6,6 +6,46 @@ import PlanCalendar from "./PlanCalendar";
 import PlanTable from "./PlanTable";
 import { ContentPlan, MyWeek, PlansResponse, SatelliteMember, fmtMD } from "./types";
 
+/* ─── 에러 표현 ───────────────────────────────────── */
+
+interface LoadError {
+  status: number | null;   // null = 요청 자체가 실패
+  detail: string;
+  hint?: string;
+  source: string;          // 어느 호출에서 났는지
+}
+
+/** 상태 코드별로 사람이 읽을 수 있는 안내를 붙인다. */
+function describe(status: number, detail: string): { detail: string; hint?: string } {
+  if (status === 401) return { detail, hint: "세션이 만료됐습니다. 다시 로그인해주세요." };
+  if (status === 403) return { detail, hint: "이 계정에는 세틀라이트 접근 권한이 없습니다. 슈퍼관리자에게 역할 확인을 요청하세요." };
+  if (status === 404) return { detail, hint: "API 경로를 찾을 수 없습니다. 백엔드에 satellite 앱이 등록됐는지 확인하세요." };
+  if (status === 502) return { detail, hint: "백엔드에 연결하지 못했습니다. 서버 상태를 확인하세요." };
+  if (status >= 500) {
+    const schema = /does not exist|no such table|ProgrammingError|UndefinedTable|UndefinedColumn/i.test(detail);
+    return {
+      detail,
+      hint: schema
+        ? "DB 스키마가 코드보다 뒤처져 있습니다. `python manage.py migrate` 를 실행해주세요."
+        : "서버 내부 오류입니다. 백엔드 로그를 확인해주세요.",
+    };
+  }
+  return { detail };
+}
+
+/** fetch 결과를 LoadError 로 정규화. 성공이면 null. */
+async function toError(res: Response, source: string): Promise<LoadError | null> {
+  if (res.ok) return null;
+  let detail = `HTTP ${res.status}`;
+  try {
+    const d = await res.json();
+    if (d?.detail) detail = String(d.detail);
+  } catch {
+    /* 프록시가 항상 JSON 을 주지만 방어적으로 */
+  }
+  return { status: res.status, ...describe(res.status, detail), source };
+}
+
 /**
  * 세틀라이트 — 우주라이크 인스타그램 제작 콘솔 (1차: 캘린더 / 주제표)
  *
@@ -21,23 +61,27 @@ export default function SatelliteTab() {
   const [members, setMembers] = useState<SatelliteMember[]>([]);
   const [myWeek, setMyWeek] = useState<MyWeek | null>(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [errors, setErrors] = useState<LoadError[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
-    setErr("");
     try {
       const res = await fetch(`/api/satellite/plans?year=${year}&month=${month}`);
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setErr(d.detail ?? "콘텐츠를 불러오지 못했습니다.");
+      const e = await toError(res, "콘텐츠 목록");
+      if (e) {
+        setErrors((prev) => [...prev.filter((x) => x.source !== e.source), e]);
         setData(null);
       } else {
+        setErrors((prev) => prev.filter((x) => x.source !== "콘텐츠 목록"));
         setData(await res.json());
       }
-    } catch {
-      setErr("네트워크 오류");
+    } catch (ex) {
+      setErrors((prev) => [
+        ...prev.filter((x) => x.source !== "콘텐츠 목록"),
+        { status: null, detail: (ex as Error).message, hint: "네트워크 연결을 확인해주세요.", source: "콘텐츠 목록" },
+      ]);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -46,18 +90,44 @@ export default function SatelliteTab() {
   const loadMyWeek = useCallback(async () => {
     try {
       const res = await fetch("/api/satellite/my-week");
-      if (res.ok) setMyWeek(await res.json());
+      const e = await toError(res, "이번 주 배너");
+      if (e) setErrors((prev) => [...prev.filter((x) => x.source !== e.source), e]);
+      else {
+        setErrors((prev) => prev.filter((x) => x.source !== "이번 주 배너"));
+        setMyWeek(await res.json());
+      }
     } catch {
-      /* 배너는 부가 정보 */
+      /* 배너는 부가 정보 — 조용히 넘어간다 */
+    }
+  }, []);
+
+  const loadMembers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/satellite/members");
+      const e = await toError(res, "담당자 목록");
+      if (e) {
+        setErrors((prev) => [...prev.filter((x) => x.source !== e.source), e]);
+        setMembers([]);
+      } else {
+        setErrors((prev) => prev.filter((x) => x.source !== "담당자 목록"));
+        const d = await res.json();
+        setMembers(Array.isArray(d) ? d : []);
+      }
+    } catch {
+      setMembers([]);
     }
   }, []);
 
   useEffect(() => {
-    fetch("/api/satellite/members")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => setMembers(Array.isArray(d) ? d : []))
-      .catch(() => setMembers([]));
-  }, []);
+    loadMembers();
+  }, [loadMembers]);
+
+  function retryAll() {
+    setErrors([]);
+    loadPlans();
+    loadMyWeek();
+    loadMembers();
+  }
 
   useEffect(() => {
     loadPlans();
@@ -79,7 +149,8 @@ export default function SatelliteTab() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(d.detail ?? "수정에 실패했습니다.");
+        const { detail, hint } = describe(res.status, d.detail ?? `HTTP ${res.status}`);
+        alert(`수정 실패 (${res.status})\n\n${detail}${hint ? `\n\n→ ${hint}` : ""}`);
         return false;
       }
       // 응답으로 해당 행만 갱신 — 전체 리로드보다 깜빡임이 적다
@@ -105,7 +176,8 @@ export default function SatelliteTab() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(d.detail ?? "등록에 실패했습니다.");
+        const { detail, hint } = describe(res.status, d.detail ?? `HTTP ${res.status}`);
+        alert(`등록 실패 (${res.status})\n\n${detail}${hint ? `\n\n→ ${hint}` : ""}`);
         return false;
       }
       await loadPlans();
@@ -126,7 +198,8 @@ export default function SatelliteTab() {
         loadMyWeek();
       } else {
         const d = await res.json().catch(() => ({}));
-        alert(d.detail ?? "삭제에 실패했습니다.");
+        const { detail, hint } = describe(res.status, d.detail ?? `HTTP ${res.status}`);
+        alert(`삭제 실패 (${res.status})\n\n${detail}${hint ? `\n\n→ ${hint}` : ""}`);
       }
     } finally {
       setBusyId(null);
@@ -197,9 +270,41 @@ export default function SatelliteTab() {
         </div>
       )}
 
-      {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
-          <p className="text-xs text-red-600">{err}</p>
+      {errors.length > 0 && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 overflow-hidden">
+          <div className="px-4 py-3 flex items-start gap-3">
+            <span className="w-7 h-7 rounded-lg bg-red-100 text-red-500 flex items-center justify-center shrink-0 mt-0.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+                <path d="M12 8v5M12 16v.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+              {errors.map((e) => (
+                <div key={e.source}>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-red-700">{e.source}</span>
+                    <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-600">
+                      {e.status ?? "연결 실패"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-red-600 mt-0.5 break-words leading-relaxed">{e.detail}</p>
+                  {e.hint && (
+                    <p className="text-[11px] text-red-500 mt-1 leading-relaxed">
+                      <span className="font-semibold">→ </span>
+                      {e.hint}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={retryAll}
+              className="shrink-0 text-[11px] font-semibold text-red-600 border border-red-200 rounded-lg px-2.5 py-1.5 hover:bg-red-100 active:scale-95 transition-all"
+            >
+              다시 시도
+            </button>
+          </div>
         </div>
       )}
 

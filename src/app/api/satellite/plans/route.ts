@@ -1,28 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-
-async function getToken() {
-  const cookieStore = await cookies();
-  return cookieStore.get("access_token")?.value ?? "";
-}
-const BASE = `${process.env.NEXT_PUBLIC_API_URL}/api/satellite/plans/`;
+import { NextRequest } from "next/server";
+import { proxyBody, proxyGet } from "@/lib/apiProxy";
 
 export async function GET(req: NextRequest) {
-  const token = await getToken();
-  const qs = req.nextUrl.searchParams.toString();
-  const res = await fetch(`${BASE}${qs ? `?${qs}` : ""}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: "no-store",
-  });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return proxyGet("/api/satellite/plans/", req.nextUrl.searchParams.toString());
 }
 
 export async function POST(req: NextRequest) {
-  const token = await getToken();
-  const res = await fetch(BASE, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(await req.json()),
-  });
-  return NextResponse.json(await res.json(), { status: res.status });
+  return proxyBody("POST", "/api/satellite/plans/", await req.json());
 }
