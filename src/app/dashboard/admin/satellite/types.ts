@@ -1,4 +1,4 @@
-export type Role = "SUPERADMIN" | "ADMIN" | "MARKETING";
+export type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 export type SatelliteRole = "LEAD" | "MEMBER";
 
 export type PlanStatus =
@@ -16,7 +16,8 @@ export interface SatelliteMember {
   id: number;
   username: string;
   display_name: string;
-  role: Role;
+  department: Department;
+  department_label: string;
   satellite_role: SatelliteRole;
   weekly_quota: number;
   is_active: boolean;
@@ -45,7 +46,7 @@ export interface PlansResponse {
   viewer: {
     account_id: number | null;
     is_lead: boolean;
-    role: Role;
+    department: Department;
   };
 }
 

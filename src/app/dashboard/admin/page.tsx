@@ -40,18 +40,28 @@ type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
 type Tab = "restaurants" | "content" | "notifications" | "satellite" | "settings";
 
-type AdminRole = "SUPERADMIN" | "ADMIN" | "MARKETING";
+type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 type SatelliteRole = "LEAD" | "MEMBER";
+
+interface Permissions {
+  can_restaurants: boolean;
+  can_content: boolean;
+  can_marketing: boolean;
+  can_satellite: boolean;
+}
 
 interface AdminMe {
   username: string;
   display_name: string;
-  role: AdminRole;
+  department: Department;
+  department_label: string;
   satellite_role: SatelliteRole;
   is_superadmin: boolean;
   is_admin: boolean;
   is_marketing: boolean;
   account_id: number | null;
+  kakao_id: number | null;
+  permissions: Permissions;
 }
 
 interface CampaignApp {
@@ -2136,28 +2146,44 @@ function SettingsTab() {
 
 /* ═══════════════════════════════════════════════════
    대시보드 계정 관리 (슈퍼관리자 + 2차 인증)
-   관리자 / 마케팅 계정을 우주라이크 ID로 생성한다.
+
+   로그인은 카카오(신원) + 공용 관리자 비번(관문) 2단계라
+   여기서 계정별 비밀번호를 다루지 않는다. 카카오 ID 가 곧 열쇠다.
 ═══════════════════════════════════════════════════ */
 interface AdminAccountItem {
   username: string;
+  kakao_id: number | null;
   display_name: string;
-  role: AdminRole;
+  department: Department;
+  department_label: string;
   satellite_role: SatelliteRole;
   weekly_quota: number;
   is_active: boolean;
-  has_password: boolean;
   active_from: string | null;
   active_until: string | null;
   created_at: string;
 }
-interface RoleQuota { role: AdminRole; used: number; max: number; }
+interface DepartmentInfo {
+  code: Department;
+  label: string;
+  used: number;
+  max: number;
+  permissions: Permissions;
+}
 
-const ROLE_META: Record<AdminRole, { label: string; cls: string }> = {
-  SUPERADMIN: { label: "슈퍼관리자", cls: "bg-navy text-white" },
-  ADMIN: { label: "관리자", cls: "bg-periwinkle/15 text-periwinkle" },
-  MARKETING: { label: "마케팅", cls: "bg-amber-100 text-amber-700" },
+const DEPT_CHIP: Record<Department, string> = {
+  SUPERADMIN: "bg-navy text-white",
+  ADMIN: "bg-periwinkle/15 text-periwinkle",
+  MARKETING: "bg-gold/20 text-gold",
+  SALES: "bg-emerald-100 text-emerald-700",
 };
-const ROLE_ORDER: AdminRole[] = ["SUPERADMIN", "ADMIN", "MARKETING"];
+const DEPT_ORDER: Department[] = ["SUPERADMIN", "ADMIN", "MARKETING", "SALES"];
+const PERM_FIELDS: { key: keyof Permissions; label: string }[] = [
+  { key: "can_restaurants", label: "식당" },
+  { key: "can_content", label: "배너" },
+  { key: "can_marketing", label: "마케팅" },
+  { key: "can_satellite", label: "세틀라이트" },
+];
 
 function AdminAccountsSection() {
   const [isSuperadmin, setIsSuperadmin] = useState<boolean | null>(null);
@@ -2168,19 +2194,19 @@ function AdminAccountsSection() {
   const [verifyErr, setVerifyErr] = useState("");
   // 목록
   const [accounts, setAccounts] = useState<AdminAccountItem[]>([]);
-  const [quota, setQuota] = useState<RoleQuota[]>([]);
+  const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
   const [loading, setLoading] = useState(false);
   // 신규 계정
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState<AdminRole>("ADMIN");
+  const [newKakao, setNewKakao] = useState("");
+  const [newDept, setNewDept] = useState<Department>("ADMIN");
   const [newSatRole, setNewSatRole] = useState<SatelliteRole>("MEMBER");
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState("");
-  // 비밀번호 설정
-  const [pwTarget, setPwTarget] = useState<string | null>(null);
-  const [pwValue, setPwValue] = useState("");
-  const [pwSaving, setPwSaving] = useState(false);
+  // 카카오 ID 편집
+  const [kakaoTarget, setKakaoTarget] = useState<string | null>(null);
+  const [kakaoValue, setKakaoValue] = useState("");
 
   useEffect(() => {
     fetch("/api/dashboard/admin/me")
@@ -2196,7 +2222,7 @@ function AdminAccountsSection() {
       if (res.ok) {
         const d = await res.json();
         setAccounts(d.accounts ?? []);
-        setQuota(d.quota ?? []);
+        setDepartments(d.departments ?? []);
       }
     } finally { setLoading(false); }
   }, []);
@@ -2219,7 +2245,7 @@ function AdminAccountsSection() {
   }
 
   async function create() {
-    if (!newId.trim()) { setErr("우주라이크 ID를 입력해주세요."); return; }
+    if (!newId.trim()) { setErr("내부 ID를 입력해주세요."); return; }
     setCreating(true); setErr("");
     const res = await fetch("/api/dashboard/admin/accounts", {
       method: "POST",
@@ -2227,14 +2253,15 @@ function AdminAccountsSection() {
       body: JSON.stringify({
         username: newId.trim(),
         display_name: newName.trim(),
-        role: newRole,
+        kakao_id: newKakao.trim() || null,
+        department: newDept,
         satellite_role: newSatRole,
       }),
     });
     const data = await res.json();
     setCreating(false);
     if (res.ok) {
-      setNewId(""); setNewName("");
+      setNewId(""); setNewName(""); setNewKakao("");
       await loadAccounts();
     } else setErr(data.detail ?? "생성 실패");
   }
@@ -2247,36 +2274,45 @@ function AdminAccountsSection() {
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) { alert(d.detail ?? "변경 실패"); return false; }
-    setAccounts((prev) => prev.map((a) => (a.username === username ? { ...a, ...d } : a)));
+    await loadAccounts();
     return true;
   }
 
   async function remove(username: string) {
     if (!confirm(`"${username}" 계정을 삭제할까요?`)) return;
     const res = await fetch(`/api/dashboard/admin/accounts/${username}`, { method: "DELETE" });
-    if (res.ok || res.status === 204) {
-      setAccounts((prev) => prev.filter((a) => a.username !== username));
-      loadAccounts();
-    } else {
+    if (res.ok || res.status === 204) loadAccounts();
+    else {
       const d = await res.json().catch(() => ({}));
       alert(d.detail ?? "삭제 실패");
     }
   }
 
-  async function savePassword() {
-    if (!pwTarget || pwValue.length < 4) return;
-    setPwSaving(true);
-    const ok = await patchAccount(pwTarget, { new_password: pwValue });
-    setPwSaving(false);
-    if (ok) { alert("비밀번호가 설정되었습니다."); setPwTarget(null); setPwValue(""); }
+  async function saveKakaoId() {
+    if (!kakaoTarget) return;
+    const ok = await patchAccount(kakaoTarget, { kakao_id: kakaoValue.trim() || null });
+    if (ok) { setKakaoTarget(null); setKakaoValue(""); }
+  }
+
+  async function togglePerm(dept: Department, field: keyof Permissions, next: boolean) {
+    const res = await fetch(`/api/dashboard/admin/department-permissions/${dept}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: next }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(d.detail ?? "권한 변경 실패"); return; }
+    setDepartments((prev) =>
+      prev.map((x) => (x.code === dept ? { ...x, permissions: { ...x.permissions, [field]: next } } : x))
+    );
   }
 
   if (isSuperadmin === null || !isSuperadmin) return null;
 
-  const totalUsed = quota.reduce((s, q) => s + q.used, 0);
-  const totalMax = quota.reduce((s, q) => s + q.max, 0);
-  const isFull = (role: AdminRole) => {
-    const q = quota.find((x) => x.role === role);
+  const totalUsed = departments.reduce((s, q) => s + q.used, 0);
+  const totalMax = departments.reduce((s, q) => s + q.max, 0);
+  const isFull = (dept: Department) => {
+    const q = departments.find((x) => x.code === dept);
     return q ? q.used >= q.max : false;
   };
 
@@ -2285,8 +2321,8 @@ function AdminAccountsSection() {
       {/* 헤더 */}
       <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-gray-700">대시보드 계정 관리</h2>
-          <p className="text-xs text-gray-400 mt-0.5">슈퍼관리자 전용 · 관리자 / 마케팅</p>
+          <h2 className="text-sm font-semibold text-gray-700">구성원 · 권한 관리</h2>
+          <p className="text-xs text-gray-400 mt-0.5">슈퍼관리자 전용 · 카카오 ID로 로그인</p>
         </div>
         <span className={`text-xs flex items-center gap-1 ${unlocked ? "text-green-500" : "text-gray-400"}`}>
           {unlocked ? `🔓 ${totalUsed}/${totalMax}` : "🔒 잠김"}
@@ -2296,7 +2332,7 @@ function AdminAccountsSection() {
       {/* 2차 인증 게이트 */}
       {!unlocked ? (
         <div className="p-4 flex flex-col gap-3">
-          <p className="text-xs text-gray-500">계정 목록과 권한을 관리하려면 2차 비밀번호를 입력하세요.</p>
+          <p className="text-xs text-gray-500">구성원 명단과 직무별 권한을 관리하려면 2차 비밀번호를 입력하세요.</p>
           {verifyErr && <p className="text-xs text-red-500">{verifyErr}</p>}
           <div className="flex gap-2">
             <input
@@ -2315,42 +2351,78 @@ function AdminAccountsSection() {
         </div>
       ) : (
         <>
-          {/* 정원 현황 */}
-          <div className="px-4 py-2.5 border-b border-gray-50 flex gap-2">
-            {quota.map((q) => (
-              <div key={q.role} className="flex-1 rounded-xl bg-gray-50 px-2.5 py-2">
-                <p className="text-[10px] text-gray-400">{ROLE_META[q.role].label}</p>
-                <p className={`text-sm font-bold ${q.used >= q.max ? "text-amber-600" : "text-gray-700"}`}>
-                  {q.used}<span className="text-[11px] font-normal text-gray-400">/{q.max}</span>
-                </p>
-              </div>
-            ))}
+          {/* 직무별 권한 */}
+          <div className="px-4 py-3 border-b border-gray-50">
+            <p className="text-[11px] font-semibold text-gray-500 mb-2">직무별 접근 권한</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-gray-400">
+                    <th className="text-left font-semibold py-1 w-[84px]">직무</th>
+                    {PERM_FIELDS.map((f) => (
+                      <th key={f.key} className="font-semibold py-1">{f.label}</th>
+                    ))}
+                    <th className="font-semibold py-1 w-[48px]">인원</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {departments.map((d) => (
+                    <tr key={d.code} className="border-t border-gray-50">
+                      <td className="py-1.5">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${DEPT_CHIP[d.code]}`}>
+                          {d.label}
+                        </span>
+                      </td>
+                      {PERM_FIELDS.map((f) => (
+                        <td key={f.key} className="text-center py-1.5">
+                          <input
+                            type="checkbox"
+                            checked={d.permissions[f.key]}
+                            disabled={d.code === "SUPERADMIN"}
+                            onChange={(e) => togglePerm(d.code, f.key, e.target.checked)}
+                            className="w-3.5 h-3.5 accent-periwinkle cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          />
+                        </td>
+                      ))}
+                      <td className={`text-center py-1.5 text-[11px] ${d.used >= d.max ? "text-amber-600 font-semibold" : "text-gray-400"}`}>
+                        {d.used}/{d.max}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+              관리자 설정(이 화면)은 항상 슈퍼관리자 전용입니다. 슈퍼관리자 직무의 권한은 끌 수 없습니다.
+            </p>
           </div>
 
           {/* 계정 목록 */}
           {loading ? (
             <div className="flex justify-center py-5"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
           ) : accounts.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-5">등록된 계정이 없습니다</p>
+            <p className="text-xs text-gray-400 text-center py-5">등록된 구성원이 없습니다</p>
           ) : (
             <div className="divide-y divide-gray-50">
               {accounts.map((a) => (
                 <div key={a.username} className="px-4 py-3 flex flex-col gap-2">
-                  {/* 1행 — ID · 이름 · 배지 */}
+                  {/* 1행 — 이름 · 직무 · 상태 */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-gray-800">{a.username}</span>
-                    {a.display_name && <span className="text-xs text-gray-400">{a.display_name}</span>}
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${ROLE_META[a.role].cls}`}>
-                      {ROLE_META[a.role].label}
+                    <span className="text-sm font-semibold text-gray-800">
+                      {a.display_name || a.username}
+                    </span>
+                    <span className="text-[11px] text-gray-400">{a.username}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${DEPT_CHIP[a.department]}`}>
+                      {a.department_label}
                     </span>
                     {a.satellite_role === "LEAD" && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-periwinkle/10 text-periwinkle">
                         세틀 리드
                       </span>
                     )}
-                    {!a.has_password && (
+                    {a.kakao_id == null && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-50 text-red-500">
-                        비번 미설정
+                        카카오 ID 없음
                       </span>
                     )}
                     <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
@@ -2360,15 +2432,25 @@ function AdminAccountsSection() {
                     </span>
                   </div>
 
-                  {/* 2행 — 역할 조작 */}
+                  {/* 2행 — 카카오 ID */}
+                  <button
+                    onClick={() => { setKakaoTarget(a.username); setKakaoValue(a.kakao_id ? String(a.kakao_id) : ""); }}
+                    className="text-left text-[11px] font-mono text-gray-500 hover:text-periwinkle w-fit"
+                  >
+                    카카오 {a.kakao_id ?? "— 미등록"} <span className="font-sans">✎</span>
+                  </button>
+
+                  {/* 3행 — 조작 */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <select
-                      value={a.role}
-                      onChange={(e) => patchAccount(a.username, { role: e.target.value })}
+                      value={a.department}
+                      onChange={(e) => patchAccount(a.username, { department: e.target.value })}
                       className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
                     >
-                      {ROLE_ORDER.map((r) => (
-                        <option key={r} value={r}>{ROLE_META[r].label}</option>
+                      {DEPT_ORDER.map((d) => (
+                        <option key={d} value={d}>
+                          {departments.find((x) => x.code === d)?.label ?? d}
+                        </option>
                       ))}
                     </select>
                     <select
@@ -2395,7 +2477,9 @@ function AdminAccountsSection() {
 
                     <button
                       onClick={() => patchAccount(a.username, { is_active: !a.is_active })}
-                      className={`ml-auto text-[10px] px-2 py-1 rounded-lg border transition-colors ${
+                      disabled={!a.is_active && a.kakao_id == null}
+                      title={!a.is_active && a.kakao_id == null ? "카카오 ID를 먼저 등록하세요" : ""}
+                      className={`ml-auto text-[10px] px-2 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                         a.is_active
                           ? "text-amber-500 border-amber-100 hover:border-amber-400"
                           : "text-green-500 border-green-100 hover:border-green-400"
@@ -2403,13 +2487,7 @@ function AdminAccountsSection() {
                     >
                       {a.is_active ? "비활성화" : "활성화"}
                     </button>
-                    <button
-                      onClick={() => { setPwTarget(a.username); setPwValue(""); }}
-                      className="text-[10px] text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg border border-gray-100 hover:border-periwinkle/40"
-                    >
-                      {a.has_password ? "비번 변경" : "비번 설정"}
-                    </button>
-                    {a.role !== "MARKETING" && (
+                    {a.department !== "MARKETING" && a.department !== "SUPERADMIN" && (
                       <button
                         onClick={() => remove(a.username)}
                         className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
@@ -2423,45 +2501,51 @@ function AdminAccountsSection() {
             </div>
           )}
 
-          {/* 비밀번호 설정 인라인 폼 */}
-          {pwTarget && (
+          {/* 카카오 ID 편집 */}
+          {kakaoTarget && (
             <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2">
-              <p className="text-xs font-semibold text-amber-700">{pwTarget} 비밀번호 설정</p>
+              <p className="text-xs font-semibold text-amber-700">{kakaoTarget} 카카오 ID</p>
               <input
-                type="password"
-                value={pwValue}
-                onChange={(e) => setPwValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") savePassword(); }}
-                placeholder="새 비밀번호 (4자 이상)"
-                className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none bg-white"
+                type="text"
+                inputMode="numeric"
+                value={kakaoValue}
+                onChange={(e) => setKakaoValue(e.target.value.replace(/[^0-9]/g, ""))}
+                onKeyDown={(e) => { if (e.key === "Enter") saveKakaoId(); }}
+                placeholder="예: 4424485763 (비우면 로그인 차단)"
+                className="w-full px-3 py-2 text-sm font-mono border border-amber-200 rounded-lg focus:outline-none bg-white"
               />
               <div className="flex gap-2">
-                <button onClick={() => { setPwTarget(null); setPwValue(""); }}
+                <button onClick={() => { setKakaoTarget(null); setKakaoValue(""); }}
                   className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
-                <button onClick={savePassword} disabled={pwSaving || pwValue.length < 4}
-                  className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-60">
-                  {pwSaving ? "저장 중..." : "설정"}
-                </button>
+                <button onClick={saveKakaoId}
+                  className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold">저장</button>
               </div>
             </div>
           )}
 
           {/* 새 계정 추가 */}
           <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
-            <p className="text-[11px] font-semibold text-gray-500">계정 추가</p>
+            <p className="text-[11px] font-semibold text-gray-500">구성원 추가</p>
             {err && <p className="text-xs text-red-500">{err}</p>}
             <div className="flex gap-2">
-              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="우주라이크 ID"
+              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="내부 ID (영문)"
                 className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="표시 이름"
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름"
                 className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
             </div>
+            <input
+              value={newKakao}
+              onChange={(e) => setNewKakao(e.target.value.replace(/[^0-9]/g, ""))}
+              placeholder="카카오 ID (비우면 비활성 placeholder 로 생성)"
+              inputMode="numeric"
+              className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            />
             <div className="flex gap-2">
-              <select value={newRole} onChange={(e) => setNewRole(e.target.value as AdminRole)}
+              <select value={newDept} onChange={(e) => setNewDept(e.target.value as Department)}
                 className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle">
-                {ROLE_ORDER.map((r) => (
-                  <option key={r} value={r} disabled={isFull(r)}>
-                    {ROLE_META[r].label}{isFull(r) ? " (정원 초과)" : ""}
+                {DEPT_ORDER.map((d) => (
+                  <option key={d} value={d} disabled={isFull(d)}>
+                    {departments.find((x) => x.code === d)?.label ?? d}{isFull(d) ? " (정원 초과)" : ""}
                   </option>
                 ))}
               </select>
@@ -2471,13 +2555,13 @@ function AdminAccountsSection() {
                 <option value="LEAD">세틀라이트 리드</option>
               </select>
             </div>
-            <button onClick={create} disabled={creating || isFull(newRole)}
+            <button onClick={create} disabled={creating || isFull(newDept)}
               className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
-              {creating ? "추가 중..." : "계정 추가"}
+              {creating ? "추가 중..." : "구성원 추가"}
             </button>
             <p className="text-[10px] text-gray-400 leading-relaxed">
-              비밀번호 없이 생성됩니다. 생성 후 목록에서 &quot;비번 설정&quot;을 눌러 직접 지정하세요 —
-              설정 전까지는 로그인이 차단됩니다.
+              비밀번호는 설정하지 않습니다. 카카오로 로그인한 뒤 팀 공용 관리자 비번을 입력하는 방식이라,
+              카카오 ID 가 등록돼 있고 계정이 활성이면 바로 접속됩니다.
             </p>
           </div>
         </>
@@ -2628,13 +2712,37 @@ function RestaurantsTab() {
 /* ═══════════════════════════════════════════════════
    메인 페이지
 ═══════════════════════════════════════════════════ */
-const TABS: { key: Tab; label: string; roles: AdminRole[] }[] = [
-  { key: "restaurants", label: "식당 관리", roles: ["SUPERADMIN", "ADMIN"] },
-  { key: "content", label: "배너 & 팝업", roles: ["SUPERADMIN", "ADMIN"] },
-  { key: "notifications", label: "마케팅", roles: ["SUPERADMIN", "ADMIN"] },
-  { key: "satellite", label: "세틀라이트", roles: ["SUPERADMIN", "ADMIN", "MARKETING"] },
-  { key: "settings", label: "관리자 설정", roles: ["SUPERADMIN"] },
+/**
+ * 탭 노출은 직무별 권한(DepartmentPermission)으로 결정된다.
+ * 관리자 설정만은 권한 설정과 무관하게 슈퍼관리자 전용이다 —
+ * 권한 설정을 권한 설정으로 열 수 있으면 누구나 자기 권한을 올릴 수 있다.
+ */
+const TABS: { key: Tab; label: string; allow: (me: AdminMe) => boolean }[] = [
+  { key: "restaurants", label: "식당 관리", allow: (me) => me.permissions.can_restaurants },
+  { key: "content", label: "배너 & 팝업", allow: (me) => me.permissions.can_content },
+  { key: "notifications", label: "마케팅", allow: (me) => me.permissions.can_marketing },
+  { key: "satellite", label: "세틀라이트", allow: (me) => me.permissions.can_satellite },
+  { key: "settings", label: "관리자 설정", allow: (me) => me.is_superadmin },
 ];
+
+const FALLBACK_ME: AdminMe = {
+  username: "",
+  display_name: "",
+  department: "MARKETING",
+  department_label: "마케팅",
+  satellite_role: "MEMBER",
+  is_superadmin: false,
+  is_admin: false,
+  is_marketing: true,
+  account_id: null,
+  kakao_id: null,
+  permissions: {
+    can_restaurants: false,
+    can_content: false,
+    can_marketing: false,
+    can_satellite: true,
+  },
+};
 
 export default function AdminHomePage() {
   const [me, setMe] = useState<AdminMe | null>(null);
@@ -2645,30 +2753,29 @@ export default function AdminHomePage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d: AdminMe | null) => {
         if (!d) {
-          // 구 토큰 등으로 role 을 못 읽으면 최소 권한으로 취급
-          setMe({
-            username: "",
-            display_name: "",
-            role: "MARKETING",
-            satellite_role: "MEMBER",
-            is_superadmin: false,
-            is_admin: false,
-            is_marketing: true,
-            account_id: null,
-          });
+          // 신원을 못 읽으면 최소 권한으로 취급한다
+          setMe(FALLBACK_ME);
           return;
+        }
+        // 구 토큰 호환 — permissions 가 없으면 is_admin/is_marketing 으로 역산
+        if (!d.permissions) {
+          d.permissions = {
+            can_restaurants: !!d.is_admin,
+            can_content: !!d.is_admin,
+            can_marketing: !!d.is_admin,
+            can_satellite: !!d.is_marketing,
+          };
         }
         setMe(d);
       })
-      .catch(() => setMe(null));
+      .catch(() => setMe(FALLBACK_ME));
   }, []);
 
-  // role 이 정해지면 기본 탭 결정 — 마케팅은 세틀라이트로 착지
+  // 권한이 정해지면 기본 탭 결정 — ?tab= 이 있으면 그쪽을 우선한다
   useEffect(() => {
     if (!me || activeTab) return;
-    const url = new URL(window.location.href);
-    const wanted = url.searchParams.get("tab") as Tab | null;
-    const allowed = TABS.filter((t) => t.roles.includes(me.role));
+    const wanted = new URL(window.location.href).searchParams.get("tab") as Tab | null;
+    const allowed = TABS.filter((t) => t.allow(me));
     if (wanted && allowed.some((t) => t.key === wanted)) {
       setActiveTab(wanted);
     } else {
@@ -2685,12 +2792,28 @@ export default function AdminHomePage() {
     );
   }
 
-  const visibleTabs = TABS.filter((t) => t.roles.includes(me.role));
+  const visibleTabs = TABS.filter((t) => t.allow(me));
+
+  if (visibleTabs.length === 0) {
+    return (
+      <div className="px-4 pt-10 pb-20 max-w-md mx-auto text-center">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10">
+          <p className="text-sm font-bold text-gray-700">접근 가능한 메뉴가 없습니다</p>
+          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+            {me.department_label} 직무에 허용된 기능이 없습니다.
+            <br />
+            슈퍼관리자에게 권한 설정을 요청하세요.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const isSatelliteOnly = visibleTabs.length === 1 && visibleTabs[0].key === "satellite";
 
   return (
     <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
-      {/* 마케팅 전용 계정이면 탭 바 대신 헤더를 보여준다 */}
+      {/* 세틀라이트만 보이는 계정이면 탭 바 대신 제목을 보여준다 */}
       {isSatelliteOnly ? (
         <div className="flex items-center justify-between mb-5 px-1">
           <div>

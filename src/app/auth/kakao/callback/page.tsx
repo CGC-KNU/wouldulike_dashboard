@@ -26,7 +26,15 @@ function KakaoCallbackInner() {
         const data = await res.json();
         console.log("[callback] status:", res.status, "body:", JSON.stringify(data));
 
-        if (data.requiresPinVerification) {
+        if (data.requiresAdminAuth) {
+          // 내부 구성원 — 2단계(공용 관리자 아이디/비번)로 넘어간다
+          const name = data.staff?.display_name ?? "";
+          const dept = data.staff?.department_label ?? "";
+          const qs = new URLSearchParams();
+          if (name) qs.set("name", name);
+          if (dept) qs.set("dept", dept);
+          router.replace(`/auth/admin-login${qs.toString() ? `?${qs}` : ""}`);
+        } else if (data.requiresPinVerification) {
           router.replace("/auth/verify-pin");
         } else if (data.success) {
           router.replace("/dashboard");

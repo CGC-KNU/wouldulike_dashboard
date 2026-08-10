@@ -5,7 +5,7 @@ const PUBLIC_PATHS = ["/login", "/auth/", "/api/auth/"];
 interface DashboardJWT {
   is_admin?: boolean;
   is_marketing?: boolean;
-  role?: "SUPERADMIN" | "ADMIN" | "MARKETING";
+  department?: "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 }
 
 /** Edge Runtime에서 사용 가능한 인라인 JWT 디코더 (서명 검증 없음) */
@@ -55,11 +55,11 @@ export function middleware(req: NextRequest) {
     }
   }
 
-  // 마케팅 계정은 점주 대시보드에 들어갈 이유가 없다 (식당 데이터 접근 방지)
+  // 식당 API 권한이 없는 직무는 점주 대시보드에 들어갈 이유가 없다
   if (pathname.startsWith("/dashboard/owner") && process.env.NODE_ENV !== "development") {
     try {
       const payload = parseJwtPayload(token);
-      if (payload.role === "MARKETING") {
+      if (payload.is_marketing && !payload.is_admin) {
         return NextResponse.redirect(new URL("/dashboard/admin?tab=satellite", req.url));
       }
     } catch {
