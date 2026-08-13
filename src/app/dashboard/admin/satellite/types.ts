@@ -99,6 +99,12 @@ export interface AudioTrack {
   thumbnail_url: string;
 }
 
+export interface LocationResult {
+  location_id: string;
+  name: string;
+  address: string;
+}
+
 export interface PlanDetail {
   id: number;
   owner_id: number;
@@ -114,10 +120,13 @@ export interface PlanDetail {
   is_reel: boolean;
   audio_id: string;
   audio_volume: number | null;
+  location_id: string;
+  location_name: string;
+  collaborator_usernames: string[];
   ready_at: string | null;
   assets: PlanAsset[];
   publish_jobs: PublishJobItem[];
-  limits: { max_cards: number; max_hashtags: number };
+  limits: { max_cards: number; max_hashtags: number; max_collaborators: number };
   validation: string[];
   can_edit: boolean;
   is_lead: boolean;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import AudioPicker from "./AudioPicker";
+import LocationPicker from "./LocationPicker";
 import {
   AudioTrack,
   JOB_STATE_META,
@@ -48,29 +49,35 @@ export default function PlanEditor({
   // 편집 중 값 (저장 전)
   const [caption, setCaption] = useState("");
   const [publishAt, setPublishAt] = useState("");
+  const [collabInput, setCollabInput] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr("");
-    try {
-      const res = await fetch(`/api/satellite/plans/${planId}/detail`);
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setErr(d.detail ?? `불러오지 못했습니다 (${res.status})`);
-        setPlan(null);
-      } else {
-        setPlan(d);
-        setCaption(d.caption ?? "");
-        setPublishAt(d.desired_publish_at ? toLocalInput(d.desired_publish_at) : "");
+  const load = useCallback(
+    async (opts?: { preserveCaption?: boolean }) => {
+      setLoading(true);
+      setErr("");
+      try {
+        const res = await fetch(`/api/satellite/plans/${planId}/detail`);
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setErr(d.detail ?? `불러오지 못했습니다 (${res.status})`);
+          setPlan(null);
+        } else {
+          setPlan(d);
+          // 캡션 자동저장 직후에는 서버값으로 되돌리지 않는다 — 되돌리면 그 사이 계속
+          // 입력 중이던 글자와 충돌해서 한글 조합이 끊기거나 중복 입력처럼 보인다.
+          if (!opts?.preserveCaption) setCaption(d.caption ?? "");
+          setPublishAt(d.desired_publish_at ? toLocalInput(d.desired_publish_at) : "");
+        }
+      } catch (e) {
+        setErr((e as Error).message);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, [planId]);
+    },
+    [planId]
+  );
 
   useEffect(() => {
     load();
@@ -104,9 +111,28 @@ export default function PlanEditor({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (countHashtags(v) <= (plan?.limits.max_hashtags ?? 5)) {
-        patch({ caption: v }, true).then(() => load());
+        patch({ caption: v }, true).then(() => load({ preserveCaption: true }));
       }
     }, 800);
+  }
+
+  /** 협업자 추가 — 아이디만 받고 초대·수락 절차는 인스타 쪽에서 진행된다 */
+  function addCollaborator() {
+    if (!plan) return;
+    const uname = collabInput.trim().replace(/^@/, "");
+    if (!uname) return;
+    const current = plan.collaborator_usernames || [];
+    if (current.includes(uname)) {
+      setCollabInput("");
+      return;
+    }
+    if (current.length >= plan.limits.max_collaborators) {
+      alert(`협업자는 최대 ${plan.limits.max_collaborators}명입니다.`);
+      return;
+    }
+    const next = [...current, uname];
+    patch({ collaborator_usernames: next }, true).then(() => load({ preserveCaption: true }));
+    setCollabInput("");
   }
 
   /* ─── 업로드 ───────────────────────────────────── */
@@ -411,7 +437,7 @@ export default function PlanEditor({
                           ? "올린 파일을 모두 삭제한 뒤 유형을 바꿀 수 있습니다"
                           : ""
                       }
-                      onClick={() => patch({ media_type: k }).then(() => load())}
+                      onClick={() => patch({ media_type: k }).then(() => load({ preserveCaption: true }))}
                       className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                         plan.media_type === k
                           ? "bg-white text-navy shadow-sm"
@@ -517,13 +543,89 @@ export default function PlanEditor({
                   audioVolume={plan.audio_volume}
                   editable={plan.can_edit}
                   onSelect={(id: string, _track: AudioTrack | null) => {
-                    patch({ audio_id: id }).then(() => load());
+                    patch({ audio_id: id }).then(() => load({ preserveCaption: true }));
                   }}
                   onVolumeChange={(v: number | null) => {
-                    patch({ audio_volume: v }, true).then(() => load());
+                    patch({ audio_volume: v }, true).then(() => load({ preserveCaption: true }));
                   }}
                 />
               )}
+
+              {/* 위치 */}
+              <LocationPicker
+                locationId={plan.location_id}
+                locationName={plan.location_name}
+                editable={plan.can_edit}
+                onSelect={(id: string, name: string) => {
+                  patch({ location_id: id, location_name: name }).then(() =>
+                    load({ preserveCaption: true })
+                  );
+                }}
+              />
+
+              {/* 협업자 */}
+              <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-sm font-bold text-gray-800">협업자</h3>
+                  <span className="text-[11px] text-gray-400">
+                    {plan.collaborator_usernames.length}/{plan.limits.max_collaborators} · 선택 사항
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
+                  공개 인스타 아이디만 가능합니다. 상대가 초대를 수락해야 공동 게시물로 표시됩니다.
+                </p>
+
+                {plan.collaborator_usernames.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2.5">
+                    {plan.collaborator_usernames.map((u) => (
+                      <span
+                        key={u}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-periwinkle bg-periwinkle/10 border border-periwinkle/20 rounded-full pl-2.5 pr-1.5 py-1"
+                      >
+                        @{u}
+                        {plan.can_edit && (
+                          <button
+                            onClick={() => {
+                              const next = plan.collaborator_usernames.filter((x) => x !== u);
+                              patch({ collaborator_usernames: next }, true).then(() =>
+                                load({ preserveCaption: true })
+                              );
+                            }}
+                            className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-periwinkle/20"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {plan.can_edit && plan.collaborator_usernames.length < plan.limits.max_collaborators && (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={collabInput}
+                      onChange={(e) => setCollabInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addCollaborator();
+                        }
+                      }}
+                      placeholder="인스타 아이디 (@ 없이)"
+                      className="flex-1 text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-periwinkle"
+                    />
+                    <button
+                      onClick={addCollaborator}
+                      disabled={!collabInput.trim()}
+                      className="px-4 py-2 text-xs font-semibold text-periwinkle border border-periwinkle/30 rounded-xl hover:bg-periwinkle/5 disabled:opacity-40 transition-colors"
+                    >
+                      추가
+                    </button>
+                  </div>
+                )}
+              </section>
 
               {/* 캡션 */}
               <section className="bg-white rounded-2xl border border-gray-100 p-4">
