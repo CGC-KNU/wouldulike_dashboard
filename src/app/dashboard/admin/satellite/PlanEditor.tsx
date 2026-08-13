@@ -1,0 +1,761 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import AudioPicker from "./AudioPicker";
+import {
+  AudioTrack,
+  JOB_STATE_META,
+  MEDIA_META,
+  MediaType,
+  PlanAsset,
+  PlanDetail,
+  STATUS_META,
+  fmtMD,
+} from "./types";
+
+/** 유형별 업로드 제약 — 서버와 같은 규칙을 화면에서도 강제한다 */
+const ACCEPT: Record<MediaType, string> = {
+  carousel: "image/png,image/jpeg,image/webp",
+  image: "image/png,image/jpeg,image/webp",
+  reel: "video/mp4,video/quicktime",
+};
+
+/**
+ * 에디터 — 실제로 매주 쓰는 화면 (설계서 §07-4)
+ *
+ * 하드 제한 3개를 여기서 강제한다. 발행 시점에 터지면 이미 마감이 지난 뒤다.
+ *   · 이미지 10장  — 11장째 파일 선택 자체를 막는다
+ *   · 해시태그 5개 — 입력 중 카운터로 보여주고 초과 시 저장을 거부한다
+ *   · JPEG 변환    — 업로드하면 서버가 바로 변환한다. 변환 전에는 준비완료로 못 넘어간다
+ */
+export default function PlanEditor({
+  planId,
+  onClose,
+  onChanged,
+}: {
+  planId: number;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [plan, setPlan] = useState<PlanDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(0);
+  const [dragId, setDragId] = useState<number | null>(null);
+
+  // 편집 중 값 (저장 전)
+  const [caption, setCaption] = useState("");
+  const [publishAt, setPublishAt] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}/detail`);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(d.detail ?? `불러오지 못했습니다 (${res.status})`);
+        setPlan(null);
+      } else {
+        setPlan(d);
+        setCaption(d.caption ?? "");
+        setPublishAt(d.desired_publish_at ? toLocalInput(d.desired_publish_at) : "");
+      }
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [planId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  /* ─── 저장 ─────────────────────────────────────── */
+
+  async function patch(body: Record<string, unknown>, silent = false) {
+    if (!silent) setSaving(true);
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(d.detail ?? "저장에 실패했습니다.");
+        return false;
+      }
+      onChanged();
+      return true;
+    } finally {
+      if (!silent) setSaving(false);
+    }
+  }
+
+  /** 캡션은 타이핑이 멈추면 자동 저장한다 */
+  function onCaptionChange(v: string) {
+    setCaption(v);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      if (countHashtags(v) <= (plan?.limits.max_hashtags ?? 5)) {
+        patch({ caption: v }, true).then(() => load());
+      }
+    }, 800);
+  }
+
+  /* ─── 업로드 ───────────────────────────────────── */
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || !plan) return;
+    const list = Array.from(files);
+
+    // 릴스는 동영상 1개, 카드뉴스는 이미지 10장
+    const remaining = plan.is_reel ? 1 - plan.assets.length : plan.limits.max_cards - plan.assets.length;
+
+    if (remaining <= 0) {
+      alert(
+        plan.is_reel
+          ? "릴스는 동영상 1개만 발행됩니다.\n기존 동영상을 삭제한 뒤 올려주세요."
+          : `${plan.limits.max_cards}장까지만 발행됩니다.`
+      );
+      return;
+    }
+
+    if (list.length > remaining) {
+      alert(
+        plan.is_reel
+          ? "릴스는 동영상 1개만 올립니다.\n\n첫 번째 파일만 사용합니다."
+          : `${plan.limits.max_cards}장까지만 발행됩니다.\n\n` +
+              `현재 ${plan.assets.length}장 · 추가 가능 ${remaining}장 · 선택 ${list.length}장\n` +
+              `앞의 ${remaining}장만 올립니다.`
+      );
+    }
+
+    const target = list.slice(0, remaining);
+    setUploading(target.length);
+
+    for (const file of target) {
+      try {
+        // 1) 업로드 URL 발급
+        const pres = await fetch(`/api/satellite/plans/${planId}/assets/presign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, content_type: file.type }),
+        });
+        const p = await pres.json().catch(() => ({}));
+        if (!pres.ok) {
+          alert(p.detail ?? "업로드 URL 발급에 실패했습니다.");
+          break;
+        }
+
+        // 2) S3 직접 PUT
+        const put = await fetch(p.upload_url, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!put.ok) {
+          alert(`${file.name} 업로드에 실패했습니다. (S3 ${put.status})`);
+          continue;
+        }
+
+        // 3) 등록 — 서버가 여기서 JPEG 로 변환한다
+        const reg = await fetch(`/api/satellite/plans/${planId}/assets`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: p.key, filename: file.name, content_type: file.type }),
+        });
+        const r = await reg.json().catch(() => ({}));
+        if (!reg.ok) {
+          alert(r.detail ?? `${file.name} 등록에 실패했습니다.`);
+          continue;
+        }
+      } catch (e) {
+        alert(`${file.name}: ${(e as Error).message}`);
+      } finally {
+        setUploading((n) => Math.max(0, n - 1));
+      }
+    }
+
+    setUploading(0);
+    if (fileInput.current) fileInput.current.value = "";
+    await load();
+    onChanged();
+  }
+
+  async function removeAsset(assetId: number) {
+    if (!confirm("이 이미지를 삭제할까요?")) return;
+    const res = await fetch(`/api/satellite/assets/${assetId}`, { method: "DELETE" });
+    if (res.ok || res.status === 204) {
+      await load();
+      onChanged();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert(d.detail ?? "삭제에 실패했습니다.");
+    }
+  }
+
+  /* ─── 순서 변경 (드래그) ───────────────────────── */
+
+  async function dropOn(targetId: number) {
+    if (!plan || dragId == null || dragId === targetId) return;
+    const ids = plan.assets.map((a) => a.id);
+    const from = ids.indexOf(dragId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    setDragId(null);
+
+    // 낙관적 반영 — 서버 응답을 기다리지 않고 먼저 그린다
+    setPlan({ ...plan, assets: ids.map((id) => plan.assets.find((a) => a.id === id)!) });
+
+    const res = await fetch(`/api/satellite/plans/${planId}/assets/reorder`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order: ids }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.detail ?? "순서 변경에 실패했습니다.");
+      await load();
+    }
+  }
+
+  /* ─── 상태 전환 ───────────────────────────────── */
+
+  async function toReady() {
+    setSaving(true);
+    try {
+      // 최신 캡션·시간을 먼저 저장한 뒤 전환한다
+      const ok = await patch(
+        {
+          caption,
+          desired_publish_at: publishAt ? new Date(publishAt).toISOString() : null,
+        },
+        true
+      );
+      if (!ok) return;
+
+      const res = await fetch(`/api/satellite/plans/${planId}/ready`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const problems: string[] = d.problems ?? [];
+        alert(
+          problems.length
+            ? `준비완료로 바꿀 수 없습니다.\n\n${problems.map((p) => `· ${p}`).join("\n")}`
+            : d.detail ?? "전환에 실패했습니다."
+        );
+      }
+      await load();
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toDraft() {
+    const res = await fetch(`/api/satellite/plans/${planId}/ready`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.detail ?? "전환에 실패했습니다.");
+    }
+    await load();
+    onChanged();
+  }
+
+  async function publishNow() {
+    if (!confirm("지금 바로 인스타그램에 발행합니다.\n\n되돌릴 수 없습니다. 계속할까요?")) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}/publish-now`, { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const problems: string[] = d.problems ?? [];
+        alert(
+          problems.length
+            ? `발행 조건을 만족하지 않습니다.\n\n${problems.map((p) => `· ${p}`).join("\n")}`
+            : d.detail ?? "발행 요청에 실패했습니다."
+        );
+      } else {
+        alert("발행 대기열에 넣었습니다. 크론이 곧 처리합니다.");
+      }
+      await load();
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function manualPublish() {
+    const permalink = prompt(
+      "인스타에 직접 올린 게시물 링크를 붙여넣으세요.\n\n" +
+        "성과와 담당자는 원래 작성자에게 그대로 귀속됩니다.\n" +
+        "예: https://www.instagram.com/p/XXXXXXX/"
+    );
+    if (!permalink) return;
+    const res = await fetch(`/api/satellite/plans/${planId}/manual-publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permalink }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) alert(d.detail ?? "연결에 실패했습니다.");
+    await load();
+    onChanged();
+  }
+
+  /* ─── 렌더 ─────────────────────────────────────── */
+
+  const hashtags = countHashtags(caption);
+  const maxTags = plan?.limits.max_hashtags ?? 5;
+  const maxCards = plan?.limits.max_cards ?? 10;
+  const overTags = hashtags > maxTags;
+  const latestJob = plan?.publish_jobs?.[0];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
+      <div className="bg-background w-full sm:max-w-2xl max-h-[92vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col shadow-xl">
+        {/* 헤더 */}
+        <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Editor</p>
+            <h2 className="text-sm font-bold text-navy truncate">
+              {plan ? `${fmtMD(plan.scheduled_date)} · ${plan.topic || "(주제 미정)"}` : "불러오는 중"}
+            </h2>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {plan && (
+              <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${STATUS_META[plan.status].cls}`}>
+                {STATUS_META[plan.status].label}
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              aria-label="닫기"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* 본문 */}
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+          {loading && !plan ? (
+            <p className="text-xs text-gray-300 text-center py-12">불러오는 중...</p>
+          ) : err ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-xs text-red-600">{err}</p>
+            </div>
+          ) : plan ? (
+            <>
+              {/* 발행 결과 / 실패 안내 */}
+              {latestJob && (
+                <div className={`rounded-xl border px-4 py-3 ${JOB_STATE_META[latestJob.state].cls}`}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold">
+                      발행 {JOB_STATE_META[latestJob.state].label}
+                    </span>
+                    <span className="text-[10px] opacity-70">시도 {latestJob.attempt_no}회</span>
+                    {latestJob.permalink && (
+                      <a
+                        href={latestJob.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-semibold underline underline-offset-2 ml-auto"
+                      >
+                        게시물 보기
+                      </a>
+                    )}
+                  </div>
+                  {latestJob.error_message && (
+                    <p className="text-[11px] mt-1 leading-relaxed break-words">
+                      [{latestJob.error_code}] {latestJob.error_message}
+                    </p>
+                  )}
+                  {latestJob.recovered_by && (
+                    <p className="text-[11px] mt-1">{latestJob.recovered_by} 님이 수동으로 발행</p>
+                  )}
+                </div>
+              )}
+
+              {!plan.publish_enabled && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+                  <p className="text-[11px] text-amber-700 leading-relaxed">
+                    발행 스위치가 꺼져 있습니다. 작업은 저장되지만 인스타에 올라가지 않습니다.
+                    <br />
+                    서버 환경변수 <code className="font-mono">IG_PUBLISH_ENABLED=1</code> 설정이 필요합니다.
+                  </p>
+                </div>
+              )}
+
+              {/* 유형 */}
+              <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                <h3 className="text-sm font-bold text-gray-800 mb-2">콘텐츠 유형</h3>
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                  {(Object.keys(MEDIA_META) as MediaType[]).map((k) => (
+                    <button
+                      key={k}
+                      disabled={!plan.can_edit || plan.assets.length > 0}
+                      title={
+                        plan.assets.length > 0
+                          ? "올린 파일을 모두 삭제한 뒤 유형을 바꿀 수 있습니다"
+                          : ""
+                      }
+                      onClick={() => patch({ media_type: k }).then(() => load())}
+                      className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        plan.media_type === k
+                          ? "bg-white text-navy shadow-sm"
+                          : "text-gray-400 hover:text-gray-600"
+                      }`}
+                    >
+                      {MEDIA_META[k].label}
+                    </button>
+                  ))}
+                </div>
+                {plan.assets.length > 0 && plan.can_edit && (
+                  <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                    파일이 올라간 뒤에는 유형을 바꿀 수 없습니다. 릴스는 동영상, 카드뉴스는 이미지만 받습니다.
+                  </p>
+                )}
+                {plan.is_reel && (
+                  <p className="text-[10px] text-amber-600 mt-2 leading-relaxed">
+                    릴스는 프로필 방문·팔로우 지표를 제공하지 않습니다. 계정 성장 기여도 분석은 카드뉴스 표본으로만 가능합니다.
+                  </p>
+                )}
+              </section>
+
+              {/* 파일 */}
+              <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800">
+                      {plan.is_reel ? "동영상" : MEDIA_META[plan.media_type].label}
+                    </h3>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {plan.is_reel
+                        ? "MP4 또는 MOV · 1개만 발행됩니다"
+                        : "끌어서 순서를 바꿉니다 · 첫 장이 표지입니다"}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-xs font-bold ${
+                      !plan.is_reel && plan.assets.length >= maxCards ? "text-amber-600" : "text-gray-400"
+                    }`}
+                  >
+                    {plan.assets.length}/{plan.is_reel ? 1 : maxCards}
+                  </span>
+                </div>
+
+                <div className={plan.is_reel ? "grid grid-cols-2 gap-2" : "grid grid-cols-3 sm:grid-cols-5 gap-2"}>
+                  {plan.assets.map((a, i) => (
+                    <AssetTile
+                      key={a.id}
+                      asset={a}
+                      index={i}
+                      editable={plan.can_edit}
+                      showOrder={!plan.is_reel}
+                      draggableTile={!plan.is_reel}
+                      onDragStart={() => setDragId(a.id)}
+                      onDrop={() => dropOn(a.id)}
+                      onRemove={() => removeAsset(a.id)}
+                    />
+                  ))}
+
+                  {plan.can_edit && plan.assets.length < (plan.is_reel ? 1 : maxCards) && (
+                    <button
+                      onClick={() => fileInput.current?.click()}
+                      disabled={uploading > 0}
+                      className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1 text-gray-300 hover:border-periwinkle hover:text-periwinkle transition-colors disabled:opacity-50"
+                    >
+                      {uploading > 0 ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+                          <span className="text-[9px]">{uploading}장 처리 중</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                          <span className="text-[9px]">추가</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept={ACCEPT[plan.media_type]}
+                  multiple={!plan.is_reel}
+                  onChange={(e) => handleFiles(e.target.files)}
+                  className="hidden"
+                />
+
+                <p className="text-[10px] text-gray-400 mt-2.5 leading-relaxed">
+                  {plan.is_reel
+                    ? "동영상은 변환 없이 원본이 그대로 발행됩니다. 인코딩은 인스타가 처리하며 최대 5분 걸릴 수 있습니다."
+                    : "PNG 로 올려도 서버가 발행용 JPEG 로 변환합니다. 원본은 그대로 보관됩니다."}
+                </p>
+              </section>
+
+              {/* 릴스 전용 — 음원 */}
+              {plan.is_reel && (
+                <AudioPicker
+                  audioId={plan.audio_id}
+                  audioVolume={plan.audio_volume}
+                  editable={plan.can_edit}
+                  onSelect={(id: string, _track: AudioTrack | null) => {
+                    patch({ audio_id: id }).then(() => load());
+                  }}
+                  onVolumeChange={(v: number | null) => {
+                    patch({ audio_volume: v }, true).then(() => load());
+                  }}
+                />
+              )}
+
+              {/* 캡션 */}
+              <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-gray-800">캡션</h3>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className={overTags ? "text-red-500 font-bold" : "text-gray-400"}>
+                      해시태그 {hashtags}/{maxTags}
+                    </span>
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-400">{caption.length}자</span>
+                  </div>
+                </div>
+                <textarea
+                  value={caption}
+                  onChange={(e) => onCaptionChange(e.target.value)}
+                  disabled={!plan.can_edit}
+                  rows={7}
+                  placeholder="본문과 해시태그를 입력하세요"
+                  className={`w-full text-sm text-gray-700 border rounded-xl px-3 py-2.5 focus:outline-none resize-y disabled:bg-gray-50 ${
+                    overTags ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-periwinkle"
+                  }`}
+                />
+                {overTags && (
+                  <p className="text-[11px] text-red-500 mt-1.5">
+                    해시태그가 {maxTags}개를 넘었습니다. 줄여야 저장됩니다. (팀 운영 규칙)
+                  </p>
+                )}
+              </section>
+
+              {/* 희망 발행 시간 */}
+              <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                <h3 className="text-sm font-bold text-gray-800 mb-1">희망 발행 시간</h3>
+                <p className="text-[11px] text-gray-400 mb-2.5">
+                  실측 기준 15~18시가 평균 대비 +41% 였습니다. 강제는 아닙니다.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="datetime-local"
+                    value={publishAt}
+                    onChange={(e) => setPublishAt(e.target.value)}
+                    onBlur={() =>
+                      patch({
+                        desired_publish_at: publishAt ? new Date(publishAt).toISOString() : null,
+                      })
+                    }
+                    disabled={!plan.can_edit}
+                    className="flex-1 text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-periwinkle disabled:bg-gray-50"
+                  />
+                  <button
+                    onClick={() => {
+                      const d = new Date(plan.scheduled_date + "T15:00");
+                      const v = toLocalInput(d.toISOString());
+                      setPublishAt(v);
+                      patch({ desired_publish_at: d.toISOString() });
+                    }}
+                    disabled={!plan.can_edit}
+                    className="px-3 text-[11px] font-semibold text-periwinkle border border-periwinkle/25 rounded-xl hover:bg-periwinkle/5 disabled:opacity-40"
+                  >
+                    15시
+                  </button>
+                </div>
+              </section>
+
+              {/* 발행 전 점검 */}
+              {plan.validation.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-[11px] font-bold text-amber-700 mb-1.5">발행 전 확인이 필요합니다</p>
+                  <ul className="flex flex-col gap-1">
+                    {plan.validation.map((v) => (
+                      <li key={v} className="text-[11px] text-amber-700 leading-relaxed">
+                        · {v}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+
+        {/* 하단 액션 */}
+        {plan && (
+          <div className="bg-white border-t border-gray-100 px-4 py-3 flex items-center gap-2 shrink-0">
+            {plan.status === "draft" ? (
+              <button
+                onClick={toReady}
+                disabled={saving || plan.validation.length > 0 || !plan.can_edit}
+                className="flex-1 py-2.5 bg-navy text-white text-xs font-bold rounded-xl hover:bg-periwinkle transition-colors disabled:opacity-40"
+              >
+                {saving ? "저장 중..." : "준비완료로 전환"}
+              </button>
+            ) : plan.status === "published" ? (
+              <p className="flex-1 text-center text-xs text-gray-400">발행이 완료된 콘텐츠입니다</p>
+            ) : (
+              <>
+                <button
+                  onClick={toDraft}
+                  disabled={saving || !plan.can_edit}
+                  className="px-4 py-2.5 text-xs font-semibold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40"
+                >
+                  작업중으로
+                </button>
+                {plan.is_lead && (
+                  <button
+                    onClick={publishNow}
+                    disabled={saving || plan.validation.length > 0}
+                    className="flex-1 py-2.5 bg-navy text-white text-xs font-bold rounded-xl hover:bg-periwinkle transition-colors disabled:opacity-40"
+                  >
+                    지금 발행
+                  </button>
+                )}
+              </>
+            )}
+
+            {plan.is_lead && plan.status !== "published" && (
+              <button
+                onClick={manualPublish}
+                className="px-3 py-2.5 text-[11px] font-semibold text-amber-600 border border-amber-200 rounded-xl hover:bg-amber-50"
+                title="인스타에 직접 올린 뒤 링크를 연결합니다"
+              >
+                수동 연결
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── 이미지 타일 ─────────────────────────────────── */
+
+function AssetTile({
+  asset,
+  index,
+  editable,
+  showOrder = true,
+  draggableTile = true,
+  onDragStart,
+  onDrop,
+  onRemove,
+}: {
+  asset: PlanAsset;
+  index: number;
+  editable: boolean;
+  showOrder?: boolean;
+  draggableTile?: boolean;
+  onDragStart: () => void;
+  onDrop: () => void;
+  onRemove: () => void;
+}) {
+  const isVideo = asset.kind === "video";
+  const canDrag = editable && draggableTile;
+
+  return (
+    <div
+      draggable={canDrag}
+      onDragStart={onDragStart}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDrop();
+      }}
+      className={`relative rounded-xl overflow-hidden border border-gray-100 bg-gray-50 group ${
+        isVideo ? "aspect-[9/16]" : "aspect-square"
+      } ${canDrag ? "cursor-grab" : ""}`}
+    >
+      {asset.preview_url ? (
+        isVideo ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video src={asset.preview_url} controls playsInline className="w-full h-full object-cover bg-black" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={asset.preview_url} alt={`${index + 1}번째 장`} className="w-full h-full object-cover" />
+        )
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-300">
+          미리보기 없음
+        </div>
+      )}
+
+      {/* 순번 — 릴스는 순서 개념이 없어 숨긴다 */}
+      {showOrder && (
+        <span className="absolute top-1 left-1 text-[9px] font-bold text-white bg-black/50 rounded px-1.5 py-0.5">
+          {index + 1}
+        </span>
+      )}
+
+      {/* 변환 상태 */}
+      {!asset.is_ready && (
+        <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center gap-1 px-1">
+          {asset.convert_error ? (
+            <>
+              <span className="text-[9px] font-bold text-red-500">변환 실패</span>
+              <span className="text-[8px] text-red-400 text-center leading-tight line-clamp-3">
+                {asset.convert_error}
+              </span>
+            </>
+          ) : (
+            <>
+              <div className="w-3 h-3 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+              <span className="text-[8px] text-gray-400">변환 중</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {editable && (
+        <button
+          onClick={onRemove}
+          aria-label="삭제"
+          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+        >
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ─── 유틸 ────────────────────────────────────────── */
+
+function countHashtags(caption: string): number {
+  return (caption.match(/#[^\s#]+/g) ?? []).length;
+}
+
+/** ISO → datetime-local 입력값 (로컬 시간대) */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}

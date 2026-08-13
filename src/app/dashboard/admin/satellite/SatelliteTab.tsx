@@ -3,8 +3,28 @@
 import { useCallback, useEffect, useState } from "react";
 
 import PlanCalendar from "./PlanCalendar";
+import PlanEditor from "./PlanEditor";
 import PlanTable from "./PlanTable";
 import { ContentPlan, MyWeek, PlansResponse, SatelliteMember, fmtMD } from "./types";
+
+interface PublishStatus {
+  configured: boolean;
+  publish_enabled: boolean;
+  account: { username: string; followers: number | null; media_count: number | null } | null;
+  quota: { quota_usage: number; quota_total: number } | null;
+  quota_error: string;
+  pending: number;
+  unresolved_failures: {
+    plan_id: number;
+    topic: string;
+    owner_name: string;
+    scheduled_date: string;
+    error_code: string;
+    error_message: string;
+    attempt_no: number;
+  }[];
+  is_lead: boolean;
+}
 
 /* ─── 에러 표현 ───────────────────────────────────── */
 
@@ -63,6 +83,8 @@ export default function SatelliteTab() {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<LoadError[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
+  const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -118,15 +140,26 @@ export default function SatelliteTab() {
     }
   }, []);
 
+  const loadPubStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/satellite/publish-status");
+      if (res.ok) setPubStatus(await res.json());
+    } catch {
+      /* 상태 배너는 부가 정보 */
+    }
+  }, []);
+
   useEffect(() => {
     loadMembers();
-  }, [loadMembers]);
+    loadPubStatus();
+  }, [loadMembers, loadPubStatus]);
 
   function retryAll() {
     setErrors([]);
     loadPlans();
     loadMyWeek();
     loadMembers();
+    loadPubStatus();
   }
 
   useEffect(() => {
@@ -225,6 +258,28 @@ export default function SatelliteTab() {
     await patch(planId, { scheduled_date: dateStr });
   }
 
+  /**
+   * 콘텐츠 클릭 시 라우팅 (설계서 §07-2)
+   *   내 것          → 에디터
+   *   남의 것(draft) → 진입 불가
+   *   남의 것(ready↑) → 상세 (지금은 에디터가 읽기 전용으로 뜬다)
+   *   리드           → 항상 진입 가능
+   */
+  function openPlan(plan: ContentPlan) {
+    const isMine = viewerAccountId !== null && plan.owner_id === viewerAccountId;
+    if (!isMine && !isLead && plan.status === "draft") {
+      alert("아직 작업 중입니다.\n\n담당자가 준비완료로 바꾸면 열람하고 피드백할 수 있습니다.");
+      return;
+    }
+    setEditorPlanId(plan.id);
+  }
+
+  async function afterEditorChange() {
+    await loadPlans();
+    loadMyWeek();
+    loadPubStatus();
+  }
+
   const viewerAccountId = data?.viewer.account_id ?? null;
   const isLead = data?.viewer.is_lead ?? false;
   const today = data?.today ?? new Date().toISOString().slice(0, 10);
@@ -267,6 +322,92 @@ export default function SatelliteTab() {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 미처리 발행 실패 — 조용히 묻히지 않도록 상단에 계속 띄운다 (설계서 §07-6) */}
+      {pubStatus && pubStatus.unresolved_failures.length > 0 && (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
+          <p className="text-xs font-bold text-orange-700 mb-2">
+            발행에 실패한 콘텐츠 {pubStatus.unresolved_failures.length}건
+            {pubStatus.is_lead && <span className="ml-1.5 font-normal">— 수동 발행으로 수습해주세요</span>}
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {pubStatus.unresolved_failures.map((f) => (
+              <button
+                key={f.plan_id}
+                onClick={() => setEditorPlanId(f.plan_id)}
+                className="text-left flex items-start gap-2 hover:bg-orange-100/60 rounded-lg px-1.5 py-1 transition-colors"
+              >
+                <span className="text-[10px] font-semibold text-orange-600 shrink-0 mt-0.5">
+                  {fmtMD(f.scheduled_date)}
+                </span>
+                <span className="min-w-0">
+                  <span className="text-[11px] text-orange-700 font-medium">
+                    {f.topic || "(주제 미정)"}
+                  </span>
+                  <span className="text-[10px] text-orange-500 ml-1.5">· {f.owner_name}</span>
+                  <span className="block text-[10px] text-orange-500 leading-relaxed">
+                    [{f.error_code}] {f.error_message.slice(0, 90)}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 발행 대상 계정 + 설정 상태 — 어느 계정에 올라가는지 항상 보이게 한다 */}
+      {pubStatus && (pubStatus.account || !pubStatus.publish_enabled) && (
+        <div
+          className={`rounded-2xl border px-4 py-2.5 flex items-center gap-2.5 ${
+            pubStatus.publish_enabled
+              ? "border-green-200 bg-green-50"
+              : "border-gray-200 bg-white"
+          }`}
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              pubStatus.publish_enabled ? "bg-green-500" : "bg-gray-300"
+            }`}
+          />
+          <div className="min-w-0 flex-1">
+            {pubStatus.account ? (
+              <p
+                className={`text-[11px] leading-relaxed ${
+                  pubStatus.publish_enabled ? "text-green-700" : "text-gray-500"
+                }`}
+              >
+                발행 대상{" "}
+                <span className="font-bold">@{pubStatus.account.username}</span>
+                {pubStatus.account.followers != null && (
+                  <span className="opacity-70">
+                    {" "}
+                    · 팔로워 {pubStatus.account.followers.toLocaleString()}
+                  </span>
+                )}
+                {!pubStatus.publish_enabled && (
+                  <span className="block mt-0.5 text-gray-500">
+                    자동 발행이 꺼져 있어 실제로는 올라가지 않습니다.
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                자동 발행이 꺼져 있습니다 — 콘텐츠는 저장되지만 인스타에 올라가지 않습니다.
+                {!pubStatus.configured && " 인스타 연동 환경변수도 아직 설정되지 않았습니다."}
+              </p>
+            )}
+          </div>
+          {pubStatus.quota && (
+            <span
+              className={`text-[10px] shrink-0 ${
+                pubStatus.publish_enabled ? "text-green-600" : "text-gray-400"
+              }`}
+            >
+              쿼터 {pubStatus.quota.quota_usage}/{pubStatus.quota.quota_total}
+            </span>
+          )}
         </div>
       )}
 
@@ -324,6 +465,7 @@ export default function SatelliteTab() {
               onPatch={patch}
               onDelete={remove}
               onCreate={create}
+              onOpen={openPlan}
               busyId={busyId}
             />
 
@@ -336,9 +478,7 @@ export default function SatelliteTab() {
               onPrev={() => shiftMonth(-1)}
               onNext={() => shiftMonth(1)}
               onToday={goToday}
-              onSelect={() => {
-                /* 2차: 에디터 / 콘텐츠 상세로 라우팅 (설계서 §07-2) */
-              }}
+              onSelect={openPlan}
               onDropOnDate={moveToDate}
             />
           </>
@@ -346,8 +486,16 @@ export default function SatelliteTab() {
       )}
 
       <p className="text-[10px] text-gray-300 text-center px-4 leading-relaxed">
-        1차 범위는 주제 캘린더까지입니다. 에디터·자동 발행·성과 대시보드는 다음 단계에서 붙습니다.
+        성과 대시보드와 근태는 다음 단계에서 붙습니다.
       </p>
+
+      {editorPlanId !== null && (
+        <PlanEditor
+          planId={editorPlanId}
+          onClose={() => setEditorPlanId(null)}
+          onChanged={afterEditorChange}
+        />
+      )}
     </div>
   );
 }

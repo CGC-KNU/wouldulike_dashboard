@@ -31,6 +31,7 @@ export default function PlanTable({
   onPatch,
   onDelete,
   onCreate,
+  onOpen,
   busyId,
 }: {
   plans: ContentPlan[];
@@ -41,6 +42,7 @@ export default function PlanTable({
   onPatch: (id: number, body: Record<string, unknown>) => Promise<boolean>;
   onDelete: (id: number) => Promise<void>;
   onCreate: (body: Record<string, unknown>) => Promise<boolean>;
+  onOpen: (plan: ContentPlan) => void;
   busyId: number | null;
 }) {
   const [adding, setAdding] = useState(false);
@@ -126,13 +128,14 @@ export default function PlanTable({
               <th className="text-left font-semibold px-2 py-2 w-[96px]">담당자</th>
               <th className="text-left font-semibold px-2 py-2 w-[86px]">유형</th>
               <th className="text-left font-semibold px-2 py-2 w-[92px]">상태</th>
-              <th className="w-9" />
+              <th className="text-left font-semibold px-1 py-2 w-[52px]">카드</th>
+              <th className="w-16" />
             </tr>
           </thead>
           <tbody>
             {plans.length === 0 && !adding && (
               <tr>
-                <td colSpan={6} className="text-center text-gray-300 py-8 text-xs">
+                <td colSpan={7} className="text-center text-gray-300 py-8 text-xs">
                   이 달에 등록된 주제가 없습니다
                 </td>
               </tr>
@@ -255,23 +258,55 @@ export default function PlanTable({
                     )}
                   </td>
 
-                  {/* 삭제 */}
+                  {/* 카드 장수 */}
                   <td className="px-1 py-2">
-                    {editable && p.status !== "published" && (
+                    <span
+                      className={`text-[11px] ${
+                        p.card_count > 10
+                          ? "text-red-500 font-bold"
+                          : p.card_count > 0
+                          ? "text-gray-500"
+                          : "text-gray-300"
+                      }`}
+                    >
+                      {p.card_count > 0 ? `${p.card_count}장` : "—"}
+                    </span>
+                  </td>
+
+                  {/* 열기 · 삭제 */}
+                  <td className="px-1 py-2">
+                    <div className="flex items-center gap-0.5">
                       <button
-                        onClick={() => {
-                          if (confirm(`${fmtMD(p.scheduled_date)} "${p.topic || "(미정)"}" 삭제할까요?`)) {
-                            onDelete(p.id);
-                          }
-                        }}
-                        aria-label="삭제"
-                        className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        onClick={() => onOpen(p)}
+                        title="에디터 열기"
+                        className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 hover:text-periwinkle hover:bg-periwinkle/5 transition-colors"
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
                         </svg>
                       </button>
-                    )}
+                      {editable && p.status !== "published" && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`${fmtMD(p.scheduled_date)} "${p.topic || "(미정)"}" 삭제할까요?`)) {
+                              onDelete(p.id);
+                            }
+                          }}
+                          aria-label="삭제"
+                          className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

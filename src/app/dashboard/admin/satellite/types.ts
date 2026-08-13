@@ -62,6 +62,79 @@ export interface MyWeek {
   plans?: { id: number; scheduled_date: string; topic: string; status: PlanStatus }[];
 }
 
+/* ─── 에디터 ───────────────────────────────────────── */
+
+export interface PlanAsset {
+  id: number;
+  sort_order: number;
+  kind: "image" | "video";
+  width: number | null;
+  height: number | null;
+  bytes: number | null;
+  is_ready: boolean;
+  convert_error: string;
+  preview_url: string;
+  uploaded_at: string;
+}
+
+export interface PublishJobItem {
+  id: number;
+  attempt_no: number;
+  state: "pending" | "running" | "success" | "failed" | "manual_recovered";
+  scheduled_at: string | null;
+  ig_media_id: string;
+  permalink: string;
+  error_code: string;
+  error_message: string;
+  escalated_at: string | null;
+  finished_at: string | null;
+  recovered_by: string | null;
+}
+
+export interface AudioTrack {
+  audio_id: string;
+  title: string;
+  artist: string;
+  duration_ms: number | null;
+  thumbnail_url: string;
+}
+
+export interface PlanDetail {
+  id: number;
+  owner_id: number;
+  owner_name: string;
+  scheduled_date: string;
+  topic: string;
+  media_type: MediaType;
+  status: PlanStatus;
+  caption: string;
+  hashtag_count: number;
+  desired_publish_at: string | null;
+  card_count: number;
+  is_reel: boolean;
+  audio_id: string;
+  audio_volume: number | null;
+  ready_at: string | null;
+  assets: PlanAsset[];
+  publish_jobs: PublishJobItem[];
+  limits: { max_cards: number; max_hashtags: number };
+  validation: string[];
+  can_edit: boolean;
+  is_lead: boolean;
+  publish_enabled: boolean;
+}
+
+export const JOB_STATE_META: Record<
+  PublishJobItem["state"],
+  { label: string; cls: string }
+> = {
+  pending: { label: "대기", cls: "bg-gray-100 text-gray-500 border-gray-200" },
+  running: { label: "발행 중", cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  success: { label: "성공", cls: "bg-green-50 text-green-700 border-green-200" },
+  failed: { label: "실패", cls: "bg-red-50 text-red-600 border-red-200" },
+  manual_recovered: { label: "수동 연결", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+};
+
 export interface DuplicateMatch {
   id: number;
   topic: string;
