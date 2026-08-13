@@ -670,6 +670,8 @@ export default function PlanEditor({
                     onBlur={() =>
                       patch({
                         desired_publish_at: publishAt ? new Date(publishAt).toISOString() : null,
+                      }).then((ok) => {
+                        if (ok) load({ preserveCaption: true });
                       })
                     }
                     disabled={!plan.can_edit}
@@ -680,7 +682,9 @@ export default function PlanEditor({
                       const d = new Date(plan.scheduled_date + "T15:00");
                       const v = toLocalInput(d.toISOString());
                       setPublishAt(v);
-                      patch({ desired_publish_at: d.toISOString() });
+                      patch({ desired_publish_at: d.toISOString() }).then((ok) => {
+                        if (ok) load({ preserveCaption: true });
+                      });
                     }}
                     disabled={!plan.can_edit}
                     className="px-3 text-[11px] font-semibold text-periwinkle border border-periwinkle/25 rounded-xl hover:bg-periwinkle/5 disabled:opacity-40"
