@@ -105,6 +105,26 @@ export default function PlanEditor({
     }
   }
 
+  /** 낱장 대체 텍스트(접근성) 저장 — 플랜 전체가 아니라 자산 1개 단위 */
+  async function patchAsset(assetId: number, body: Record<string, unknown>) {
+    try {
+      const res = await fetch(`/api/satellite/assets/${assetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(d.detail ?? "저장에 실패했습니다.");
+        return false;
+      }
+      return true;
+    } catch (e) {
+      alert((e as Error).message);
+      return false;
+    }
+  }
+
   /** 캡션은 타이핑이 멈추면 자동 저장한다 */
   function onCaptionChange(v: string) {
     setCaption(v);
@@ -494,6 +514,19 @@ export default function PlanEditor({
                       onDragStart={() => setDragId(a.id)}
                       onDrop={() => dropOn(a.id)}
                       onRemove={() => removeAsset(a.id)}
+                      onAltTextChange={(v) => {
+                        setPlan((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                assets: prev.assets.map((x) =>
+                                  x.id === a.id ? { ...x, alt_text: v } : x
+                                ),
+                              }
+                            : prev
+                        );
+                        patchAsset(a.id, { alt_text: v });
+                      }}
                     />
                   ))}
 
@@ -549,6 +582,77 @@ export default function PlanEditor({
                     patch({ audio_volume: v }, true).then(() => load({ preserveCaption: true }));
                   }}
                 />
+              )}
+
+              {/* 릴스 전용 — 실제 트렌드 음원 안내 */}
+              {plan.is_reel && (
+                <p className="text-[11px] text-gray-400 leading-relaxed -mt-1 px-1">
+                  여기서 고를 수 있는 음원은 API로 반출이 허가된 목록뿐이라, 앱에서 찜해둔 트렌드
+                  음원과 다를 수 있어요. 특정 트렌드 음원이 꼭 필요하면 이 콘텐츠는 자동 발행 대신
+                  인스타 앱에서 직접 올리며 붙이고, 앱의 &quot;고급 설정 → 예약 게시&quot;로 원하는
+                  시간에 걸어두세요. 발행 후 하단 &quot;수동 연결&quot;로 링크만 붙이면 실적은 그대로
+                  잡힙니다.
+                </p>
+              )}
+
+              {/* 릴스 전용 — 노출 · 커버 */}
+              {plan.is_reel && (
+                <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                  <h3 className="text-sm font-bold text-gray-800 mb-1">노출 · 커버</h3>
+                  <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
+                    끄면 릴스 탭에만 노출되고 피드에는 뜨지 않습니다. 커버는 안 정하면 인스타가 자동으로 고릅니다.
+                  </p>
+
+                  <label className="flex items-center justify-between py-1.5">
+                    <span className="text-xs font-medium text-gray-700">피드에도 노출</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={plan.reel_share_to_feed}
+                      disabled={!plan.can_edit}
+                      onClick={() =>
+                        patch({ reel_share_to_feed: !plan.reel_share_to_feed }, true).then(() =>
+                          load({ preserveCaption: true })
+                        )
+                      }
+                      className={`relative w-9 h-5 rounded-full transition-colors disabled:opacity-40 ${
+                        plan.reel_share_to_feed ? "bg-periwinkle" : "bg-gray-200"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                          plan.reel_share_to_feed ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </label>
+
+                  <div className="mt-2.5">
+                    <label className="text-[11px] text-gray-500 mb-1 block">커버 프레임 (초)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      disabled={!plan.can_edit}
+                      value={plan.reel_thumb_offset_ms != null ? plan.reel_thumb_offset_ms / 1000 : ""}
+                      placeholder="예: 2.5"
+                      onChange={(e) => {
+                        const sec = e.target.value === "" ? null : Number(e.target.value);
+                        setPlan((prev) =>
+                          prev
+                            ? { ...prev, reel_thumb_offset_ms: sec == null ? null : Math.round(sec * 1000) }
+                            : prev
+                        );
+                      }}
+                      onBlur={() =>
+                        patch({ reel_thumb_offset_ms: plan.reel_thumb_offset_ms }, true).then((ok) => {
+                          if (ok) load({ preserveCaption: true });
+                        })
+                      }
+                      className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-periwinkle disabled:bg-gray-50"
+                    />
+                  </div>
+                </section>
               )}
 
               {/* 위치 */}
@@ -772,6 +876,7 @@ function AssetTile({
   onDragStart,
   onDrop,
   onRemove,
+  onAltTextChange,
 }: {
   asset: PlanAsset;
   index: number;
@@ -781,9 +886,16 @@ function AssetTile({
   onDragStart: () => void;
   onDrop: () => void;
   onRemove: () => void;
+  onAltTextChange?: (v: string) => void;
 }) {
   const isVideo = asset.kind === "video";
   const canDrag = editable && draggableTile;
+  const [altOpen, setAltOpen] = useState(false);
+  const [altDraft, setAltDraft] = useState(asset.alt_text);
+
+  useEffect(() => {
+    setAltDraft(asset.alt_text);
+  }, [asset.alt_text]);
 
   return (
     <div
@@ -848,6 +960,50 @@ function AssetTile({
             <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
           </svg>
         </button>
+      )}
+
+      {/* 대체 텍스트(접근성) — 동영상엔 없는 파라미터라 이미지에만 노출 */}
+      {!isVideo && onAltTextChange && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAltOpen((v) => !v);
+            }}
+            className={`absolute bottom-1 left-1 text-[8px] font-bold rounded px-1.5 py-0.5 ${
+              asset.alt_text
+                ? "bg-periwinkle text-white"
+                : "bg-black/50 text-white opacity-0 group-hover:opacity-100"
+            } transition-opacity`}
+          >
+            ALT
+          </button>
+
+          {altOpen && (
+            <div
+              className="absolute inset-0 bg-black/70 flex flex-col justify-end p-1.5 gap-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <textarea
+                value={altDraft}
+                onChange={(e) => setAltDraft(e.target.value)}
+                disabled={!editable}
+                placeholder="대체 텍스트 (접근성)"
+                rows={3}
+                className="w-full text-[9px] text-white bg-black/40 border border-white/30 rounded px-1.5 py-1 focus:outline-none resize-none placeholder:text-white/50"
+              />
+              <button
+                onClick={() => {
+                  onAltTextChange(altDraft);
+                  setAltOpen(false);
+                }}
+                className="text-[9px] font-bold text-navy bg-white rounded px-1.5 py-0.5"
+              >
+                저장
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

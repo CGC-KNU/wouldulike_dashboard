@@ -73,6 +73,7 @@ export interface PlanAsset {
   bytes: number | null;
   is_ready: boolean;
   convert_error: string;
+  alt_text: string;
   preview_url: string;
   uploaded_at: string;
 }
@@ -120,6 +121,8 @@ export interface PlanDetail {
   is_reel: boolean;
   audio_id: string;
   audio_volume: number | null;
+  reel_share_to_feed: boolean;
+  reel_thumb_offset_ms: number | null;
   location_id: string;
   location_name: string;
   collaborator_usernames: string[];
