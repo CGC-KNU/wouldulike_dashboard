@@ -193,6 +193,21 @@ export interface SatelliteSettingsResponse {
   updated_by: string | null;
 }
 
+/* ─── 태깅 콘솔 ────────────────────────────────────── */
+
+export interface TaggingPost {
+  id: number;
+  ig_media_id: string;
+  permalink: string;
+  posted_at: string;
+  format: MediaType;
+  format_label: string;
+  caption: string;
+  thumb_url: string;
+  source: "satellite" | "manual_recovery" | "external";
+  source_label: string;
+}
+
 export const JOB_STATE_META: Record<
   PublishJobItem["state"],
   { label: string; cls: string }

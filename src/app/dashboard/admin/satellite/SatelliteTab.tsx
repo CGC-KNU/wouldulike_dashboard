@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import AttendanceDashboard from "./AttendanceDashboard";
 import EmailNotificationToggle from "./EmailNotificationToggle";
 import LockApprovalQueue from "./LockApprovalQueue";
+import TaggingConsole from "./TaggingConsole";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
 import PlanTable from "./PlanTable";
@@ -89,6 +90,7 @@ export default function SatelliteTab() {
   const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
   const [showAttendance, setShowAttendance] = useState(false);
+  const [showTagging, setShowTagging] = useState(false);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -496,12 +498,19 @@ export default function SatelliteTab() {
       )}
 
       {isLead ? (
-        <div className="text-center">
+        <div className="text-center flex items-center justify-center gap-3">
           <button
             onClick={() => setShowAttendance(true)}
             className="text-[11px] font-semibold text-periwinkle hover:underline"
           >
             근태 보기
+          </button>
+          <span className="text-gray-200">·</span>
+          <button
+            onClick={() => setShowTagging(true)}
+            className="text-[11px] font-semibold text-periwinkle hover:underline"
+          >
+            태깅 콘솔
           </button>
         </div>
       ) : (
@@ -519,6 +528,7 @@ export default function SatelliteTab() {
       )}
 
       {showAttendance && <AttendanceDashboard onClose={() => setShowAttendance(false)} />}
+      {showTagging && <TaggingConsole onClose={() => setShowTagging(false)} />}
     </div>
   );
 }
