@@ -55,6 +55,11 @@ export default function BannerLabComposer() {
   const [generating, setGenerating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // AI 지시문
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [savingAiPrompt, setSavingAiPrompt] = useState(false);
+  const [retouchingId, setRetouchingId] = useState<number | null>(null);
+
   const loadCampaigns = useCallback(async () => {
     setLoadingList(true);
     try {
@@ -92,6 +97,10 @@ export default function BannerLabComposer() {
     if (selectedId) loadDetail(selectedId);
     else setDetail(null);
   }, [selectedId, loadDetail]);
+
+  useEffect(() => {
+    setAiPrompt(detail?.ai_prompt ?? "");
+  }, [detail?.id, detail?.ai_prompt]);
 
   async function createCampaign() {
     if (!newTitle.trim()) return;
@@ -166,6 +175,50 @@ export default function BannerLabComposer() {
     if (!confirm("이 사진을 삭제할까요?")) return;
     await fetch(`/api/bannerlab/photos/${photoId}`, { method: "DELETE" });
     await loadDetail(detail.id);
+  }
+
+  async function saveAiPrompt() {
+    if (!detail) return;
+    setSavingAiPrompt(true);
+    try {
+      const res = await fetch(`/api/bannerlab/campaigns/${detail.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ai_prompt: aiPrompt.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail ?? "AI 지시문 저장에 실패했습니다.");
+        return;
+      }
+      await loadDetail(detail.id);
+    } finally {
+      setSavingAiPrompt(false);
+    }
+  }
+
+  async function retouchPhoto(photoId: number) {
+    if (!detail) return;
+    if (!aiPrompt.trim()) {
+      alert("먼저 AI 지시문을 입력하고 저장해주세요.");
+      return;
+    }
+    if (aiPrompt.trim() !== detail.ai_prompt) {
+      alert("AI 지시문을 수정하셨네요. 먼저 저장 버튼을 눌러주세요.");
+      return;
+    }
+    setRetouchingId(photoId);
+    try {
+      const res = await fetch(`/api/bannerlab/photos/${photoId}/retouch`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail ?? "AI 다듬기에 실패했습니다.");
+        return;
+      }
+      await loadDetail(detail.id);
+    } finally {
+      setRetouchingId(null);
+    }
   }
 
   async function addCopy() {
@@ -304,6 +357,35 @@ export default function BannerLabComposer() {
               슬랙 봇 토큰이 아직 설정되어 있지 않습니다 — 지금은 합성 결과가 대시보드에만 남고 슬랙으로는 발송되지 않습니다.
             </p>
           )}
+          {!detail.ai_retouch_enabled && (
+            <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+              OpenAI API 키가 아직 설정되어 있지 않습니다 — "AI로 다듬기"는 지금 사용할 수 없고, 사진 원본으로만 합성됩니다.
+            </p>
+          )}
+
+          {/* AI 지시문 */}
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">AI 사진 다듬기 지시문</p>
+            <div className="flex items-start gap-1.5">
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="예: 따뜻한 조명, 음식이 부각되게, 자연스러운 매장 분위기 (문구는 여기 안 넣어도 됩니다 — 별도로 얹습니다)"
+                rows={2}
+                className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-periwinkle resize-none"
+              />
+              <button
+                onClick={saveAiPrompt}
+                disabled={savingAiPrompt || aiPrompt.trim() === detail.ai_prompt}
+                className="shrink-0 text-[11px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1.5 hover:bg-periwinkle disabled:opacity-40"
+              >
+                {savingAiPrompt ? "저장 중..." : "저장"}
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              AI는 사진(배경·톤)만 다듬고, 문구는 지금처럼 Pillow가 정확하게 얹습니다.
+            </p>
+          </div>
 
           {/* 사진 풀 */}
           <div>
@@ -321,17 +403,37 @@ export default function BannerLabComposer() {
                 />
               </label>
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2.5 flex-wrap">
               {detail.photos.map((p) => (
-                <div key={p.id} className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100 group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {p.url && <img src={p.url} alt="" className="w-full h-full object-cover" />}
+                <div key={p.id} className="w-20">
+                  <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.retouched_url || p.url} alt="" className="w-full h-full object-cover" />
+                    {p.retouched_url && (
+                      <span className="absolute bottom-0.5 left-0.5 text-[8px] font-bold text-white bg-periwinkle/90 rounded px-1">
+                        AI
+                      </span>
+                    )}
+                    <button
+                      onClick={() => removePhoto(p.id)}
+                      className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] opacity-0 group-hover:opacity-100"
+                    >
+                      ×
+                    </button>
+                  </div>
                   <button
-                    onClick={() => removePhoto(p.id)}
-                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] opacity-0 group-hover:opacity-100"
+                    onClick={() => retouchPhoto(p.id)}
+                    disabled={retouchingId === p.id || !detail.ai_retouch_enabled}
+                    className="mt-1 w-full text-[9.5px] font-semibold text-periwinkle border border-periwinkle/30 rounded-md py-1 hover:bg-periwinkle/5 disabled:opacity-30"
+                    title={p.retouch_error || undefined}
                   >
-                    ×
+                    {retouchingId === p.id ? "다듬는 중..." : p.retouched_url ? "다시 다듬기" : "AI로 다듬기"}
                   </button>
+                  {p.retouch_error && (
+                    <p className="text-[9px] text-red-500 mt-0.5 truncate" title={p.retouch_error}>
+                      {p.retouch_error}
+                    </p>
+                  )}
                 </div>
               ))}
               {!detail.photos.length && <p className="text-[11px] text-gray-300">아직 올린 사진이 없습니다.</p>}
@@ -406,7 +508,12 @@ export default function BannerLabComposer() {
               <p className="text-xs font-semibold text-gray-600 mb-1.5">생성 결과 ({detail.variants.length}장)</p>
               <div className="grid grid-cols-3 gap-2">
                 {detail.variants.map((v) => (
-                  <div key={v.id} className="rounded-lg overflow-hidden border border-gray-100">
+                  <div key={v.id} className="rounded-lg overflow-hidden border border-gray-100 relative">
+                    {v.source_photo_ai && (
+                      <span className="absolute top-1 left-1 z-10 text-[8px] font-bold text-white bg-periwinkle/90 rounded px-1">
+                        AI 사진
+                      </span>
+                    )}
                     {v.url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={v.url} alt="" className="w-full aspect-[4/5] object-cover bg-gray-50" />

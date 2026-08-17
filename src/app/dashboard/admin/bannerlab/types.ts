@@ -8,6 +8,7 @@ export interface BannerCampaignSummary {
   ratio: BannerRatio;
   tone: string;
   font_label: string;
+  ai_prompt: string;
   status: BannerStatus;
   status_label: string;
   slack_channel_id: string;
@@ -20,6 +21,9 @@ export interface BannerPhoto {
   id: number;
   url: string;
   sort_order: number;
+  retouched_url: string;
+  retouch_error: string;
+  retouched_at: string | null;
 }
 
 export interface BannerCopy {
@@ -41,6 +45,7 @@ export interface BannerVariant {
   slack_posted: boolean;
   slack_error: string;
   selected: boolean;
+  source_photo_ai: boolean;
   created_at: string;
 }
 
@@ -50,4 +55,5 @@ export interface BannerCampaignDetail extends BannerCampaignSummary {
   variants: BannerVariant[];
   slack_enabled: boolean;
   slack_default_channel: string;
+  ai_retouch_enabled: boolean;
 }
