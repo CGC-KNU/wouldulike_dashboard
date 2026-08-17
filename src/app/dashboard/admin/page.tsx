@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import SatelliteTab from "./satellite/SatelliteTab";
+import BannerLabComposer from "./bannerlab/BannerLabComposer";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -2037,7 +2038,21 @@ function MarketingTab() {
 function ContentTab() {
   return (
     <div className="flex flex-col gap-4">
-      {/* 배너 */}
+      {/* 배너 자동화 (배너랩) */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">배너 자동화 (배너랩)</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              사진+문구 조합을 자동 합성해 슬랙으로 발송 · Phase 1 (AI 배경생성 없음)
+            </p>
+          </div>
+        </div>
+        <div className="p-4">
+          <BannerLabComposer />
+        </div>
+      </div>
+      {/* 배너 (기존 수동 URL 등록) */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
