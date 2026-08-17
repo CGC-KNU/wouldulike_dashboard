@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import AttendanceDashboard from "./AttendanceDashboard";
+import EmailNotificationToggle from "./EmailNotificationToggle";
 import LockApprovalQueue from "./LockApprovalQueue";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
@@ -330,6 +331,9 @@ export default function SatelliteTab() {
 
       {/* D-1 마감을 넘겨 잠긴 콘텐츠 — 리드 전용 (설계서 §16-6) */}
       {isLead && <LockApprovalQueue onOpenPlan={(id) => setEditorPlanId(id)} />}
+
+      {/* 이메일 발송 온/오프 — 슈퍼관리자·마케팅팀 누구나 (설계서 §16-8) */}
+      <EmailNotificationToggle />
 
       {/* 미처리 발행 실패 — 조용히 묻히지 않도록 상단에 계속 띄운다 (설계서 §07-6) */}
       {pubStatus && pubStatus.unresolved_failures.length > 0 && (

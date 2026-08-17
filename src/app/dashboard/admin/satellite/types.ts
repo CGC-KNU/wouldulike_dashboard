@@ -185,6 +185,14 @@ export interface LockQueueItem {
   locked_at: string | null;
 }
 
+/* ─── 전역 설정 ────────────────────────────────────── */
+
+export interface SatelliteSettingsResponse {
+  email_enabled: boolean;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
 export const JOB_STATE_META: Record<
   PublishJobItem["state"],
   { label: string; cls: string }
