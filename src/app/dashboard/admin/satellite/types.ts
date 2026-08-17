@@ -133,7 +133,56 @@ export interface PlanDetail {
   validation: string[];
   can_edit: boolean;
   is_lead: boolean;
+  is_owner: boolean;
   publish_enabled: boolean;
+  // 3차 — 잠금 · 수정요청
+  locked_at: string | null;
+  unlocked_at: string | null;
+  unlock_type: string;
+  edit_request_count: number;
+  edit_grant_at: string | null;
+  comment_count: number;
+}
+
+/* ─── 3차 — 댓글 · 근태 ───────────────────────────── */
+
+export interface CommentItem {
+  id: number;
+  plan_id: number;
+  author_id: number | null;
+  author_name: string;
+  body: string;
+  card_anchor: number | null;
+  created_at: string;
+  edited_at: string | null;
+}
+
+export interface AttendanceRow {
+  account_id: number;
+  name: string;
+  is_active: boolean;
+  weekly_quota: number;
+  registered: number;
+  not_registered: boolean;
+  on_time: number;
+  late: number;
+  edit_requests: number;
+  publish_failed_ref: number;
+}
+
+export interface AttendanceResponse {
+  week_start: string;
+  week_end: string;
+  rows: AttendanceRow[];
+}
+
+export interface LockQueueItem {
+  id: number;
+  scheduled_date: string;
+  topic: string;
+  owner_id: number;
+  owner_name: string;
+  locked_at: string | null;
 }
 
 export const JOB_STATE_META: Record<

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import AttendanceDashboard from "./AttendanceDashboard";
+import LockApprovalQueue from "./LockApprovalQueue";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
 import PlanTable from "./PlanTable";
@@ -85,6 +87,7 @@ export default function SatelliteTab() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
+  const [showAttendance, setShowAttendance] = useState(false);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -325,6 +328,9 @@ export default function SatelliteTab() {
         </div>
       )}
 
+      {/* D-1 마감을 넘겨 잠긴 콘텐츠 — 리드 전용 (설계서 §16-6) */}
+      {isLead && <LockApprovalQueue onOpenPlan={(id) => setEditorPlanId(id)} />}
+
       {/* 미처리 발행 실패 — 조용히 묻히지 않도록 상단에 계속 띄운다 (설계서 §07-6) */}
       {pubStatus && pubStatus.unresolved_failures.length > 0 && (
         <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
@@ -485,9 +491,20 @@ export default function SatelliteTab() {
         )
       )}
 
-      <p className="text-[10px] text-gray-300 text-center px-4 leading-relaxed">
-        성과 대시보드와 근태는 다음 단계에서 붙습니다.
-      </p>
+      {isLead ? (
+        <div className="text-center">
+          <button
+            onClick={() => setShowAttendance(true)}
+            className="text-[11px] font-semibold text-periwinkle hover:underline"
+          >
+            근태 보기
+          </button>
+        </div>
+      ) : (
+        <p className="text-[10px] text-gray-300 text-center px-4 leading-relaxed">
+          성과 대시보드는 다음 단계에서 붙습니다.
+        </p>
+      )}
 
       {editorPlanId !== null && (
         <PlanEditor
@@ -496,6 +513,8 @@ export default function SatelliteTab() {
           onChanged={afterEditorChange}
         />
       )}
+
+      {showAttendance && <AttendanceDashboard onClose={() => setShowAttendance(false)} />}
     </div>
   );
 }

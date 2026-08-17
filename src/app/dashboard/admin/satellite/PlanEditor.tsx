@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import AudioPicker from "./AudioPicker";
+import CommentThread from "./CommentThread";
 import LocationPicker from "./LocationPicker";
 import {
   AudioTrack,
@@ -404,6 +405,42 @@ export default function PlanEditor({
             </div>
           ) : plan ? (
             <>
+              {/* D-1 23:59 마감 미도달 잠금 (§16-2 ①) */}
+              {plan.status === "locked" && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-red-700">마감을 넘겨 잠겼습니다</p>
+                    <p className="text-[11px] text-red-600 mt-0.5 leading-relaxed">
+                      {plan.is_lead
+                        ? "리드 승인으로 다시 편집할 수 있게 열 수 있습니다."
+                        : "리드에게 잠금 해제를 요청해주세요."}
+                    </p>
+                  </div>
+                  {plan.is_lead && (
+                    <button
+                      onClick={() =>
+                        fetch(`/api/satellite/plans/${plan.id}/unlock`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ unlock_type: "late_upload" }),
+                        })
+                          .then((r) => r.json().catch(() => ({})).then((d) => ({ ok: r.ok, d })))
+                          .then(({ ok, d }) => {
+                            if (!ok) {
+                              alert(d.detail ?? "잠금 해제에 실패했습니다.");
+                              return;
+                            }
+                            load({ preserveCaption: true });
+                          })
+                      }
+                      className="shrink-0 text-[11px] font-semibold text-white bg-red-500 rounded-xl px-3 py-2 hover:bg-red-600"
+                    >
+                      잠금 해제
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* 발행 결과 / 실패 안내 */}
               {latestJob && (
                 <div className={`rounded-xl border px-4 py-3 ${JOB_STATE_META[latestJob.state].cls}`}>
@@ -811,6 +848,19 @@ export default function PlanEditor({
                   </ul>
                 </div>
               )}
+
+              {/* 마감 후 수정 요청 (§16-2 ②) — 지각으로 안 잡힌다 */}
+              {plan.status === "scheduled" && (
+                <EditRequestPanel
+                  planId={plan.id}
+                  isOwner={plan.is_owner}
+                  isLead={plan.is_lead}
+                  editRequestCount={plan.edit_request_count}
+                  onDone={() => load({ preserveCaption: true })}
+                />
+              )}
+
+              <CommentThread planId={plan.id} />
             </>
           ) : null}
         </div>
@@ -862,6 +912,111 @@ export default function PlanEditor({
         )}
       </div>
     </div>
+  );
+}
+
+/* ─── 마감 후 수정 요청 (§16-2 ②) ─────────────────── */
+
+function EditRequestPanel({
+  planId,
+  isOwner,
+  isLead,
+  editRequestCount,
+  onDone,
+}: {
+  planId: number;
+  isOwner: boolean;
+  isLead: boolean;
+  editRequestCount: number;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+
+  if (!isOwner && !isLead) return null;
+
+  async function requestEdit() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}/edit-request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(d.detail ?? "수정 요청에 실패했습니다.");
+        return;
+      }
+      alert("리드에게 수정 요청을 보냈습니다.");
+      setReason("");
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approve() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}/edit-request/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(d.detail ?? "승인에 실패했습니다.");
+        return;
+      }
+      onDone();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-bold text-gray-800">마감 후 수정</h3>
+        <span className="text-[11px] text-gray-400">누적 {editRequestCount}회 · 지각 아님</span>
+      </div>
+      <p className="text-[11px] text-gray-400 mb-2.5 leading-relaxed">
+        발행 대기 중인 콘텐츠를 고치려면 리드 승인이 필요합니다. 오탈자 등 단순 수정은 근태에 반영되지 않습니다.
+      </p>
+      <div className="flex gap-2">
+        {!isLead && (
+          <>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="수정 사유 (선택)"
+              className="flex-1 text-xs text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-periwinkle"
+            />
+            <button
+              onClick={requestEdit}
+              disabled={busy}
+              className="shrink-0 px-3 py-2 text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-xl hover:bg-periwinkle/5 disabled:opacity-40"
+            >
+              수정 요청
+            </button>
+          </>
+        )}
+        {isLead && (
+          <button
+            onClick={approve}
+            disabled={busy}
+            className="flex-1 py-2 text-[11px] font-semibold text-white bg-navy rounded-xl hover:bg-periwinkle disabled:opacity-40"
+          >
+            수정 허용 (편집 다시 열기)
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 
