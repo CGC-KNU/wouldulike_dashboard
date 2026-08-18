@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import SatelliteTab from "./satellite/SatelliteTab";
 import BannerLabComposer from "./bannerlab/BannerLabComposer";
+import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -2050,6 +2051,20 @@ function ContentTab() {
         </div>
         <div className="p-4">
           <BannerLabComposer />
+        </div>
+      </div>
+      {/* 주간 배너 자동화 (학기 세팅 — Phase A) */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">주간 배너 자동화 (학기 세팅)</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              학기 → 월 → 주차 폴더 자동 생성 · Phase A (세팅만 — 자동 생성/슬랙 발송은 다음 단계)
+            </p>
+          </div>
+        </div>
+        <div className="p-4">
+          <WeeklyAutomationComposer />
         </div>
       </div>
       {/* 배너 (기존 수동 URL 등록) */}
