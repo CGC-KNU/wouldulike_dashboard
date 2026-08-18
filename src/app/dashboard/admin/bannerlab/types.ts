@@ -9,6 +9,7 @@ export interface BannerCampaignSummary {
   tone: string;
   font_label: string;
   ai_prompt: string;
+  mood_photo_url: string;
   status: BannerStatus;
   status_label: string;
   slack_channel_id: string;

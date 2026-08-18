@@ -60,6 +60,11 @@ export default function BannerLabComposer() {
   const [savingAiPrompt, setSavingAiPrompt] = useState(false);
   const [retouchingId, setRetouchingId] = useState<number | null>(null);
 
+  // 무드 참고사진
+  const [uploadingMood, setUploadingMood] = useState(false);
+  const [removingMood, setRemovingMood] = useState(false);
+  const moodFileInput = useRef<HTMLInputElement>(null);
+
   const loadCampaigns = useCallback(async () => {
     setLoadingList(true);
     try {
@@ -197,10 +202,61 @@ export default function BannerLabComposer() {
     }
   }
 
+  async function uploadMoodPhoto(files: FileList | null) {
+    const file = files?.[0];
+    if (!file || !detail) return;
+    setUploadingMood(true);
+    try {
+      const pres = await fetch(`/api/bannerlab/campaigns/${detail.id}/mood-photo/presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, content_type: file.type || "image/jpeg" }),
+      });
+      const p = await pres.json().catch(() => ({}));
+      if (!pres.ok) {
+        alert(p.detail ?? "업로드 URL 발급에 실패했습니다.");
+        return;
+      }
+      const put = await fetch(p.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "image/jpeg" },
+        body: file,
+      });
+      if (!put.ok) {
+        alert(`업로드 실패 (S3 ${put.status})`);
+        return;
+      }
+      const reg = await fetch(`/api/bannerlab/campaigns/${detail.id}/mood-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: p.key }),
+      });
+      const r = await reg.json().catch(() => ({}));
+      if (!reg.ok) alert(r.detail ?? "무드 참고사진 등록 실패");
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setUploadingMood(false);
+      if (moodFileInput.current) moodFileInput.current.value = "";
+      await loadDetail(detail.id);
+    }
+  }
+
+  async function removeMoodPhoto() {
+    if (!detail) return;
+    setRemovingMood(true);
+    try {
+      await fetch(`/api/bannerlab/campaigns/${detail.id}/mood-photo`, { method: "DELETE" });
+      await loadDetail(detail.id);
+    } finally {
+      setRemovingMood(false);
+    }
+  }
+
   async function retouchPhoto(photoId: number) {
     if (!detail) return;
-    if (!aiPrompt.trim()) {
-      alert("먼저 AI 지시문을 입력하고 저장해주세요.");
+    if (!aiPrompt.trim() && !detail.mood_photo_url) {
+      alert("먼저 AI 지시문을 입력하거나 무드 참고사진을 등록해주세요.");
       return;
     }
     if (aiPrompt.trim() !== detail.ai_prompt) {
@@ -385,6 +441,41 @@ export default function BannerLabComposer() {
             <p className="text-[10px] text-gray-400 mt-1">
               AI는 사진(배경·톤)만 다듬고, 문구는 지금처럼 Pillow가 정확하게 얹습니다.
             </p>
+          </div>
+
+          {/* 무드 참고사진 */}
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">무드 참고사진 (선택)</p>
+            <div className="flex items-center gap-2.5">
+              {detail.mood_photo_url ? (
+                <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100 group shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={detail.mood_photo_url} alt="" className="w-full h-full object-cover" />
+                  <button
+                    onClick={removeMoodPhoto}
+                    disabled={removingMood}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <label className="w-16 h-16 shrink-0 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-[10px] text-periwinkle cursor-pointer text-center px-1">
+                  {uploadingMood ? "업로드 중..." : "+ 사진"}
+                  <input
+                    ref={moodFileInput}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => uploadMoodPhoto(e.target.files)}
+                  />
+                </label>
+              )}
+              <p className="text-[10px] text-gray-400 flex-1">
+                이 사진을 올리면 AI 다듬기가 이 사진의 색감·조명·분위기를 기준으로 삼고, 위 지시문은 그 위에
+                디테일만 덧붙입니다. 사진 없이 지시문만으로도 계속 사용할 수 있습니다.
+              </p>
+            </div>
           </div>
 
           {/* 사진 풀 */}
