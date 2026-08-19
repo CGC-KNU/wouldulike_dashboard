@@ -203,6 +203,17 @@ function RestaurantDrawer({
     setActionPending(false);
   }
 
+  async function setTier(tier: string) {
+    setActionPending(true);
+    const res = await fetch(`/api/dashboard/admin/restaurants/${r.restaurant_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tier }),
+    });
+    if (res.ok) onUpdated({ tier });
+    setActionPending(false);
+  }
+
   async function confirmDelete() {
     if (!secondaryPw) { setDeleteError("2차 비밀번호를 입력해주세요."); return; }
     setActionPending(true);
@@ -359,6 +370,25 @@ function RestaurantDrawer({
               >
                 자세히 보기 →
               </a>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-2">
+              <p className="text-[10px] text-gray-400 mb-1.5">
+                플랜 (식당 관리에서 직접 지정 — 점주 가입 여부와 무관, 슬랙 메시징 세팅의 "유료 식당" 판정 기준)
+              </p>
+              <div className="flex gap-1.5">
+                {(["FREE", "BOOST", "CONTENT"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTier(t)}
+                    disabled={actionPending}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                      r.tier === t ? TIER_STYLE[t] : "bg-white text-gray-400 border border-gray-200 hover:bg-gray-100"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
             <button
               onClick={toggleAffiliate}
@@ -2053,13 +2083,14 @@ function ContentTab() {
           <BannerLabComposer />
         </div>
       </div>
-      {/* 주간 배너 자동화 (학기 세팅 — Phase A) */}
+      {/* 슬랙 메시징 세팅 (구 "주간 배너 자동화" — 학기/월/주차 폴더 세팅) */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-700">주간 배너 자동화 (학기 세팅)</h2>
+            <h2 className="text-sm font-semibold text-gray-700">슬랙 메시징 세팅</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              학기 → 월 → 주차 폴더 자동 생성 · Phase A (세팅만 — 자동 생성/슬랙 발송은 다음 단계)
+              학기 → 월 → 주차 폴더별로 타입/사진/식당을 세팅하면 슬랙으로 자동 발송되고,
+              마케팅팀이 슬랙에서 승인하거나 피드백을 남길 수 있어요.
             </p>
           </div>
         </div>

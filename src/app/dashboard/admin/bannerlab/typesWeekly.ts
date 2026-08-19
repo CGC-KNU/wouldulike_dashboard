@@ -19,6 +19,7 @@ export interface WeekFolder {
   banner_photo_url: string;
   student_council_name: string;
   excluded_restaurant_ids: number[];
+  included_restaurant_ids: number[];
   updated_at: string;
   week_start: string;
   targets_summary: {
@@ -52,8 +53,39 @@ export interface SemesterDetail extends Semester {
   months: MonthFolder[];
 }
 
+export type RestaurantTier = "FREE" | "BOOST" | "CONTENT";
+
 export interface PaidRestaurant {
   restaurant_id: number;
   name: string;
+  tier: RestaurantTier | null;
+  is_paid: boolean;
   photo_url: string;
+  photos: string[];
+}
+
+export interface WeeklyCandidate {
+  id: number;
+  sort_order: number;
+  is_ai_retouched: boolean;
+  selected: boolean;
+  image_url: string;
+  download_url: string;
+  render_error: string;
+}
+
+export interface WeeklyTarget {
+  id: number;
+  kind: "banner" | "popup";
+  kind_label: string;
+  restaurant_id: number | null;
+  restaurant_name: string;
+  status: "pending" | "selected" | "skipped" | "feedback";
+  status_label: string;
+  click_url: string;
+  is_reuse: boolean;
+  feedback_text: string;
+  prompt_override: string;
+  updated_at: string;
+  candidates: WeeklyCandidate[];
 }

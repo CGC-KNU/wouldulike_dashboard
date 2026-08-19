@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BannerRatio } from "./types";
-import { MonthFolder, PaidRestaurant, Semester, SemesterDetail, WeekFolder } from "./typesWeekly";
+import { MonthFolder, PaidRestaurant, Semester, SemesterDetail, WeekFolder, WeekType, WeeklyTarget } from "./typesWeekly";
 
 /**
  * 주간 배너 자동화 — Phase A (2026-08-18 착수).
@@ -19,6 +19,19 @@ const RATIO_OPTIONS: { value: BannerRatio; label: string }[] = [
   { value: "9:16", label: "9:16 스토리" },
   { value: "16:9", label: "16:9 가로" },
 ];
+
+const TYPE_OPTIONS: { value: WeekType; label: string }[] = [
+  { value: "general", label: "일반 배너 홍보" },
+  { value: "coupon", label: "한정 쿠폰 발급" },
+  { value: "mileage", label: "마일리지 2배 이벤트" },
+  { value: "council", label: "학생회 배너 홍보" },
+];
+
+const TIER_BADGE: Record<string, string> = {
+  FREE: "bg-gray-100 text-gray-500",
+  BOOST: "bg-amber-50 text-amber-600",
+  CONTENT: "bg-periwinkle/10 text-periwinkle",
+};
 
 export default function WeeklyAutomationComposer() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
@@ -261,6 +274,7 @@ function WeekFolderCard({
   paidRestaurants: PaidRestaurant[];
   onChanged: () => void;
 }) {
+  const [type, setType] = useState<WeekType>(week.type);
   const [promptText, setPromptText] = useState(week.prompt_text);
   const [tone, setTone] = useState(week.tone);
   const [fontLabel, setFontLabel] = useState(week.font_label);
@@ -268,13 +282,16 @@ function WeekFolderCard({
   const [effect, setEffect] = useState(week.effect);
   const [councilName, setCouncilName] = useState(week.student_council_name);
   const [excluded, setExcluded] = useState<Set<number>>(new Set(week.excluded_restaurant_ids));
+  const [included, setIncluded] = useState<Set<number>>(new Set(week.included_restaurant_ids));
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showRestaurants, setShowRestaurants] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
   const [generating, setGenerating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const dirty =
+    type !== week.type ||
     promptText !== week.prompt_text ||
     tone !== week.tone ||
     fontLabel !== week.font_label ||
@@ -282,7 +299,9 @@ function WeekFolderCard({
     effect !== week.effect ||
     councilName !== week.student_council_name ||
     excluded.size !== week.excluded_restaurant_ids.length ||
-    [...excluded].some((id) => !week.excluded_restaurant_ids.includes(id));
+    [...excluded].some((id) => !week.excluded_restaurant_ids.includes(id)) ||
+    included.size !== week.included_restaurant_ids.length ||
+    [...included].some((id) => !week.included_restaurant_ids.includes(id));
 
   async function save() {
     setSaving(true);
@@ -291,6 +310,7 @@ function WeekFolderCard({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          type,
           prompt_text: promptText,
           tone,
           font_label: fontLabel,
@@ -298,6 +318,7 @@ function WeekFolderCard({
           effect,
           student_council_name: councilName,
           excluded_restaurant_ids: [...excluded],
+          included_restaurant_ids: [...included],
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -398,17 +419,47 @@ function WeekFolderCard({
     });
   }
 
-  const isMileage = week.type === "mileage";
-  const isCouncil = week.type === "council";
+  function toggleIncluded(id: number) {
+    setIncluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // 유료(플랜 설정된) 식당은 기본으로 체크되어 있고(체크 해제 시 excluded에 기록),
+  // 무료/플랜 미설정 식당은 기본으로 비어 있고(체크 시 included에 기록) 둘 다 표시해서
+  // 유료·무료를 한눈에 볼 수 있게 한다.
+  function isChecked(r: PaidRestaurant) {
+    return r.is_paid ? !excluded.has(r.restaurant_id) : included.has(r.restaurant_id);
+  }
+
+  function toggleRestaurant(r: PaidRestaurant) {
+    if (r.is_paid) toggleExcluded(r.restaurant_id);
+    else toggleIncluded(r.restaurant_id);
+  }
+
+  const isMileage = type === "mileage";
+  const isCouncil = type === "council";
   const usesPaidRestaurants = !isMileage; // 1·2·4주차 — 유료 식당 전체 기반
 
   return (
     <div className="rounded-xl border border-gray-100 p-3 flex flex-col gap-2.5">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold text-gray-700">
-          {week.week_number}주차 · {week.type_label.split("· ")[1] ?? week.type_label}
-        </p>
-        {dirty && <span className="text-[9px] text-amber-500">저장 안 됨</span>}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold text-gray-700 shrink-0">{week.week_number}주차</p>
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value as WeekType)}
+          className="flex-1 text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
+        >
+          {TYPE_OPTIONS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        {dirty && <span className="text-[9px] text-amber-500 shrink-0">저장 안 됨</span>}
       </div>
 
       <div className="flex flex-col gap-1 text-[10px] text-gray-400 bg-gray-50 rounded-lg px-2 py-1.5">
@@ -514,28 +565,48 @@ function WeekFolderCard({
             onClick={() => setShowRestaurants((v) => !v)}
             className="self-start text-[10px] text-periwinkle font-semibold"
           >
-            {showRestaurants ? "식당 목록 접기" : `유료 식당 목록 보기 (${paidRestaurants.length - excluded.size}/${paidRestaurants.length}개 포함)`}
+            {showRestaurants
+              ? "식당 목록 접기"
+              : `식당 목록 보기 (${paidRestaurants.filter((r) => isChecked(r)).length}/${paidRestaurants.length}개 포함)`}
           </button>
           {showRestaurants && (
-            <div className="max-h-40 overflow-y-auto flex flex-col gap-1 border border-gray-100 rounded-lg p-1.5">
+            <div className="max-h-56 overflow-y-auto flex flex-col gap-1 border border-gray-100 rounded-lg p-1.5">
               {paidRestaurants.length === 0 && (
-                <p className="text-[10px] text-gray-300 px-1 py-1">유료 식당이 없습니다.</p>
+                <p className="text-[10px] text-gray-300 px-1 py-1">
+                  플랜이 지정된 식당이 없습니다. 식당 관리 탭에서 먼저 플랜을 설정해주세요.
+                </p>
               )}
               {paidRestaurants.map((r) => (
-                <label key={r.restaurant_id} className="flex items-center gap-1.5 text-[10px] px-1 py-0.5">
+                <label key={r.restaurant_id} className="flex items-center gap-1.5 text-[10px] px-1 py-1">
                   <input
                     type="checkbox"
-                    checked={!excluded.has(r.restaurant_id)}
-                    onChange={() => toggleExcluded(r.restaurant_id)}
-                    className="accent-periwinkle"
+                    checked={isChecked(r)}
+                    onChange={() => toggleRestaurant(r)}
+                    className="accent-periwinkle shrink-0"
                   />
-                  {r.photo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={r.photo_url} alt="" className="w-5 h-5 rounded object-cover shrink-0" />
-                  ) : (
-                    <span className="w-5 h-5 rounded bg-gray-100 shrink-0" />
-                  )}
-                  <span className="truncate">{r.name}</span>
+                  <span
+                    className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
+                      r.is_paid ? TIER_BADGE[r.tier ?? ""] ?? "bg-periwinkle/10 text-periwinkle" : "bg-gray-100 text-gray-400"
+                    }`}
+                  >
+                    {r.is_paid ? r.tier ?? "유료" : "무료"}
+                  </span>
+                  <span className="truncate flex-1">{r.name}</span>
+                  {/* 소재 사진 리스트 — "첫 번째 등록 사진이 안 불러와진다"는 문제를 눈으로 바로 확인할 수 있게 전부 보여준다 */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {r.photos.length === 0 && <span className="text-[9px] text-red-400">사진 없음</span>}
+                    {r.photos.slice(0, 3).map((url, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={i}
+                        src={url}
+                        alt=""
+                        title={i === 0 ? "소재 사진(자동 사용됨)" : "등록된 사진"}
+                        className={`w-5 h-5 rounded object-cover shrink-0 ${i === 0 ? "ring-1 ring-periwinkle" : "opacity-60"}`}
+                      />
+                    ))}
+                    {r.photos.length > 3 && <span className="text-[9px] text-gray-300">+{r.photos.length - 3}</span>}
+                  </div>
                 </label>
               ))}
             </div>
@@ -564,6 +635,144 @@ function WeekFolderCard({
           className="text-[10px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1 hover:bg-periwinkle disabled:opacity-30"
         >
           {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
+
+      {week.targets_summary.generated && (
+        <>
+          <button
+            onClick={() => setShowDetail((v) => !v)}
+            className="self-start text-[10px] text-navy font-semibold underline underline-offset-2"
+          >
+            {showDetail ? "자세히 보기 닫기" : "자세히 보기 (승인/피드백 · 다운로드 · 재생성)"}
+          </button>
+          {showDetail && <WeeklyTargetsPanel weekId={week.id} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function WeeklyTargetsPanel({ weekId }: { weekId: number }) {
+  const [targets, setTargets] = useState<WeeklyTarget[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/bannerlab/weekly/weeks/${weekId}/targets`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setTargets(data.targets ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, [weekId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <div className="flex flex-col gap-2 border border-gray-100 rounded-lg p-2 bg-gray-50/50">
+      {loading && <p className="text-[10px] text-gray-300 text-center py-2">불러오는 중...</p>}
+      {!loading && targets.length === 0 && (
+        <p className="text-[10px] text-gray-300 text-center py-2">아직 생성된 대상이 없습니다.</p>
+      )}
+      {targets.map((t) => (
+        <TargetCard key={t.id} target={t} onChanged={load} />
+      ))}
+    </div>
+  );
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-500",
+  selected: "bg-emerald-50 text-emerald-600",
+  skipped: "bg-gray-100 text-gray-400",
+  feedback: "bg-amber-50 text-amber-600",
+};
+
+function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: () => void }) {
+  const [promptOverride, setPromptOverride] = useState(target.prompt_override);
+  const [regenerating, setRegenerating] = useState(false);
+
+  async function regenerate() {
+    if (!confirm("이 대상만 골라서 새로 생성할까요? 슬랙에 새 메시지가 발송됩니다.")) return;
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/bannerlab/weekly/targets/${target.id}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt_override: promptOverride }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail ?? "재생성에 실패했습니다.");
+        return;
+      }
+      onChanged();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-white p-2 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold text-gray-700 truncate">
+          [{target.kind_label}] {target.restaurant_name}
+        </p>
+        <span className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${STATUS_BADGE[target.status] ?? "bg-gray-100"}`}>
+          {target.status_label}
+        </span>
+      </div>
+
+      {target.feedback_text && (
+        <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1">🗣 {target.feedback_text}</p>
+      )}
+      {target.click_url && <p className="text-[9px] text-gray-400 truncate">이동 URL: {target.click_url}</p>}
+
+      <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+        {target.candidates.length === 0 && <p className="text-[10px] text-gray-300">후보 없음</p>}
+        {target.candidates.map((c) => (
+          <div key={c.id} className="relative shrink-0">
+            {c.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={c.image_url}
+                alt=""
+                className={`w-16 h-16 rounded-lg object-cover ${c.selected ? "ring-2 ring-periwinkle" : ""}`}
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center text-[9px] text-gray-300">실패</div>
+            )}
+            <div className="flex items-center gap-1 mt-0.5">
+              {c.is_ai_retouched && <span className="text-[8px] text-periwinkle font-semibold">AI</span>}
+              {c.download_url && (
+                <a href={c.download_url} download className="text-[8px] text-gray-400 underline">
+                  다운로드
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <input
+          value={promptOverride}
+          onChange={(e) => setPromptOverride(e.target.value)}
+          placeholder="이 대상만 다른 프롬프트로 다시 만들기 (비우면 주차 공통 프롬프트 사용)"
+          className="flex-1 text-[10px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-periwinkle"
+        />
+        <button
+          onClick={regenerate}
+          disabled={regenerating}
+          className="shrink-0 text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2 py-1 hover:bg-periwinkle/5 disabled:opacity-30"
+        >
+          {regenerating ? "생성 중..." : "다시 생성"}
         </button>
       </div>
     </div>
