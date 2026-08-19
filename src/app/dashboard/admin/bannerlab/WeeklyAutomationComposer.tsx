@@ -271,6 +271,7 @@ function WeekFolderCard({
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showRestaurants, setShowRestaurants] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const dirty =
@@ -355,6 +356,39 @@ function WeekFolderCard({
     onChanged();
   }
 
+  async function generateNow(forceNew: boolean) {
+    const msg = forceNew
+      ? "이미 생성된 후보가 있어도 다시 만들까요? 슬랙에 새 메시지가 또 발송됩니다."
+      : "지금 이 주차 배너(+팝업)를 생성해서 슬랙으로 보낼까요? (AI/슬랙 호출 비용이 듭니다)";
+    if (!confirm(msg)) return;
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/bannerlab/weekly/weeks/${week.id}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force_new: forceNew }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail ?? "생성에 실패했습니다.");
+        return;
+      }
+      if (data.status === "skipped") {
+        alert(`건너뜀: ${data.reason ?? "이미 생성됨"}`);
+      } else {
+        const errCount = (data.errors ?? []).length;
+        alert(
+          `완료 — 총 ${data.total}건 중 신규 ${data.created}건, 재사용 ${data.reused}건${errCount ? `, 실패 ${errCount}건` : ""}. 슬랙 채널을 확인해주세요.`
+        );
+      }
+      onChanged();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   function toggleExcluded(id: number) {
     setExcluded((prev) => {
       const next = new Set(prev);
@@ -375,6 +409,34 @@ function WeekFolderCard({
           {week.week_number}주차 · {week.type_label.split("· ")[1] ?? week.type_label}
         </p>
         {dirty && <span className="text-[9px] text-amber-500">저장 안 됨</span>}
+      </div>
+
+      <div className="flex flex-col gap-1 text-[10px] text-gray-400 bg-gray-50 rounded-lg px-2 py-1.5">
+        <div className="flex items-center justify-between">
+          <span>노출 시작(예정): {week.week_start}</span>
+          {!week.targets_summary.generated && <span>아직 생성 안 됨</span>}
+        </div>
+        {week.targets_summary.generated && (
+          <>
+            <div className="flex items-center justify-between">
+              <span>배너</span>
+              <span className="text-periwinkle font-semibold">
+                {week.targets_summary.banner.selected}/{week.targets_summary.banner.total}개 선택
+                {week.targets_summary.banner.reused > 0 ? ` · 재사용 ${week.targets_summary.banner.reused}` : ""}
+                {week.targets_summary.banner.applied > 0 ? ` · 앱 반영 ${week.targets_summary.banner.applied}` : ""}
+              </span>
+            </div>
+            {week.targets_summary.popup.total > 0 && (
+              <div className="flex items-center justify-between">
+                <span>팝업</span>
+                <span className="text-periwinkle font-semibold">
+                  {week.targets_summary.popup.selected}/{week.targets_summary.popup.total}개 선택
+                  {week.targets_summary.popup.applied > 0 ? ` · 앱 반영 ${week.targets_summary.popup.applied}` : ""}
+                </span>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <textarea
@@ -488,13 +550,22 @@ function WeekFolderCard({
         className="hidden"
       />
 
-      <button
-        onClick={save}
-        disabled={saving || !dirty}
-        className="self-end text-[10px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1 hover:bg-periwinkle disabled:opacity-30"
-      >
-        {saving ? "저장 중..." : "저장"}
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => generateNow(week.targets_summary.generated)}
+          disabled={generating}
+          className="text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-30"
+        >
+          {generating ? "생성 중..." : week.targets_summary.generated ? "다시 생성해서 발송" : "지금 생성해서 슬랙 발송"}
+        </button>
+        <button
+          onClick={save}
+          disabled={saving || !dirty}
+          className="text-[10px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1 hover:bg-periwinkle disabled:opacity-30"
+        >
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
     </div>
   );
 }

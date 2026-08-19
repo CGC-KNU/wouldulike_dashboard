@@ -20,6 +20,16 @@ export interface WeekFolder {
   student_council_name: string;
   excluded_restaurant_ids: number[];
   updated_at: string;
+  week_start: string;
+  targets_summary: {
+    total: number;
+    selected: number;
+    reused: number;
+    applied: number;
+    generated: boolean;
+    banner: { total: number; selected: number; reused: number; applied: number };
+    popup: { total: number; selected: number; reused: number; applied: number };
+  };
 }
 
 export interface MonthFolder {
