@@ -17,6 +17,7 @@ export interface WeekFolder {
   effect: string;
   popup_photo_url: string;
   banner_photo_url: string;
+  template_photo_url: string;
   student_council_name: string;
   excluded_restaurant_ids: number[];
   included_restaurant_ids: number[];

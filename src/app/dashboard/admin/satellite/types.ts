@@ -23,20 +23,46 @@ export interface SatelliteMember {
   is_active: boolean;
 }
 
+export type PipelineStage = "sponsorship" | "editing" | "uploaded";
+
 export interface ContentPlan {
   id: number;
   owner_id: number;
   owner_name: string;
   owner_active: boolean;
+  shoot_owner_id: number | null;
+  shoot_owner_name: string | null;
+  shoot_date: string | null; // YYYY-MM-DD
   scheduled_date: string; // YYYY-MM-DD
   topic: string;
   media_type: MediaType;
   status: PlanStatus;
+  pipeline_stage: PipelineStage;
+  pipeline_stage_label: string;
   card_count: number;
   hashtag_count: number;
   ready_at: string | null;
   created_at: string;
 }
+
+/* ─── 칸반 보드 (Papillon §1.1) ────────────────────── */
+
+export interface KanbanColumn {
+  key: PipelineStage;
+  label: string;
+  cards: ContentPlan[];
+}
+
+export interface KanbanResponse {
+  today: string;
+  columns: KanbanColumn[];
+}
+
+export const PIPELINE_STAGE_META: Record<PipelineStage, { label: string; cls: string }> = {
+  sponsorship: { label: "협찬목록", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  editing: { label: "편집중", cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  uploaded: { label: "업로드완료", cls: "bg-green-50 text-green-700 border-green-200" },
+};
 
 export interface PlansResponse {
   year: number;

@@ -77,7 +77,7 @@ export default function AttendanceDashboard({ onClose }: { onClose: () => void }
                   <th className="text-right font-medium py-2">할당량</th>
                   <th className="text-right font-medium py-2">등록</th>
                   <th className="text-right font-medium py-2 text-green-600">정시</th>
-                  <th className="text-right font-medium py-2 text-red-500">지각</th>
+                  <th className="text-right font-medium py-2 text-red-500">마감 지연</th>
                   <th className="text-right font-medium py-2">일정변경</th>
                   <th className="text-right font-medium py-2 text-gray-300">발행실패(참고)</th>
                 </tr>

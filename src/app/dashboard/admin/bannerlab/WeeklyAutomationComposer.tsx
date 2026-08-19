@@ -353,7 +353,7 @@ function WeekFolderCard({
     }
   }
 
-  async function uploadPhoto(kind: "popup" | "banner", files: FileList | null) {
+  async function uploadPhoto(kind: "popup" | "banner" | "template", files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
     setUploadingPhoto(true);
@@ -393,7 +393,7 @@ function WeekFolderCard({
     }
   }
 
-  async function removePhoto(kind: "popup" | "banner") {
+  async function removePhoto(kind: "popup" | "banner" | "template") {
     await fetch(`/api/bannerlab/weekly/weeks/${week.id}/${kind}-photo`, { method: "DELETE" });
     onChanged();
   }
@@ -560,6 +560,15 @@ function WeekFolderCard({
           className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
         />
       )}
+
+      {/* 디자인 템플릿(프레임/로고 등) — 이 주차의 모든 배너/팝업 맨 위에 공통으로 얹힘 */}
+      <PhotoSlot
+        label="템플릿 사진 (선택 — 프레임/로고 등, 투명 배경 PNG 권장. 문구까지 얹은 결과 맨 위에 합성됨)"
+        url={week.template_photo_url}
+        uploading={uploadingPhoto}
+        onUpload={(f) => uploadPhoto("template", f)}
+        onRemove={() => removePhoto("template")}
+      />
 
       {/* 3주차: 배너용 사진 1장 */}
       {isMileage && (
