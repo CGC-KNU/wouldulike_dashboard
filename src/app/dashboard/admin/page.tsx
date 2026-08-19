@@ -2069,21 +2069,7 @@ function MarketingTab() {
 function ContentTab() {
   return (
     <div className="flex flex-col gap-4">
-      {/* 배너 자동화 (배너랩) */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700">배너 자동화 (배너랩)</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              사진+문구 조합을 자동 합성해 슬랙으로 발송 · Phase 1 (AI 배경생성 없음)
-            </p>
-          </div>
-        </div>
-        <div className="p-4">
-          <BannerLabComposer />
-        </div>
-      </div>
-      {/* 슬랙 메시징 세팅 (구 "주간 배너 자동화" — 학기/월/주차 폴더 세팅) */}
+      {/* 슬랙 메시징 세팅 (구 "주간 배너 자동화" — 학기/월/주차 폴더 세팅, 자동화) */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
@@ -2096,6 +2082,20 @@ function ContentTab() {
         </div>
         <div className="p-4">
           <WeeklyAutomationComposer />
+        </div>
+      </div>
+      {/* 배너 자동화 (배너랩) — 직접 만들어 슬랙 발송 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">배너 자동화 (배너랩) — 직접 만들어 슬랙 발송</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              사진+문구 조합을 자동 합성해 슬랙으로 발송 · 위 자동화와 별개로 필요할 때 직접 캠페인을 만들어 보내는 수동 도구예요
+            </p>
+          </div>
+        </div>
+        <div className="p-4">
+          <BannerLabComposer />
         </div>
       </div>
       {/* 배너 (기존 수동 URL 등록) */}
@@ -2641,6 +2641,7 @@ function RestaurantsTab() {
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<Restaurant | null>(null);
+  const [showNew, setShowNew] = useState(false);
 
   const fetchRestaurants = useCallback((query: string) => {
     setLoading(true);
@@ -2683,6 +2684,11 @@ function RestaurantsTab() {
     setRestaurants((prev) => prev.filter((r) => r.restaurant_id !== id));
   }
 
+  function handleCreated(r: Restaurant) {
+    setRestaurants((prev) => [r, ...prev]);
+    setShowNew(false);
+  }
+
   return (
     <>
       {/* 요약 카드 */}
@@ -2705,6 +2711,12 @@ function RestaurantsTab() {
             className="flex-1 text-xs px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
           />
           <span className="text-xs text-gray-400 shrink-0">{loading ? "..." : `${sorted.length}개`}</span>
+          <button
+            onClick={() => setShowNew(true)}
+            className="shrink-0 text-[11px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1.5 hover:bg-periwinkle"
+          >
+            + 새 식당 등록
+          </button>
         </div>
         <div className="flex items-center px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
           <button onClick={() => toggleSort("id")} className="w-10 text-left font-medium hover:text-navy">
@@ -2766,7 +2778,223 @@ function RestaurantsTab() {
           onDeleted={handleDeleted}
         />
       )}
+
+      {showNew && <NewRestaurantModal onClose={() => setShowNew(false)} onCreated={handleCreated} />}
     </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   신규 식당 등록 모달
+═══════════════════════════════════════════════════ */
+function NewRestaurantModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (r: Restaurant) => void;
+}) {
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [category, setCategory] = useState("");
+  const [url, setUrl] = useState("");
+  const [mainMenu, setMainMenu] = useState("");
+  const [description, setDescription] = useState("");
+  const [photoUrls, setPhotoUrls] = useState(""); // 줄바꿈으로 구분, 최대 5장
+  const [tier, setTier] = useState<"" | "FREE" | "BOOST" | "CONTENT">("");
+  const [isAffiliate, setIsAffiliate] = useState(true); // 실제 앱 내 표기 여부
+  const [couponEnabled, setCouponEnabled] = useState(false);
+  const [couponContent, setCouponContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function submit() {
+    if (!name.trim()) {
+      setErr("식당명을 입력해주세요.");
+      return;
+    }
+    const photos = photoUrls
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    setSaving(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/dashboard/admin/restaurants/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          address: address.trim(),
+          phone_number: phoneNumber.trim(),
+          category: category.trim(),
+          url: url.trim(),
+          main_menu: mainMenu.trim(),
+          description: description.trim(),
+          s3_image_urls: photos,
+          tier: tier || null,
+          is_affiliate: isAffiliate,
+          naver_alarm_coupon_enabled: couponEnabled,
+          naver_alarm_coupon_content: couponContent.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(data.detail ?? "식당 등록에 실패했습니다.");
+        return;
+      }
+      onCreated({
+        restaurant_id: data.restaurant_id,
+        name: data.name,
+        tier: data.tier ?? null,
+        is_affiliate: data.is_affiliate,
+      });
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-xl max-h-[85vh] overflow-y-auto">
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-gray-200" />
+        </div>
+        <div className="px-5 pb-8 pt-2">
+          <div className="flex items-start justify-between mb-4">
+            <h2 className="text-lg font-bold text-navy">새 식당 등록</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-1">✕</button>
+          </div>
+
+          {err && (
+            <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 mb-3">
+              <p className="text-xs text-red-600">{err}</p>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="식당명 *" value={name} onChange={setName} placeholder="예: 우주식당" />
+              <Field label="카테고리" value={category} onChange={setCategory} placeholder="예: 한식" />
+            </div>
+            <Field label="주소" value={address} onChange={setAddress} placeholder="도로명 주소" />
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="전화번호" value={phoneNumber} onChange={setPhoneNumber} placeholder="02-0000-0000" />
+              <Field label="링크(URL)" value={url} onChange={setUrl} placeholder="https://..." />
+            </div>
+            <Field label="대표 메뉴" value={mainMenu} onChange={setMainMenu} placeholder="예: 김치찌개" />
+            <div>
+              <label className="text-[10px] text-gray-400 mb-1 block">소개</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                placeholder="식당 소개 문구"
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle resize-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-400 mb-1 block">사진 URL (한 줄에 하나씩, 최대 5장)</label>
+              <textarea
+                value={photoUrls}
+                onChange={(e) => setPhotoUrls(e.target.value)}
+                rows={3}
+                placeholder={"https://...jpg\nhttps://...jpg"}
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle resize-none"
+              />
+            </div>
+
+            <div className="rounded-lg bg-gray-50 p-2">
+              <p className="text-[10px] text-gray-400 mb-1.5">플랜</p>
+              <div className="flex gap-1.5">
+                {(["", "FREE", "BOOST", "CONTENT"] as const).map((t) => (
+                  <button
+                    key={t || "none"}
+                    onClick={() => setTier(t)}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                      tier === t ? (t ? TIER_STYLE[t] : "bg-gray-200 text-gray-600") : "bg-white text-gray-400 border border-gray-200 hover:bg-gray-100"
+                    }`}
+                  >
+                    {t || "미지정"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 rounded-lg bg-gray-50 p-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isAffiliate}
+                onChange={(e) => setIsAffiliate(e.target.checked)}
+                className="accent-periwinkle"
+              />
+              <span className="text-xs text-gray-600">앱에 표시 (실제 앱 내 노출 여부 — 끄면 등록만 되고 사용자에게는 안 보여요)</span>
+            </label>
+
+            {/* 쿠폰/스탬프 — 요청대로 임시 범위. 쿠폰은 기존 네이버 알림쿠폰 필드를 재사용하고,
+                스탬프 규칙은 별도 마스터 데이터가 필요해 지금은 안내만 표시한다. */}
+            <div className="rounded-lg border border-gray-100 p-2.5 flex flex-col gap-2">
+              <p className="text-[11px] font-semibold text-gray-600">쿠폰 혜택 (임시)</p>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={couponEnabled}
+                  onChange={(e) => setCouponEnabled(e.target.checked)}
+                  className="accent-periwinkle"
+                />
+                <span className="text-xs text-gray-600">쿠폰 혜택 사용</span>
+              </label>
+              <input
+                value={couponContent}
+                onChange={(e) => setCouponContent(e.target.value)}
+                placeholder="예: 신규가입 3,000원 할인"
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle"
+              />
+              <p className="text-[10px] text-gray-300">
+                스탬프 적립 규칙은 아직 여기서 설정할 수 없어요 — 등록 후 개발팀에 요청해주세요.
+              </p>
+            </div>
+
+            <button
+              onClick={submit}
+              disabled={saving || !name.trim()}
+              className="mt-1 w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold hover:bg-periwinkle transition-colors disabled:opacity-40"
+            >
+              {saving ? "등록 중..." : "식당 등록"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="text-[10px] text-gray-400 mb-1 block">{label}</label>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle"
+      />
+    </div>
   );
 }
 

@@ -44,6 +44,7 @@ export default function BannerLabComposer() {
   const [newRatio, setNewRatio] = useState<BannerRatio>("4:5");
   const [newTone, setNewTone] = useState("");
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // 문구 입력
   const [copyText, setCopyText] = useState("");
@@ -304,6 +305,24 @@ export default function BannerLabComposer() {
     await loadDetail(detail.id);
   }
 
+  async function deleteCampaign() {
+    if (!detail) return;
+    if (!confirm(`"${detail.title}" 캠페인을 삭제할까요? 목록에서 사라지고 되돌릴 수 없습니다.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/bannerlab/campaigns/${detail.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail ?? "삭제에 실패했습니다.");
+        return;
+      }
+      setSelectedId(null);
+      await loadCampaigns();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function generate() {
     if (!detail) return;
     if (!detail.photos.length) {
@@ -365,6 +384,15 @@ export default function BannerLabComposer() {
         >
           {showNew ? "닫기" : "+ 새 캠페인"}
         </button>
+        {detail && (
+          <button
+            onClick={deleteCampaign}
+            disabled={deleting}
+            className="text-[11px] font-semibold text-red-500 border border-red-200 rounded-lg px-2.5 py-1.5 hover:bg-red-50 disabled:opacity-40 ml-auto"
+          >
+            {deleting ? "삭제 중..." : "캠페인 삭제"}
+          </button>
+        )}
       </div>
 
       {showNew && (

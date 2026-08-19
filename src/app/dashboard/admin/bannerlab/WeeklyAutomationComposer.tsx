@@ -37,6 +37,7 @@ export default function WeeklyAutomationComposer() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SemesterDetail | null>(null);
+  const [selectedMonthId, setSelectedMonthId] = useState<number | null>(null);
   const [paidRestaurants, setPaidRestaurants] = useState<PaidRestaurant[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -94,6 +95,7 @@ export default function WeeklyAutomationComposer() {
   }, [loadSemesters, loadPaidRestaurants]);
 
   useEffect(() => {
+    setSelectedMonthId(null); // 학기를 바꾸면 월 선택도 초기화
     if (selectedId) loadDetail(selectedId);
     else setDetail(null);
   }, [selectedId, loadDetail]);
@@ -230,10 +232,29 @@ export default function WeeklyAutomationComposer() {
       {loadingDetail && <p className="text-xs text-gray-300 py-4 text-center">불러오는 중...</p>}
 
       {detail && !loadingDetail && (
-        <div className="flex flex-col gap-5">
-          {detail.months.map((m) => (
-            <MonthSection key={m.id} month={m} paidRestaurants={paidRestaurants} onChanged={() => loadDetail(detail.id)} />
-          ))}
+        <div className="flex flex-col gap-3">
+          <select
+            value={selectedMonthId ?? ""}
+            onChange={(e) => setSelectedMonthId(e.target.value ? Number(e.target.value) : null)}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle self-start min-w-[140px]"
+          >
+            <option value="">월 선택</option>
+            {detail.months.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.month}월
+              </option>
+            ))}
+          </select>
+
+          {selectedMonthId == null && (
+            <p className="text-xs text-gray-300 text-center py-6">월을 선택하면 그 달의 주차를 확인할 수 있어요.</p>
+          )}
+
+          {detail.months
+            .filter((m) => m.id === selectedMonthId)
+            .map((m) => (
+              <MonthSection key={m.id} month={m} paidRestaurants={paidRestaurants} onChanged={() => loadDetail(detail.id)} />
+            ))}
         </div>
       )}
 
@@ -256,7 +277,7 @@ function MonthSection({
   return (
     <div>
       <p className="text-xs font-bold text-navy mb-2">{month.month}월</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="flex flex-col gap-3">
         {month.weeks.map((w) => (
           <WeekFolderCard key={w.id} week={w} paidRestaurants={paidRestaurants} onChanged={onChanged} />
         ))}
