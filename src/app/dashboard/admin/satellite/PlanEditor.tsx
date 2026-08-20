@@ -36,10 +36,14 @@ export default function PlanEditor({
   planId,
   onClose,
   onChanged,
+  initialTab = "detail",
 }: {
   planId: number;
   onClose: () => void;
   onChanged: () => void;
+  /** 어느 탭을 보고 있다가 열었는지에 맞춰 시작 탭을 다르게 준다 (예: 내 대시보드에서
+   *  성과를 보러 들어온 경우 바로 "게시물 상세"로). 기본은 기존과 동일하게 "콘텐츠 상세". */
+  initialTab?: "detail" | "content" | "publish" | "post";
 }) {
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +56,7 @@ export default function PlanEditor({
   const [caption, setCaption] = useState("");
   const [publishAt, setPublishAt] = useState("");
   const [collabInput, setCollabInput] = useState("");
-  const [activeTab, setActiveTab] = useState<"detail" | "content" | "publish" | "post">("detail");
+  const [activeTab, setActiveTab] = useState<"detail" | "content" | "publish" | "post">(initialTab);
   const fileInput = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

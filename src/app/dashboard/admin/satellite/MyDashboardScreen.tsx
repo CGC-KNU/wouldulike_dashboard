@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import PlanEditor from "./PlanEditor";
 import {
   MEDIA_META,
   MyDashboardResponse,
@@ -28,8 +29,10 @@ function fmtNum(v: number | null | undefined) {
  * §05-4 블라인드 원칙 그대로 — /my-dashboard 는 본인(또는 리드가 조회할 때만 타인) 것만
  * 응답에 담긴다. 월간 회고는 그보다 더 좁혀서 본인 조회일 때만 노출·저장된다(서버가 강제).
  *
- * 게시물 단위 성과·AI 분석·건별 메모는 콘텐츠 상세(PlanEditor "성과·피드백" 탭)에서 계속
- * 볼 수 있다 — 여기서는 "이 달 전체를 한눈에" 보는 요약 + 월간 회고에 집중한다.
+ * 게시물 단위 성과·AI 분석·건별 메모는 콘텐츠 상세(PlanEditor, 콘텐츠 상세/에디터/게시물
+ * 상세 3탭)에서 계속 볼 수 있다 — 여기서는 "이 달 전체를 한눈에" 보는 요약 + 월간 회고에
+ * 집중하고, 게시물을 클릭하면 그 3탭 화면을 같은 화면 위에 모달로 바로 띄운다 (RD 요청 —
+ * 2026-08-20, 페이지 이동 없이 내 대시보드에서 바로 열리게).
  */
 export default function MyDashboardScreen() {
   const now = new Date();
@@ -44,6 +47,7 @@ export default function MyDashboardScreen() {
   const [improve, setImprove] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [openPlanId, setOpenPlanId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,7 +96,7 @@ export default function MyDashboardScreen() {
 
   function openPost(planId: number | null) {
     if (!planId) return;
-    window.location.href = `/dashboard/admin?tab=satellite&plan=${planId}`;
+    setOpenPlanId(planId);
   }
 
   if (loading && !data) {
@@ -310,6 +314,15 @@ export default function MyDashboardScreen() {
             </div>
           </div>
         </div>
+      )}
+
+      {openPlanId !== null && (
+        <PlanEditor
+          planId={openPlanId}
+          initialTab="post"
+          onClose={() => setOpenPlanId(null)}
+          onChanged={load}
+        />
       )}
     </div>
   );
