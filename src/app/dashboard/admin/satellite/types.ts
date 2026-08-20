@@ -193,6 +193,20 @@ export interface PerformanceMetric {
   percentile: number | null;
 }
 
+export interface PerformanceInsight {
+  tone: "good" | "warn";
+  title: string;
+  body: string;
+  suggestion: string;
+}
+
+export interface TimeSeriesPoint {
+  window: string;
+  label: string;
+  value: number | null;
+  captured: boolean;
+}
+
 export interface PostPerformance {
   available: boolean;
   reason?: string;
@@ -200,12 +214,21 @@ export interface PostPerformance {
   age_days?: number;
   collecting?: boolean;
   metrics?: Record<string, PerformanceMetric>;
+  insights?: PerformanceInsight[];
+  insight_disclaimer?: string;
+  time_series?: TimeSeriesPoint[];
+  cohort_position_metrics?: string[];
   post?: {
     id: number;
     ig_media_id: string;
     permalink: string;
     posted_at: string;
     format: MediaType;
+    topic?: string;
+    caption?: string;
+    caption_length?: number;
+    card_count?: number;
+    owner_name?: string;
   };
 }
 
@@ -218,6 +241,8 @@ export const PERFORMANCE_METRIC_LABEL: Record<string, string> = {
   likes: "좋아요",
   comments: "댓글",
   total_interactions: "총 상호작용",
+  profile_visits: "프로필 방문",
+  follows: "팔로우 전환",
 };
 
 /* ─── 오버뷰 화면 — 채널 지표 · 모멘텀 · 담당자 리더보드 ───────── */
