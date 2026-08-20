@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import KanbanBoard from "./KanbanBoard";
 import LockApprovalQueue from "./LockApprovalQueue";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
@@ -68,19 +67,17 @@ async function toError(res: Response, source: string): Promise<LoadError | null>
   return { status: res.status, ...describe(res.status, detail), source };
 }
 
-type MainView = "kanban" | "calendar";
-
 /**
- * Papillon — 마케팅 툴 (구 세틀라이트 1차: 칸반보드 / 캘린더 / 주제표)
+ * Papillon — 마케팅 툴 (구 세틀라이트 1차: 매거진 주제 리스트 표 + 캘린더)
  *
- * 칸반(협찬목록→편집중→업로드완료)과 표/캘린더가 같은 ContentPlan 데이터를 공유한다.
- * 어느 화면에서 바꾸든 같은 PATCH 를 타므로 항상 일관된다.
+ * 협찬 촬영 등록부터 주제 등록·현황 확인까지 표 하나에서 처리하고,
+ * 바로 아래 캘린더가 같은 ContentPlan 데이터를 분포로 보여준다. (설계서 §07-1)
+ * 예전에 별도였던 칸반 보드는 이 표의 "협찬 촬영" 열로 흡수됐다.
  */
 export default function PapillonDashboard() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [mainView, setMainView] = useState<MainView>("kanban");
 
   const [data, setData] = useState<PlansResponse | null>(null);
   const [members, setMembers] = useState<SatelliteMember[]>([]);
@@ -90,7 +87,6 @@ export default function PapillonDashboard() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
-  const [kanbanRefresh, setKanbanRefresh] = useState(0);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -197,7 +193,6 @@ export default function PapillonDashboard() {
         prev ? { ...prev, plans: prev.plans.map((p) => (p.id === id ? { ...p, ...d } : p)) } : prev
       );
       loadMyWeek();
-      setKanbanRefresh((n) => n + 1);
       return true;
     } catch {
       alert("네트워크 오류");
@@ -222,7 +217,6 @@ export default function PapillonDashboard() {
       }
       await loadPlans();
       loadMyWeek();
-      setKanbanRefresh((n) => n + 1);
       return true;
     } catch {
       alert("네트워크 오류");
@@ -237,7 +231,6 @@ export default function PapillonDashboard() {
       if (res.ok || res.status === 204) {
         setData((prev) => (prev ? { ...prev, plans: prev.plans.filter((p) => p.id !== id) } : prev));
         loadMyWeek();
-        setKanbanRefresh((n) => n + 1);
       } else {
         const d = await res.json().catch(() => ({}));
         const { detail, hint } = describe(res.status, d.detail ?? `HTTP ${res.status}`);
@@ -288,7 +281,6 @@ export default function PapillonDashboard() {
     await loadPlans();
     loadMyWeek();
     loadPubStatus();
-    setKanbanRefresh((n) => n + 1);
   }
 
   const viewerAccountId = data?.viewer.account_id ?? null;
@@ -463,76 +455,43 @@ export default function PapillonDashboard() {
         </div>
       )}
 
-      {/* 메인 화면 전환 — 칸반보드가 기본, 필요하면 기존 캘린더+표로 */}
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={() => setMainView("kanban")}
-          className={`text-[11px] font-semibold rounded-lg px-3 py-1.5 transition-all ${
-            mainView === "kanban" ? "bg-periwinkle text-white" : "text-gray-400 hover:bg-gray-100"
-          }`}
-        >
-          칸반 보드
-        </button>
-        <button
-          onClick={() => setMainView("calendar")}
-          className={`text-[11px] font-semibold rounded-lg px-3 py-1.5 transition-all ${
-            mainView === "calendar" ? "bg-periwinkle text-white" : "text-gray-400 hover:bg-gray-100"
-          }`}
-        >
-          캘린더 · 표
-        </button>
-      </div>
+      {loading && !data ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">
+          <p className="text-xs text-gray-300">불러오는 중...</p>
+        </div>
+      ) : (
+        data && (
+          <>
+            <PlanTable
+              plans={data.plans}
+              members={members}
+              viewerAccountId={viewerAccountId}
+              isLead={isLead}
+              today={today}
+              onPatch={patch}
+              onDelete={remove}
+              onCreate={create}
+              onOpen={openPlan}
+              busyId={busyId}
+            />
 
-      {mainView === "kanban" && (
-        <KanbanBoard
-          members={members}
-          viewerAccountId={viewerAccountId}
-          isLead={isLead}
-          onOpen={openPlan}
-          onPatch={patch}
-          onCreate={create}
-          refreshToken={kanbanRefresh}
-        />
+            <PlanCalendar
+              year={year}
+              month={month}
+              today={today}
+              plans={data.plans}
+              members={members}
+              viewerAccountId={viewerAccountId}
+              isLead={isLead}
+              onPrev={() => shiftMonth(-1)}
+              onNext={() => shiftMonth(1)}
+              onToday={goToday}
+              onSelect={openPlan}
+              onDropOnDate={moveToDate}
+            />
+          </>
+        )
       )}
-
-      {mainView === "calendar" &&
-        (loading && !data ? (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">
-            <p className="text-xs text-gray-300">불러오는 중...</p>
-          </div>
-        ) : (
-          data && (
-            <>
-              <PlanTable
-                plans={data.plans}
-                members={members}
-                viewerAccountId={viewerAccountId}
-                isLead={isLead}
-                today={today}
-                onPatch={patch}
-                onDelete={remove}
-                onCreate={create}
-                onOpen={openPlan}
-                busyId={busyId}
-              />
-
-              <PlanCalendar
-                year={year}
-                month={month}
-                today={today}
-                plans={data.plans}
-                members={members}
-                viewerAccountId={viewerAccountId}
-                isLead={isLead}
-                onPrev={() => shiftMonth(-1)}
-                onNext={() => shiftMonth(1)}
-                onToday={goToday}
-                onSelect={openPlan}
-                onDropOnDate={moveToDate}
-              />
-            </>
-          )
-        ))}
 
       {editorPlanId !== null && (
         <PlanEditor
