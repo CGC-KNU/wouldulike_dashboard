@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import PapillonShell from "./satellite/PapillonShell";
+import BannerLabComposer from "./bannerlab/BannerLabComposer";
+import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -37,7 +40,31 @@ interface PopupItem {
 }
 type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
-type Tab = "restaurants" | "content" | "notifications" | "settings";
+type Tab = "restaurants" | "content" | "notifications" | "satellite" | "settings";
+
+type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
+type SatelliteRole = "LEAD" | "MEMBER";
+
+interface Permissions {
+  can_restaurants: boolean;
+  can_content: boolean;
+  can_marketing: boolean;
+  can_satellite: boolean;
+}
+
+interface AdminMe {
+  username: string;
+  display_name: string;
+  department: Department;
+  department_label: string;
+  satellite_role: SatelliteRole;
+  is_superadmin: boolean;
+  is_admin: boolean;
+  is_marketing: boolean;
+  account_id: number | null;
+  kakao_id: number | null;
+  permissions: Permissions;
+}
 
 interface CampaignApp {
   id: number;
@@ -173,6 +200,17 @@ function RestaurantDrawer({
       body: JSON.stringify({ is_affiliate: !r.is_affiliate }),
     });
     if (res.ok) onUpdated({ is_affiliate: !r.is_affiliate });
+    setActionPending(false);
+  }
+
+  async function setTier(tier: string) {
+    setActionPending(true);
+    const res = await fetch(`/api/dashboard/admin/restaurants/${r.restaurant_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tier }),
+    });
+    if (res.ok) onUpdated({ tier });
     setActionPending(false);
   }
 
@@ -332,6 +370,25 @@ function RestaurantDrawer({
               >
                 자세히 보기 →
               </a>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-2">
+              <p className="text-[10px] text-gray-400 mb-1.5">
+                플랜 (식당 관리에서 직접 지정 — 점주 가입 여부와 무관, 슬랙 메시징 세팅의 "유료 식당" 판정 기준)
+              </p>
+              <div className="flex gap-1.5">
+                {(["FREE", "BOOST", "CONTENT"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTier(t)}
+                    disabled={actionPending}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                      r.tier === t ? TIER_STYLE[t] : "bg-white text-gray-400 border border-gray-200 hover:bg-gray-100"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
             </div>
             <button
               onClick={toggleAffiliate}
@@ -2012,7 +2069,36 @@ function MarketingTab() {
 function ContentTab() {
   return (
     <div className="flex flex-col gap-4">
-      {/* 배너 */}
+      {/* 슬랙 메시징 세팅 (구 "주간 배너 자동화" — 학기/월/주차 폴더 세팅, 자동화) */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">슬랙 메시징 세팅</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              학기 → 월 → 주차 폴더별로 타입/사진/식당을 세팅하면 슬랙으로 자동 발송되고,
+              마케팅팀이 슬랙에서 승인하거나 피드백을 남길 수 있어요.
+            </p>
+          </div>
+        </div>
+        <div className="p-4">
+          <WeeklyAutomationComposer />
+        </div>
+      </div>
+      {/* 배너 자동화 (배너랩) — 직접 만들어 슬랙 발송 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">배너 자동화 (배너랩) — 직접 만들어 슬랙 발송</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              사진+문구 조합을 자동 합성해 슬랙으로 발송 · 위 자동화와 별개로 필요할 때 직접 캠페인을 만들어 보내는 수동 도구예요
+            </p>
+          </div>
+        </div>
+        <div className="p-4">
+          <BannerLabComposer />
+        </div>
+      </div>
+      {/* 배너 (기존 수동 URL 등록) */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
@@ -2120,30 +2206,69 @@ function SettingsTab() {
 }
 
 /* ═══════════════════════════════════════════════════
-   관리자 계정 관리 섹션 (슈퍼어드민 + 2차 인증)
+   대시보드 계정 관리 (슈퍼관리자 + 2차 인증)
+
+   로그인은 카카오(신원) + 공용 관리자 비번(관문) 2단계라
+   여기서 계정별 비밀번호를 다루지 않는다. 카카오 ID 가 곧 열쇠다.
 ═══════════════════════════════════════════════════ */
-interface AdminAccountItem { username: string; is_active: boolean; created_at: string; }
+interface AdminAccountItem {
+  username: string;
+  kakao_id: number | null;
+  display_name: string;
+  department: Department;
+  department_label: string;
+  satellite_role: SatelliteRole;
+  weekly_quota: number;
+  is_active: boolean;
+  active_from: string | null;
+  active_until: string | null;
+  created_at: string;
+}
+interface DepartmentInfo {
+  code: Department;
+  label: string;
+  used: number;
+  max: number;
+  permissions: Permissions;
+}
+
+const DEPT_CHIP: Record<Department, string> = {
+  SUPERADMIN: "bg-navy text-white",
+  ADMIN: "bg-periwinkle/15 text-periwinkle",
+  MARKETING: "bg-gold/20 text-gold",
+  SALES: "bg-emerald-100 text-emerald-700",
+};
+const DEPT_ORDER: Department[] = ["SUPERADMIN", "ADMIN", "MARKETING", "SALES"];
+const PERM_FIELDS: { key: keyof Permissions; label: string }[] = [
+  { key: "can_restaurants", label: "식당" },
+  { key: "can_content", label: "배너" },
+  { key: "can_marketing", label: "마케팅" },
+  { key: "can_satellite", label: "세틀라이트" },
+];
 
 function AdminAccountsSection() {
-  // 슈퍼어드민 여부
   const [isSuperadmin, setIsSuperadmin] = useState<boolean | null>(null);
-  // 2차 인증 상태
+  // 2차 인증
   const [unlocked, setUnlocked] = useState(false);
   const [secPw, setSecPw] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [verifyErr, setVerifyErr] = useState("");
-  // 계정 목록
+  // 목록
   const [accounts, setAccounts] = useState<AdminAccountItem[]>([]);
+  const [departments, setDepartments] = useState<DepartmentInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  // 신규 계정
   const [newId, setNewId] = useState("");
-  const [newPw, setNewPw] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newKakao, setNewKakao] = useState("");
+  const [newDept, setNewDept] = useState<Department>("ADMIN");
+  const [newSatRole, setNewSatRole] = useState<SatelliteRole>("MEMBER");
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState("");
-  const [resetTarget, setResetTarget] = useState<string | null>(null);
-  const [resetPw, setResetPw] = useState("");
-  const [resetting, setResetting] = useState(false);
+  // 카카오 ID 편집
+  const [kakaoTarget, setKakaoTarget] = useState<string | null>(null);
+  const [kakaoValue, setKakaoValue] = useState("");
 
-  // 슈퍼어드민 여부 확인
   useEffect(() => {
     fetch("/api/dashboard/admin/me")
       .then((r) => r.json())
@@ -2155,11 +2280,14 @@ function AdminAccountsSection() {
     setLoading(true);
     try {
       const res = await fetch("/api/dashboard/admin/accounts");
-      if (res.ok) setAccounts(await res.json());
+      if (res.ok) {
+        const d = await res.json();
+        setAccounts(d.accounts ?? []);
+        setDepartments(d.departments ?? []);
+      }
     } finally { setLoading(false); }
   }, []);
 
-  // 2차 인증 성공 후 계정 목록 로드
   useEffect(() => { if (unlocked) loadAccounts(); }, [unlocked, loadAccounts]);
 
   async function verify2FA() {
@@ -2172,87 +2300,100 @@ function AdminAccountsSection() {
     });
     const data = await res.json();
     setVerifying(false);
-    if (data.valid) {
-      setUnlocked(true);
-      setSecPw("");
-    } else if (data.not_set) {
-      setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
-    } else {
-      setVerifyErr(data.detail ?? "인증 실패");
-    }
+    if (data.valid) { setUnlocked(true); setSecPw(""); }
+    else if (data.not_set) setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
+    else setVerifyErr(data.detail ?? "인증 실패");
   }
 
   async function create() {
-    if (!newId.trim() || !newPw) { setErr("아이디와 비밀번호를 입력해주세요."); return; }
+    if (!newId.trim()) { setErr("내부 ID를 입력해주세요."); return; }
     setCreating(true); setErr("");
     const res = await fetch("/api/dashboard/admin/accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: newId.trim(), password: newPw }),
+      body: JSON.stringify({
+        username: newId.trim(),
+        display_name: newName.trim(),
+        kakao_id: newKakao.trim() || null,
+        department: newDept,
+        satellite_role: newSatRole,
+      }),
     });
     const data = await res.json();
-    if (res.ok) { setAccounts((prev) => [...prev, data]); setNewId(""); setNewPw(""); }
-    else setErr(data.detail ?? "생성 실패");
     setCreating(false);
+    if (res.ok) {
+      setNewId(""); setNewName(""); setNewKakao("");
+      await loadAccounts();
+    } else setErr(data.detail ?? "생성 실패");
+  }
+
+  async function patchAccount(username: string, body: Record<string, unknown>) {
+    const res = await fetch(`/api/dashboard/admin/accounts/${username}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(d.detail ?? "변경 실패"); return false; }
+    await loadAccounts();
+    return true;
   }
 
   async function remove(username: string) {
     if (!confirm(`"${username}" 계정을 삭제할까요?`)) return;
     const res = await fetch(`/api/dashboard/admin/accounts/${username}`, { method: "DELETE" });
-    if (res.ok || res.status === 204) setAccounts((prev) => prev.filter((a) => a.username !== username));
-    else alert("삭제 실패");
-  }
-
-  async function toggleActive(username: string, current: boolean) {
-    const res = await fetch(`/api/dashboard/admin/accounts/${username}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !current }),
-    });
-    if (res.ok) {
-      const d = await res.json();
-      setAccounts((prev) => prev.map((a) => a.username === username ? { ...a, is_active: d.is_active } : a));
+    if (res.ok || res.status === 204) loadAccounts();
+    else {
+      const d = await res.json().catch(() => ({}));
+      alert(d.detail ?? "삭제 실패");
     }
   }
 
-  async function resetPassword() {
-    if (!resetTarget || !resetPw) return;
-    setResetting(true);
-    const res = await fetch(`/api/dashboard/admin/accounts/${resetTarget}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ new_password: resetPw }),
-    });
-    setResetting(false);
-    if (res.ok) { alert("비밀번호가 변경되었습니다."); setResetTarget(null); setResetPw(""); }
-    else { const d = await res.json(); alert(d.detail ?? "변경 실패"); }
+  async function saveKakaoId() {
+    if (!kakaoTarget) return;
+    const ok = await patchAccount(kakaoTarget, { kakao_id: kakaoValue.trim() || null });
+    if (ok) { setKakaoTarget(null); setKakaoValue(""); }
   }
 
-  // 슈퍼어드민이 아니면 렌더링 안 함
-  if (isSuperadmin === null) return null;
-  if (!isSuperadmin) return null;
+  async function togglePerm(dept: Department, field: keyof Permissions, next: boolean) {
+    const res = await fetch(`/api/dashboard/admin/department-permissions/${dept}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: next }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(d.detail ?? "권한 변경 실패"); return; }
+    setDepartments((prev) =>
+      prev.map((x) => (x.code === dept ? { ...x, permissions: { ...x.permissions, [field]: next } } : x))
+    );
+  }
+
+  if (isSuperadmin === null || !isSuperadmin) return null;
+
+  const totalUsed = departments.reduce((s, q) => s + q.used, 0);
+  const totalMax = departments.reduce((s, q) => s + q.max, 0);
+  const isFull = (dept: Department) => {
+    const q = departments.find((x) => x.code === dept);
+    return q ? q.used >= q.max : false;
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-4">
       {/* 헤더 */}
       <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-gray-700">관리자 계정 관리</h2>
-          <p className="text-xs text-gray-400 mt-0.5">슈퍼어드민 전용 · 최대 8명</p>
+          <h2 className="text-sm font-semibold text-gray-700">구성원 · 권한 관리</h2>
+          <p className="text-xs text-gray-400 mt-0.5">슈퍼관리자 전용 · 카카오 ID로 로그인</p>
         </div>
-        {unlocked ? (
-          <span className="text-xs text-green-500 flex items-center gap-1">
-            🔓 <span>{accounts.length}/8</span>
-          </span>
-        ) : (
-          <span className="text-xs text-gray-400">🔒 잠김</span>
-        )}
+        <span className={`text-xs flex items-center gap-1 ${unlocked ? "text-green-500" : "text-gray-400"}`}>
+          {unlocked ? `🔓 ${totalUsed}/${totalMax}` : "🔒 잠김"}
+        </span>
       </div>
 
       {/* 2차 인증 게이트 */}
       {!unlocked ? (
         <div className="p-4 flex flex-col gap-3">
-          <p className="text-xs text-gray-500">관리자 계정 목록과 권한을 관리하려면 2차 비밀번호를 입력하세요.</p>
+          <p className="text-xs text-gray-500">구성원 명단과 직무별 권한을 관리하려면 2차 비밀번호를 입력하세요.</p>
           {verifyErr && <p className="text-xs text-red-500">{verifyErr}</p>}
           <div className="flex gap-2">
             <input
@@ -2263,97 +2404,227 @@ function AdminAccountsSection() {
               placeholder="2차 비밀번호"
               className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
             />
-            <button
-              onClick={verify2FA}
-              disabled={verifying}
-              className="px-4 py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
-            >
+            <button onClick={verify2FA} disabled={verifying}
+              className="px-4 py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
               {verifying ? "확인 중..." : "인증"}
             </button>
           </div>
         </div>
       ) : (
         <>
+          {/* 직무별 권한 */}
+          <div className="px-4 py-3 border-b border-gray-50">
+            <p className="text-[11px] font-semibold text-gray-500 mb-2">직무별 접근 권한</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-gray-400">
+                    <th className="text-left font-semibold py-1 w-[84px]">직무</th>
+                    {PERM_FIELDS.map((f) => (
+                      <th key={f.key} className="font-semibold py-1">{f.label}</th>
+                    ))}
+                    <th className="font-semibold py-1 w-[48px]">인원</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {departments.map((d) => (
+                    <tr key={d.code} className="border-t border-gray-50">
+                      <td className="py-1.5">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${DEPT_CHIP[d.code]}`}>
+                          {d.label}
+                        </span>
+                      </td>
+                      {PERM_FIELDS.map((f) => (
+                        <td key={f.key} className="text-center py-1.5">
+                          <input
+                            type="checkbox"
+                            checked={d.permissions[f.key]}
+                            disabled={d.code === "SUPERADMIN"}
+                            onChange={(e) => togglePerm(d.code, f.key, e.target.checked)}
+                            className="w-3.5 h-3.5 accent-periwinkle cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                          />
+                        </td>
+                      ))}
+                      <td className={`text-center py-1.5 text-[11px] ${d.used >= d.max ? "text-amber-600 font-semibold" : "text-gray-400"}`}>
+                        {d.used}/{d.max}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+              관리자 설정(이 화면)은 항상 슈퍼관리자 전용입니다. 슈퍼관리자 직무의 권한은 끌 수 없습니다.
+            </p>
+          </div>
+
           {/* 계정 목록 */}
           {loading ? (
-            <div className="flex justify-center py-4"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
+            <div className="flex justify-center py-5"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
           ) : accounts.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-4">추가된 관리자 계정이 없습니다</p>
+            <p className="text-xs text-gray-400 text-center py-5">등록된 구성원이 없습니다</p>
           ) : (
             <div className="divide-y divide-gray-50">
               {accounts.map((a) => (
-                <div key={a.username} className="px-4 py-2.5 flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-800 flex-1">{a.username}</span>
-                  {/* 활성/비활성 뱃지 */}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    a.is_active ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
-                  }`}>
-                    {a.is_active ? "활성" : "비활성"}
-                  </span>
-                  {/* 활성/비활성 토글 */}
+                <div key={a.username} className="px-4 py-3 flex flex-col gap-2">
+                  {/* 1행 — 이름 · 직무 · 상태 */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-800">
+                      {a.display_name || a.username}
+                    </span>
+                    <span className="text-[11px] text-gray-400">{a.username}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${DEPT_CHIP[a.department]}`}>
+                      {a.department_label}
+                    </span>
+                    {a.satellite_role === "LEAD" && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-periwinkle/10 text-periwinkle">
+                        세틀 리드
+                      </span>
+                    )}
+                    {a.kakao_id == null && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-50 text-red-500">
+                        카카오 ID 없음
+                      </span>
+                    )}
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      a.is_active ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
+                    }`}>
+                      {a.is_active ? "활성" : "비활성"}
+                    </span>
+                  </div>
+
+                  {/* 2행 — 카카오 ID */}
                   <button
-                    onClick={() => toggleActive(a.username, a.is_active)}
-                    className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
-                      a.is_active
-                        ? "text-amber-500 border-amber-100 hover:border-amber-400"
-                        : "text-green-500 border-green-100 hover:border-green-400"
-                    }`}
+                    onClick={() => { setKakaoTarget(a.username); setKakaoValue(a.kakao_id ? String(a.kakao_id) : ""); }}
+                    className="text-left text-[11px] font-mono text-gray-500 hover:text-periwinkle w-fit"
                   >
-                    {a.is_active ? "비활성화" : "활성화"}
+                    카카오 {a.kakao_id ?? "— 미등록"} <span className="font-sans">✎</span>
                   </button>
-                  <button
-                    onClick={() => { setResetTarget(a.username); setResetPw(""); }}
-                    className="text-[10px] text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg border border-gray-100 hover:border-periwinkle/40"
-                  >
-                    비번 초기화
-                  </button>
-                  <button
-                    onClick={() => remove(a.username)}
-                    className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
-                  >
-                    삭제
-                  </button>
+
+                  {/* 3행 — 조작 */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <select
+                      value={a.department}
+                      onChange={(e) => patchAccount(a.username, { department: e.target.value })}
+                      className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
+                    >
+                      {DEPT_ORDER.map((d) => (
+                        <option key={d} value={d}>
+                          {departments.find((x) => x.code === d)?.label ?? d}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={a.satellite_role}
+                      onChange={(e) => patchAccount(a.username, { satellite_role: e.target.value })}
+                      className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
+                    >
+                      <option value="MEMBER">세틀 멤버</option>
+                      <option value="LEAD">세틀 리드</option>
+                    </select>
+                    <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                      주
+                      <input
+                        type="number" min={0} max={20}
+                        defaultValue={a.weekly_quota}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value);
+                          if (v !== a.weekly_quota) patchAccount(a.username, { weekly_quota: v });
+                        }}
+                        className="w-10 text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1 py-1 text-center focus:outline-none focus:border-periwinkle"
+                      />
+                      건
+                    </label>
+
+                    <button
+                      onClick={() => patchAccount(a.username, { is_active: !a.is_active })}
+                      disabled={!a.is_active && a.kakao_id == null}
+                      title={!a.is_active && a.kakao_id == null ? "카카오 ID를 먼저 등록하세요" : ""}
+                      className={`ml-auto text-[10px] px-2 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                        a.is_active
+                          ? "text-amber-500 border-amber-100 hover:border-amber-400"
+                          : "text-green-500 border-green-100 hover:border-green-400"
+                      }`}
+                    >
+                      {a.is_active ? "비활성화" : "활성화"}
+                    </button>
+                    {a.department !== "MARKETING" && a.department !== "SUPERADMIN" && (
+                      <button
+                        onClick={() => remove(a.username)}
+                        className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
+                      >
+                        삭제
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* 비밀번호 초기화 인라인 폼 */}
-          {resetTarget && (
+          {/* 카카오 ID 편집 */}
+          {kakaoTarget && (
             <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2">
-              <p className="text-xs font-semibold text-amber-700">{resetTarget} 비밀번호 초기화</p>
+              <p className="text-xs font-semibold text-amber-700">{kakaoTarget} 카카오 ID</p>
               <input
-                type="password"
-                value={resetPw}
-                onChange={(e) => setResetPw(e.target.value)}
-                placeholder="새 비밀번호 (4자 이상)"
-                className="w-full px-3 py-2 text-sm border border-amber-200 rounded-lg focus:outline-none bg-white"
+                type="text"
+                inputMode="numeric"
+                value={kakaoValue}
+                onChange={(e) => setKakaoValue(e.target.value.replace(/[^0-9]/g, ""))}
+                onKeyDown={(e) => { if (e.key === "Enter") saveKakaoId(); }}
+                placeholder="예: 4424485763 (비우면 로그인 차단)"
+                className="w-full px-3 py-2 text-sm font-mono border border-amber-200 rounded-lg focus:outline-none bg-white"
               />
               <div className="flex gap-2">
-                <button onClick={() => { setResetTarget(null); setResetPw(""); }} className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
-                <button onClick={resetPassword} disabled={resetting} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-60">
-                  {resetting ? "변경 중..." : "변경"}
-                </button>
+                <button onClick={() => { setKakaoTarget(null); setKakaoValue(""); }}
+                  className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
+                <button onClick={saveKakaoId}
+                  className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold">저장</button>
               </div>
             </div>
           )}
 
           {/* 새 계정 추가 */}
-          {accounts.length < 8 && (
-            <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
-              {err && <p className="text-xs text-red-500">{err}</p>}
-              <div className="flex gap-2">
-                <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="새 아이디"
-                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-                <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="비밀번호"
-                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
-              </div>
-              <button onClick={create} disabled={creating}
-                className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
-                {creating ? "추가 중..." : "계정 추가"}
-              </button>
+          <div className="p-4 border-t border-gray-50 flex flex-col gap-2">
+            <p className="text-[11px] font-semibold text-gray-500">구성원 추가</p>
+            {err && <p className="text-xs text-red-500">{err}</p>}
+            <div className="flex gap-2">
+              <input value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="내부 ID (영문)"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름"
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle" />
             </div>
-          )}
+            <input
+              value={newKakao}
+              onChange={(e) => setNewKakao(e.target.value.replace(/[^0-9]/g, ""))}
+              placeholder="카카오 ID (비우면 비활성 placeholder 로 생성)"
+              inputMode="numeric"
+              className="w-full px-3 py-2 text-sm font-mono border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            />
+            <div className="flex gap-2">
+              <select value={newDept} onChange={(e) => setNewDept(e.target.value as Department)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle">
+                {DEPT_ORDER.map((d) => (
+                  <option key={d} value={d} disabled={isFull(d)}>
+                    {departments.find((x) => x.code === d)?.label ?? d}{isFull(d) ? " (정원 초과)" : ""}
+                  </option>
+                ))}
+              </select>
+              <select value={newSatRole} onChange={(e) => setNewSatRole(e.target.value as SatelliteRole)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle">
+                <option value="MEMBER">세틀라이트 멤버</option>
+                <option value="LEAD">세틀라이트 리드</option>
+              </select>
+            </div>
+            <button onClick={create} disabled={creating || isFull(newDept)}
+              className="w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60">
+              {creating ? "추가 중..." : "구성원 추가"}
+            </button>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              비밀번호는 설정하지 않습니다. 카카오로 로그인한 뒤 팀 공용 관리자 비번을 입력하는 방식이라,
+              카카오 ID 가 등록돼 있고 계정이 활성이면 바로 접속됩니다.
+            </p>
+          </div>
         </>
       )}
     </div>
@@ -2370,6 +2641,7 @@ function RestaurantsTab() {
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<Restaurant | null>(null);
+  const [showNew, setShowNew] = useState(false);
 
   const fetchRestaurants = useCallback((query: string) => {
     setLoading(true);
@@ -2412,6 +2684,11 @@ function RestaurantsTab() {
     setRestaurants((prev) => prev.filter((r) => r.restaurant_id !== id));
   }
 
+  function handleCreated(r: Restaurant) {
+    setRestaurants((prev) => [r, ...prev]);
+    setShowNew(false);
+  }
+
   return (
     <>
       {/* 요약 카드 */}
@@ -2434,6 +2711,12 @@ function RestaurantsTab() {
             className="flex-1 text-xs px-3 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
           />
           <span className="text-xs text-gray-400 shrink-0">{loading ? "..." : `${sorted.length}개`}</span>
+          <button
+            onClick={() => setShowNew(true)}
+            className="shrink-0 text-[11px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1.5 hover:bg-periwinkle"
+          >
+            + 새 식당 등록
+          </button>
         </div>
         <div className="flex items-center px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
           <button onClick={() => toggleSort("id")} className="w-10 text-left font-medium hover:text-navy">
@@ -2495,47 +2778,525 @@ function RestaurantsTab() {
           onDeleted={handleDeleted}
         />
       )}
+
+      {showNew && <NewRestaurantModal onClose={() => setShowNew(false)} onCreated={handleCreated} />}
     </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   신규 식당 등록 모달
+═══════════════════════════════════════════════════ */
+function NewRestaurantModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (r: Restaurant) => void;
+}) {
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [category, setCategory] = useState("");
+  const [url, setUrl] = useState("");
+  const [mainMenu, setMainMenu] = useState("");
+  const [description, setDescription] = useState("");
+  const [photoUrls, setPhotoUrls] = useState(""); // 줄바꿈으로 구분, 최대 5장
+  const [tier, setTier] = useState<"" | "FREE" | "BOOST" | "CONTENT">("");
+  const [isAffiliate, setIsAffiliate] = useState(true); // 실제 앱 내 표기 여부
+  const [couponEnabled, setCouponEnabled] = useState(false);
+  const [couponContent, setCouponContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function submit() {
+    if (!name.trim()) {
+      setErr("식당명을 입력해주세요.");
+      return;
+    }
+    const photos = photoUrls
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    setSaving(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/dashboard/admin/restaurants/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          address: address.trim(),
+          phone_number: phoneNumber.trim(),
+          category: category.trim(),
+          url: url.trim(),
+          main_menu: mainMenu.trim(),
+          description: description.trim(),
+          s3_image_urls: photos,
+          tier: tier || null,
+          is_affiliate: isAffiliate,
+          naver_alarm_coupon_enabled: couponEnabled,
+          naver_alarm_coupon_content: couponContent.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(data.detail ?? "식당 등록에 실패했습니다.");
+        return;
+      }
+      onCreated({
+        restaurant_id: data.restaurant_id,
+        name: data.name,
+        tier: data.tier ?? null,
+        is_affiliate: data.is_affiliate,
+      });
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-xl max-h-[85vh] overflow-y-auto">
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-gray-200" />
+        </div>
+        <div className="px-5 pb-8 pt-2">
+          <div className="flex items-start justify-between mb-4">
+            <h2 className="text-lg font-bold text-navy">새 식당 등록</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-1">✕</button>
+          </div>
+
+          {err && (
+            <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 mb-3">
+              <p className="text-xs text-red-600">{err}</p>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="식당명 *" value={name} onChange={setName} placeholder="예: 우주식당" />
+              <Field label="카테고리" value={category} onChange={setCategory} placeholder="예: 한식" />
+            </div>
+            <Field label="주소" value={address} onChange={setAddress} placeholder="도로명 주소" />
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="전화번호" value={phoneNumber} onChange={setPhoneNumber} placeholder="02-0000-0000" />
+              <Field label="링크(URL)" value={url} onChange={setUrl} placeholder="https://..." />
+            </div>
+            <Field label="대표 메뉴" value={mainMenu} onChange={setMainMenu} placeholder="예: 김치찌개" />
+            <div>
+              <label className="text-[10px] text-gray-400 mb-1 block">소개</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                placeholder="식당 소개 문구"
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle resize-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-400 mb-1 block">사진 URL (한 줄에 하나씩, 최대 5장)</label>
+              <textarea
+                value={photoUrls}
+                onChange={(e) => setPhotoUrls(e.target.value)}
+                rows={3}
+                placeholder={"https://...jpg\nhttps://...jpg"}
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle resize-none"
+              />
+            </div>
+
+            <div className="rounded-lg bg-gray-50 p-2">
+              <p className="text-[10px] text-gray-400 mb-1.5">플랜</p>
+              <div className="flex gap-1.5">
+                {(["", "FREE", "BOOST", "CONTENT"] as const).map((t) => (
+                  <button
+                    key={t || "none"}
+                    onClick={() => setTier(t)}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                      tier === t ? (t ? TIER_STYLE[t] : "bg-gray-200 text-gray-600") : "bg-white text-gray-400 border border-gray-200 hover:bg-gray-100"
+                    }`}
+                  >
+                    {t || "미지정"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 rounded-lg bg-gray-50 p-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isAffiliate}
+                onChange={(e) => setIsAffiliate(e.target.checked)}
+                className="accent-periwinkle"
+              />
+              <span className="text-xs text-gray-600">앱에 표시 (실제 앱 내 노출 여부 — 끄면 등록만 되고 사용자에게는 안 보여요)</span>
+            </label>
+
+            {/* 쿠폰/스탬프 — 요청대로 임시 범위. 쿠폰은 기존 네이버 알림쿠폰 필드를 재사용하고,
+                스탬프 규칙은 별도 마스터 데이터가 필요해 지금은 안내만 표시한다. */}
+            <div className="rounded-lg border border-gray-100 p-2.5 flex flex-col gap-2">
+              <p className="text-[11px] font-semibold text-gray-600">쿠폰 혜택 (임시)</p>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={couponEnabled}
+                  onChange={(e) => setCouponEnabled(e.target.checked)}
+                  className="accent-periwinkle"
+                />
+                <span className="text-xs text-gray-600">쿠폰 혜택 사용</span>
+              </label>
+              <input
+                value={couponContent}
+                onChange={(e) => setCouponContent(e.target.value)}
+                placeholder="예: 신규가입 3,000원 할인"
+                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle"
+              />
+              <p className="text-[10px] text-gray-300">
+                스탬프 적립 규칙은 아직 여기서 설정할 수 없어요 — 등록 후 개발팀에 요청해주세요.
+              </p>
+            </div>
+
+            <button
+              onClick={submit}
+              disabled={saving || !name.trim()}
+              className="mt-1 w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold hover:bg-periwinkle transition-colors disabled:opacity-40"
+            >
+              {saving ? "등록 중..." : "식당 등록"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="text-[10px] text-gray-400 mb-1 block">{label}</label>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle"
+      />
+    </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════
    메인 페이지
 ═══════════════════════════════════════════════════ */
-const TABS: { key: Tab; label: string }[] = [
-  { key: "restaurants", label: "식당 관리" },
-  { key: "content", label: "배너 & 팝업" },
-  { key: "notifications", label: "마케팅" },
-  { key: "settings", label: "관리자 설정" },
+/**
+ * 탭 노출은 직무별 권한(DepartmentPermission)으로 결정된다.
+ * 관리자 설정만은 권한 설정과 무관하게 슈퍼관리자 전용이다 —
+ * 권한 설정을 권한 설정으로 열 수 있으면 누구나 자기 권한을 올릴 수 있다.
+ */
+const TABS: { key: Tab; label: string; allow: (me: AdminMe) => boolean }[] = [
+  { key: "restaurants", label: "식당 관리", allow: (me) => me.permissions.can_restaurants },
+  { key: "content", label: "배너 & 팝업", allow: (me) => me.permissions.can_content },
+  { key: "notifications", label: "마케팅", allow: (me) => me.permissions.can_marketing },
+  { key: "satellite", label: "세틀라이트", allow: (me) => me.permissions.can_satellite },
+  { key: "settings", label: "관리자 설정", allow: (me) => me.is_superadmin },
 ];
 
+/**
+ * 관리자 대시보드 전체가 "세틀라이트"다 — Papillon(마케팅)/Astro(영업)/Aether(관리운영)/Probe(지표)
+ * 4개 제품으로 나뉘고, 대시보드 진입 시 이 중 하나를 고르게 한다. 기존 5개 탭은 그대로 두되
+ * 각 탭을 어느 제품 산하로 볼지만 여기서 묶는다 (§0 큰 그림 / §5 코드베이스 연결점).
+ */
+type Product = "papillon" | "astro" | "aether" | "probe";
+
+const PRODUCTS: {
+  key: Product;
+  name: string;
+  subtitle: string;
+  description: string;
+  tabs: Tab[];   // 이 제품 산하로 묶이는 기존 탭들 — 진입 후 그 탭들만 보인다
+  ready: boolean;
+}[] = [
+  {
+    key: "papillon",
+    name: "Papillon",
+    subtitle: "마케팅 툴",
+    description: "협찬 캘린더 · 칸반보드 · 인스타 에디터 · 성과",
+    tabs: ["satellite"],
+    ready: true,
+  },
+  {
+    key: "astro",
+    name: "Astro",
+    subtitle: "영업 툴",
+    description: "식당 관리 · 쿠폰 · 계약 현황",
+    tabs: ["restaurants"],
+    ready: true,
+  },
+  {
+    key: "aether",
+    name: "Aether",
+    subtitle: "관리 및 운영",
+    description: "배너 & 팝업 · 마케팅 발송 · 관리자 설정",
+    tabs: ["content", "notifications", "settings"],
+    ready: true,
+  },
+  {
+    key: "probe",
+    name: "Probe",
+    subtitle: "지표 · 데이터 분석",
+    description: "채널/캠페인 지표 대시보드",
+    tabs: [],
+    ready: false,
+  },
+];
+
+const FALLBACK_ME: AdminMe = {
+  username: "",
+  display_name: "",
+  department: "MARKETING",
+  department_label: "마케팅",
+  satellite_role: "MEMBER",
+  is_superadmin: false,
+  is_admin: false,
+  is_marketing: true,
+  account_id: null,
+  kakao_id: null,
+  permissions: {
+    can_restaurants: false,
+    can_content: false,
+    can_marketing: false,
+    can_satellite: true,
+  },
+};
+
 export default function AdminHomePage() {
-  const [activeTab, setActiveTab] = useState<Tab>("restaurants");
+  const [me, setMe] = useState<AdminMe | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    fetch("/api/dashboard/admin/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: AdminMe | null) => {
+        if (!d) {
+          // 신원을 못 읽으면 최소 권한으로 취급한다
+          setMe(FALLBACK_ME);
+          return;
+        }
+        // 구 토큰 호환 — permissions 가 없으면 is_admin/is_marketing 으로 역산
+        if (!d.permissions) {
+          d.permissions = {
+            can_restaurants: !!d.is_admin,
+            can_content: !!d.is_admin,
+            can_marketing: !!d.is_admin,
+            can_satellite: !!d.is_marketing,
+          };
+        }
+        setMe(d);
+      })
+      .catch(() => setMe(FALLBACK_ME));
+  }, []);
+
+  // 권한이 정해지면 기본 제품/탭 결정 — ?tab= 이 있으면 그쪽을 우선하고,
+  // 그 탭을 산하로 둔 제품으로 바로 들어간다. 접근 가능한 실제 제품(Probe 제외)이
+  // 하나뿐이면 선택 화면 없이 바로 그 제품으로 들어간다 (예: 마케팅팀 → Papillon).
+  useEffect(() => {
+    if (!me || selectedProduct) return;
+    const allowed = TABS.filter((t) => t.allow(me));
+    const wanted = new URL(window.location.href).searchParams.get("tab") as Tab | null;
+
+    if (wanted && allowed.some((t) => t.key === wanted)) {
+      const owner = PRODUCTS.find((p) => p.tabs.includes(wanted));
+      if (owner) {
+        setSelectedProduct(owner.key);
+        setActiveTab(wanted);
+        return;
+      }
+    }
+
+    const realProducts = PRODUCTS.filter(
+      (p) => p.key !== "probe" && p.tabs.some((t) => allowed.some((a) => a.key === t))
+    );
+    if (realProducts.length === 1) {
+      const p = realProducts[0];
+      setSelectedProduct(p.key);
+      setActiveTab(p.tabs.find((t) => allowed.some((a) => a.key === t)) ?? null);
+    }
+    // 여러 제품이 가능하면 아무것도 정하지 않고 선택 화면을 보여준다
+  }, [me, selectedProduct]);
+
+  function selectProduct(key: Product) {
+    if (!me) return;
+    const meta = PRODUCTS.find((p) => p.key === key)!;
+    const allowed = TABS.filter((t) => t.allow(me));
+    setSelectedProduct(key);
+    setActiveTab(meta.tabs.find((t) => allowed.some((a) => a.key === t)) ?? null);
+  }
+
+  function backToProducts() {
+    setSelectedProduct(null);
+    setActiveTab(null);
+  }
+
+  if (!me) {
+    return (
+      <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
+        <div className="h-9 bg-gray-100 rounded-2xl animate-pulse mb-5" />
+        <div className="h-40 bg-white rounded-2xl border border-gray-100 animate-pulse" />
+      </div>
+    );
+  }
+
+  const visibleTabs = TABS.filter((t) => t.allow(me));
+
+  if (visibleTabs.length === 0) {
+    return (
+      <div className="px-4 pt-10 pb-20 max-w-md mx-auto text-center">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10">
+          <p className="text-sm font-bold text-gray-700">접근 가능한 메뉴가 없습니다</p>
+          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+            {me.department_label} 직무에 허용된 기능이 없습니다.
+            <br />
+            슈퍼관리자에게 권한 설정을 요청하세요.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const availableProducts = PRODUCTS.filter(
+    (p) => p.key === "probe" || p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
+  );
+
+  /* ─── 제품 선택 화면 (대시보드 진입점) ─── */
+  if (!selectedProduct) {
+    return (
+      <div className="px-4 pt-4 pb-20 max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-5 px-1">
+          <div>
+            <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Satellite</p>
+            <h1 className="text-lg font-bold text-navy leading-tight">사용할 도구를 선택하세요</h1>
+          </div>
+          <span className="text-[11px] text-gray-400">{me.display_name || me.username}</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {availableProducts.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => p.ready && selectProduct(p.key)}
+              disabled={!p.ready}
+              className={`text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4 transition-all ${
+                p.ready ? "hover:border-periwinkle/40 hover:shadow-md" : "opacity-50 cursor-not-allowed"
+              }`}
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-bold text-gray-800">{p.name}</span>
+                <span className="text-[10px] font-semibold text-periwinkle bg-periwinkle/10 rounded-full px-2 py-0.5">
+                  {p.subtitle}
+                </span>
+                {!p.ready && (
+                  <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+                    준비 중
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">{p.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ─── 제품 내부 화면 ─── */
+  const productMeta = PRODUCTS.find((p) => p.key === selectedProduct)!;
+  const productTabs = TABS.filter((t) => productMeta.tabs.includes(t.key) && t.allow(me));
+  const showProductPicker = availableProducts.length > 1;
 
   return (
-    <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
-      {/* 탭 헤더 */}
-      <div className="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-5">
-        {TABS.map(({ key, label }) => (
+    <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-3 px-1">
+        {showProductPicker ? (
           <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 py-2 text-xs font-semibold rounded-xl transition-all ${
-              activeTab === key
-                ? "bg-white text-navy shadow-sm"
-                : "text-gray-400 hover:text-gray-600"
-            }`}
+            onClick={backToProducts}
+            className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1"
           >
-            {label}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            제품 선택
           </button>
-        ))}
+        ) : (
+          <div>
+            <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">
+              {productMeta.name}
+            </p>
+            <h1 className="text-lg font-bold text-navy leading-tight">{productMeta.subtitle}</h1>
+          </div>
+        )}
+        <span className="text-[11px] text-gray-400">
+          {me.display_name || me.username}
+          {selectedProduct === "papillon" && (
+            <span className="ml-1.5 text-[10px] font-semibold text-periwinkle">
+              {me.satellite_role === "LEAD" ? "리드" : "멤버"}
+            </span>
+          )}
+        </span>
       </div>
+
+      {showProductPicker && (
+        <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest mb-1 px-1">
+          {productMeta.name} · {productMeta.subtitle}
+        </p>
+      )}
+
+      {productTabs.length > 1 && (
+        <div className="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-5">
+          {productTabs.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 py-2 text-xs font-semibold rounded-xl transition-all ${
+                activeTab === key
+                  ? "bg-white text-navy shadow-sm"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {productTabs.length <= 1 && <div className="mb-5" />}
 
       {/* 탭 컨텐츠 */}
       {activeTab === "restaurants" && <RestaurantsTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "notifications" && <MarketingTab />}
+      {activeTab === "satellite" && <PapillonShell />}
       {activeTab === "settings" && <SettingsTab />}
+
+      {selectedProduct === "probe" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
+          <p className="text-sm font-bold text-gray-700">Probe</p>
+          <p className="text-[11px] text-gray-400 mt-1">지표 · 데이터 분석 — 준비 중입니다</p>
+        </div>
+      )}
     </div>
   );
 }

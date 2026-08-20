@@ -31,8 +31,26 @@ export async function POST(req: NextRequest) {
   const access: string = body.token?.access ?? body.access;
   const refresh: string = body.token?.refresh ?? body.refresh;
   const is_owner: boolean = body.is_owner ?? false;
+  const is_staff_account: boolean = body.is_staff_account ?? false;
+  const kakaoId: number | undefined = body.user?.kakao_id;
 
   const cookieStore = await cookies();
+
+  // 내부 구성원(대시보드 명단)이면 2단계 — 공용 관리자 아이디/비번으로 넘긴다.
+  // 여기서는 아직 access_token 을 심지 않는다. 관문을 통과해야 세션이 생긴다.
+  if (is_staff_account && kakaoId != null) {
+    cookieStore.set("pending_kakao_id", String(kakaoId), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 15,
+    });
+    return NextResponse.json({
+      success: false,
+      requiresAdminAuth: true,
+      staff: body.staff ?? null,
+    });
+  }
 
   if (is_owner) {
     cookieStore.set("access_token", access, {
