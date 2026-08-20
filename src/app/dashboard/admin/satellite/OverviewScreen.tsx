@@ -2,36 +2,55 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { ContentPlan, PlansResponse, SatelliteMember, STATUS_META } from "./types";
+import {
+  ContentPlan,
+  LeaderboardBadge,
+  OverviewPerformance,
+  PlansResponse,
+  SatelliteMember,
+  STATUS_META,
+  TrimmedStats,
+} from "./types";
 
 interface PublishStatus {
   account: { username: string; followers: number | null; media_count: number | null } | null;
   quota: { quota_usage: number; quota_total: number } | null;
 }
 
+const BADGE_META: Record<LeaderboardBadge, { label: string; cls: string }> = {
+  ready: { label: "표본 안정", cls: "bg-green-50 text-green-600 border-green-100" },
+  low_sample: { label: "참고용", cls: "bg-amber-50 text-amber-600 border-amber-100" },
+  insufficient: { label: "표본 부족", cls: "bg-gray-50 text-gray-400 border-gray-100" },
+  backfill_needed: { label: "미지정 · 백필 필요", cls: "bg-gray-50 text-gray-400 border-gray-100" },
+};
+
 /**
  * 오버뷰 (목업 §s-over) — 채널 지표 + 담당자별 이번 달 성과를 한눈에.
- * 성과(조회·도달 등) 수치 자체는 블라인드 대상이라, 여기서는 "몇 건 발행했는지" 같은
- * 제작 레이어 집계만 보여준다 (설계계획 §05-4 — 제작/성과 레이어 분리 원칙).
+ * §05-4 블라인드 원칙(성과 수치는 본인+리드만)의 예외 화면 — RD 확인(2026-08-20)에 따라
+ * 이 요약 화면(조회·저장 중앙값·모멘텀·담당자 리더보드)만 전원 공개로 합의됐다.
+ * 개별 콘텐츠 상세(PerformancePanel)는 기존 블라인드 규칙을 그대로 유지한다.
  */
 export default function OverviewScreen() {
   const now = new Date();
   const [data, setData] = useState<PlansResponse | null>(null);
   const [members, setMembers] = useState<SatelliteMember[]>([]);
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
+  const [perf, setPerf] = useState<OverviewPerformance | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [plansRes, membersRes, pubRes] = await Promise.all([
+      const [plansRes, membersRes, pubRes, perfRes] = await Promise.all([
         fetch(`/api/satellite/plans?year=${now.getFullYear()}&month=${now.getMonth() + 1}`),
         fetch("/api/satellite/members"),
         fetch("/api/satellite/publish-status"),
+        fetch("/api/satellite/overview/performance"),
       ]);
       if (plansRes.ok) setData(await plansRes.json());
       if (membersRes.ok) setMembers(await membersRes.json());
       if (pubRes.ok) setPubStatus(await pubRes.json());
+      if (perfRes.ok) setPerf(await perfRes.json());
     } finally {
       setLoading(false);
     }
@@ -86,6 +105,9 @@ export default function OverviewScreen() {
         </div>
       )}
 
+      {perf && <ChannelMetrics perf={perf} />}
+      {perf && <Leaderboard rows={perf.leaderboard} />}
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <h3 className="text-xs font-bold text-gray-800">담당자별 이번 달 현황</h3>
@@ -129,6 +151,105 @@ function StatTile({ label, value, accent }: { label: string; value: string; acce
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
       <p className="text-[10px] text-gray-400 font-semibold">{label}</p>
       <p className={`text-lg font-bold mt-0.5 ${accent ?? "text-gray-800"}`}>{value}</p>
+    </div>
+  );
+}
+
+function fmtStat(v: number | null | undefined) {
+  return v == null ? "—" : Math.round(v).toLocaleString();
+}
+
+function MetricCard({ label, stats }: { label: string; stats: TrimmedStats }) {
+  const hidden = stats.n < 5;
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+      <p className="text-[10px] text-gray-400 font-semibold">{label} 중앙값</p>
+      {hidden ? (
+        <p className="text-xs text-gray-300 mt-1.5">표본 부족 (n={stats.n})</p>
+      ) : (
+        <>
+          <p className="text-lg font-bold text-gray-800 mt-0.5">{fmtStat(stats.median)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            p10 {fmtStat(stats.p10)} · p90 {fmtStat(stats.p90)} · n={stats.n}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MomentumCard({ momentum }: { momentum: OverviewPerformance["momentum"] }) {
+  if (!momentum.available) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+        <p className="text-[10px] text-gray-400 font-semibold">모멘텀</p>
+        <p className="text-xs text-gray-300 mt-1.5">집계 중 (표본 n={momentum.n})</p>
+      </div>
+    );
+  }
+  const dir = momentum.direction;
+  const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "▬";
+  const cls = dir === "up" ? "text-green-600" : dir === "down" ? "text-red-500" : "text-gray-500";
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+      <p className="text-[10px] text-gray-400 font-semibold">모멘텀 (조회 · 최근 90일 전/후반 비교)</p>
+      <p className={`text-lg font-bold mt-0.5 ${cls}`}>
+        {arrow} {momentum.delta_pct != null && momentum.delta_pct > 0 ? "+" : ""}
+        {momentum.delta_pct}%
+      </p>
+      <p className="text-[10px] text-gray-400 mt-0.5">
+        {fmtStat(momentum.older_median)} → {fmtStat(momentum.recent_median)} (n={momentum.n})
+      </p>
+    </div>
+  );
+}
+
+function ChannelMetrics({ perf }: { perf: OverviewPerformance }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <MetricCard label="조회" stats={perf.channel.views} />
+      <MetricCard label="저장" stats={perf.channel.saved} />
+      <MetricCard label="참여" stats={perf.channel.engagement} />
+      <MomentumCard momentum={perf.momentum} />
+    </div>
+  );
+}
+
+function Leaderboard({ rows }: { rows: OverviewPerformance["leaderboard"] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <h3 className="text-xs font-bold text-gray-800">담당자 리더보드 (최근 90일 · PI 기준)</h3>
+        <span className="text-[10px] text-gray-300">코호트 대비 성과지수</span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-[10px] text-gray-400 border-b border-gray-100">
+            <th className="text-left font-medium py-2 px-4">이름</th>
+            <th className="text-right font-medium py-2">중앙값 PI</th>
+            <th className="text-right font-medium py-2 px-4">표본</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const badge = BADGE_META[row.badge];
+            return (
+              <tr key={row.member_id} className="border-b border-gray-50 last:border-0">
+                <td className="py-2 px-4 text-gray-700 font-medium">{row.name}</td>
+                <td className="text-right py-2 text-gray-700 font-semibold">
+                  {row.median_pi != null ? `${row.median_pi}%` : "—"}
+                </td>
+                <td className="py-2 px-4">
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badge.cls}`}>
+                    {badge.label} · n={row.n}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

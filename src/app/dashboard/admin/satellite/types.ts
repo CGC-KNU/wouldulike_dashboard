@@ -220,6 +220,49 @@ export const PERFORMANCE_METRIC_LABEL: Record<string, string> = {
   total_interactions: "총 상호작용",
 };
 
+/* ─── 오버뷰 화면 — 채널 지표 · 모멘텀 · 담당자 리더보드 ───────── */
+
+export interface TrimmedStats {
+  median: number | null;
+  p10: number | null;
+  p90: number | null;
+  mean: number | null;
+  n: number;
+}
+
+export interface ChannelStats {
+  window_days: number;
+  views: TrimmedStats;
+  saved: TrimmedStats;
+  engagement: TrimmedStats;
+}
+
+export interface MomentumStats {
+  available: boolean;
+  n: number;
+  metric?: string;
+  older_median?: number;
+  recent_median?: number;
+  delta_pct?: number;
+  direction?: "up" | "down" | "flat";
+}
+
+export type LeaderboardBadge = "ready" | "low_sample" | "insufficient" | "backfill_needed";
+
+export interface LeaderboardRow {
+  member_id: number;
+  name: string;
+  median_pi: number | null;
+  n: number;
+  badge: LeaderboardBadge;
+}
+
+export interface OverviewPerformance {
+  channel: ChannelStats;
+  momentum: MomentumStats;
+  leaderboard: LeaderboardRow[];
+}
+
 /* ─── 3차 — 댓글 · 근태 ───────────────────────────── */
 
 export interface CommentItem {
