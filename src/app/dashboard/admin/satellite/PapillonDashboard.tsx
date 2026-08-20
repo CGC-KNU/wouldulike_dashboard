@@ -88,6 +88,23 @@ export default function PapillonDashboard() {
   const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
 
+  /**
+   * 슬랙 알림의 "대시보드에서 보기" 딥링크(?plan=<id>) 진입점 — 마운트 시 한 번만
+   * 확인해서 바로 그 콘텐츠의 에디터를 연다. URL 파라미터는 열고 나면 지운다
+   * (뒤로가기 시 같은 모달이 다시 뜨지 않도록).
+   */
+  useEffect(() => {
+    const planParam = new URL(window.location.href).searchParams.get("plan");
+    const planId = planParam ? Number(planParam) : NaN;
+    if (Number.isFinite(planId) && planId > 0) {
+      setEditorPlanId(planId);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("plan");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadPlans = useCallback(async () => {
     setLoading(true);
     try {

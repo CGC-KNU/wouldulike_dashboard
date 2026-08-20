@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import AudioPicker from "./AudioPicker";
 import CommentThread from "./CommentThread";
 import LocationPicker from "./LocationPicker";
+import PerformancePanel from "./PerformancePanel";
 import {
   AudioTrack,
   JOB_STATE_META,
@@ -858,6 +859,10 @@ export default function PlanEditor({
                   editRequestCount={plan.edit_request_count}
                   onDone={() => load({ preserveCaption: true })}
                 />
+              )}
+
+              {(plan.is_owner || plan.is_lead) && plan.status !== "draft" && plan.status !== "ready" && (
+                <PerformancePanel planId={plan.id} status={plan.status} />
               )}
 
               <CommentThread planId={plan.id} />
