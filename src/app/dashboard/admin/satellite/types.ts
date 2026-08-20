@@ -263,6 +263,51 @@ export interface OverviewPerformance {
   leaderboard: LeaderboardRow[];
 }
 
+/* ─── 내 대시보드 — 월/포맷별 달성률 · 게시물 목록 · 월간 회고 ───────── */
+
+export interface MyDashboardMetric {
+  value: number | null;
+  pi: number | null;
+  percentile: number | null;
+  hidden: boolean;
+}
+
+export interface MyDashboardPost {
+  id: number;
+  plan_id: number | null;
+  topic: string;
+  posted_at: string;
+  format: MediaType;
+  pi: number | null;
+  views: number | null;
+  engagement: number | null;
+  saved: number | null;
+  shares: number | null;
+  collecting: boolean;
+}
+
+export interface MyDashboardRetro {
+  good_note: string;
+  improve_note: string;
+}
+
+export interface MyDashboardResponse {
+  year: number;
+  month: number;
+  media_type: MediaType;
+  post_count: number;
+  low_sample: boolean;
+  cohort_window_days: number | null;
+  cohort_n: number;
+  metrics: Record<string, MyDashboardMetric>;
+  interpretation: string;
+  posts: MyDashboardPost[];
+  months: { year: number; month: number }[];
+  formats: MediaType[];
+  is_self: boolean;
+  retro: MyDashboardRetro | null;
+}
+
 /* ─── 3차 — 댓글 · 근태 ───────────────────────────── */
 
 export interface CommentItem {
