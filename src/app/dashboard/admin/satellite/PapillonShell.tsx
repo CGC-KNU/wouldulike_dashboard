@@ -48,14 +48,14 @@ export default function PapillonShell() {
   const visibleNav = NAV.filter((n) => !n.leadOnly || isLead);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[176px_1fr] gap-4 items-start">
-      <aside className="bg-navy rounded-2xl p-3 md:sticky md:top-4">
+    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6 items-start">
+      <aside className="bg-navy rounded-2xl p-3 md:p-4 md:sticky md:top-4">
         <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
           {visibleNav.map((n) => (
             <button
               key={n.key}
               onClick={() => setScreen(n.key)}
-              className={`flex items-center gap-2 text-left text-xs font-semibold rounded-lg px-2.5 py-2 whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-2.5 text-left text-xs font-semibold rounded-lg px-3 py-2.5 whitespace-nowrap transition-colors ${
                 screen === n.key ? "bg-white/15 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
               }`}
             >
@@ -65,14 +65,14 @@ export default function PapillonShell() {
           ))}
         </div>
         {me && (
-          <div className="hidden md:block mt-3 pt-3 border-t border-white/10">
+          <div className="hidden md:block mt-4 pt-4 border-t border-white/10">
             <p className="text-xs font-bold text-white">{me.display_name || me.username}</p>
             <p className="text-[10px] text-white/50 mt-0.5">{isLead ? "리드" : "멤버"}</p>
           </div>
         )}
       </aside>
 
-      <main className="min-w-0">
+      <main className="min-w-0 max-w-3xl">
         {screen === "calendar" && <PapillonDashboard />}
         {screen === "overview" && <OverviewScreen />}
         {screen === "mine" && <MyDashboardScreen />}

@@ -171,6 +171,53 @@ export interface PlanDetail {
   comment_count: number;
 }
 
+/* ─── 성과 · 코호트/PI · AI 분석 (§05-2 · §06 — P3) ─── */
+
+export interface PerformanceMetricCohort {
+  window_days: number | null;
+  basis: "D7" | "cumulative" | "none";
+  hidden: boolean;
+  n: number;
+  median?: number | null;
+  p10?: number | null;
+  p90?: number | null;
+  mean?: number | null;
+}
+
+export interface PerformanceMetric {
+  value: number;
+  cohort: PerformanceMetricCohort;
+  pi: number | null;
+  percentile: number | null;
+}
+
+export interface PostPerformance {
+  available: boolean;
+  reason?: string;
+  basis?: "D7" | "cumulative";
+  age_days?: number;
+  collecting?: boolean;
+  metrics?: Record<string, PerformanceMetric>;
+  post?: {
+    id: number;
+    ig_media_id: string;
+    permalink: string;
+    posted_at: string;
+    format: MediaType;
+  };
+}
+
+export const PERFORMANCE_METRIC_LABEL: Record<string, string> = {
+  views: "조회",
+  engagement: "참여",
+  reach: "도달",
+  saved: "저장",
+  shares: "공유",
+  likes: "좋아요",
+  comments: "댓글",
+  total_interactions: "총 상호작용",
+};
+
 /* ─── 3차 — 댓글 · 근태 ───────────────────────────── */
 
 export interface CommentItem {

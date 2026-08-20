@@ -3184,7 +3184,7 @@ export default function AdminHomePage() {
   /* ─── 제품 선택 화면 (대시보드 진입점) ─── */
   if (!selectedProduct) {
     return (
-      <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
+      <div className="px-4 pt-4 pb-20 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-5 px-1">
           <div>
             <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Satellite</p>
@@ -3193,7 +3193,7 @@ export default function AdminHomePage() {
           <span className="text-[11px] text-gray-400">{me.display_name || me.username}</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {availableProducts.map((p) => (
             <button
               key={p.key}
@@ -3228,7 +3228,7 @@ export default function AdminHomePage() {
   const showProductPicker = availableProducts.length > 1;
 
   return (
-    <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
+    <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-3 px-1">
         {showProductPicker ? (
           <button
