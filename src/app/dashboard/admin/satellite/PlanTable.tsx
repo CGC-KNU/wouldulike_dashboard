@@ -140,7 +140,7 @@ export default function PlanTable({
           <thead>
             <tr className="text-[11px] text-gray-400 border-b border-gray-50">
               <th className="text-left font-semibold px-4 py-3 w-[128px]">업로드 날짜</th>
-              <th className="text-left font-semibold px-3 py-3">매거진 주제</th>
+              <th className="text-left font-semibold px-3 py-3 min-w-[160px] whitespace-nowrap">매거진 주제</th>
               <th className="text-left font-semibold px-3 py-3 w-[128px]">담당자</th>
               <th className="text-left font-semibold px-3 py-3 w-[152px]">협찬 촬영</th>
               <th className="text-left font-semibold px-3 py-3 w-[108px]">유형</th>
