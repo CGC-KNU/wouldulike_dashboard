@@ -52,6 +52,7 @@ export default function PlanEditor({
   const [caption, setCaption] = useState("");
   const [publishAt, setPublishAt] = useState("");
   const [collabInput, setCollabInput] = useState("");
+  const [activeTab, setActiveTab] = useState<"content" | "publish" | "feedback">("content");
   const fileInput = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -482,6 +483,32 @@ export default function PlanEditor({
                 </div>
               )}
 
+              {/* 탭 — 카드/캡션·발행/성과·피드백을 나눠서, 스크롤 하나로 다 몰아넣지 않는다 */}
+              <div className="flex items-center gap-0.5 bg-gray-100 rounded-xl p-1 sticky top-0 z-10">
+                {(
+                  [
+                    ["content", "카드"],
+                    ["publish", "캡션 · 발행"],
+                    ["feedback", "성과 · 피드백"],
+                  ] as [typeof activeTab, string][]
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setActiveTab(key)}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+                      activeTab === key ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    {label}
+                    {key === "feedback" && plan.comment_count > 0 && (
+                      <span className="ml-1 text-[10px] font-bold text-periwinkle">{plan.comment_count}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {activeTab === "content" && (
+                <>
               {/* 유형 */}
               <section className="bg-white rounded-2xl border border-gray-100 p-4">
                 <h3 className="text-sm font-bold text-gray-800 mb-2">콘텐츠 유형</h3>
@@ -692,7 +719,11 @@ export default function PlanEditor({
                   </div>
                 </section>
               )}
+                </>
+              )}
 
+              {activeTab === "publish" && (
+                <>
               {/* 위치 */}
               <LocationPicker
                 locationId={plan.location_id}
@@ -860,12 +891,18 @@ export default function PlanEditor({
                   onDone={() => load({ preserveCaption: true })}
                 />
               )}
+                </>
+              )}
 
+              {activeTab === "feedback" && (
+                <>
               {(plan.is_owner || plan.is_lead) && plan.status !== "draft" && plan.status !== "ready" && (
                 <PerformancePanel planId={plan.id} status={plan.status} />
               )}
 
               <CommentThread planId={plan.id} />
+                </>
+              )}
             </>
           ) : null}
         </div>
