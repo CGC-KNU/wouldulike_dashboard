@@ -136,17 +136,17 @@ export default function PlanTable({
 
       {/* 표 */}
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs min-w-[880px]">
           <thead>
-            <tr className="text-[10px] text-gray-400 border-b border-gray-50">
-              <th className="text-left font-semibold px-3 py-2 w-[78px]">업로드 날짜</th>
-              <th className="text-left font-semibold px-2 py-2">매거진 주제</th>
-              <th className="text-left font-semibold px-2 py-2 w-[96px]">담당자</th>
-              <th className="text-left font-semibold px-2 py-2 w-[112px]">협찬 촬영</th>
-              <th className="text-left font-semibold px-2 py-2 w-[86px]">유형</th>
-              <th className="text-left font-semibold px-2 py-2 w-[92px]">상태</th>
-              <th className="text-left font-semibold px-1 py-2 w-[52px]">카드</th>
-              <th className="w-24" />
+            <tr className="text-[11px] text-gray-400 border-b border-gray-50">
+              <th className="text-left font-semibold px-4 py-3 w-[128px]">업로드 날짜</th>
+              <th className="text-left font-semibold px-3 py-3">매거진 주제</th>
+              <th className="text-left font-semibold px-3 py-3 w-[128px]">담당자</th>
+              <th className="text-left font-semibold px-3 py-3 w-[152px]">협찬 촬영</th>
+              <th className="text-left font-semibold px-3 py-3 w-[108px]">유형</th>
+              <th className="text-left font-semibold px-3 py-3 w-[116px]">상태</th>
+              <th className="text-left font-semibold px-2 py-3 w-[64px]">카드</th>
+              <th className="w-[128px]" />
             </tr>
           </thead>
           <tbody>
@@ -172,24 +172,37 @@ export default function PlanTable({
                     isToday ? "bg-periwinkle/[0.03]" : ""
                   }`}
                 >
-                  {/* 날짜 */}
-                  <td className="px-3 py-2">
+                  {/* 날짜 — 요일 함께 표기 */}
+                  <td className="px-4 py-3">
                     {editable ? (
-                      <input
-                        type="date"
-                        value={p.scheduled_date}
-                        onChange={(e) => onPatch(p.id, { scheduled_date: e.target.value })}
-                        className="w-full text-[11px] text-gray-600 bg-transparent border-0 p-0 focus:outline-none cursor-pointer"
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="date"
+                          value={p.scheduled_date}
+                          onChange={(e) => onPatch(p.id, { scheduled_date: e.target.value })}
+                          className="text-xs text-gray-600 bg-transparent border-0 p-0 focus:outline-none cursor-pointer"
+                        />
+                        <span
+                          className={`text-[10px] font-semibold shrink-0 ${
+                            dowKR(p.scheduled_date) === "일"
+                              ? "text-red-400"
+                              : dowKR(p.scheduled_date) === "토"
+                              ? "text-blue-400"
+                              : "text-gray-400"
+                          }`}
+                        >
+                          ({dowKR(p.scheduled_date)})
+                        </span>
+                      </div>
                     ) : (
-                      <span className="text-[11px] text-gray-500">
+                      <span className="text-xs text-gray-500">
                         {fmtMD(p.scheduled_date)} ({dowKR(p.scheduled_date)})
                       </span>
                     )}
                   </td>
 
                   {/* 주제 */}
-                  <td className="px-2 py-2">
+                  <td className="px-3 py-3">
                     {editable ? (
                       <input
                         type="text"
@@ -202,7 +215,7 @@ export default function PlanTable({
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                         }}
-                        className="w-full text-xs text-gray-700 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-periwinkle p-0 py-0.5 focus:outline-none transition-colors placeholder:text-gray-300"
+                        className="w-full text-xs text-gray-700 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-periwinkle p-0 py-1 focus:outline-none transition-colors placeholder:text-gray-300"
                       />
                     ) : (
                       <span className={`text-xs ${p.topic ? "text-gray-700" : "text-gray-300"}`}>
@@ -212,12 +225,12 @@ export default function PlanTable({
                   </td>
 
                   {/* 담당자 — 변경은 리드만 */}
-                  <td className="px-2 py-2">
+                  <td className="px-3 py-3">
                     {isLead ? (
                       <select
                         value={p.owner_id}
                         onChange={(e) => onPatch(p.id, { owner_id: Number(e.target.value) })}
-                        className={`text-[10px] font-bold rounded-full px-2 py-1 border-0 cursor-pointer ${c.chip} focus:outline-none focus:ring-1 focus:ring-periwinkle`}
+                        className={`text-[11px] font-bold rounded-full px-2.5 py-1.5 border-0 cursor-pointer ${c.chip} focus:outline-none focus:ring-1 focus:ring-periwinkle`}
                       >
                         {activeMembers.map((m) => (
                           <option key={m.id} value={m.id}>
@@ -226,22 +239,22 @@ export default function PlanTable({
                         ))}
                       </select>
                     ) : (
-                      <span className={`text-[10px] font-bold rounded-full px-2 py-1 ${c.chip}`}>
+                      <span className={`text-[11px] font-bold rounded-full px-2.5 py-1.5 ${c.chip}`}>
                         {p.owner_name}
                       </span>
                     )}
                   </td>
 
                   {/* 협찬 촬영 — 촬영 담당자 · 촬영일 */}
-                  <td className="px-2 py-2">
+                  <td className="px-3 py-3">
                     {editable ? (
-                      <div className="flex flex-col gap-0.5">
+                      <div className="flex flex-col gap-1">
                         <select
                           value={p.shoot_owner_id ?? ""}
                           onChange={(e) =>
                             onPatch(p.id, { shoot_owner_id: e.target.value ? Number(e.target.value) : null })
                           }
-                          className="w-full text-[10px] text-gray-500 bg-transparent border-0 p-0 cursor-pointer focus:outline-none"
+                          className="w-full text-[11px] text-gray-500 bg-transparent border-0 p-0 cursor-pointer focus:outline-none"
                         >
                           <option value="">촬영자 미정</option>
                           {activeMembers.map((m) => (
@@ -254,26 +267,26 @@ export default function PlanTable({
                           type="date"
                           value={p.shoot_date ?? ""}
                           onChange={(e) => onPatch(p.id, { shoot_date: e.target.value || null })}
-                          className="w-full text-[10px] text-gray-400 bg-transparent border-0 p-0 focus:outline-none cursor-pointer"
+                          className="w-full text-[11px] text-gray-400 bg-transparent border-0 p-0 focus:outline-none cursor-pointer"
                         />
                       </div>
                     ) : p.shoot_date || p.shoot_owner_name ? (
-                      <span className="text-[10px] text-gray-400 leading-tight">
+                      <span className="text-[11px] text-gray-400 leading-tight">
                         {p.shoot_owner_name ?? "미정"}
-                        {p.shoot_date && <span className="block">{fmtMD(p.shoot_date)}</span>}
+                        {p.shoot_date && <span className="block">{fmtMD(p.shoot_date)} ({dowKR(p.shoot_date)})</span>}
                       </span>
                     ) : (
-                      <span className="text-[10px] text-gray-300">—</span>
+                      <span className="text-[11px] text-gray-300">—</span>
                     )}
                   </td>
 
                   {/* 유형 */}
-                  <td className="px-2 py-2">
+                  <td className="px-3 py-3">
                     {editable ? (
                       <select
                         value={p.media_type}
                         onChange={(e) => onPatch(p.id, { media_type: e.target.value })}
-                        className="text-[11px] text-gray-600 bg-transparent border-0 p-0 cursor-pointer focus:outline-none"
+                        className="text-xs text-gray-600 bg-transparent border-0 p-0 cursor-pointer focus:outline-none"
                       >
                         {(Object.keys(MEDIA_META) as MediaType[]).map((k) => (
                           <option key={k} value={k}>
@@ -282,17 +295,17 @@ export default function PlanTable({
                         ))}
                       </select>
                     ) : (
-                      <span className="text-[11px] text-gray-500">{MEDIA_META[p.media_type].label}</span>
+                      <span className="text-xs text-gray-500">{MEDIA_META[p.media_type].label}</span>
                     )}
                   </td>
 
                   {/* 상태 — 멤버는 draft ↔ ready 만 */}
-                  <td className="px-2 py-2">
+                  <td className="px-3 py-3">
                     {editable ? (
                       <select
                         value={p.status}
                         onChange={(e) => onPatch(p.id, { status: e.target.value })}
-                        className={`text-[10px] font-semibold rounded-full px-2 py-1 border cursor-pointer ${st.cls} focus:outline-none`}
+                        className={`text-[11px] font-semibold rounded-full px-2.5 py-1.5 border cursor-pointer ${st.cls} focus:outline-none`}
                       >
                         {(isLead
                           ? (Object.keys(STATUS_META) as PlanStatus[])
@@ -304,16 +317,16 @@ export default function PlanTable({
                         ))}
                       </select>
                     ) : (
-                      <span className={`text-[10px] font-semibold rounded-full px-2 py-1 border ${st.cls}`}>
+                      <span className={`text-[11px] font-semibold rounded-full px-2.5 py-1.5 border ${st.cls}`}>
                         {st.label}
                       </span>
                     )}
                   </td>
 
                   {/* 카드 장수 */}
-                  <td className="px-1 py-2">
+                  <td className="px-2 py-3">
                     <span
-                      className={`text-[11px] ${
+                      className={`text-xs ${
                         p.card_count > 10
                           ? "text-red-500 font-bold"
                           : p.card_count > 0
@@ -326,12 +339,12 @@ export default function PlanTable({
                   </td>
 
                   {/* 작업하기 · 삭제 */}
-                  <td className="px-1 py-2">
-                    <div className="flex items-center gap-1 justify-end">
+                  <td className="px-2 py-3">
+                    <div className="flex items-center gap-1.5 justify-end">
                       <button
                         onClick={() => onOpen(p)}
                         title="이 주제로 작업 화면 열기"
-                        className="text-[10px] font-semibold rounded-full px-2.5 py-1.5 min-h-[28px] bg-periwinkle/10 text-periwinkle hover:bg-periwinkle hover:text-white active:scale-95 transition-all whitespace-nowrap"
+                        className="text-[11px] font-semibold rounded-full px-3 py-2 min-h-[36px] bg-periwinkle/10 text-periwinkle hover:bg-periwinkle hover:text-white active:scale-95 transition-all whitespace-nowrap"
                       >
                         {actionLabel(p)}
                       </button>
@@ -343,9 +356,9 @@ export default function PlanTable({
                             }
                           }}
                           aria-label="삭제"
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                             <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
                           </svg>
                         </button>
@@ -359,13 +372,16 @@ export default function PlanTable({
             {/* 행 추가 */}
             {adding && (
               <tr className="bg-periwinkle/[0.04]">
-                <td className="px-3 py-2">
-                  <input
-                    type="date"
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full text-[11px] text-gray-700 bg-white border border-gray-200 rounded-md px-1 py-1 focus:outline-none focus:border-periwinkle"
-                  />
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={newDate}
+                      onChange={(e) => setNewDate(e.target.value)}
+                      className="flex-1 min-w-0 text-[11px] text-gray-700 bg-white border border-gray-200 rounded-md px-1.5 py-1.5 focus:outline-none focus:border-periwinkle"
+                    />
+                    {newDate && <span className="text-[10px] text-gray-400 shrink-0">({dowKR(newDate)})</span>}
+                  </div>
                 </td>
                 <td className="px-2 py-2">
                   <input

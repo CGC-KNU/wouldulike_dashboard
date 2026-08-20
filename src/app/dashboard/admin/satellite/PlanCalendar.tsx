@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   ContentPlan,
   DAY_KR,
@@ -8,6 +10,12 @@ import {
   STATUS_META,
   ownerColor,
 } from "./types";
+
+type ViewMode = "month" | "week";
+
+function fmtISO(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 /**
  * 월간 캘린더 — 주제표와 같은 데이터(ContentPlan)의 두 번째 얼굴.
@@ -48,6 +56,51 @@ export default function PlanCalendar({
     if (isLead) return "열람";
     return "피드백";
   }
+
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [weekAnchor, setWeekAnchor] = useState(today);
+
+  /** 주간 뷰로 전환할 때, 현재 보고 있는 월(year/month)과 다른 주에 머물러 있으면 그 달로 스냅한다. */
+  function switchToWeek() {
+    const wd = new Date(weekAnchor + "T00:00:00");
+    if (wd.getFullYear() !== year || wd.getMonth() + 1 !== month) {
+      const td = new Date(today + "T00:00:00");
+      const inThisMonth = td.getFullYear() === year && td.getMonth() + 1 === month;
+      setWeekAnchor(inThisMonth ? today : `${year}-${String(month).padStart(2, "0")}-01`);
+    }
+    setViewMode("week");
+  }
+
+  /** 주 단위 이동 — 달을 넘어가면 부모의 월 이동(onPrev/onNext)도 함께 트리거한다. */
+  function shiftWeek(deltaDays: number) {
+    const cur = new Date(weekAnchor + "T00:00:00");
+    cur.setDate(cur.getDate() + deltaDays);
+    if (cur.getFullYear() !== year || cur.getMonth() + 1 !== month) {
+      if (deltaDays > 0) onNext();
+      else onPrev();
+    }
+    setWeekAnchor(fmtISO(cur));
+  }
+
+  function weekToToday() {
+    onToday();
+    setWeekAnchor(today);
+  }
+
+  const weekDays = (() => {
+    const anchor = new Date(weekAnchor + "T00:00:00");
+    const start = new Date(anchor);
+    start.setDate(anchor.getDate() - anchor.getDay());
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
+  })();
+  const weekRangeLabel = `${weekDays[0].getMonth() + 1}/${weekDays[0].getDate()} – ${
+    weekDays[6].getMonth() + 1
+  }/${weekDays[6].getDate()}`;
+
   const daysInMonth = new Date(year, month, 0).getDate();
   const firstDow = new Date(year, month - 1, 1).getDay();
 
@@ -81,41 +134,146 @@ export default function PlanCalendar({
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       {/* 헤더 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 flex-wrap gap-2">
         <div className="flex items-center gap-2.5">
           <div className="w-1 h-5 rounded-full bg-periwinkle" />
-          <h3 className="text-sm font-bold text-gray-800">{monthLabel}</h3>
+          <h3 className="text-sm font-bold text-gray-800">{viewMode === "month" ? monthLabel : `${monthLabel} · ${weekRangeLabel}`}</h3>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onToday}
-            className="text-[11px] font-semibold text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            오늘
-          </button>
-          <button
-            onClick={onPrev}
-            aria-label="이전 달"
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M15 19L9 12l6-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <button
-            onClick={onNext}
-            aria-label="다음 달"
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path d="M9 19l6-7-6-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+        <div className="flex items-center gap-2.5">
+          {/* 월간 · 주간 전환 */}
+          <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg p-0.5">
+            <button
+              onClick={() => setViewMode("month")}
+              className={`text-[11px] font-semibold rounded-md px-2.5 py-1.5 min-h-[30px] transition-all ${
+                viewMode === "month" ? "bg-white text-periwinkle shadow-sm" : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              월간
+            </button>
+            <button
+              onClick={switchToWeek}
+              className={`text-[11px] font-semibold rounded-md px-2.5 py-1.5 min-h-[30px] transition-all ${
+                viewMode === "week" ? "bg-white text-periwinkle shadow-sm" : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              주간
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={viewMode === "month" ? onToday : weekToToday}
+              className="text-[11px] font-semibold text-gray-400 hover:text-periwinkle px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              오늘
+            </button>
+            <button
+              onClick={() => (viewMode === "month" ? onPrev() : shiftWeek(-7))}
+              aria-label={viewMode === "month" ? "이전 달" : "이전 주"}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path d="M15 19L9 12l6-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              onClick={() => (viewMode === "month" ? onNext() : shiftWeek(7))}
+              aria-label={viewMode === "month" ? "다음 달" : "다음 주"}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path d="M9 19l6-7-6-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* 그리드 */}
       <div className="px-3 pt-2 pb-3">
+        {viewMode === "week" && (
+          <div className="grid grid-cols-7 gap-1.5">
+            {weekDays.map((d, di) => {
+              const ds = fmtISO(d);
+              const inLoadedMonth = d.getFullYear() === year && d.getMonth() + 1 === month;
+              const dayPlans = inLoadedMonth ? byDate.get(ds) ?? [] : [];
+              const isToday = ds === today;
+              return (
+                <div
+                  key={di}
+                  onDragOver={(e) => inLoadedMonth && e.preventDefault()}
+                  onDrop={(e) => {
+                    if (!inLoadedMonth) return;
+                    e.preventDefault();
+                    const id = Number(e.dataTransfer.getData("text/plan-id"));
+                    if (id) onDropOnDate(id, ds);
+                  }}
+                  className={`min-h-[220px] rounded-xl border p-2 flex flex-col gap-1.5 transition-colors ${
+                    isToday
+                      ? "border-periwinkle/40 bg-periwinkle/[0.04]"
+                      : inLoadedMonth
+                      ? "border-gray-100 hover:border-gray-200 hover:bg-gray-50/50"
+                      : "border-gray-50 bg-gray-50/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between px-0.5">
+                    <div className="flex items-baseline gap-1">
+                      <span
+                        className={`text-xs font-bold leading-none ${
+                          isToday ? "text-navy" : di === 0 ? "text-red-400" : di === 6 ? "text-blue-400" : "text-gray-500"
+                        }`}
+                      >
+                        {d.getDate()}
+                      </span>
+                      <span className="text-[9px] text-gray-300">{DAY_KR[di]}</span>
+                    </div>
+                    {isToday && <span className="w-1.5 h-1.5 rounded-full bg-periwinkle" />}
+                  </div>
+
+                  {!inLoadedMonth ? (
+                    <p className="text-[9px] text-gray-300 text-center py-4">다른 달 · 그 달로 이동해 확인</p>
+                  ) : dayPlans.length === 0 ? (
+                    <p className="text-[9px] text-gray-200 text-center py-4">등록 없음</p>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {dayPlans.map((p) => {
+                        const c = ownerColor(p.owner_id);
+                        const st = STATUS_META[p.status];
+                        return (
+                          <button
+                            key={p.id}
+                            draggable
+                            onDragStart={(e) => e.dataTransfer.setData("text/plan-id", String(p.id))}
+                            onClick={() => onSelect(p)}
+                            title={`${p.owner_name} · ${p.topic || "(미정)"} · ${st.label} · ${actionLabel(p)}`}
+                            className={`group w-full text-left rounded-lg px-2 py-1.5 ${c.cell} border border-black/[0.04] hover:brightness-95 hover:ring-1 hover:ring-periwinkle/40 active:scale-[0.97] transition-all cursor-grab`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${st.dot}`} />
+                              <span className="text-[10px] font-bold text-gray-600 truncate flex-1">{p.owner_name}</span>
+                            </div>
+                            <p className="text-[10px] text-gray-500 truncate leading-tight mt-0.5">
+                              {p.topic || "(미정)"}
+                            </p>
+                            <span className={`inline-block mt-1 text-[9px] font-semibold rounded-full px-1.5 py-0.5 border ${st.cls}`}>
+                              {st.label}
+                            </span>
+                            <span className="hidden group-hover:block text-[9px] font-bold text-periwinkle mt-1">
+                              {actionLabel(p)} →
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {viewMode === "month" && (
+          <>
         <div className="grid grid-cols-7 mb-1">
           {DAY_KR.map((d, i) => (
             <div
@@ -201,6 +359,8 @@ export default function PlanCalendar({
             </div>
           ))}
         </div>
+          </>
+        )}
 
         {/* 범례 */}
         {activeOwnerIds.length > 0 && (

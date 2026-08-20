@@ -72,7 +72,7 @@ export default function PapillonShell() {
         )}
       </aside>
 
-      <main className="min-w-0 max-w-3xl">
+      <main className="min-w-0 max-w-6xl">
         {screen === "calendar" && <PapillonDashboard />}
         {screen === "overview" && <OverviewScreen />}
         {screen === "mine" && <MyDashboardScreen />}
