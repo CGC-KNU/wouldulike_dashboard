@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import SatelliteTab from "./satellite/SatelliteTab";
+import PapillonDashboard from "./satellite/PapillonDashboard";
 import BannerLabComposer from "./bannerlab/BannerLabComposer";
 import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
 
@@ -3014,6 +3014,55 @@ const TABS: { key: Tab; label: string; allow: (me: AdminMe) => boolean }[] = [
   { key: "settings", label: "관리자 설정", allow: (me) => me.is_superadmin },
 ];
 
+/**
+ * 관리자 대시보드 전체가 "세틀라이트"다 — Papillon(마케팅)/Astro(영업)/Aether(관리운영)/Probe(지표)
+ * 4개 제품으로 나뉘고, 대시보드 진입 시 이 중 하나를 고르게 한다. 기존 5개 탭은 그대로 두되
+ * 각 탭을 어느 제품 산하로 볼지만 여기서 묶는다 (§0 큰 그림 / §5 코드베이스 연결점).
+ */
+type Product = "papillon" | "astro" | "aether" | "probe";
+
+const PRODUCTS: {
+  key: Product;
+  name: string;
+  subtitle: string;
+  description: string;
+  tabs: Tab[];   // 이 제품 산하로 묶이는 기존 탭들 — 진입 후 그 탭들만 보인다
+  ready: boolean;
+}[] = [
+  {
+    key: "papillon",
+    name: "Papillon",
+    subtitle: "마케팅 툴",
+    description: "협찬 캘린더 · 칸반보드 · 인스타 에디터 · 성과",
+    tabs: ["satellite"],
+    ready: true,
+  },
+  {
+    key: "astro",
+    name: "Astro",
+    subtitle: "영업 툴",
+    description: "식당 관리 · 쿠폰 · 계약 현황",
+    tabs: ["restaurants"],
+    ready: true,
+  },
+  {
+    key: "aether",
+    name: "Aether",
+    subtitle: "관리 및 운영",
+    description: "배너 & 팝업 · 마케팅 발송 · 관리자 설정",
+    tabs: ["content", "notifications", "settings"],
+    ready: true,
+  },
+  {
+    key: "probe",
+    name: "Probe",
+    subtitle: "지표 · 데이터 분석",
+    description: "채널/캠페인 지표 대시보드",
+    tabs: [],
+    ready: false,
+  },
+];
+
 const FALLBACK_ME: AdminMe = {
   username: "",
   display_name: "",
@@ -3036,6 +3085,7 @@ const FALLBACK_ME: AdminMe = {
 export default function AdminHomePage() {
   const [me, setMe] = useState<AdminMe | null>(null);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
     fetch("/api/dashboard/admin/me")
@@ -3060,19 +3110,48 @@ export default function AdminHomePage() {
       .catch(() => setMe(FALLBACK_ME));
   }, []);
 
-  // 권한이 정해지면 기본 탭 결정 — ?tab= 이 있으면 그쪽을 우선한다
+  // 권한이 정해지면 기본 제품/탭 결정 — ?tab= 이 있으면 그쪽을 우선하고,
+  // 그 탭을 산하로 둔 제품으로 바로 들어간다. 접근 가능한 실제 제품(Probe 제외)이
+  // 하나뿐이면 선택 화면 없이 바로 그 제품으로 들어간다 (예: 마케팅팀 → Papillon).
   useEffect(() => {
-    if (!me || activeTab) return;
-    const wanted = new URL(window.location.href).searchParams.get("tab") as Tab | null;
+    if (!me || selectedProduct) return;
     const allowed = TABS.filter((t) => t.allow(me));
-    if (wanted && allowed.some((t) => t.key === wanted)) {
-      setActiveTab(wanted);
-    } else {
-      setActiveTab(allowed[0]?.key ?? "satellite");
-    }
-  }, [me, activeTab]);
+    const wanted = new URL(window.location.href).searchParams.get("tab") as Tab | null;
 
-  if (!me || !activeTab) {
+    if (wanted && allowed.some((t) => t.key === wanted)) {
+      const owner = PRODUCTS.find((p) => p.tabs.includes(wanted));
+      if (owner) {
+        setSelectedProduct(owner.key);
+        setActiveTab(wanted);
+        return;
+      }
+    }
+
+    const realProducts = PRODUCTS.filter(
+      (p) => p.key !== "probe" && p.tabs.some((t) => allowed.some((a) => a.key === t))
+    );
+    if (realProducts.length === 1) {
+      const p = realProducts[0];
+      setSelectedProduct(p.key);
+      setActiveTab(p.tabs.find((t) => allowed.some((a) => a.key === t)) ?? null);
+    }
+    // 여러 제품이 가능하면 아무것도 정하지 않고 선택 화면을 보여준다
+  }, [me, selectedProduct]);
+
+  function selectProduct(key: Product) {
+    if (!me) return;
+    const meta = PRODUCTS.find((p) => p.key === key)!;
+    const allowed = TABS.filter((t) => t.allow(me));
+    setSelectedProduct(key);
+    setActiveTab(meta.tabs.find((t) => allowed.some((a) => a.key === t)) ?? null);
+  }
+
+  function backToProducts() {
+    setSelectedProduct(null);
+    setActiveTab(null);
+  }
+
+  if (!me) {
     return (
       <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
         <div className="h-9 bg-gray-100 rounded-2xl animate-pulse mb-5" />
@@ -3098,27 +3177,96 @@ export default function AdminHomePage() {
     );
   }
 
-  const isSatelliteOnly = visibleTabs.length === 1 && visibleTabs[0].key === "satellite";
+  const availableProducts = PRODUCTS.filter(
+    (p) => p.key === "probe" || p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
+  );
 
-  return (
-    <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
-      {/* 세틀라이트만 보이는 계정이면 탭 바 대신 제목을 보여준다 */}
-      {isSatelliteOnly ? (
+  /* ─── 제품 선택 화면 (대시보드 진입점) ─── */
+  if (!selectedProduct) {
+    return (
+      <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-5 px-1">
           <div>
             <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Satellite</p>
-            <h1 className="text-lg font-bold text-navy leading-tight">인스타그램 제작 콘솔</h1>
+            <h1 className="text-lg font-bold text-navy leading-tight">사용할 도구를 선택하세요</h1>
           </div>
-          <span className="text-[11px] text-gray-400">
-            {me.display_name || me.username}
+          <span className="text-[11px] text-gray-400">{me.display_name || me.username}</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {availableProducts.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => p.ready && selectProduct(p.key)}
+              disabled={!p.ready}
+              className={`text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4 transition-all ${
+                p.ready ? "hover:border-periwinkle/40 hover:shadow-md" : "opacity-50 cursor-not-allowed"
+              }`}
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-bold text-gray-800">{p.name}</span>
+                <span className="text-[10px] font-semibold text-periwinkle bg-periwinkle/10 rounded-full px-2 py-0.5">
+                  {p.subtitle}
+                </span>
+                {!p.ready && (
+                  <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+                    준비 중
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">{p.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ─── 제품 내부 화면 ─── */
+  const productMeta = PRODUCTS.find((p) => p.key === selectedProduct)!;
+  const productTabs = TABS.filter((t) => productMeta.tabs.includes(t.key) && t.allow(me));
+  const showProductPicker = availableProducts.length > 1;
+
+  return (
+    <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
+      <div className="flex items-center justify-between mb-3 px-1">
+        {showProductPicker ? (
+          <button
+            onClick={backToProducts}
+            className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            제품 선택
+          </button>
+        ) : (
+          <div>
+            <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">
+              {productMeta.name}
+            </p>
+            <h1 className="text-lg font-bold text-navy leading-tight">{productMeta.subtitle}</h1>
+          </div>
+        )}
+        <span className="text-[11px] text-gray-400">
+          {me.display_name || me.username}
+          {selectedProduct === "papillon" && (
             <span className="ml-1.5 text-[10px] font-semibold text-periwinkle">
               {me.satellite_role === "LEAD" ? "리드" : "멤버"}
             </span>
-          </span>
-        </div>
-      ) : (
+          )}
+        </span>
+      </div>
+
+      {showProductPicker && (
+        <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest mb-1 px-1">
+          {productMeta.name} · {productMeta.subtitle}
+        </p>
+      )}
+
+      {productTabs.length > 1 && (
         <div className="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-5">
-          {visibleTabs.map(({ key, label }) => (
+          {productTabs.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
@@ -3134,12 +3282,21 @@ export default function AdminHomePage() {
         </div>
       )}
 
+      {productTabs.length <= 1 && <div className="mb-5" />}
+
       {/* 탭 컨텐츠 */}
       {activeTab === "restaurants" && <RestaurantsTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "notifications" && <MarketingTab />}
-      {activeTab === "satellite" && <SatelliteTab />}
+      {activeTab === "satellite" && <PapillonDashboard />}
       {activeTab === "settings" && <SettingsTab />}
+
+      {selectedProduct === "probe" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
+          <p className="text-sm font-bold text-gray-700">Probe</p>
+          <p className="text-[11px] text-gray-400 mt-1">지표 · 데이터 분석 — 준비 중입니다</p>
+        </div>
+      )}
     </div>
   );
 }
