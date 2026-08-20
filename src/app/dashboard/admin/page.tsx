@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import PapillonDashboard from "./satellite/PapillonDashboard";
+import PapillonShell from "./satellite/PapillonShell";
 import BannerLabComposer from "./bannerlab/BannerLabComposer";
 import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
 
@@ -3288,7 +3288,7 @@ export default function AdminHomePage() {
       {activeTab === "restaurants" && <RestaurantsTab />}
       {activeTab === "content" && <ContentTab />}
       {activeTab === "notifications" && <MarketingTab />}
-      {activeTab === "satellite" && <PapillonDashboard />}
+      {activeTab === "satellite" && <PapillonShell />}
       {activeTab === "settings" && <SettingsTab />}
 
       {selectedProduct === "probe" && (

@@ -2,11 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import AttendanceDashboard from "./AttendanceDashboard";
-import EmailNotificationToggle from "./EmailNotificationToggle";
 import KanbanBoard from "./KanbanBoard";
 import LockApprovalQueue from "./LockApprovalQueue";
-import TaggingConsole from "./TaggingConsole";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
 import PlanTable from "./PlanTable";
@@ -93,8 +90,6 @@ export default function PapillonDashboard() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
-  const [showAttendance, setShowAttendance] = useState(false);
-  const [showTagging, setShowTagging] = useState(false);
   const [kanbanRefresh, setKanbanRefresh] = useState(0);
 
   const loadPlans = useCallback(async () => {
@@ -344,9 +339,6 @@ export default function PapillonDashboard() {
       {/* D-1 마감을 넘겨 잠긴 콘텐츠 — 리드 전용 (설계서 §16-6) */}
       {isLead && <LockApprovalQueue onOpenPlan={(id) => setEditorPlanId(id)} />}
 
-      {/* 이메일 발송 온/오프 — 슈퍼관리자·마케팅팀 누구나 (설계서 §16-8) */}
-      <EmailNotificationToggle />
-
       {/* 미처리 발행 실패 — 조용히 묻히지 않도록 상단에 계속 띄운다 (설계서 §07-6) */}
       {pubStatus && pubStatus.unresolved_failures.length > 0 && (
         <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
@@ -540,28 +532,6 @@ export default function PapillonDashboard() {
           )
         ))}
 
-      {isLead ? (
-        <div className="text-center flex items-center justify-center gap-3">
-          <button
-            onClick={() => setShowAttendance(true)}
-            className="text-[11px] font-semibold text-periwinkle hover:underline"
-          >
-            근태 보기
-          </button>
-          <span className="text-gray-200">·</span>
-          <button
-            onClick={() => setShowTagging(true)}
-            className="text-[11px] font-semibold text-periwinkle hover:underline"
-          >
-            태깅 콘솔
-          </button>
-        </div>
-      ) : (
-        <p className="text-[10px] text-gray-300 text-center px-4 leading-relaxed">
-          성과 대시보드는 다음 단계에서 붙습니다.
-        </p>
-      )}
-
       {editorPlanId !== null && (
         <PlanEditor
           planId={editorPlanId}
@@ -569,9 +539,6 @@ export default function PapillonDashboard() {
           onChanged={afterEditorChange}
         />
       )}
-
-      {showAttendance && <AttendanceDashboard onClose={() => setShowAttendance(false)} />}
-      {showTagging && <TaggingConsole onClose={() => setShowTagging(false)} />}
     </div>
   );
 }

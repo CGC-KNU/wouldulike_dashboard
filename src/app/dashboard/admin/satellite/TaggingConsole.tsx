@@ -10,7 +10,12 @@ import { SatelliteMember, TaggingPost } from "./types";
  * 담당자 미지정 게시물(과거 백필 건 + 웹을 거치지 않은 외부 발행 건)에 담당자를
  * 지정하는 유일한 화면. 이게 없으면 수집기가 잡은 외부 발행 건이 어디에도 안 보인다.
  */
-export default function TaggingConsole({ onClose }: { onClose: () => void }) {
+interface Props {
+  onClose: () => void;
+  embedded?: boolean;
+}
+
+export default function TaggingConsole({ onClose, embedded = false }: Props) {
   const [posts, setPosts] = useState<TaggingPost[]>([]);
   const [members, setMembers] = useState<SatelliteMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,16 +73,16 @@ export default function TaggingConsole({ onClose }: { onClose: () => void }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-xl">
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
-          <div>
-            <h2 className="text-sm font-bold text-gray-800">태깅 콘솔</h2>
-            <p className="text-[11px] text-gray-400 mt-0.5">
-              담당자 미지정 게시물 {posts.length}건 — 과거 백필 · 웹을 거치지 않은 발행
-            </p>
-          </div>
+  const body = (
+    <>
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
+        <div>
+          <h2 className="text-sm font-bold text-gray-800">태깅 콘솔</h2>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            담당자 미지정 게시물 {posts.length}건 — 과거 백필 · 웹을 거치지 않은 발행
+          </p>
+        </div>
+        {!embedded && (
           <button
             onClick={onClose}
             className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100"
@@ -86,10 +91,11 @@ export default function TaggingConsole({ onClose }: { onClose: () => void }) {
               <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
-        </div>
+        )}
+      </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          {err && (
+      <div className="flex-1 overflow-y-auto p-4">
+        {err && (
             <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 mb-3">
               <p className="text-[11px] text-red-600">{err}</p>
             </div>
@@ -154,7 +160,18 @@ export default function TaggingConsole({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           )}
-        </div>
+      </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">{body}</div>;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-xl">
+        {body}
       </div>
     </div>
   );

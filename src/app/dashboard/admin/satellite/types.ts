@@ -39,6 +39,7 @@ export interface ContentPlan {
   status: PlanStatus;
   pipeline_stage: PipelineStage;
   pipeline_stage_label: string;
+  retro_text: string;
   card_count: number;
   hashtag_count: number;
   ready_at: string | null;
