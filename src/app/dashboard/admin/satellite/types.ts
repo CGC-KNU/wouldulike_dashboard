@@ -48,6 +48,19 @@ export interface ContentPlan {
   created_at: string;
 }
 
+/* ─── 삭제된 매거진 주제 (설정 → 복구) ────────────────────── */
+
+export interface DeletedPlan {
+  id: number;
+  topic: string;
+  scheduled_date: string; // YYYY-MM-DD
+  owner_name: string;
+  media_type: MediaType;
+  status: PlanStatus;
+  deleted_at: string | null;
+  deleted_by_name: string | null;
+}
+
 /* ─── 칸반 보드 (Papillon §1.1) ────────────────────── */
 
 export interface KanbanColumn {

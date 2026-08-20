@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import EmailNotificationToggle from "./EmailNotificationToggle";
-import { SatelliteMember } from "./types";
+import { DeletedPlan, MEDIA_META, SatelliteMember, fmtMD } from "./types";
 
 interface PublishStatus {
   configured: boolean;
@@ -72,6 +72,8 @@ export default function SettingsScreen() {
       </div>
 
       <BackfillSection />
+
+      <DeletedPlansSection />
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
@@ -206,6 +208,108 @@ function BackfillSection() {
           <button onClick={() => setResult(null)} className="text-[10px] text-gray-400 mt-2">
             닫기
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 삭제된 매거진 주제 — RD 요청 (2차 확인 후 삭제 + 설정에서 복구).
+ * 리드 전용 (백엔드 DeletedPlansView/RestorePlanView 도 리드로 제한).
+ * 최근 90일 안에 지운 것만 백엔드가 내려준다.
+ */
+function DeletedPlansSection() {
+  const [plans, setPlans] = useState<DeletedPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/satellite/plans/deleted");
+      if (res.status === 403) {
+        // 멤버 계정 — 이 섹션 자체를 숨긴다
+        setPlans([]);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setPlans(data.plans ?? []);
+      else setError(data.detail || "불러오지 못했습니다.");
+    } catch {
+      setError("네트워크 오류");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
+
+  async function restore(id: number) {
+    setRestoringId(id);
+    try {
+      const res = await fetch(`/api/satellite/plans/${id}/restore`, { method: "POST" });
+      if (res.ok) {
+        setPlans((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || "복구에 실패했습니다.");
+      }
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3"
+      >
+        <div className="text-left">
+          <h3 className="text-xs font-bold text-gray-800">삭제된 매거진 주제</h3>
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            주제표에서 삭제한 행을 여기서 복구할 수 있습니다 (최근 90일)
+          </p>
+        </div>
+        <span className="text-[10px] text-gray-400 shrink-0">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100">
+          {loading && <p className="text-[11px] text-gray-300 text-center py-5">불러오는 중...</p>}
+          {!loading && error && <p className="text-[11px] text-red-500 text-center py-5">{error}</p>}
+          {!loading && !error && plans.length === 0 && (
+            <p className="text-[11px] text-gray-300 text-center py-5">삭제된 항목이 없습니다.</p>
+          )}
+          {!loading &&
+            !error &&
+            plans.map((p) => (
+              <div
+                key={p.id}
+                className="px-4 py-2.5 flex items-center justify-between gap-3 border-b border-gray-50 last:border-0"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-700 truncate">{p.topic || "(미정)"}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {fmtMD(p.scheduled_date)} · {p.owner_name} · {MEDIA_META[p.media_type].label}
+                    {p.deleted_by_name && <> · {p.deleted_by_name}님이 삭제</>}
+                  </p>
+                </div>
+                <button
+                  onClick={() => restore(p.id)}
+                  disabled={restoringId === p.id}
+                  className="text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1.5 shrink-0 disabled:opacity-40"
+                >
+                  {restoringId === p.id ? "복구 중..." : "복구"}
+                </button>
+              </div>
+            ))}
         </div>
       )}
     </div>
