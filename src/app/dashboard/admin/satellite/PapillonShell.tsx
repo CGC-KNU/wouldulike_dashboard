@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 
 import AttendanceDashboard from "./AttendanceDashboard";
+import ContentTab from "../ContentTab";
 import MyDashboardScreen from "./MyDashboardScreen";
 import OverviewScreen from "./OverviewScreen";
 import PapillonDashboard from "./PapillonDashboard";
 import SettingsScreen from "./SettingsScreen";
 import TaggingConsole from "./TaggingConsole";
 
-type Screen = "calendar" | "overview" | "mine" | "attendance" | "tagging" | "settings";
+type Screen = "calendar" | "overview" | "mine" | "attendance" | "tagging" | "banner" | "settings";
 
 interface Me {
   display_name: string;
@@ -23,6 +24,7 @@ const NAV: { key: Screen; label: string; icon: string; leadOnly?: boolean }[] = 
   { key: "mine", label: "내 대시보드", icon: "◐" },
   { key: "attendance", label: "근태", icon: "⏱", leadOnly: true },
   { key: "tagging", label: "태깅 콘솔", icon: "⊞", leadOnly: true },
+  { key: "banner", label: "배너/팝업", icon: "▤", leadOnly: true },
   { key: "settings", label: "설정", icon: "⚙", leadOnly: true },
 ];
 
@@ -78,6 +80,7 @@ export default function PapillonShell() {
         {screen === "mine" && <MyDashboardScreen />}
         {screen === "attendance" && isLead && <AttendanceDashboard embedded onClose={() => setScreen("calendar")} />}
         {screen === "tagging" && isLead && <TaggingConsole embedded onClose={() => setScreen("calendar")} />}
+        {screen === "banner" && isLead && <ContentTab />}
         {screen === "settings" && isLead && <SettingsScreen />}
       </main>
     </div>
