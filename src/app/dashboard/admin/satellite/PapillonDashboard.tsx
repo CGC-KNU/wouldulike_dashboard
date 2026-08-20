@@ -522,6 +522,8 @@ export default function PapillonDashboard() {
                 today={today}
                 plans={data.plans}
                 members={members}
+                viewerAccountId={viewerAccountId}
+                isLead={isLead}
                 onPrev={() => shiftMonth(-1)}
                 onNext={() => shiftMonth(1)}
                 onToday={goToday}

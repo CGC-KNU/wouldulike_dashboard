@@ -19,6 +19,8 @@ export default function PlanCalendar({
   today,
   plans,
   members,
+  viewerAccountId,
+  isLead,
   onPrev,
   onNext,
   onToday,
@@ -30,12 +32,22 @@ export default function PlanCalendar({
   today: string;
   plans: ContentPlan[];
   members: SatelliteMember[];
+  viewerAccountId?: number | null;
+  isLead?: boolean;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
   onSelect: (plan: ContentPlan) => void;
   onDropOnDate: (planId: number, dateStr: string) => void;
 }) {
+  function actionLabel(p: ContentPlan): string {
+    const isMine = !!viewerAccountId && (p.owner_id === viewerAccountId || p.shoot_owner_id === viewerAccountId);
+    if (p.status === "published") return "성과 보기";
+    if (isMine) return "작업하기";
+    if (p.status === "draft" && !isLead) return "작업중";
+    if (isLead) return "열람";
+    return "피드백";
+  }
   const daysInMonth = new Date(year, month, 0).getDate();
   const firstDow = new Date(year, month - 1, 1).getDay();
 
@@ -167,12 +179,15 @@ export default function PlanCalendar({
                           draggable
                           onDragStart={(e) => e.dataTransfer.setData("text/plan-id", String(p.id))}
                           onClick={() => onSelect(p)}
-                          title={`${p.owner_name} · ${p.topic || "(미정)"} · ${st.label} · ${MEDIA_META[p.media_type].label}`}
-                          className={`w-full text-left rounded-lg px-1.5 py-1 ${c.cell} border border-black/[0.04] hover:brightness-95 active:scale-[0.97] transition-all cursor-grab`}
+                          title={`${p.owner_name} · ${p.topic || "(미정)"} · ${st.label} · ${MEDIA_META[p.media_type].label} · ${actionLabel(p)}`}
+                          className={`group w-full text-left rounded-lg px-1.5 py-1 ${c.cell} border border-black/[0.04] hover:brightness-95 hover:ring-1 hover:ring-periwinkle/40 active:scale-[0.97] transition-all cursor-grab`}
                         >
                           <div className="flex items-center gap-1">
                             <span className={`w-1 h-1 rounded-full shrink-0 ${st.dot}`} />
-                            <span className="text-[9px] font-bold text-gray-600 truncate">{p.owner_name}</span>
+                            <span className="text-[9px] font-bold text-gray-600 truncate flex-1">{p.owner_name}</span>
+                            <span className="hidden group-hover:inline text-[8px] font-bold text-periwinkle shrink-0">
+                              {actionLabel(p)} →
+                            </span>
                           </div>
                           <p className="text-[9px] text-gray-500 truncate leading-tight">
                             {p.topic || "(미정)"}
@@ -189,19 +204,37 @@ export default function PlanCalendar({
 
         {/* 범례 */}
         {activeOwnerIds.length > 0 && (
-          <div className="mt-3 pt-2.5 border-t border-gray-50 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            {activeOwnerIds.map((id) => {
-              const c = ownerColor(id);
-              const m = memberById.get(id);
-              const name = m ? m.display_name || m.username : plans.find((p) => p.owner_id === id)?.owner_name;
-              return (
-                <div key={id} className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${c.dot}`} />
-                  <span className="text-[10px] text-gray-500">{name}</span>
+          <div className="mt-3 pt-2.5 border-t border-gray-50 flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              {activeOwnerIds.map((id) => {
+                const c = ownerColor(id);
+                const m = memberById.get(id);
+                const name = m ? m.display_name || m.username : plans.find((p) => p.owner_id === id)?.owner_name;
+                return (
+                  <div key={id} className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${c.dot}`} />
+                    <span className="text-[10px] text-gray-500">{name}</span>
+                  </div>
+                );
+              })}
+              <span className="text-[10px] text-gray-300 ml-auto">블록을 끌어 날짜를 옮길 수 있습니다 · 클릭하면 바로 작업 화면으로 이동합니다</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {(
+                [
+                  ["draft", "주제만"],
+                  ["ready", "준비완료"],
+                  ["scheduled", "발행예약"],
+                  ["published", "발행됨"],
+                  ["failed", "발행실패/잠김"],
+                ] as [keyof typeof STATUS_META, string][]
+              ).map(([key, label]) => (
+                <div key={key} className="flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_META[key].dot}`} />
+                  <span className="text-[9px] text-gray-400">{label}</span>
                 </div>
-              );
-            })}
-            <span className="text-[10px] text-gray-300 ml-auto">블록을 끌어 날짜를 옮길 수 있습니다</span>
+              ))}
+            </div>
           </div>
         )}
       </div>

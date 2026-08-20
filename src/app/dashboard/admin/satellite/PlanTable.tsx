@@ -50,6 +50,8 @@ export default function PlanTable({
   const [newTopic, setNewTopic] = useState("");
   const [newOwner, setNewOwner] = useState<number | "">(viewerAccountId ?? "");
   const [newMedia, setNewMedia] = useState<MediaType>("carousel");
+  const [newShootOwner, setNewShootOwner] = useState<number | "">(viewerAccountId ?? "");
+  const [newShootDate, setNewShootDate] = useState("");
   const [dupes, setDupes] = useState<DuplicateMatch[]>([]);
   const dupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -95,12 +97,25 @@ export default function PlanTable({
       topic: newTopic.trim(),
       owner_id: newOwner || undefined,
       media_type: newMedia,
+      shoot_owner_id: newShootOwner || undefined,
+      shoot_date: newShootDate || undefined,
     });
     if (ok) {
       setNewTopic("");
+      setNewShootDate("");
       setDupes([]);
       setAdding(false);
     }
+  }
+
+  /** 담당자·상태에 따라 버튼 라벨을 다르게 — 무엇을 하러 들어가는지 미리 알 수 있게 */
+  function actionLabel(p: ContentPlan): string {
+    const isMine = viewerAccountId !== null && (p.owner_id === viewerAccountId || p.shoot_owner_id === viewerAccountId);
+    if (p.status === "published") return "성과 보기";
+    if (isMine) return "작업하기";
+    if (p.status === "draft") return "작업중";
+    if (isLead) return "열람";
+    return "피드백";
   }
 
   return (
@@ -111,6 +126,7 @@ export default function PlanTable({
           <div>
             <h3 className="text-sm font-bold text-gray-800">매거진 주제 리스트</h3>
             <p className="text-[11px] text-gray-400 mt-0.5">
+              협찬 촬영 정보와 주제를 한 행에 등록하면 아래 캘린더에 바로 반영됩니다 ·{" "}
               {isLead ? "전체 행을 수정할 수 있습니다" : "본인 담당 행만 수정할 수 있습니다"}
             </p>
           </div>
@@ -123,19 +139,20 @@ export default function PlanTable({
         <table className="w-full text-xs">
           <thead>
             <tr className="text-[10px] text-gray-400 border-b border-gray-50">
-              <th className="text-left font-semibold px-3 py-2 w-[78px]">날짜</th>
-              <th className="text-left font-semibold px-2 py-2">주제</th>
+              <th className="text-left font-semibold px-3 py-2 w-[78px]">업로드 날짜</th>
+              <th className="text-left font-semibold px-2 py-2">매거진 주제</th>
               <th className="text-left font-semibold px-2 py-2 w-[96px]">담당자</th>
+              <th className="text-left font-semibold px-2 py-2 w-[112px]">협찬 촬영</th>
               <th className="text-left font-semibold px-2 py-2 w-[86px]">유형</th>
               <th className="text-left font-semibold px-2 py-2 w-[92px]">상태</th>
               <th className="text-left font-semibold px-1 py-2 w-[52px]">카드</th>
-              <th className="w-16" />
+              <th className="w-24" />
             </tr>
           </thead>
           <tbody>
             {plans.length === 0 && !adding && (
               <tr>
-                <td colSpan={7} className="text-center text-gray-300 py-8 text-xs">
+                <td colSpan={8} className="text-center text-gray-300 py-8 text-xs">
                   이 달에 등록된 주제가 없습니다
                 </td>
               </tr>
@@ -215,6 +232,41 @@ export default function PlanTable({
                     )}
                   </td>
 
+                  {/* 협찬 촬영 — 촬영 담당자 · 촬영일 */}
+                  <td className="px-2 py-2">
+                    {editable ? (
+                      <div className="flex flex-col gap-0.5">
+                        <select
+                          value={p.shoot_owner_id ?? ""}
+                          onChange={(e) =>
+                            onPatch(p.id, { shoot_owner_id: e.target.value ? Number(e.target.value) : null })
+                          }
+                          className="w-full text-[10px] text-gray-500 bg-transparent border-0 p-0 cursor-pointer focus:outline-none"
+                        >
+                          <option value="">촬영자 미정</option>
+                          {activeMembers.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.display_name || m.username}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="date"
+                          value={p.shoot_date ?? ""}
+                          onChange={(e) => onPatch(p.id, { shoot_date: e.target.value || null })}
+                          className="w-full text-[10px] text-gray-400 bg-transparent border-0 p-0 focus:outline-none cursor-pointer"
+                        />
+                      </div>
+                    ) : p.shoot_date || p.shoot_owner_name ? (
+                      <span className="text-[10px] text-gray-400 leading-tight">
+                        {p.shoot_owner_name ?? "미정"}
+                        {p.shoot_date && <span className="block">{fmtMD(p.shoot_date)}</span>}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-300">—</span>
+                    )}
+                  </td>
+
                   {/* 유형 */}
                   <td className="px-2 py-2">
                     {editable ? (
@@ -273,23 +325,15 @@ export default function PlanTable({
                     </span>
                   </td>
 
-                  {/* 열기 · 삭제 */}
+                  {/* 작업하기 · 삭제 */}
                   <td className="px-1 py-2">
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-1 justify-end">
                       <button
                         onClick={() => onOpen(p)}
-                        title="에디터 열기"
-                        className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 hover:text-periwinkle hover:bg-periwinkle/5 transition-colors"
+                        title="이 주제로 작업 화면 열기"
+                        className="text-[10px] font-semibold rounded-full px-2.5 py-1.5 min-h-[28px] bg-periwinkle/10 text-periwinkle hover:bg-periwinkle hover:text-white active:scale-95 transition-all whitespace-nowrap"
                       >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                          <path
-                            d="M11 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-5M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                        {actionLabel(p)}
                       </button>
                       {editable && p.status !== "published" && (
                         <button
@@ -299,7 +343,7 @@ export default function PlanTable({
                             }
                           }}
                           aria-label="삭제"
-                          className="w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
                             <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -353,6 +397,28 @@ export default function PlanTable({
                   </select>
                 </td>
                 <td className="px-2 py-2">
+                  <div className="flex flex-col gap-1">
+                    <select
+                      value={newShootOwner}
+                      onChange={(e) => setNewShootOwner(e.target.value ? Number(e.target.value) : "")}
+                      className="w-full text-[10px] text-gray-700 bg-white border border-gray-200 rounded-md px-1 py-1 focus:outline-none focus:border-periwinkle"
+                    >
+                      <option value="">촬영자 미정</option>
+                      {activeMembers.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.display_name || m.username}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      value={newShootDate}
+                      onChange={(e) => setNewShootDate(e.target.value)}
+                      className="w-full text-[10px] text-gray-700 bg-white border border-gray-200 rounded-md px-1 py-1 focus:outline-none focus:border-periwinkle"
+                    />
+                  </div>
+                </td>
+                <td className="px-2 py-2">
                   <select
                     value={newMedia}
                     onChange={(e) => setNewMedia(e.target.value as MediaType)}
@@ -365,7 +431,7 @@ export default function PlanTable({
                     ))}
                   </select>
                 </td>
-                <td className="px-2 py-2" colSpan={2}>
+                <td className="px-2 py-2" colSpan={3}>
                   <div className="flex gap-1">
                     <button
                       onClick={submitNew}
