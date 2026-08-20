@@ -18,6 +18,8 @@ export interface WeekFolder {
   popup_photo_url: string;
   banner_photo_url: string;
   template_photo_url: string;
+  figma_template_id: number | null;
+  figma_template_name: string;
   student_council_name: string;
   excluded_restaurant_ids: number[];
   included_restaurant_ids: number[];
@@ -73,6 +75,15 @@ export interface WeeklyCandidate {
   image_url: string;
   download_url: string;
   render_error: string;
+}
+
+export interface FigmaTemplate {
+  id: number;
+  name: string;
+  file_key: string;
+  node_id: string;
+  notes: string;
+  created_at: string;
 }
 
 export interface WeeklyTarget {

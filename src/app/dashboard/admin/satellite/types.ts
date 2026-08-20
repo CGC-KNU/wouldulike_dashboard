@@ -21,6 +21,8 @@ export interface SatelliteMember {
   satellite_role: SatelliteRole;
   weekly_quota: number;
   is_active: boolean;
+  active_from: string | null; // YYYY-MM-DD
+  active_until: string | null; // YYYY-MM-DD
 }
 
 export type PipelineStage = "sponsorship" | "editing" | "uploaded";

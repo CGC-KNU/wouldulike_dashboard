@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BannerRatio } from "./types";
-import { MonthFolder, PaidRestaurant, Semester, SemesterDetail, WeekFolder, WeekType, WeeklyTarget } from "./typesWeekly";
+import {
+  FigmaTemplate,
+  MonthFolder,
+  PaidRestaurant,
+  Semester,
+  SemesterDetail,
+  WeekFolder,
+  WeekType,
+  WeeklyTarget,
+} from "./typesWeekly";
 
 /**
  * 주간 배너 자동화 — Phase A (2026-08-18 착수).
@@ -302,6 +311,7 @@ function WeekFolderCard({
   const [ratio, setRatio] = useState<BannerRatio>(week.ratio);
   const [effect, setEffect] = useState(week.effect);
   const [councilName, setCouncilName] = useState(week.student_council_name);
+  const [figmaTemplateId, setFigmaTemplateId] = useState<number | null>(week.figma_template_id);
   const [excluded, setExcluded] = useState<Set<number>>(new Set(week.excluded_restaurant_ids));
   const [included, setIncluded] = useState<Set<number>>(new Set(week.included_restaurant_ids));
   const [saving, setSaving] = useState(false);
@@ -319,6 +329,7 @@ function WeekFolderCard({
     ratio !== week.ratio ||
     effect !== week.effect ||
     councilName !== week.student_council_name ||
+    figmaTemplateId !== week.figma_template_id ||
     excluded.size !== week.excluded_restaurant_ids.length ||
     [...excluded].some((id) => !week.excluded_restaurant_ids.includes(id)) ||
     included.size !== week.included_restaurant_ids.length ||
@@ -338,6 +349,7 @@ function WeekFolderCard({
           ratio,
           effect,
           student_council_name: councilName,
+          figma_template_id: figmaTemplateId,
           excluded_restaurant_ids: [...excluded],
           included_restaurant_ids: [...included],
         }),
@@ -569,6 +581,9 @@ function WeekFolderCard({
         onUpload={(f) => uploadPhoto("template", f)}
         onRemove={() => removePhoto("template")}
       />
+
+      {/* 피그마 템플릿(선택) — AI 다듬기 시 이 프레임의 색감·구도를 무드 참고사진으로 삼는다 */}
+      <FigmaTemplatePicker value={figmaTemplateId} onChange={setFigmaTemplateId} />
 
       {/* 3주차: 배너용 사진 1장 */}
       {isMileage && (
@@ -847,6 +862,143 @@ function PhotoSlot({
         </label>
       )}
       <p className="text-[10px] text-gray-400 flex-1">{label}</p>
+    </div>
+  );
+}
+
+/**
+ * 피그마 템플릿 선택/등록 — 등록된 템플릿(파일 key + node id) 중 이 주차가 참고할
+ * 것 하나를 고른다. AI 다듬기 시 이 템플릿 프레임의 렌더링 PNG를 무드 참고사진으로
+ * 쓴다(services/weekly_generate.py). 등록 자체는 여기서 바로 할 수 있게 인라인
+ * 미니폼을 둔다 — 별도 화면을 새로 만들 정도로 자주 쓰는 기능은 아니라서.
+ */
+function FigmaTemplatePicker({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (id: number | null) => void;
+}) {
+  const [templates, setTemplates] = useState<FigmaTemplate[]>([]);
+  const [figmaEnabled, setFigmaEnabled] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [name, setName] = useState("");
+  const [fileKey, setFileKey] = useState("");
+  const [nodeId, setNodeId] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/bannerlab/figma-templates");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTemplates(data.templates ?? []);
+        setFigmaEnabled(data.figma_enabled ?? false);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function createTemplate() {
+    setErr("");
+    if (!name.trim() || !fileKey.trim() || !nodeId.trim()) {
+      setErr("이름 · file key · node id 를 모두 입력해주세요.");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/bannerlab/figma-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, file_key: fileKey, node_id: nodeId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(data.detail ?? "등록에 실패했습니다.");
+        return;
+      }
+      setTemplates((prev) => [data, ...prev]);
+      onChange(data.id);
+      setShowNew(false);
+      setName("");
+      setFileKey("");
+      setNodeId("");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (!loading && !figmaEnabled) {
+    return (
+      <p className="text-[10px] text-gray-300">
+        피그마 템플릿 참고 기능은 아직 꺼져 있어요 (FIGMA_ACCESS_TOKEN 미설정).
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <select
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+          className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+        >
+          <option value="">피그마 템플릿 참고 안 함</option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => setShowNew((v) => !v)}
+          className="text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2 py-1.5 shrink-0"
+        >
+          + 템플릿 등록
+        </button>
+      </div>
+
+      {showNew && (
+        <div className="flex flex-col gap-1.5 border border-gray-100 rounded-lg p-2 bg-gray-50">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="템플릿 이름 (예: 2026 가을 배너 프레임)"
+            className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+          />
+          <input
+            value={fileKey}
+            onChange={(e) => setFileKey(e.target.value)}
+            placeholder="file key (피그마 URL의 /file/<이 부분>/...)"
+            className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+          />
+          <input
+            value={nodeId}
+            onChange={(e) => setNodeId(e.target.value)}
+            placeholder="node id (프레임 우클릭 → Copy link, 예: 12-34)"
+            className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+          />
+          {err && <p className="text-[10px] text-red-500">{err}</p>}
+          <div className="flex justify-end">
+            <button
+              onClick={createTemplate}
+              disabled={creating}
+              className="text-[10px] font-semibold text-white bg-periwinkle rounded-lg px-2.5 py-1 disabled:opacity-40"
+            >
+              {creating ? "등록 중..." : "등록"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
