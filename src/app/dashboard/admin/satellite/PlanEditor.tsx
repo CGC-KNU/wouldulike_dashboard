@@ -52,7 +52,7 @@ export default function PlanEditor({
   const [caption, setCaption] = useState("");
   const [publishAt, setPublishAt] = useState("");
   const [collabInput, setCollabInput] = useState("");
-  const [activeTab, setActiveTab] = useState<"content" | "publish" | "feedback">("content");
+  const [activeTab, setActiveTab] = useState<"detail" | "content" | "publish" | "post">("detail");
   const fileInput = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -483,29 +483,97 @@ export default function PlanEditor({
                 </div>
               )}
 
-              {/* 탭 — 카드/캡션·발행/성과·피드백을 나눠서, 스크롤 하나로 다 몰아넣지 않는다 */}
+              {/* 상위 탭 — 목업의 세 화면(콘텐츠 상세/에디터/게시물 상세)을 그대로 매핑한다.
+                  "에디터"는 카드/캡션·발행 두 하위 탭을 계속 갖는다 — 한 화면에 몰아넣지
+                  않으려고 예전에 나눈 걸 그대로 유지, 상위 탭 하나로만 묶었다. */}
               <div className="flex items-center gap-0.5 bg-gray-100 rounded-xl p-1 sticky top-0 z-10">
-                {(
-                  [
-                    ["content", "카드"],
-                    ["publish", "캡션 · 발행"],
-                    ["feedback", "성과 · 피드백"],
-                  ] as [typeof activeTab, string][]
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setActiveTab(key)}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
-                      activeTab === key ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
-                    }`}
-                  >
-                    {label}
-                    {key === "feedback" && plan.comment_count > 0 && (
-                      <span className="ml-1 text-[10px] font-bold text-periwinkle">{plan.comment_count}</span>
-                    )}
-                  </button>
-                ))}
+                <button
+                  onClick={() => setActiveTab("detail")}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+                    activeTab === "detail" ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  콘텐츠 상세
+                  {plan.comment_count > 0 && (
+                    <span className="ml-1 text-[10px] font-bold text-periwinkle">{plan.comment_count}</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab((prev) => (prev === "content" || prev === "publish" ? prev : "content"))}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+                    activeTab === "content" || activeTab === "publish"
+                      ? "bg-white text-navy shadow-sm"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  에디터
+                </button>
+                <button
+                  onClick={() => setActiveTab("post")}
+                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+                    activeTab === "post" ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  게시물 상세
+                </button>
               </div>
+
+              {activeTab === "detail" && (
+                <>
+                  <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                    <h3 className="text-sm font-bold text-gray-800 mb-3">콘텐츠 상세</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-semibold">담당자</p>
+                        <p className="text-xs text-gray-700 mt-0.5">{plan.owner_name}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-semibold">유형</p>
+                        <p className="text-xs text-gray-700 mt-0.5">{MEDIA_META[plan.media_type].label}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-semibold">업로드 예정일</p>
+                        <p className="text-xs text-gray-700 mt-0.5">{fmtMD(plan.scheduled_date)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-semibold">카드 · 해시태그</p>
+                        <p className="text-xs text-gray-700 mt-0.5">
+                          {plan.card_count}장 · #{plan.hashtag_count}
+                        </p>
+                      </div>
+                    </div>
+                    {plan.caption && (
+                      <div className="mt-3 pt-3 border-t border-gray-50">
+                        <p className="text-[10px] text-gray-400 font-semibold mb-1">캡션</p>
+                        <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{plan.caption}</p>
+                      </div>
+                    )}
+                  </section>
+
+                  <CommentThread planId={plan.id} />
+                </>
+              )}
+
+              {(activeTab === "content" || activeTab === "publish") && (
+                <div className="flex items-center gap-0.5 bg-gray-50 border border-gray-100 rounded-lg p-1">
+                  {(
+                    [
+                      ["content", "카드"],
+                      ["publish", "캡션 · 발행"],
+                    ] as ["content" | "publish", string][]
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setActiveTab(key)}
+                      className={`flex-1 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
+                        activeTab === key ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {activeTab === "content" && (
                 <>
@@ -894,13 +962,19 @@ export default function PlanEditor({
                 </>
               )}
 
-              {activeTab === "feedback" && (
+              {activeTab === "post" && (
                 <>
-              {(plan.is_owner || plan.is_lead) && plan.status !== "draft" && plan.status !== "ready" && (
+              {(plan.is_owner || plan.is_lead) && plan.status !== "draft" && plan.status !== "ready" ? (
                 <PerformancePanel planId={plan.id} status={plan.status} />
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                  <p className="text-[11px] text-gray-400">
+                    {plan.status === "draft" || plan.status === "ready"
+                      ? "아직 발행 전입니다. 발행 후 게시물 상세를 확인할 수 있습니다."
+                      : "본인 콘텐츠 또는 리드만 게시물 상세를 볼 수 있습니다."}
+                  </p>
+                </div>
               )}
-
-              <CommentThread planId={plan.id} />
                 </>
               )}
             </>

@@ -71,6 +71,8 @@ export default function SettingsScreen() {
         )}
       </div>
 
+      <BackfillSection />
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <h3 className="text-xs font-bold text-gray-800">멤버</h3>
@@ -88,6 +90,124 @@ export default function SettingsScreen() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+interface BackfillResult {
+  ok: boolean;
+  error?: string;
+  dry_run?: boolean;
+  created: number;
+  skipped: number;
+  insight_errors?: string[];
+  needs_tagging?: boolean;
+}
+
+/**
+ * 과거 게시물 백필 — 테스트 계정에서 실제 운영 계정으로 전환한 직후 1회 실행용.
+ * 먼저 미리보기(dry-run)로 몇 건이 새로 잡히는지 확인하고, 그 다음에만 실제 실행
+ * 버튼이 활성화된다 — 계정 전환은 되돌리기 어려운 일이라 실수로 바로 실행되지 않게.
+ */
+function BackfillSection() {
+  const [preview, setPreview] = useState<BackfillResult | null>(null);
+  const [result, setResult] = useState<BackfillResult | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function runBackfill(dryRun: boolean) {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/satellite/settings/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: dryRun }),
+      });
+      const data: BackfillResult = await res.json();
+      if (dryRun) setPreview(data);
+      else {
+        setResult(data);
+        setPreview(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
+      <h3 className="text-xs font-bold text-gray-800 mb-1">과거 게시물 백필</h3>
+      <p className="text-[10px] text-gray-400 leading-relaxed mb-2.5">
+        계정을 실제 운영 계정으로 전환한 직후 한 번 실행하면, 이전에 그 계정에 올라가 있던
+        게시물을 전부 끌어와 성과 집계 대상에 넣습니다. 담당자는 전부 미지정 상태로 들어오며,
+        태깅 콘솔(리드 전용)에서 나중에 지정하면 됩니다.
+      </p>
+
+      {!preview && !result && (
+        <button
+          onClick={() => runBackfill(true)}
+          disabled={loading}
+          className="text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-3 py-1.5 disabled:opacity-40"
+        >
+          {loading ? "확인 중..." : "미리보기 (실행 안 함)"}
+        </button>
+      )}
+
+      {preview && (
+        <div className="rounded-xl bg-periwinkle/5 border border-periwinkle/15 px-3 py-2.5">
+          {preview.ok ? (
+            <>
+              <p className="text-[11px] text-periwinkle">
+                새로 {preview.created}건이 백필됩니다 (이미 있는 것 {preview.skipped}건 제외).
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => runBackfill(false)}
+                  disabled={loading || preview.created === 0}
+                  className="text-[11px] font-semibold text-white bg-periwinkle rounded-lg px-3 py-1.5 disabled:opacity-40"
+                >
+                  {loading ? "실행 중..." : `실제로 ${preview.created}건 백필 실행`}
+                </button>
+                <button onClick={() => setPreview(null)} disabled={loading} className="text-[11px] text-gray-400">
+                  취소
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-[11px] text-red-500">{preview.error}</p>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div
+          className={`rounded-xl px-3 py-2.5 ${
+            result.ok ? "bg-green-50 border border-green-100" : "bg-red-50 border border-red-100"
+          }`}
+        >
+          {result.ok ? (
+            <>
+              <p className="text-[11px] text-green-700 font-semibold">
+                백필 완료 — 신규 {result.created}건 · 스킵 {result.skipped}건
+              </p>
+              {result.needs_tagging && (
+                <p className="text-[11px] text-green-600 mt-1">
+                  담당자가 전부 미지정입니다 — 사이드바의 &ldquo;태깅 콘솔&rdquo;에서 지정해주세요.
+                </p>
+              )}
+              {(result.insight_errors?.length ?? 0) > 0 && (
+                <p className="text-[10px] text-amber-600 mt-1">
+                  일부 게시물은 지표 조회에 실패했습니다 ({result.insight_errors!.length}건) — 다음 일일 수집에서 재시도됩니다.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] text-red-600">{result.error}</p>
+          )}
+          <button onClick={() => setResult(null)} className="text-[10px] text-gray-400 mt-2">
+            닫기
+          </button>
+        </div>
+      )}
     </div>
   );
 }
