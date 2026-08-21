@@ -85,12 +85,44 @@ export interface PlansResponse {
   month: number;
   today: string;
   plans: ContentPlan[];
+  sponsorships: Sponsorship[];
   viewer: {
     account_id: number | null;
     is_lead: boolean;
     department: Department;
   };
 }
+
+/* ─── 협찬 목록 (통합 업무 관리 기획안 §2·§4) ────────────────
+ * 콘텐츠 칸반과 분리된 별도 모델 — ContentPlan.shoot_owner/shoot_date(위, 기존 §07-6
+ * 칸반용 필드, 지금은 PlanTable/PlanCalendar의 "협찬 촬영" 열로 쓰이는 중)와는 별개다.
+ */
+
+export type SponsorshipStatus = "scheduled" | "completed";
+
+export interface Sponsorship {
+  id: number;
+  store_name: string;
+  shoot_owner_id: number | null;
+  shoot_owner_name: string | null;
+  shoot_datetime: string; // ISO
+  notes: string;
+  status: SponsorshipStatus;
+  status_label: string;
+  created_by_id: number | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface SponsorshipListResponse {
+  status: string;
+  sponsorships: Sponsorship[];
+}
+
+export const SPONSORSHIP_STATUS_META: Record<SponsorshipStatus, { label: string; cls: string }> = {
+  scheduled: { label: "촬영예정", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  completed: { label: "촬영완료", cls: "bg-green-50 text-green-700 border-green-200" },
+};
 
 export interface MyWeek {
   has_account: boolean;
