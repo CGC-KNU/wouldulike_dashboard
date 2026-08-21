@@ -345,7 +345,7 @@ export default function PapillonDashboard() {
         </div>
       )}
 
-      {/* D-1 마감을 넘겨 잠긴 콘텐츠 — 리드 전용 (설계서 §16-6) */}
+      {/* 업로드 예정 시간을 넘겨 잠긴 콘텐츠 — 리드 전용 (설계서 §16-6, §10 건별 실시간) */}
       {isLead && <LockApprovalQueue onOpenPlan={(id) => setEditorPlanId(id)} />}
 
       {/* 미처리 발행 실패 — 조용히 묻히지 않도록 상단에 계속 띄운다 (설계서 §07-6) */}

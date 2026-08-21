@@ -7,7 +7,7 @@ import { LockQueueItem, fmtMD } from "./types";
 /**
  * 잠금 건 승인 큐 (설계서 §16-5, §16-6) — 리드 전용.
  *
- * D-1 23:59 마감을 못 지켜 크론이 잠근 콘텐츠 목록. 여기서 풀어주면 담당자가
+ * 업로드 예정 시간을 못 지켜 크론이 잠근 콘텐츠 목록(건별 실시간 판정, §10). 여기서 풀어주면 담당자가
  * 다시 편집할 수 있다 — 단, 지각 판정(locked_at) 자체는 취소되지 않는다(§16-2).
  */
 export default function LockApprovalQueue({ onOpenPlan }: { onOpenPlan: (planId: number) => void }) {

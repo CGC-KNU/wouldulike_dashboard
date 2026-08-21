@@ -420,7 +420,7 @@ export default function PlanEditor({
             </div>
           ) : plan ? (
             <>
-              {/* D-1 23:59 마감 미도달 잠금 (§16-2 ①) */}
+              {/* 업로드 예정 시간 미도달 잠금 — 건별 실시간 판정 (§16-2 ①, 통합 업무 관리 기획안 §10) */}
               {plan.status === "locked" && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
