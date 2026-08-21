@@ -2,11 +2,90 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import ContentKanban from "./ContentKanban";
 import LockApprovalQueue from "./LockApprovalQueue";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
 import PlanTable from "./PlanTable";
 import { ContentPlan, MyWeek, PlansResponse, SatelliteMember, fmtMD } from "./types";
+
+/**
+ * 메인 화면 3개 구획(리스트·콘텐츠 칸반·캘린더)의 표시 순서 — RD 요청(2026-08-21)으로
+ * "콘텐츠 칸반" 사이드바 메뉴를 없애고 메인 화면 안(기본값: 리스트와 캘린더 사이)으로
+ * 옮기면서, 순서 자체를 사용자가 바꿀 수 있게 했다. 팀 전체가 공유하는 설정이 아니라
+ * "내 화면을 어떻게 보고 싶은지"에 가까운 개인 취향이라 서버가 아니라 브라우저
+ * localStorage에 저장한다 — 기기·브라우저별로 따로 기억된다.
+ */
+type MainSectionKey = "list" | "kanban" | "calendar";
+const MAIN_SECTION_ORDER_KEY = "papillon:main-section-order";
+const DEFAULT_MAIN_SECTION_ORDER: MainSectionKey[] = ["list", "kanban", "calendar"];
+const MAIN_SECTION_LABEL: Record<MainSectionKey, string> = {
+  list: "리스트",
+  kanban: "콘텐츠 칸반",
+  calendar: "캘린더",
+};
+
+function loadMainSectionOrder(): MainSectionKey[] {
+  if (typeof window === "undefined") return DEFAULT_MAIN_SECTION_ORDER;
+  try {
+    const raw = window.localStorage.getItem(MAIN_SECTION_ORDER_KEY);
+    if (!raw) return DEFAULT_MAIN_SECTION_ORDER;
+    const parsed = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === DEFAULT_MAIN_SECTION_ORDER.length &&
+      DEFAULT_MAIN_SECTION_ORDER.every((k) => parsed.includes(k))
+    ) {
+      return parsed as MainSectionKey[];
+    }
+  } catch {
+    /* 손상된 값은 기본값으로 되돌린다 */
+  }
+  return DEFAULT_MAIN_SECTION_ORDER;
+}
+
+/** 구획 하나를 감싸서 위/아래 이동 버튼을 얹는다. */
+function MainSection({
+  sectionKey,
+  order,
+  onMove,
+  children,
+}: {
+  sectionKey: MainSectionKey;
+  order: MainSectionKey[];
+  onMove: (key: MainSectionKey, dir: -1 | 1) => void;
+  children: React.ReactNode;
+}) {
+  const idx = order.indexOf(sectionKey);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[10px] font-semibold text-gray-400">{MAIN_SECTION_LABEL[sectionKey]}</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onMove(sectionKey, -1)}
+            disabled={idx === 0}
+            title="위로 이동"
+            className="w-5 h-5 rounded-md text-[10px] leading-none text-gray-400 border border-gray-200 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-25 disabled:hover:bg-transparent transition-colors"
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove(sectionKey, 1)}
+            disabled={idx === order.length - 1}
+            title="아래로 이동"
+            className="w-5 h-5 rounded-md text-[10px] leading-none text-gray-400 border border-gray-200 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-25 disabled:hover:bg-transparent transition-colors"
+          >
+            ▼
+          </button>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 interface PublishStatus {
   configured: boolean;
@@ -87,6 +166,27 @@ export default function PapillonDashboard() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
+  const [sectionOrder, setSectionOrder] = useState<MainSectionKey[]>(DEFAULT_MAIN_SECTION_ORDER);
+
+  useEffect(() => {
+    setSectionOrder(loadMainSectionOrder());
+  }, []);
+
+  const moveSection = useCallback((key: MainSectionKey, dir: -1 | 1) => {
+    setSectionOrder((prev) => {
+      const idx = prev.indexOf(key);
+      const swapWith = idx + dir;
+      if (idx === -1 || swapWith < 0 || swapWith >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+      try {
+        window.localStorage.setItem(MAIN_SECTION_ORDER_KEY, JSON.stringify(next));
+      } catch {
+        /* 저장 실패해도 이번 화면 세션 동안은 순서가 유지된다 */
+      }
+      return next;
+    });
+  }, []);
 
   /**
    * 슬랙 알림의 "대시보드에서 보기" 딥링크(?plan=<id>) 진입점 — 마운트 시 한 번만
@@ -477,37 +577,52 @@ export default function PapillonDashboard() {
           <p className="text-xs text-gray-300">불러오는 중...</p>
         </div>
       ) : (
-        data && (
-          <>
-            <PlanTable
-              plans={data.plans}
-              members={members}
-              viewerAccountId={viewerAccountId}
-              isLead={isLead}
-              today={today}
-              onPatch={patch}
-              onDelete={remove}
-              onCreate={create}
-              onOpen={openPlan}
-              busyId={busyId}
-            />
-
-            <PlanCalendar
-              year={year}
-              month={month}
-              today={today}
-              plans={data.plans}
-              members={members}
-              viewerAccountId={viewerAccountId}
-              isLead={isLead}
-              onPrev={() => shiftMonth(-1)}
-              onNext={() => shiftMonth(1)}
-              onToday={goToday}
-              onSelect={openPlan}
-              onDropOnDate={moveToDate}
-            />
-          </>
-        )
+        data &&
+        sectionOrder.map((key) => {
+          if (key === "list") {
+            return (
+              <MainSection key="list" sectionKey="list" order={sectionOrder} onMove={moveSection}>
+                <PlanTable
+                  plans={data.plans}
+                  members={members}
+                  viewerAccountId={viewerAccountId}
+                  isLead={isLead}
+                  today={today}
+                  onPatch={patch}
+                  onDelete={remove}
+                  onCreate={create}
+                  onOpen={openPlan}
+                  busyId={busyId}
+                />
+              </MainSection>
+            );
+          }
+          if (key === "kanban") {
+            return (
+              <MainSection key="kanban" sectionKey="kanban" order={sectionOrder} onMove={moveSection}>
+                <ContentKanban />
+              </MainSection>
+            );
+          }
+          return (
+            <MainSection key="calendar" sectionKey="calendar" order={sectionOrder} onMove={moveSection}>
+              <PlanCalendar
+                year={year}
+                month={month}
+                today={today}
+                plans={data.plans}
+                members={members}
+                viewerAccountId={viewerAccountId}
+                isLead={isLead}
+                onPrev={() => shiftMonth(-1)}
+                onNext={() => shiftMonth(1)}
+                onToday={goToday}
+                onSelect={openPlan}
+                onDropOnDate={moveToDate}
+              />
+            </MainSection>
+          );
+        })
       )}
 
       {editorPlanId !== null && (
