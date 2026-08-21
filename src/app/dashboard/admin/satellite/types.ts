@@ -25,7 +25,7 @@ export interface SatelliteMember {
   active_until: string | null; // YYYY-MM-DD
 }
 
-export type PipelineStage = "sponsorship" | "editing" | "uploaded";
+export type PipelineStage = "todo" | "feedback" | "done";
 
 export interface ContentPlan {
   id: number;
@@ -75,9 +75,9 @@ export interface KanbanResponse {
 }
 
 export const PIPELINE_STAGE_META: Record<PipelineStage, { label: string; cls: string }> = {
-  sponsorship: { label: "협찬목록", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  editing: { label: "편집중", cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  uploaded: { label: "업로드완료", cls: "bg-green-50 text-green-700 border-green-200" },
+  todo: { label: "업무 목록", cls: "bg-gray-50 text-gray-600 border-gray-200" },
+  feedback: { label: "피드백 대기", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  done: { label: "완료", cls: "bg-green-50 text-green-700 border-green-200" },
 };
 
 export interface PlansResponse {
@@ -477,7 +477,9 @@ export const STATUS_META: Record<PlanStatus, { label: string; cls: string; dot: 
 export const MEDIA_META: Record<MediaType, { label: string }> = {
   carousel: { label: "카드뉴스" },
   reel: { label: "릴스" },
-  image: { label: "단일이미지" },
+  // DB 값은 "image" 그대로 — 라벨만 "기타"로 변경 (마케팅팀 피드백 2026-08-20,
+  // 통합 업무 관리 기획안 §2·§5). 텍스트·이미지 여러 장 등 자유 형식 콘텐츠용.
+  image: { label: "기타" },
 };
 
 /** 담당자별 색상 — id 를 안정적으로 팔레트에 매핑 */

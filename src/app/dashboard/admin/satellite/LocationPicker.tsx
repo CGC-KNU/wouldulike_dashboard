@@ -9,7 +9,7 @@ import { LocationResult } from "./types";
  *
  * 인스타그램 전용 장소 검색 API는 없어서, Facebook Pages Search(type=place)로 얻은
  * 페이지 ID를 그대로 location_id 로 쓴다. 캐러셀 낱장에는 못 붙지만, 카드뉴스 전체·
- * 릴스·단일이미지 컨테이너에는 전부 지원된다 (Meta 공식 문서 기준).
+ * 릴스·기타 컨테이너에는 전부 지원된다 (Meta 공식 문서 기준).
  */
 export default function LocationPicker({
   locationId,

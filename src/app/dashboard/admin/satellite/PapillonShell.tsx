@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import AttendanceDashboard from "./AttendanceDashboard";
+import ContentKanban from "./ContentKanban";
 import ContentTab from "../ContentTab";
 import MyDashboardScreen from "./MyDashboardScreen";
 import OverviewScreen from "./OverviewScreen";
@@ -15,6 +16,7 @@ import TaggingConsole from "./TaggingConsole";
 type Screen =
   | "calendar"
   | "sponsorship"
+  | "kanban"
   | "content-list"
   | "editor-list"
   | "overview"
@@ -36,8 +38,11 @@ interface Me {
  *   캘린더 · 콘텐츠 피드백 · 에디터 | 오버뷰 · 내 대시보드 · 게시물 상세 | 근태 · 태깅콘솔 · 배너/팝업 · 설정
  * "배너/팝업"만 원 목업엔 없던 항목 — RD 요청(2026-08-20)으로 설정 바로 위에 추가했다.
  * "콘텐츠 상세" → "콘텐츠 피드백" 명칭 변경 — 마케팅팀 피드백(2026-08-20, 통합 업무
- * 관리 기획안 §8) 반영. "협찬" 역시 같은 피드백(§2·§4)으로 캘린더 바로 다음에
- * 새로 추가한 항목 — 콘텐츠 칸반과 분리된 새 Sponsorship 모델의 목록 화면이다.
+ * 관리 기획안 §8) 반영. "협찬"·"콘텐츠 칸반"도 같은 피드백(§2·§4·§5)으로 캘린더
+ * 바로 다음에 새로 추가한 항목이다 — 협찬은 콘텐츠 칸반과 분리된 새 Sponsorship
+ * 모델의 목록 화면, 칸반은 백엔드(KanbanBoardView)에는 있었지만 그동안 화면에
+ * 연결된 적이 없던 "업무 목록/피드백 대기/완료" 3단 보드다(§5 — RD 질문 2026-08-21
+ * "콘텐츠 칸반은 어디로 들어간 거야?"에 대한 답 — 지금까지는 화면이 없었다).
  *
  * "에디터" 목록은 나비게이션 항목 자체는 리드·멤버 모두에게 노출한다(숨기지 않음) —
  * §8/§7 "비담당자: 에디터 접근 불가"는 건별(per-plan) 규칙이라, 목록 진입 자체를 막을
@@ -50,6 +55,7 @@ interface Me {
 const NAV: { key: Screen; label: string; icon: string; leadOnly?: boolean; sepBefore?: boolean }[] = [
   { key: "calendar", label: "캘린더", icon: "▦" },
   { key: "sponsorship", label: "협찬", icon: "◆" },
+  { key: "kanban", label: "콘텐츠 칸반", icon: "▧" },
   { key: "content-list", label: "콘텐츠 피드백", icon: "✎" },
   { key: "editor-list", label: "에디터", icon: "⊕" },
   { key: "overview", label: "오버뷰", icon: "◎", sepBefore: true },
@@ -115,6 +121,7 @@ export default function PapillonShell() {
       <main className="min-w-0 max-w-6xl">
         {screen === "calendar" && <PapillonDashboard />}
         {screen === "sponsorship" && <SponsorshipList />}
+        {screen === "kanban" && <ContentKanban />}
         {screen === "content-list" && (
           <PlanQuickList
             status="active"

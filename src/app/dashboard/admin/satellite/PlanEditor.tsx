@@ -629,6 +629,11 @@ export default function PlanEditor({
                     릴스는 프로필 방문·팔로우 지표를 제공하지 않습니다. 계정 성장 기여도 분석은 카드뉴스 표본으로만 가능합니다.
                   </p>
                 )}
+                {plan.media_type === "image" && (
+                  <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                    자유 형식 콘텐츠입니다 — 이미지 없이 캡션(텍스트)만으로도 준비완료할 수 있습니다.
+                  </p>
+                )}
               </section>
 
               {/* 파일 */}
