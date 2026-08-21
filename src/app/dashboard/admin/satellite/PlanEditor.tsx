@@ -42,7 +42,7 @@ export default function PlanEditor({
   onClose: () => void;
   onChanged: () => void;
   /** 어느 탭을 보고 있다가 열었는지에 맞춰 시작 탭을 다르게 준다 (예: 내 대시보드에서
-   *  성과를 보러 들어온 경우 바로 "게시물 상세"로). 기본은 기존과 동일하게 "콘텐츠 상세". */
+   *  성과를 보러 들어온 경우 바로 "게시물 상세"로). 기본은 기존과 동일하게 "콘텐츠 피드백". */
   initialTab?: "detail" | "content" | "publish" | "post";
 }) {
   const [plan, setPlan] = useState<PlanDetail | null>(null);
@@ -89,6 +89,15 @@ export default function PlanEditor({
   useEffect(() => {
     load();
   }, [load]);
+
+  // 에디터 탭은 담당자(또는 리드)에게만 보인다 — initialTab="content" 로 열렸는데
+  // 실제로는 권한이 없는 경우(예: 남의 게시물을 딥링크로 직접 열었을 때) 안전하게
+  // "콘텐츠 피드백" 탭으로 되돌린다.
+  useEffect(() => {
+    if (plan && !plan.can_edit && (activeTab === "content" || activeTab === "publish")) {
+      setActiveTab("detail");
+    }
+  }, [plan, activeTab]);
 
   /* ─── 저장 ─────────────────────────────────────── */
 
@@ -487,9 +496,12 @@ export default function PlanEditor({
                 </div>
               )}
 
-              {/* 상위 탭 — 목업의 세 화면(콘텐츠 상세/에디터/게시물 상세)을 그대로 매핑한다.
+              {/* 상위 탭 — 목업의 세 화면(콘텐츠 피드백/에디터/게시물 상세)을 그대로 매핑한다.
                   "에디터"는 카드/캡션·발행 두 하위 탭을 계속 갖는다 — 한 화면에 몰아넣지
-                  않으려고 예전에 나눈 걸 그대로 유지, 상위 탭 하나로만 묶었다. */}
+                  않으려고 예전에 나눈 걸 그대로 유지, 상위 탭 하나로만 묶었다.
+                  "에디터" 탭 자체는 담당자(또는 리드)에게만 보인다 — 비담당자는 이 탭을
+                  아예 못 본다 (필드만 비활성화하던 예전 방식에서 변경, 마케팅팀 피드백
+                  2026-08-20: "비담당자: 에디터 접근 불가"). */}
               <div className="flex items-center gap-0.5 bg-gray-100 rounded-xl p-1 sticky top-0 z-10">
                 <button
                   onClick={() => setActiveTab("detail")}
@@ -497,21 +509,23 @@ export default function PlanEditor({
                     activeTab === "detail" ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
                   }`}
                 >
-                  콘텐츠 상세
+                  콘텐츠 피드백
                   {plan.comment_count > 0 && (
                     <span className="ml-1 text-[10px] font-bold text-periwinkle">{plan.comment_count}</span>
                   )}
                 </button>
-                <button
-                  onClick={() => setActiveTab((prev) => (prev === "content" || prev === "publish" ? prev : "content"))}
-                  className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
-                    activeTab === "content" || activeTab === "publish"
-                      ? "bg-white text-navy shadow-sm"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  에디터
-                </button>
+                {plan.can_edit && (
+                  <button
+                    onClick={() => setActiveTab((prev) => (prev === "content" || prev === "publish" ? prev : "content"))}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
+                      activeTab === "content" || activeTab === "publish"
+                        ? "bg-white text-navy shadow-sm"
+                        : "text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    에디터
+                  </button>
+                )}
                 <button
                   onClick={() => setActiveTab("post")}
                   className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
@@ -525,7 +539,7 @@ export default function PlanEditor({
               {activeTab === "detail" && (
                 <>
                   <section className="bg-white rounded-2xl border border-gray-100 p-4">
-                    <h3 className="text-sm font-bold text-gray-800 mb-3">콘텐츠 상세</h3>
+                    <h3 className="text-sm font-bold text-gray-800 mb-3">콘텐츠 피드백</h3>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <p className="text-[10px] text-gray-400 font-semibold">담당자</p>
