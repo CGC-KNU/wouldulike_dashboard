@@ -73,8 +73,12 @@ export default function WeeklyAutomationComposer() {
     }
   }, []);
 
-  const loadDetail = useCallback(async (id: number) => {
-    setLoadingDetail(true);
+  // silent=true — 사진 업로드/삭제 등 부분 변경 후 갱신할 때 쓴다. loadingDetail을
+  // 켜지 않아서 화면이 통째로 언마운트-리마운트되지 않고(펼쳐둔 패널·입력 중이던 값이
+  // 안 날아가고) 데이터만 조용히 교체된다. 최초 진입/학기 전환 시에는 silent=false로
+  // 로딩 표시를 보여준다.
+  const loadDetail = useCallback(async (id: number, silent = false) => {
+    if (!silent) setLoadingDetail(true);
     setErr("");
     try {
       const res = await fetch(`/api/bannerlab/weekly/semesters/${id}`);
@@ -84,7 +88,7 @@ export default function WeeklyAutomationComposer() {
     } catch (e) {
       setErr((e as Error).message);
     } finally {
-      setLoadingDetail(false);
+      if (!silent) setLoadingDetail(false);
     }
   }, []);
 
@@ -262,7 +266,7 @@ export default function WeeklyAutomationComposer() {
           {detail.months
             .filter((m) => m.id === selectedMonthId)
             .map((m) => (
-              <MonthSection key={m.id} month={m} paidRestaurants={paidRestaurants} onChanged={() => loadDetail(detail.id)} />
+              <MonthSection key={m.id} month={m} paidRestaurants={paidRestaurants} onChanged={() => loadDetail(detail.id, true)} />
             ))}
         </div>
       )}
