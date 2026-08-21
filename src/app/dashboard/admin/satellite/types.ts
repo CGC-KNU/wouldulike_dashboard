@@ -203,6 +203,7 @@ export interface PlanDetail {
   ready_at: string | null;
   assets: PlanAsset[];
   publish_jobs: PublishJobItem[];
+  has_post: boolean;
   limits: { max_cards: number; max_hashtags: number; max_collaborators: number };
   validation: string[];
   can_edit: boolean;

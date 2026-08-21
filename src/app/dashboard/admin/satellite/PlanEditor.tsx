@@ -362,10 +362,15 @@ export default function PlanEditor({
         "예: https://www.instagram.com/p/XXXXXXX/"
     );
     if (!permalink) return;
+    const igMediaId = prompt(
+      "(선택) 게시물의 Media ID를 알고 있으면 붙여넣으세요.\n\n" +
+        "비워두면 '내 대시보드'·'게시물 상세'에서 이 게시물의 성과·인사이트가 연결되지 않습니다 " +
+        "— 인스타 API/그래프 API 탐색기 등으로 media_id를 확인해 나중에 다시 '재연결'할 수 있습니다."
+    );
     const res = await fetch(`/api/satellite/plans/${planId}/manual-publish`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ permalink }),
+      body: JSON.stringify({ permalink, ig_media_id: igMediaId || "" }),
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) alert(d.detail ?? "연결에 실패했습니다.");
@@ -1038,13 +1043,17 @@ export default function PlanEditor({
               </>
             )}
 
-            {plan.is_lead && plan.status !== "published" && (
+            {plan.is_lead && (plan.status !== "published" || !plan.has_post) && (
               <button
                 onClick={manualPublish}
                 className="px-3 py-2.5 text-[11px] font-semibold text-amber-600 border border-amber-200 rounded-xl hover:bg-amber-50"
-                title="인스타에 직접 올린 뒤 링크를 연결합니다"
+                title={
+                  plan.status === "published"
+                    ? "media_id가 없어 성과·인사이트가 연결되지 않은 게시물입니다 — media_id를 넣어 재연결합니다"
+                    : "인스타에 직접 올린 뒤 링크를 연결합니다"
+                }
               >
-                수동 연결
+                {plan.status === "published" ? "게시물 재연결" : "수동 연결"}
               </button>
             )}
           </div>
