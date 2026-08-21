@@ -41,8 +41,9 @@ export default function PlanQuickList({
   const [truncated, setTruncated] = useState(false);
   const [openPlanId, setOpenPlanId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
+    // soft: 에디터에서 저장·업로드 후 재조회 — 기존 목록을 스피너로 지우지 않는다.
+    if (!opts?.soft) setLoading(true);
     setErr("");
     try {
       const res = await fetch(`/api/satellite/plans/quick-list?status=${status}`);
@@ -56,13 +57,15 @@ export default function PlanQuickList({
     } catch {
       setErr("네트워크 오류");
     } finally {
-      setLoading(false);
+      if (!opts?.soft) setLoading(false);
     }
   }, [status]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const showInitialSpinner = loading && plans.length === 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,13 +75,15 @@ export default function PlanQuickList({
           <p className="text-[11px] text-gray-400 mt-0.5">{subtitle}</p>
         </div>
 
-        {loading && <p className="text-[11px] text-gray-300 text-center py-8">불러오는 중...</p>}
-        {!loading && err && <p className="text-[11px] text-red-500 text-center py-8">{err}</p>}
-        {!loading && !err && plans.length === 0 && (
+        {showInitialSpinner && <p className="text-[11px] text-gray-300 text-center py-8">불러오는 중...</p>}
+        {!showInitialSpinner && err && plans.length === 0 && (
+          <p className="text-[11px] text-red-500 text-center py-8">{err}</p>
+        )}
+        {!showInitialSpinner && !err && plans.length === 0 && (
           <p className="text-[11px] text-gray-300 text-center py-8">{emptyLabel}</p>
         )}
 
-        {!loading && !err && plans.length > 0 && (
+        {plans.length > 0 && (
           <div className="divide-y divide-gray-50">
             {plans.map((p) => {
               const c = ownerColor(p.owner_id);
@@ -120,7 +125,7 @@ export default function PlanQuickList({
           planId={openPlanId}
           initialTab={initialTab}
           onClose={() => setOpenPlanId(null)}
-          onChanged={load}
+          onChanged={() => load({ soft: true })}
         />
       )}
     </div>

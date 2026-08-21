@@ -76,7 +76,7 @@ export default function CommentThread({ planId }: { planId: number }) {
         </div>
       )}
 
-      {loading ? (
+      {loading && comments.length === 0 ? (
         <p className="text-[11px] text-gray-300 text-center py-3">불러오는 중...</p>
       ) : comments.length === 0 ? (
         <p className="text-[11px] text-gray-300 text-center py-3">아직 댓글이 없습니다.</p>

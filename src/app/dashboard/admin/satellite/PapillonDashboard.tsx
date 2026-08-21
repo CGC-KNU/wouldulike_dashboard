@@ -205,14 +205,15 @@ export default function PapillonDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadPlans = useCallback(async () => {
-    setLoading(true);
+  const loadPlans = useCallback(async (opts?: { soft?: boolean }) => {
+    // soft: 에디터 저장·업로드 후 — 기존 캘린더/표를 스피너로 덮지 않는다.
+    if (!opts?.soft) setLoading(true);
     try {
       const res = await fetch(`/api/satellite/plans?year=${year}&month=${month}`);
       const e = await toError(res, "콘텐츠 목록");
       if (e) {
         setErrors((prev) => [...prev.filter((x) => x.source !== e.source), e]);
-        setData(null);
+        if (!opts?.soft) setData(null);
       } else {
         setErrors((prev) => prev.filter((x) => x.source !== "콘텐츠 목록"));
         setData(await res.json());
@@ -222,9 +223,9 @@ export default function PapillonDashboard() {
         ...prev.filter((x) => x.source !== "콘텐츠 목록"),
         { status: null, detail: (ex as Error).message, hint: "네트워크 연결을 확인해주세요.", source: "콘텐츠 목록" },
       ]);
-      setData(null);
+      if (!opts?.soft) setData(null);
     } finally {
-      setLoading(false);
+      if (!opts?.soft) setLoading(false);
     }
   }, [year, month]);
 
@@ -395,7 +396,7 @@ export default function PapillonDashboard() {
   }
 
   async function afterEditorChange() {
-    await loadPlans();
+    await loadPlans({ soft: true });
     loadMyWeek();
     loadPubStatus();
   }

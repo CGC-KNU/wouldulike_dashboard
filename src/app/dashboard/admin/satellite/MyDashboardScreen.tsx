@@ -49,8 +49,8 @@ export default function MyDashboardScreen() {
   const [saved, setSaved] = useState(false);
   const [openPlanId, setOpenPlanId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
+    if (!opts?.soft) setLoading(true);
     try {
       const qs = new URLSearchParams({ year: String(year), month: String(month) });
       if (mediaType) qs.set("media_type", mediaType);
@@ -62,12 +62,15 @@ export default function MyDashboardScreen() {
         const d: MyDashboardResponse = await dashRes.json();
         setData(d);
         if (!mediaType && d.media_type) setMediaType(d.media_type);
-        setGood(d.retro?.good_note ?? "");
-        setImprove(d.retro?.improve_note ?? "");
+        // soft 재조회 때는 회고 입력 중일 수 있어 서버값으로 덮지 않는다.
+        if (!opts?.soft) {
+          setGood(d.retro?.good_note ?? "");
+          setImprove(d.retro?.improve_note ?? "");
+        }
       }
       if (myWeekRes.ok) setMyWeek(await myWeekRes.json());
     } finally {
-      setLoading(false);
+      if (!opts?.soft) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, mediaType]);
@@ -321,7 +324,7 @@ export default function MyDashboardScreen() {
           planId={openPlanId}
           initialTab="post"
           onClose={() => setOpenPlanId(null)}
-          onChanged={load}
+          onChanged={() => load({ soft: true })}
         />
       )}
     </div>

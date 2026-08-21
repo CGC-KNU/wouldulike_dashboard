@@ -20,8 +20,8 @@ export default function ContentKanban() {
   const [err, setErr] = useState("");
   const [openPlanId, setOpenPlanId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
+    if (!opts?.soft) setLoading(true);
     setErr("");
     try {
       const res = await fetch("/api/satellite/kanban");
@@ -34,13 +34,15 @@ export default function ContentKanban() {
     } catch {
       setErr("네트워크 오류");
     } finally {
-      setLoading(false);
+      if (!opts?.soft) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const showInitialSpinner = loading && !data;
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,10 +54,12 @@ export default function ContentKanban() {
           </p>
         </div>
 
-        {loading && <p className="text-[11px] text-gray-300 text-center py-8">불러오는 중...</p>}
-        {!loading && err && <p className="text-[11px] text-red-500 text-center py-8">{err}</p>}
+        {showInitialSpinner && <p className="text-[11px] text-gray-300 text-center py-8">불러오는 중...</p>}
+        {!showInitialSpinner && err && !data && (
+          <p className="text-[11px] text-red-500 text-center py-8">{err}</p>
+        )}
 
-        {!loading && !err && data && (
+        {data && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-gray-100">
             {data.columns.map((col) => (
               <div key={col.key} className="bg-white flex flex-col min-h-[240px]">
@@ -99,7 +103,7 @@ export default function ContentKanban() {
           planId={openPlanId}
           initialTab="detail"
           onClose={() => setOpenPlanId(null)}
-          onChanged={load}
+          onChanged={() => load({ soft: true })}
         />
       )}
     </div>

@@ -61,15 +61,16 @@ export default function PlanEditor({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(
-    async (opts?: { preserveCaption?: boolean }) => {
-      setLoading(true);
+    async (opts?: { preserveCaption?: boolean; silent?: boolean }) => {
+      // 최초 진입만 전체 로딩 스피너 — 업로드·자동저장 뒤 재조회는 화면을 유지한다.
+      if (!opts?.silent) setLoading(true);
       setErr("");
       try {
         const res = await fetch(`/api/satellite/plans/${planId}/detail`);
         const d = await res.json().catch(() => ({}));
         if (!res.ok) {
           setErr(d.detail ?? `불러오지 못했습니다 (${res.status})`);
-          setPlan(null);
+          if (!opts?.silent) setPlan(null);
         } else {
           setPlan(d);
           // 캡션 자동저장 직후에는 서버값으로 되돌리지 않는다 — 되돌리면 그 사이 계속
@@ -80,7 +81,7 @@ export default function PlanEditor({
       } catch (e) {
         setErr((e as Error).message);
       } finally {
-        setLoading(false);
+        if (!opts?.silent) setLoading(false);
       }
     },
     [planId]
@@ -114,7 +115,9 @@ export default function PlanEditor({
         alert(d.detail ?? "저장에 실패했습니다.");
         return false;
       }
-      onChanged();
+      // 자동저장(silent)마다 부모 목록까지 통째 리로드하지 않는다 — 목록에 보이는
+      // 필드가 바뀌는 명시적 저장·상태 전환에서만 onChanged 를 부른다.
+      if (!silent) onChanged();
       return true;
     } finally {
       if (!silent) setSaving(false);
@@ -141,13 +144,13 @@ export default function PlanEditor({
     }
   }
 
-  /** 캡션은 타이핑이 멈추면 자동 저장한다 */
+  /** 캡션은 타이핑이 멈추면 자동 저장한다 — 로컬 상태가 이미 최신이라 detail 재조회는 하지 않는다. */
   function onCaptionChange(v: string) {
     setCaption(v);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (countHashtags(v) <= (plan?.limits.max_hashtags ?? 5)) {
-        patch({ caption: v }, true).then(() => load({ preserveCaption: true }));
+        patch({ caption: v }, true);
       }
     }, 800);
   }
@@ -167,8 +170,10 @@ export default function PlanEditor({
       return;
     }
     const next = [...current, uname];
-    patch({ collaborator_usernames: next }, true).then(() => load({ preserveCaption: true }));
     setCollabInput("");
+    patch({ collaborator_usernames: next }, true).then((ok) => {
+      if (ok) setPlan((p) => (p ? { ...p, collaborator_usernames: next } : p));
+    });
   }
 
   /* ─── 업로드 ───────────────────────────────────── */
@@ -238,6 +243,18 @@ export default function PlanEditor({
           alert(r.detail ?? `${file.name} 등록에 실패했습니다.`);
           continue;
         }
+        // 응답이 에셋 형태면 즉시 목록에 붙인다 — 전체 detail 재조회를 기다리지 않는다.
+        if (r && typeof r.id === "number") {
+          setPlan((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  assets: [...prev.assets, r as PlanAsset],
+                  card_count: prev.assets.length + 1,
+                }
+              : prev
+          );
+        }
       } catch (e) {
         alert(`${file.name}: ${(e as Error).message}`);
       } finally {
@@ -247,17 +264,23 @@ export default function PlanEditor({
 
     setUploading(0);
     if (fileInput.current) fileInput.current.value = "";
-    await load();
+    // 변환 상태(is_ready 등) 동기화만 백그라운드 — 화면은 유지
+    await load({ preserveCaption: true, silent: true });
     onChanged();
   }
 
   async function removeAsset(assetId: number) {
     if (!confirm("이 이미지를 삭제할까요?")) return;
+    const prevAssets = plan?.assets;
+    setPlan((p) =>
+      p ? { ...p, assets: p.assets.filter((a) => a.id !== assetId), card_count: Math.max(0, p.assets.length - 1) } : p
+    );
     const res = await fetch(`/api/satellite/assets/${assetId}`, { method: "DELETE" });
     if (res.ok || res.status === 204) {
-      await load();
+      await load({ preserveCaption: true, silent: true });
       onChanged();
     } else {
+      if (prevAssets) setPlan((p) => (p ? { ...p, assets: prevAssets, card_count: prevAssets.length } : p));
       const d = await res.json().catch(() => ({}));
       alert(d.detail ?? "삭제에 실패했습니다.");
     }
@@ -286,7 +309,7 @@ export default function PlanEditor({
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       alert(d.detail ?? "순서 변경에 실패했습니다.");
-      await load();
+      await load({ preserveCaption: true, silent: true });
     }
   }
 
@@ -315,7 +338,7 @@ export default function PlanEditor({
             : d.detail ?? "전환에 실패했습니다."
         );
       }
-      await load();
+      await load({ preserveCaption: true, silent: true });
       onChanged();
     } finally {
       setSaving(false);
@@ -328,7 +351,7 @@ export default function PlanEditor({
       const d = await res.json().catch(() => ({}));
       alert(d.detail ?? "전환에 실패했습니다.");
     }
-    await load();
+    await load({ preserveCaption: true, silent: true });
     onChanged();
   }
 
@@ -348,7 +371,7 @@ export default function PlanEditor({
       } else {
         alert("발행 대기열에 넣었습니다. 크론이 곧 처리합니다.");
       }
-      await load();
+      await load({ preserveCaption: true, silent: true });
       onChanged();
     } finally {
       setSaving(false);
@@ -374,7 +397,7 @@ export default function PlanEditor({
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) alert(d.detail ?? "연결에 실패했습니다.");
-    await load();
+    await load({ preserveCaption: true, silent: true });
     onChanged();
   }
 
@@ -450,7 +473,7 @@ export default function PlanEditor({
                               alert(d.detail ?? "잠금 해제에 실패했습니다.");
                               return;
                             }
-                            load({ preserveCaption: true });
+                            load({ preserveCaption: true, silent: true });
                           })
                       }
                       className="shrink-0 text-[11px] font-semibold text-white bg-red-500 rounded-xl px-3 py-2 hover:bg-red-600"
@@ -613,7 +636,7 @@ export default function PlanEditor({
                           ? "올린 파일을 모두 삭제한 뒤 유형을 바꿀 수 있습니다"
                           : ""
                       }
-                      onClick={() => patch({ media_type: k }).then(() => load({ preserveCaption: true }))}
+                      onClick={() => patch({ media_type: k }).then(() => load({ preserveCaption: true, silent: true }))}
                       className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                         plan.media_type === k
                           ? "bg-white text-navy shadow-sm"
@@ -737,10 +760,14 @@ export default function PlanEditor({
                   audioVolume={plan.audio_volume}
                   editable={plan.can_edit}
                   onSelect={(id: string, _track: AudioTrack | null) => {
-                    patch({ audio_id: id }).then(() => load({ preserveCaption: true }));
+                    patch({ audio_id: id }, true).then((ok) => {
+                      if (ok) setPlan((p) => (p ? { ...p, audio_id: id } : p));
+                    });
                   }}
                   onVolumeChange={(v: number | null) => {
-                    patch({ audio_volume: v }, true).then(() => load({ preserveCaption: true }));
+                    patch({ audio_volume: v }, true).then((ok) => {
+                      if (ok) setPlan((p) => (p ? { ...p, audio_volume: v } : p));
+                    });
                   }}
                 />
               )}
@@ -771,11 +798,12 @@ export default function PlanEditor({
                       role="switch"
                       aria-checked={plan.reel_share_to_feed}
                       disabled={!plan.can_edit}
-                      onClick={() =>
-                        patch({ reel_share_to_feed: !plan.reel_share_to_feed }, true).then(() =>
-                          load({ preserveCaption: true })
-                        )
-                      }
+                      onClick={() => {
+                        const next = !plan.reel_share_to_feed;
+                        patch({ reel_share_to_feed: next }, true).then((ok) => {
+                          if (ok) setPlan((p) => (p ? { ...p, reel_share_to_feed: next } : p));
+                        });
+                      }}
                       className={`relative w-9 h-5 rounded-full transition-colors disabled:opacity-40 ${
                         plan.reel_share_to_feed ? "bg-periwinkle" : "bg-gray-200"
                       }`}
@@ -806,9 +834,7 @@ export default function PlanEditor({
                         );
                       }}
                       onBlur={() =>
-                        patch({ reel_thumb_offset_ms: plan.reel_thumb_offset_ms }, true).then((ok) => {
-                          if (ok) load({ preserveCaption: true });
-                        })
+                        patch({ reel_thumb_offset_ms: plan.reel_thumb_offset_ms }, true)
                       }
                       className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-periwinkle disabled:bg-gray-50"
                     />
@@ -826,9 +852,9 @@ export default function PlanEditor({
                 locationName={plan.location_name}
                 editable={plan.can_edit}
                 onSelect={(id: string, name: string) => {
-                  patch({ location_id: id, location_name: name }).then(() =>
-                    load({ preserveCaption: true })
-                  );
+                  patch({ location_id: id, location_name: name }, true).then((ok) => {
+                    if (ok) setPlan((p) => (p ? { ...p, location_id: id, location_name: name } : p));
+                  });
                 }}
               />
 
@@ -856,9 +882,9 @@ export default function PlanEditor({
                           <button
                             onClick={() => {
                               const next = plan.collaborator_usernames.filter((x) => x !== u);
-                              patch({ collaborator_usernames: next }, true).then(() =>
-                                load({ preserveCaption: true })
-                              );
+                              patch({ collaborator_usernames: next }, true).then((ok) => {
+                                if (ok) setPlan((p) => (p ? { ...p, collaborator_usernames: next } : p));
+                              });
                             }}
                             className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-periwinkle/20"
                           >
@@ -939,9 +965,7 @@ export default function PlanEditor({
                     onBlur={() =>
                       patch({
                         desired_publish_at: publishAt ? new Date(publishAt).toISOString() : null,
-                      }).then((ok) => {
-                        if (ok) load({ preserveCaption: true });
-                      })
+                      }, true)
                     }
                     disabled={!plan.can_edit}
                     className="flex-1 text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-periwinkle disabled:bg-gray-50"
@@ -951,9 +975,7 @@ export default function PlanEditor({
                       const d = new Date(plan.scheduled_date + "T15:00");
                       const v = toLocalInput(d.toISOString());
                       setPublishAt(v);
-                      patch({ desired_publish_at: d.toISOString() }).then((ok) => {
-                        if (ok) load({ preserveCaption: true });
-                      });
+                      patch({ desired_publish_at: d.toISOString() }, true);
                     }}
                     disabled={!plan.can_edit}
                     className="px-3 text-[11px] font-semibold text-periwinkle border border-periwinkle/25 rounded-xl hover:bg-periwinkle/5 disabled:opacity-40"
@@ -984,7 +1006,7 @@ export default function PlanEditor({
                   isOwner={plan.is_owner}
                   isLead={plan.is_lead}
                   editRequestCount={plan.edit_request_count}
-                  onDone={() => load({ preserveCaption: true })}
+                  onDone={() => load({ preserveCaption: true, silent: true })}
                 />
               )}
                 </>
