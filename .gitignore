@@ -30,6 +30,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# session handoff notes (local only, not for github)
+/SESSION_HANDOFF.md
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
