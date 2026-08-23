@@ -67,6 +67,21 @@ export interface PaidRestaurant {
   photos: string[];
 }
 
+/** GET .../ai-diagnostics/ 응답 — 실제 OpenAI 호출 없이 AI 후보 시도 여부만 미리 확인. */
+export interface AiDiagnostics {
+  week_id: number;
+  week_number: number;
+  type: WeekType;
+  openai_key_configured: boolean;
+  prompt_text: string;
+  tone: string;
+  has_template_photo: boolean;
+  figma_template_id: number | null;
+  figma_enabled: boolean;
+  would_attempt_ai: boolean;
+  reasons_ai_would_be_skipped: string[];
+}
+
 export interface WeeklyCandidate {
   id: number;
   sort_order: number;

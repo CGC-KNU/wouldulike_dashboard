@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BannerRatio } from "./types";
 import {
+  AiDiagnostics,
   FigmaTemplate,
   MonthFolder,
   PaidRestaurant,
@@ -323,6 +324,8 @@ function WeekFolderCard({
   const [showRestaurants, setShowRestaurants] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [aiDiag, setAiDiag] = useState<AiDiagnostics | null>(null);
+  const [checkingAiDiag, setCheckingAiDiag] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const dirty =
@@ -444,6 +447,29 @@ function WeekFolderCard({
       alert((e as Error).message);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  /**
+   * "지금 생성"은 실제 OpenAI/슬랙 호출이라 비용이 든다 — 그 전에 AI 후보가 애초에
+   * 시도라도 될 조건인지(OPENAI_API_KEY·prompt_text) 공짜로 미리 확인하는 버튼.
+   * 백엔드 WeekAIDiagnosticsView는 이미 있었는데 이 버튼이 없어서 아무도 못 쓰고
+   * 있었다 (2026-08-23 마무리).
+   */
+  async function checkAiDiagnostics() {
+    setCheckingAiDiag(true);
+    try {
+      const res = await fetch(`/api/bannerlab/weekly/weeks/${week.id}/ai-diagnostics`);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(d.detail ?? "진단에 실패했습니다.");
+        return;
+      }
+      setAiDiag(d);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setCheckingAiDiag(false);
     }
   }
 
@@ -671,13 +697,23 @@ function WeekFolderCard({
       />
 
       <div className="flex items-center justify-between">
-        <button
-          onClick={() => generateNow(week.targets_summary.generated)}
-          disabled={generating}
-          className="text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-30"
-        >
-          {generating ? "생성 중..." : week.targets_summary.generated ? "다시 생성해서 발송" : "지금 생성해서 슬랙 발송"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => generateNow(week.targets_summary.generated)}
+            disabled={generating}
+            className="text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-30"
+          >
+            {generating ? "생성 중..." : week.targets_summary.generated ? "다시 생성해서 발송" : "지금 생성해서 슬랙 발송"}
+          </button>
+          <button
+            onClick={checkAiDiagnostics}
+            disabled={checkingAiDiag}
+            title="OpenAI를 실제로 호출하지 않고, AI 후보가 시도될 조건인지만 무료로 확인합니다"
+            className="text-[10px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 disabled:opacity-30"
+          >
+            {checkingAiDiag ? "확인 중..." : "AI 진단 (무료)"}
+          </button>
+        </div>
         <button
           onClick={save}
           disabled={saving || !dirty}
@@ -686,6 +722,8 @@ function WeekFolderCard({
           {saving ? "저장 중..." : "저장"}
         </button>
       </div>
+
+      {aiDiag && <AiDiagnosticsPanel diag={aiDiag} onClose={() => setAiDiag(null)} />}
 
       {week.targets_summary.generated && (
         <>
@@ -698,6 +736,74 @@ function WeekFolderCard({
           {showDetail && <WeeklyTargetsPanel weekId={week.id} />}
         </>
       )}
+    </div>
+  );
+}
+
+/** "AI 진단" 결과 카드 — WeekAIDiagnosticsView 응답을 그대로 사람이 읽을 수 있게 보여준다. */
+function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: () => void }) {
+  const rows: { label: string; ok: boolean; value: string }[] = [
+    {
+      label: "OPENAI_API_KEY",
+      ok: diag.openai_key_configured,
+      value: diag.openai_key_configured ? "설정됨" : "미설정",
+    },
+    {
+      label: "공통 프롬프트(prompt_text)",
+      ok: !!diag.prompt_text.trim(),
+      value: diag.prompt_text.trim() ? diag.prompt_text : "비어있음",
+    },
+    { label: "톤", ok: !!diag.tone.trim(), value: diag.tone.trim() || "미입력" },
+    {
+      label: "템플릿 사진",
+      ok: diag.has_template_photo,
+      value: diag.has_template_photo ? "있음" : "없음",
+    },
+    {
+      label: "Figma 연동",
+      ok: diag.figma_enabled,
+      value: diag.figma_enabled ? (diag.figma_template_id ? "연동됨 · 템플릿 선택됨" : "연동됨 · 템플릿 미선택") : "미연동",
+    },
+  ];
+
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2.5 flex flex-col gap-2 ${
+        diag.would_attempt_ai ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <span
+          className={`text-[11px] font-bold ${diag.would_attempt_ai ? "text-green-700" : "text-amber-700"}`}
+        >
+          {diag.would_attempt_ai
+            ? "✅ 지금 생성하면 AI 후보를 시도합니다"
+            : "⚠️ 지금 생성해도 AI 후보 없이 기본안만 나갑니다"}
+        </span>
+        <button onClick={onClose} className="text-[10px] text-gray-400 hover:text-gray-600">
+          닫기
+        </button>
+      </div>
+
+      {!diag.would_attempt_ai && diag.reasons_ai_would_be_skipped.length > 0 && (
+        <p className="text-[10px] text-amber-700">
+          이유: {diag.reasons_ai_would_be_skipped.join(" · ")}
+        </p>
+      )}
+
+      <div className="flex flex-col gap-1">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-start gap-1.5 text-[10px]">
+            <span className={`shrink-0 w-1.5 h-1.5 rounded-full mt-1 ${r.ok ? "bg-green-500" : "bg-gray-300"}`} />
+            <span className="text-gray-500 shrink-0 w-32">{r.label}</span>
+            <span className="text-gray-700 break-all">{r.value}</span>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[9px] text-gray-400">
+        실제 OpenAI 호출 없이 조건만 미리 확인한 결과입니다 — 비용 발생 없음.
+      </p>
     </div>
   );
 }
