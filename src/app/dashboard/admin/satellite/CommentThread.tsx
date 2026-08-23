@@ -29,6 +29,8 @@ export default function CommentThread({ planId }: { planId: number }) {
   const [editDraft, setEditDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [pickerOpenId, setPickerOpenId] = useState<number | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
@@ -146,6 +148,7 @@ export default function CommentThread({ planId }: { planId: number }) {
   }
 
   async function toggleReaction(id: number, emoji: string) {
+    setPickerOpenId(null); // 팔레트에서 골랐으면 바로 닫는다
     try {
       const res = await fetch(`/api/satellite/comments/${id}/reactions`, {
         method: "POST",
@@ -209,6 +212,8 @@ export default function CommentThread({ planId }: { planId: number }) {
                 saving={saving}
                 onDelete={() => remove(c.id)}
                 onToggleReaction={(emoji) => toggleReaction(c.id, emoji)}
+                pickerOpen={pickerOpenId === c.id}
+                onTogglePicker={() => setPickerOpenId((prev) => (prev === c.id ? null : c.id))}
                 onToggleReply={() => {
                   setReplyOpenId((prev) => (prev === c.id ? null : c.id));
                   setReplyDraft("");
@@ -252,6 +257,8 @@ export default function CommentThread({ planId }: { planId: number }) {
                     saving={saving}
                     onDelete={() => remove(r.id)}
                     onToggleReaction={(emoji) => toggleReaction(r.id, emoji)}
+                    pickerOpen={pickerOpenId === r.id}
+                    onTogglePicker={() => setPickerOpenId((prev) => (prev === r.id ? null : r.id))}
                   />
                 </div>
               ))}
@@ -292,6 +299,8 @@ function CommentRow({
   saving,
   onDelete,
   onToggleReaction,
+  pickerOpen,
+  onTogglePicker,
   onToggleReply,
   replyOpen,
 }: {
@@ -305,6 +314,8 @@ function CommentRow({
   saving: boolean;
   onDelete: () => void;
   onToggleReaction: (emoji: string) => void;
+  pickerOpen: boolean;
+  onTogglePicker: () => void;
   onToggleReply?: () => void;
   replyOpen?: boolean;
 }) {
@@ -356,29 +367,58 @@ function CommentRow({
 
       {!c.is_deleted && !editing && (
         <div className="flex items-center flex-wrap gap-1 mt-1.5">
-          {REACTION_EMOJIS.map((emoji) => {
-            const r = c.reactions.find((x) => x.emoji === emoji);
-            const active = !!r?.reacted_by_me;
-            return (
-              <button
-                key={emoji}
-                onClick={() => onToggleReaction(emoji)}
-                title="공감하기"
-                className={`text-[11px] leading-none rounded-full px-1.5 py-1 border transition-colors ${
-                  active
-                    ? "bg-periwinkle/10 border-periwinkle/40"
-                    : "bg-white border-gray-100 hover:border-gray-200"
-                }`}
-              >
-                {emoji}
-                {r && r.count > 0 && (
-                  <span className={`ml-0.5 text-[9px] font-semibold ${active ? "text-periwinkle" : "text-gray-400"}`}>
-                    {r.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {/* 이미 하나라도 반응이 붙은 이모지만 알약 배지로 상시 노출 — 눌러서 토글 */}
+          {c.reactions.map((r) => (
+            <button
+              key={r.emoji}
+              onClick={() => onToggleReaction(r.emoji)}
+              title="공감 취소/추가"
+              className={`text-[11px] leading-none rounded-full px-1.5 py-1 border transition-colors ${
+                r.reacted_by_me
+                  ? "bg-periwinkle/10 border-periwinkle/40"
+                  : "bg-white border-gray-100 hover:border-gray-200"
+              }`}
+            >
+              {r.emoji}
+              <span className={`ml-0.5 text-[9px] font-semibold ${r.reacted_by_me ? "text-periwinkle" : "text-gray-400"}`}>
+                {r.count}
+              </span>
+            </button>
+          ))}
+
+          {/* "+" 버튼을 누르면 이모지 팔레트가 팝업으로 뜨고, 거기서 골라야 반응이 붙는다. */}
+          <div className="relative">
+            <button
+              onClick={onTogglePicker}
+              title="이모지로 공감하기"
+              aria-expanded={pickerOpen}
+              className={`text-[11px] leading-none rounded-full w-6 h-6 flex items-center justify-center border transition-colors ${
+                pickerOpen
+                  ? "bg-periwinkle/10 border-periwinkle/40 text-periwinkle"
+                  : "bg-white border-gray-100 text-gray-400 hover:border-gray-200 hover:text-gray-600"
+              }`}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+                <path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M9 9h.01M15 9h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+              </svg>
+            </button>
+            {pickerOpen && (
+              <div className="absolute z-10 top-full left-0 mt-1 flex gap-0.5 bg-white border border-gray-200 rounded-xl shadow-lg p-1.5">
+                {REACTION_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => onToggleReaction(emoji)}
+                    title={emoji}
+                    className="text-base leading-none rounded-lg w-7 h-7 flex items-center justify-center hover:bg-periwinkle/10 hover:scale-110 transition-all"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <span className="ml-auto flex items-center gap-2.5">
             {onToggleReply && (
