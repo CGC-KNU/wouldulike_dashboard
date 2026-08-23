@@ -438,10 +438,9 @@ function WeekFolderCard({
       if (data.status === "skipped") {
         alert(`건너뜀: ${data.reason ?? "이미 생성됨"}`);
       } else {
-        const errCount = (data.errors ?? []).length;
-        alert(
-          `완료 — 총 ${data.total}건 중 신규 ${data.created}건, 재사용 ${data.reused}건${errCount ? `, 실패 ${errCount}건` : ""}. 슬랙 채널을 확인해주세요.`
-        );
+        // 실제 생성은 백엔드가 백그라운드로 돌린다(대상마다 AI 호출이 직렬로 이어져
+        // 몇 분씩 걸릴 수 있어서, 2026-08-24부터 요청을 붙잡지 않고 바로 응답한다).
+        alert("생성을 시작했습니다 — 대상별로 준비되는 대로 슬랙 채널에 순서대로 올라옵니다.");
       }
       onChanged();
     } catch (e) {
