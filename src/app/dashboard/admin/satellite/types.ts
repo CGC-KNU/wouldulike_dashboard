@@ -381,15 +381,29 @@ export interface MyDashboardResponse {
 
 /* ─── 3차 — 댓글 · 근태 ───────────────────────────── */
 
+/** 백엔드 REACTION_EMOJIS와 동일한 목록 — 자유 입력이 아니라 이 중에서만 고른다. */
+export const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "🤔", "👎"] as const;
+
+export interface CommentReaction {
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
+}
+
 export interface CommentItem {
   id: number;
   plan_id: number;
+  parent_id: number | null;
   author_id: number | null;
   author_name: string;
   body: string;
+  is_deleted: boolean;
   card_anchor: number | null;
   created_at: string;
   edited_at: string | null;
+  can_edit: boolean;
+  can_delete: boolean;
+  reactions: CommentReaction[];
 }
 
 export interface AttendanceRow {
