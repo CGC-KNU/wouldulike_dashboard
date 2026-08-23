@@ -10,6 +10,7 @@ export interface WeekFolder {
   type_label: string;
   is_single_photo_type: boolean;
   sort_order: number;
+  caption_text: string;
   prompt_text: string;
   tone: string;
   font_label: string;
@@ -74,6 +75,7 @@ export interface AiDiagnostics {
   type: WeekType;
   openai_key_configured: boolean;
   prompt_text: string;
+  caption_text: string;
   tone: string;
   has_template_photo: boolean;
   figma_template_id: number | null;

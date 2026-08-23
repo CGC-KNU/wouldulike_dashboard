@@ -310,6 +310,7 @@ function WeekFolderCard({
   onChanged: () => void;
 }) {
   const [type, setType] = useState<WeekType>(week.type);
+  const [captionText, setCaptionText] = useState(week.caption_text);
   const [promptText, setPromptText] = useState(week.prompt_text);
   const [tone, setTone] = useState(week.tone);
   const [fontLabel, setFontLabel] = useState(week.font_label);
@@ -330,6 +331,7 @@ function WeekFolderCard({
 
   const dirty =
     type !== week.type ||
+    captionText !== week.caption_text ||
     promptText !== week.prompt_text ||
     tone !== week.tone ||
     fontLabel !== week.font_label ||
@@ -350,6 +352,7 @@ function WeekFolderCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type,
+          caption_text: captionText,
           prompt_text: promptText,
           tone,
           font_label: fontLabel,
@@ -562,10 +565,20 @@ function WeekFolderCard({
         )}
       </div>
 
+      {/* 배너에 실제로 찍히는 문구 — AI 지시문(prompt_text)과 분리(2026-08-24, RD 요청).
+          예전엔 한 칸이 캡션과 AI 지시문을 겸해서, AI 리터치 호출에 캡션 문구가 그대로
+          섞여 들어가 gpt-image-1이 그 문구를 사진에 실제로 그려 넣는 사고가 있었다. */}
+      <input
+        value={captionText}
+        onChange={(e) => setCaptionText(e.target.value)}
+        placeholder="배너 문구 — 배너에 실제로 찍히는 짧은 문구 (예: 비오는 날 뜨끈한 해물크림짬뽕 어떠세요?)"
+        maxLength={200}
+        className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 mt-1.5 focus:outline-none focus:border-periwinkle"
+      />
       <textarea
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
-        placeholder="공통 프롬프트 — 문구 톤/스타일 지시문 (모든 배너에 동일 적용)"
+        placeholder="AI 사진 보정 지시문 — 톤/분위기/효과 (여기는 문구가 아니라 사진에만 적용됩니다)"
         rows={2}
         className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 my-1.5 focus:outline-none focus:border-periwinkle resize-none"
       />
@@ -766,9 +779,14 @@ function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: (
       value: diag.openai_key_configured ? "설정됨" : "미설정",
     },
     {
-      label: "공통 프롬프트(prompt_text)",
+      label: "AI 사진 보정 지시문(prompt_text)",
       ok: !!diag.prompt_text.trim(),
       value: diag.prompt_text.trim() ? diag.prompt_text : "비어있음",
+    },
+    {
+      label: "배너 문구(caption_text)",
+      ok: !!diag.caption_text.trim(),
+      value: diag.caption_text.trim() || "비어있음 — 배너에 문구가 안 찍힘",
     },
     { label: "톤", ok: !!diag.tone.trim(), value: diag.tone.trim() || "미입력" },
     {
