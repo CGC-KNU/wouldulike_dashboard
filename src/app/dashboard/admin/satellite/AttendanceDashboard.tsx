@@ -16,16 +16,26 @@ interface Props {
   embedded?: boolean;
 }
 
+/** 오늘 기준 weekOffset(0=이번 주, -1=지난 주 ...)만큼 이동한, 그 주 안의 아무 날짜(YYYY-MM-DD).
+ * 백엔드 _week_bounds()가 이 날짜가 속한 주의 월~일을 알아서 계산하므로 정확히
+ * 월요일일 필요는 없다. */
+function weekAnchorDate(weekOffset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + weekOffset * 7);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function AttendanceDashboard({ onClose, embedded = false }: Props) {
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
     try {
-      const res = await fetch("/api/satellite/attendance");
+      const res = await fetch(`/api/satellite/attendance?week_start=${weekAnchorDate(weekOffset)}`);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErr(d.detail ?? `불러오지 못했습니다 (${res.status})`);
@@ -38,7 +48,7 @@ export default function AttendanceDashboard({ onClose, embedded = false }: Props
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [weekOffset]);
 
   useEffect(() => {
     load();
@@ -46,8 +56,8 @@ export default function AttendanceDashboard({ onClose, embedded = false }: Props
 
   const body = (
     <>
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
-        <div>
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0 gap-2">
+        <div className="min-w-0">
           <h2 className="text-sm font-bold text-gray-800">근태</h2>
           {data && (
             <p className="text-[11px] text-gray-400 mt-0.5">
@@ -55,6 +65,36 @@ export default function AttendanceDashboard({ onClose, embedded = false }: Props
             </p>
           )}
         </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setWeekOffset((v) => v - 1)}
+            aria-label="지난 주"
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M15 19L9 12l6-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {weekOffset !== 0 && (
+            <button
+              onClick={() => setWeekOffset(0)}
+              className="text-[10px] font-semibold text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded-lg hover:bg-gray-50"
+            >
+              이번 주
+            </button>
+          )}
+          <button
+            onClick={() => setWeekOffset((v) => v + 1)}
+            aria-label="다음 주"
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors active:scale-90"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M9 19l6-7-6-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+
         {!embedded && (
           <button
             onClick={onClose}

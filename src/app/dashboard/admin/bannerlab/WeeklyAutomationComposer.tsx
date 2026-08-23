@@ -342,7 +342,7 @@ function WeekFolderCard({
     included.size !== week.included_restaurant_ids.length ||
     [...included].some((id) => !week.included_restaurant_ids.includes(id));
 
-  async function save() {
+  async function save(): Promise<boolean> {
     setSaving(true);
     try {
       const res = await fetch(`/api/bannerlab/weekly/weeks/${week.id}`, {
@@ -364,9 +364,10 @@ function WeekFolderCard({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(data.detail ?? "저장에 실패했습니다.");
-        return;
+        return false;
       }
       onChanged();
+      return true;
     } finally {
       setSaving(false);
     }
@@ -455,8 +456,17 @@ function WeekFolderCard({
    * 시도라도 될 조건인지(OPENAI_API_KEY·prompt_text) 공짜로 미리 확인하는 버튼.
    * 백엔드 WeekAIDiagnosticsView는 이미 있었는데 이 버튼이 없어서 아무도 못 쓰고
    * 있었다 (2026-08-23 마무리).
+   *
+   * 진단은 서버(DB)에 저장된 값을 본다 — 화면에 프롬프트를 막 입력만 하고 "저장"을
+   * 안 누른 채 이 버튼을 누르면 아직 반영 안 된 옛 값(예: 빈 prompt_text)을 보고
+   * "비어있음"이라고 잘못 알려주는 문제가 있었다(2026-08-24, RD 보고). 그래서 dirty
+   * 상태면 진단 전에 먼저 조용히 저장부터 한다.
    */
   async function checkAiDiagnostics() {
+    if (dirty) {
+      const ok = await save();
+      if (!ok) return; // 저장 실패했으면 옛 값으로 진단해봐야 의미 없다
+    }
     setCheckingAiDiag(true);
     try {
       const res = await fetch(`/api/bannerlab/weekly/weeks/${week.id}/ai-diagnostics`);
@@ -558,7 +568,7 @@ function WeekFolderCard({
         onChange={(e) => setPromptText(e.target.value)}
         placeholder="공통 프롬프트 — 문구 톤/스타일 지시문 (모든 배너에 동일 적용)"
         rows={2}
-        className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle resize-none"
+        className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 my-1.5 focus:outline-none focus:border-periwinkle resize-none"
       />
       <div className="flex items-center gap-1.5">
         <input
@@ -652,37 +662,41 @@ function WeekFolderCard({
                 </p>
               )}
               {paidRestaurants.map((r) => (
-                <label key={r.restaurant_id} className="flex items-center gap-1.5 text-[10px] px-1 py-1">
-                  <input
-                    type="checkbox"
-                    checked={isChecked(r)}
-                    onChange={() => toggleRestaurant(r)}
-                    className="accent-periwinkle shrink-0"
-                  />
-                  <span
-                    className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
-                      r.is_paid ? TIER_BADGE[r.tier ?? ""] ?? "bg-periwinkle/10 text-periwinkle" : "bg-gray-100 text-gray-400"
-                    }`}
-                  >
-                    {r.is_paid ? r.tier ?? "유료" : "무료"}
-                  </span>
-                  <span className="truncate flex-1">{r.name}</span>
-                  {/* 소재 사진 리스트 — "첫 번째 등록 사진이 안 불러와진다"는 문제를 눈으로 바로 확인할 수 있게 전부 보여준다 */}
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    {r.photos.length === 0 && <span className="text-[9px] text-red-400">사진 없음</span>}
-                    {r.photos.slice(0, 3).map((url, i) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={i}
-                        src={url}
-                        alt=""
-                        title={i === 0 ? "소재 사진(자동 사용됨)" : "등록된 사진"}
-                        className={`w-5 h-5 rounded object-cover shrink-0 ${i === 0 ? "ring-1 ring-periwinkle" : "opacity-60"}`}
-                      />
-                    ))}
-                    {r.photos.length > 3 && <span className="text-[9px] text-gray-300">+{r.photos.length - 3}</span>}
-                  </div>
-                </label>
+                <div key={r.restaurant_id} className="flex flex-col gap-1 px-1 py-1.5 border-b border-gray-50 last:border-0">
+                  <label className="flex items-center gap-1.5 text-[10px]">
+                    <input
+                      type="checkbox"
+                      checked={isChecked(r)}
+                      onChange={() => toggleRestaurant(r)}
+                      className="accent-periwinkle shrink-0"
+                    />
+                    <span
+                      className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        r.is_paid ? TIER_BADGE[r.tier ?? ""] ?? "bg-periwinkle/10 text-periwinkle" : "bg-gray-100 text-gray-400"
+                      }`}
+                    >
+                      {r.is_paid ? r.tier ?? "유료" : "무료"}
+                    </span>
+                    <span className="truncate flex-1">{r.name}</span>
+                    {r.photos.length === 0 && <span className="text-[9px] text-red-400 shrink-0">사진 없음</span>}
+                  </label>
+                  {/* 소재 사진 리스트 — "첫 번째 등록 사진이 안 불러와진다"는 문제를 눈으로 바로 확인할 수 있게
+                      전부 보여준다. 가로 폭에 안 들어가면 잘라서 숨기지 않고 옆으로 슬라이드해서 본다. */}
+                  {r.photos.length > 0 && (
+                    <div className="flex items-center gap-1 overflow-x-auto pl-5 pb-0.5">
+                      {r.photos.map((url, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={i}
+                          src={url}
+                          alt=""
+                          title={i === 0 ? "소재 사진(자동 사용됨)" : "등록된 사진"}
+                          className={`w-20 h-20 rounded-lg object-cover shrink-0 ${i === 0 ? "ring-2 ring-periwinkle" : "opacity-60"}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -707,11 +721,15 @@ function WeekFolderCard({
           </button>
           <button
             onClick={checkAiDiagnostics}
-            disabled={checkingAiDiag}
-            title="OpenAI를 실제로 호출하지 않고, AI 후보가 시도될 조건인지만 무료로 확인합니다"
+            disabled={checkingAiDiag || saving}
+            title={
+              dirty
+                ? "OpenAI 호출 없이 무료로 확인합니다 — 저장 안 된 변경사항이 있어 먼저 저장한 뒤 진단합니다"
+                : "OpenAI를 실제로 호출하지 않고, AI 후보가 시도될 조건인지만 무료로 확인합니다"
+            }
             className="text-[10px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 disabled:opacity-30"
           >
-            {checkingAiDiag ? "확인 중..." : "AI 진단 (무료)"}
+            {checkingAiDiag || (saving && dirty) ? "확인 중..." : "AI 진단 (무료)"}
           </button>
         </div>
         <button
@@ -950,18 +968,18 @@ function PhotoSlot({
   return (
     <div className="flex items-center gap-2">
       {url ? (
-        <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-gray-100 group shrink-0">
+        <div className="relative w-36 h-36 rounded-lg overflow-hidden bg-gray-100 group shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={url} alt="" className="w-full h-full object-cover" />
           <button
             onClick={onRemove}
-            className="absolute top-0 right-0 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] opacity-0 group-hover:opacity-100"
+            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100"
           >
             ×
           </button>
         </div>
       ) : (
-        <label className="w-12 h-12 shrink-0 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-[9px] text-periwinkle cursor-pointer">
+        <label className="w-36 h-36 shrink-0 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-xs text-periwinkle cursor-pointer">
           {uploading ? "..." : "+ 사진"}
           <input
             type="file"
