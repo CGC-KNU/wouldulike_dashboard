@@ -144,13 +144,17 @@ export default function PlanEditor({
     }
   }
 
-  /** 캡션은 타이핑이 멈추면 자동 저장한다 — 로컬 상태가 이미 최신이라 detail 재조회는 하지 않는다. */
+  /** 캡션은 타이핑이 멈추면 자동 저장한다 — 캡션 자체는 로컬 상태가 최신이라 되돌리지
+   * 않지만(preserveCaption), validation 등 나머지 필드는 저장 뒤 조용히 다시 불러와야
+   * "발행 전 확인" 경고와 준비완료 버튼이 최신 상태를 반영한다. */
   function onCaptionChange(v: string) {
     setCaption(v);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (countHashtags(v) <= (plan?.limits.max_hashtags ?? 5)) {
-        patch({ caption: v }, true);
+        patch({ caption: v }, true).then((ok) => {
+          if (ok) load({ preserveCaption: true, silent: true });
+        });
       }
     }, 800);
   }
@@ -965,7 +969,9 @@ export default function PlanEditor({
                     onBlur={() =>
                       patch({
                         desired_publish_at: publishAt ? new Date(publishAt).toISOString() : null,
-                      }, true)
+                      }, true).then((ok) => {
+                        if (ok) load({ preserveCaption: true, silent: true });
+                      })
                     }
                     disabled={!plan.can_edit}
                     className="flex-1 text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-periwinkle disabled:bg-gray-50"
@@ -975,7 +981,9 @@ export default function PlanEditor({
                       const d = new Date(plan.scheduled_date + "T15:00");
                       const v = toLocalInput(d.toISOString());
                       setPublishAt(v);
-                      patch({ desired_publish_at: d.toISOString() }, true);
+                      patch({ desired_publish_at: d.toISOString() }, true).then((ok) => {
+                        if (ok) load({ preserveCaption: true, silent: true });
+                      });
                     }}
                     disabled={!plan.can_edit}
                     className="px-3 text-[11px] font-semibold text-periwinkle border border-periwinkle/25 rounded-xl hover:bg-periwinkle/5 disabled:opacity-40"
