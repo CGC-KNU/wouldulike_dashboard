@@ -349,7 +349,7 @@ export default function PlanTable({
                       >
                         {actionLabel(p)}
                       </button>
-                      {editable && p.status !== "published" && (
+                      {(p.status === "published" ? isLead : editable) && (
                         <button
                           onClick={() => setDeleteTarget(p)}
                           aria-label="삭제"
@@ -567,6 +567,13 @@ function DeleteConfirmModal({
             <h4 className="text-sm font-bold text-red-600 mb-1.5">정말 삭제할까요?</h4>
             <p className="text-xs text-gray-500 leading-relaxed">
               한 번 더 확인합니다. &ldquo;{plan.topic || "(미정)"}&rdquo;이 캘린더·주제표에서 사라집니다.
+              {plan.status === "published" && (
+                <>
+                  <br />
+                  이미 발행완료된 콘텐츠입니다 — 소프트 삭제라 지금까지 쌓인 성과 데이터는
+                  그대로 남고, 이 목록에서만 사라집니다.
+                </>
+              )}
               <br />
               필요하면 설정 → <span className="font-medium text-gray-700">삭제된 매거진 주제</span>에서 나중에 복구할 수 있습니다.
             </p>
