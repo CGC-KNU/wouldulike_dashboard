@@ -526,7 +526,7 @@ export default function PlanTable({
  * 실제로는 소프트 삭제라 설정 → "삭제된 매거진 주제"에서 복구할 수 있다는
  * 것도 함께 안내한다.
  */
-function DeleteConfirmModal({
+export function DeleteConfirmModal({
   plan,
   onCancel,
   onConfirmed,

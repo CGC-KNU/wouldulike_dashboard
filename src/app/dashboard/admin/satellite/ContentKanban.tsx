@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DeleteConfirmModal } from "./PlanTable";
 import PlanEditor from "./PlanEditor";
-import { KanbanResponse, MEDIA_META, MediaType, SatelliteMember, ownerColor } from "./types";
+import { ContentPlan, KanbanResponse, MEDIA_META, MediaType, SatelliteMember, ownerColor } from "./types";
 
 /**
  * 콘텐츠 칸반 (통합 업무 관리 기획안 §5) — 업무 목록 / 피드백 대기 / 완료.
@@ -25,17 +26,20 @@ export default function ContentKanban({
   isLead,
   today,
   onCreate,
+  onDelete,
 }: {
   members: SatelliteMember[];
   viewerAccountId: number | null;
   isLead: boolean;
   today: string;
   onCreate: (body: Record<string, unknown>) => Promise<boolean>;
+  onDelete: (id: number) => Promise<void>;
 }) {
   const [data, setData] = useState<KanbanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [openPlanId, setOpenPlanId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContentPlan | null>(null);
 
   const [adding, setAdding] = useState(false);
   const [newDate, setNewDate] = useState(today);
@@ -126,6 +130,12 @@ export default function ContentKanban({
     } catch {
       alert("네트워크 오류");
     }
+  }
+
+  /** 발행완료는 리드만, 그 외는 리드 또는 본인 담당만 — 백엔드 delete() 규칙과 동일(§0-15). */
+  function canDelete(p: ContentPlan): boolean {
+    if (p.status === "published") return isLead;
+    return isLead || (viewerAccountId !== null && (p.owner_id === viewerAccountId || p.shoot_owner_id === viewerAccountId));
   }
 
   const showInitialSpinner = loading && !data;
@@ -235,28 +245,45 @@ export default function ContentKanban({
                   {col.cards.map((p) => {
                     const c = ownerColor(p.owner_id);
                     const draggableHere = DRAGGABLE_STAGES.has(col.key);
+                    const deletable = canDelete(p);
                     return (
-                      <button
-                        key={p.id}
-                        draggable={draggableHere}
-                        onDragStart={(e) => {
-                          if (!draggableHere) return;
-                          e.dataTransfer.setData("text/plan-id", String(p.id));
-                          e.dataTransfer.setData("text/plan-stage", col.key);
-                        }}
-                        onClick={() => setOpenPlanId(p.id)}
-                        className={`text-left rounded-xl border border-gray-100 hover:border-periwinkle/40 hover:bg-periwinkle/5 transition-colors px-2.5 py-2 ${
-                          draggableHere ? "cursor-grab active:cursor-grabbing" : ""
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 shrink-0 ${c.chip}`}>
-                            {p.owner_name}
-                          </span>
-                          <span className="text-[10px] text-gray-400 shrink-0">{MEDIA_META[p.media_type].label}</span>
-                        </div>
-                        <p className="text-xs text-gray-700 truncate">{p.topic || "(주제 미정)"}</p>
-                      </button>
+                      <div key={p.id} className="relative group">
+                        <button
+                          draggable={draggableHere}
+                          onDragStart={(e) => {
+                            if (!draggableHere) return;
+                            e.dataTransfer.setData("text/plan-id", String(p.id));
+                            e.dataTransfer.setData("text/plan-stage", col.key);
+                          }}
+                          onClick={() => setOpenPlanId(p.id)}
+                          className={`w-full text-left rounded-xl border border-gray-100 hover:border-periwinkle/40 hover:bg-periwinkle/5 transition-colors px-2.5 py-2 ${
+                            deletable ? "pr-7" : ""
+                          } ${draggableHere ? "cursor-grab active:cursor-grabbing" : ""}`}
+                        >
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 shrink-0 ${c.chip}`}>
+                              {p.owner_name}
+                            </span>
+                            <span className="text-[10px] text-gray-400 shrink-0">{MEDIA_META[p.media_type].label}</span>
+                          </div>
+                          <p className="text-xs text-gray-700 truncate">{p.topic || "(주제 미정)"}</p>
+                        </button>
+                        {deletable && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(p);
+                            }}
+                            aria-label="삭제"
+                            title="삭제"
+                            className="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-md text-gray-300 opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -272,6 +299,18 @@ export default function ContentKanban({
           initialTab="content"
           onClose={() => setOpenPlanId(null)}
           onChanged={() => load({ soft: true })}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteConfirmModal
+          plan={deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirmed={async () => {
+            await onDelete(deleteTarget.id);
+            setDeleteTarget(null);
+            load({ soft: true });
+          }}
         />
       )}
     </div>

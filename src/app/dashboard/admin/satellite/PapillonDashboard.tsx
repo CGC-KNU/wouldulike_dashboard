@@ -618,6 +618,7 @@ export default function PapillonDashboard() {
                   isLead={isLead}
                   today={today}
                   onCreate={create}
+                  onDelete={remove}
                 />
               </MainSection>
             );
