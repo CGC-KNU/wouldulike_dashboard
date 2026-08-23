@@ -3,22 +3,45 @@
 import { useCallback, useEffect, useState } from "react";
 
 import PlanEditor from "./PlanEditor";
-import { KanbanResponse, MEDIA_META, ownerColor } from "./types";
+import { KanbanResponse, MEDIA_META, MediaType, SatelliteMember, ownerColor } from "./types";
 
 /**
  * 콘텐츠 칸반 (통합 업무 관리 기획안 §5) — 업무 목록 / 피드백 대기 / 완료.
  *
- * 협찬은 여기 없다 — Sponsorship 으로 완전히 분리됐다(§2-2, "협찬" 사이드바 메뉴 참고).
- * 상태 전이가 전부 자동이라(§6①② — 담당자가 에디터에서 작업물 등록을 마치면 자동으로
- * 피드백 대기, 업로드 예정 시간이 되면 자동으로 완료) 드래그앤드롭이 필요 없다. 카드를
- * 클릭하면 항상 "콘텐츠 피드백" 탭으로 PlanEditor 가 열린다 — 본인 담당 건이면 그 안에서
- * "에디터" 탭으로 직접 넘어갈 수 있고, 비담당자는 피드백만 남길 수 있다(§7·§8).
+ * 협찬은 여기 없다 — Sponsorship 으로 완전히 분리됐다(§2-2, "협찬" 사이드바 메뉴 참고,
+ * 2026-08-23부터 메인 화면 맨 위에도 표시됨).
+ *
+ * 상태 전이(업무목록→피드백대기→완료)는 전부 자동이다(§6①② — 담당자가 에디터에서
+ * 작업물 등록을 마치면 자동으로 피드백 대기, 업로드 예정 시간이 되면 자동으로 완료) —
+ * 그래서 컬럼 간 드래그로 상태를 옮기는 기능은 없다. 카드를 클릭하면 PlanEditor 가
+ * "에디터" 탭으로 열리는 걸 우선 시도한다 — 본인 담당 건이 아니면 PlanEditor 자체의
+ * 안전장치가 "콘텐츠 피드백" 탭으로 되돌린다(§7·§8).
  */
-export default function ContentKanban() {
+export default function ContentKanban({
+  members,
+  viewerAccountId,
+  isLead,
+  today,
+  onCreate,
+}: {
+  members: SatelliteMember[];
+  viewerAccountId: number | null;
+  isLead: boolean;
+  today: string;
+  onCreate: (body: Record<string, unknown>) => Promise<boolean>;
+}) {
   const [data, setData] = useState<KanbanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [openPlanId, setOpenPlanId] = useState<number | null>(null);
+
+  const [adding, setAdding] = useState(false);
+  const [newDate, setNewDate] = useState(today);
+  const [newTopic, setNewTopic] = useState("");
+  const [newOwner, setNewOwner] = useState<number | "">(viewerAccountId ?? "");
+  const [newMedia, setNewMedia] = useState<MediaType>("carousel");
+  const [creating, setCreating] = useState(false);
+  const activeMembers = members.filter((m) => m.is_active);
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (!opts?.soft) setLoading(true);
@@ -42,17 +65,103 @@ export default function ContentKanban() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (viewerAccountId && newOwner === "") setNewOwner(viewerAccountId);
+  }, [viewerAccountId, newOwner]);
+
+  async function submitNew() {
+    if (!newDate) return;
+    setCreating(true);
+    try {
+      const ok = await onCreate({
+        scheduled_date: newDate,
+        topic: newTopic.trim(),
+        owner_id: newOwner || undefined,
+        media_type: newMedia,
+      });
+      if (ok) {
+        setNewTopic("");
+        setAdding(false);
+        load({ soft: true });
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
   const showInitialSpinner = loading && !data;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-50">
-          <h2 className="text-sm font-bold text-gray-800">콘텐츠 칸반</h2>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            업무 목록 → 피드백 대기 → 완료 — 상태는 자동으로 넘어갑니다. 카드를 클릭하면 열람·피드백 화면이 열립니다.
-          </p>
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-800">콘텐츠 칸반</h2>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              업무 목록 → 피드백 대기 → 완료 — 상태는 자동으로 넘어갑니다. 카드를 클릭하면 열람·피드백 화면이 열립니다.
+            </p>
+          </div>
+          <button
+            onClick={() => setAdding((v) => !v)}
+            className="shrink-0 text-[11px] font-bold text-white bg-periwinkle rounded-lg px-3 py-2 hover:opacity-90 active:scale-95 transition-all"
+          >
+            {adding ? "취소" : "+ 새 콘텐츠"}
+          </button>
         </div>
+
+        {adding && (
+          <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/60 flex flex-col md:flex-row gap-2">
+            <input
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle md:w-40"
+            />
+            <input
+              type="text"
+              autoFocus
+              value={newTopic}
+              onChange={(e) => setNewTopic(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitNew();
+                if (e.key === "Escape") setAdding(false);
+              }}
+              placeholder="주제 (나중에 채워도 됩니다)"
+              className="flex-1 min-w-0 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle placeholder:text-gray-300"
+            />
+            <select
+              value={newOwner}
+              onChange={(e) => setNewOwner(Number(e.target.value))}
+              disabled={!isLead}
+              className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle disabled:bg-gray-100 disabled:text-gray-400 md:w-32"
+            >
+              {activeMembers.length === 0 && <option value="">계정 없음</option>}
+              {activeMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.display_name || m.username}
+                </option>
+              ))}
+            </select>
+            <select
+              value={newMedia}
+              onChange={(e) => setNewMedia(e.target.value as MediaType)}
+              className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle md:w-28"
+            >
+              {(Object.keys(MEDIA_META) as MediaType[]).map((k) => (
+                <option key={k} value={k}>
+                  {MEDIA_META[k].label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={submitNew}
+              disabled={creating}
+              className="shrink-0 text-[11px] font-semibold text-white bg-periwinkle rounded-lg px-3 py-2 hover:bg-navy transition-colors disabled:opacity-50"
+            >
+              {creating ? "등록 중..." : "등록"}
+            </button>
+          </div>
+        )}
 
         {showInitialSpinner && <p className="text-[11px] text-gray-300 text-center py-8">불러오는 중...</p>}
         {!showInitialSpinner && err && !data && (
@@ -101,7 +210,7 @@ export default function ContentKanban() {
       {openPlanId !== null && (
         <PlanEditor
           planId={openPlanId}
-          initialTab="detail"
+          initialTab="content"
           onClose={() => setOpenPlanId(null)}
           onChanged={() => load({ soft: true })}
         />

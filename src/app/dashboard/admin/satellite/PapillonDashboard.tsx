@@ -7,6 +7,7 @@ import LockApprovalQueue from "./LockApprovalQueue";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
 import PlanTable from "./PlanTable";
+import SponsorshipList from "./SponsorshipList";
 import { ContentPlan, MyWeek, PlansResponse, SatelliteMember, fmtMD } from "./types";
 
 /**
@@ -165,6 +166,7 @@ export default function PapillonDashboard() {
   const [errors, setErrors] = useState<LoadError[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
+  const [editorInitialTab, setEditorInitialTab] = useState<"detail" | "content">("detail");
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
   const [sectionOrder, setSectionOrder] = useState<MainSectionKey[]>(DEFAULT_MAIN_SECTION_ORDER);
 
@@ -380,10 +382,14 @@ export default function PapillonDashboard() {
 
   /**
    * 콘텐츠 클릭 시 라우팅 (설계서 §07-2 · Papillon §1.2)
-   *   내 것(편집/촬영 담당)  → 에디터
+   *   내 것(편집/촬영 담당)  → 에디터 (바로 "에디터" 탭으로, RD 요청 2026-08-23)
    *   남의 것(draft)         → 진입 불가
    *   남의 것(ready↑)        → 상세 (지금은 에디터가 읽기 전용으로 뜬다 = 콘텐츠 피드백)
-   *   리드                   → 항상 진입 가능
+   *   리드                   → 항상 진입 가능, 본인 담당이 아니면 "콘텐츠 피드백"부터
+   *
+   * isMine 판정이 실제 서버 권한(plan.can_edit)과 어긋나는 극단적인 경우에도, PlanEditor
+   * 자체가 !can_edit 이면 "에디터" 탭에서 "콘텐츠 피드백"으로 되돌리는 안전장치를 갖고
+   * 있어(§0-9 근처 useEffect) 여기서는 낙관적으로 판단해도 된다.
    */
   function openPlan(plan: ContentPlan) {
     const isMine =
@@ -392,6 +398,7 @@ export default function PapillonDashboard() {
       alert("아직 작업 중입니다.\n\n담당자가 준비완료로 바꾸면 열람하고 피드백할 수 있습니다.");
       return;
     }
+    setEditorInitialTab(isMine ? "content" : "detail");
     setEditorPlanId(plan.id);
   }
 
@@ -407,6 +414,10 @@ export default function PapillonDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* 협찬 목록 — 콘텐츠 칸반과 완전히 분리된 모델이라(통합 업무 관리 기획안 §2·§4)
+          리스트·칸반·캘린더 순서조정 대상에 안 넣고 메인 화면 맨 위에 항상 고정한다. */}
+      <SponsorshipList />
+
       {/* 이번 주 내 몫 배너 — 근태의 1차 방어선 */}
       {myWeek?.has_account && (
         <div
@@ -601,7 +612,13 @@ export default function PapillonDashboard() {
           if (key === "kanban") {
             return (
               <MainSection key="kanban" sectionKey="kanban" order={sectionOrder} onMove={moveSection}>
-                <ContentKanban />
+                <ContentKanban
+                  members={members}
+                  viewerAccountId={viewerAccountId}
+                  isLead={isLead}
+                  today={today}
+                  onCreate={create}
+                />
               </MainSection>
             );
           }
@@ -629,6 +646,7 @@ export default function PapillonDashboard() {
       {editorPlanId !== null && (
         <PlanEditor
           planId={editorPlanId}
+          initialTab={editorInitialTab}
           onClose={() => setEditorPlanId(null)}
           onChanged={afterEditorChange}
         />

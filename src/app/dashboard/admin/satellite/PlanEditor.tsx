@@ -592,6 +592,44 @@ export default function PlanEditor({
                         </p>
                       </div>
                     </div>
+                    {plan.assets.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-50">
+                        <p className="text-[10px] text-gray-400 font-semibold mb-1.5">
+                          등록된 콘텐츠 · {plan.assets.length}장
+                        </p>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {[...plan.assets]
+                            .sort((a, b) => a.sort_order - b.sort_order)
+                            .map((a: PlanAsset) => (
+                              <div
+                                key={a.id}
+                                className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-gray-100 bg-gray-50"
+                              >
+                                {a.kind === "video" ? (
+                                  <video
+                                    src={a.preview_url}
+                                    className="w-full h-full object-cover"
+                                    muted
+                                    playsInline
+                                  />
+                                ) : (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={a.preview_url}
+                                    alt={a.alt_text || `카드 ${a.sort_order + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                )}
+                                {a.kind === "video" && (
+                                  <span className="absolute bottom-1 right-1 text-[9px] font-bold text-white bg-black/50 rounded px-1">
+                                    ▶
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                     {plan.caption && (
                       <div className="mt-3 pt-3 border-t border-gray-50">
                         <p className="text-[10px] text-gray-400 font-semibold mb-1">캡션</p>
