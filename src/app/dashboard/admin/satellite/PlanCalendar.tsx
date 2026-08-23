@@ -6,8 +6,10 @@ import {
   ContentPlan,
   DAY_KR,
   MEDIA_META,
+  SPONSORSHIP_STATUS_META,
   SatelliteMember,
   STATUS_META,
+  Sponsorship,
   ownerColor,
 } from "./types";
 
@@ -17,15 +19,38 @@ function fmtISO(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** 협찬 배지 — ContentPlan 카드(담당자색 · 상태점)와 확실히 다르게, 항상 호박색 톤 하나로 통일. */
+function SponsorBadge({ s, compact }: { s: Sponsorship; compact?: boolean }) {
+  const st = SPONSORSHIP_STATUS_META[s.status];
+  const hh = new Date(s.shoot_datetime).getHours();
+  const mm = new Date(s.shoot_datetime).getMinutes();
+  const time = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  return (
+    <div
+      title={`협찬 촬영 · ${s.store_name} · ${time} · ${s.shoot_owner_name || "담당 미정"} · ${st.label}`}
+      className={`w-full rounded-md px-1.5 ${compact ? "py-1" : "py-0.5"} border ${st.cls} flex items-center gap-1`}
+    >
+      <span className="text-[8px] shrink-0">📸</span>
+      <span className={`truncate ${compact ? "text-[10px]" : "text-[9px]"} font-semibold`}>{s.store_name}</span>
+    </div>
+  );
+}
+
 /**
  * 월간 캘린더 — 주제표와 같은 데이터(ContentPlan)의 두 번째 얼굴.
  * 표는 입력·목록·중복 확인에 강하고, 캘린더는 분포 파악에 강하다. (설계서 §07-1)
+ *
+ * 협찬(Sponsorship)은 콘텐츠 칸반과 완전히 다른 개념(식당 촬영 일정 vs 콘텐츠 발행)
+ * 이라 데이터·UI 모두 분리돼 있지만(§0-1 Phase 2), "등록하면 캘린더에는 둘 다
+ * 표기돼야 한다"는 요구사항(2026-08-23)에 따라 이 캘린더 하나에서는 같이 보여준다 —
+ * 다만 시각적으로 섞이지 않도록 ContentPlan 카드와는 다른(호박색) 배지로 구분한다.
  */
 export default function PlanCalendar({
   year,
   month,
   today,
   plans,
+  sponsorships,
   members,
   viewerAccountId,
   isLead,
@@ -39,6 +64,7 @@ export default function PlanCalendar({
   month: number;
   today: string;
   plans: ContentPlan[];
+  sponsorships: Sponsorship[];
   members: SatelliteMember[];
   viewerAccountId?: number | null;
   isLead?: boolean;
@@ -122,6 +148,15 @@ export default function PlanCalendar({
     byDate.set(p.scheduled_date, arr);
   });
 
+  // shoot_datetime 은 시각 포함 ISO 문자열이라 로컬 날짜만 뽑아서 같은 방식(fmtISO)으로 버킷.
+  const byDateSponsor = new Map<string, Sponsorship[]>();
+  sponsorships.forEach((s) => {
+    const ds = fmtISO(new Date(s.shoot_datetime));
+    const arr = byDateSponsor.get(ds) ?? [];
+    arr.push(s);
+    byDateSponsor.set(ds, arr);
+  });
+
   // 이 달에 등장한 담당자만 범례에 표시
   const activeOwnerIds = Array.from(new Set(plans.map((p) => p.owner_id)));
   const memberById = new Map(members.map((m) => [m.id, m]));
@@ -197,6 +232,7 @@ export default function PlanCalendar({
               const ds = fmtISO(d);
               const inLoadedMonth = d.getFullYear() === year && d.getMonth() + 1 === month;
               const dayPlans = inLoadedMonth ? byDate.get(ds) ?? [] : [];
+              const daySponsors = inLoadedMonth ? byDateSponsor.get(ds) ?? [] : [];
               const isToday = ds === today;
               return (
                 <div
@@ -232,10 +268,13 @@ export default function PlanCalendar({
 
                   {!inLoadedMonth ? (
                     <p className="text-[9px] text-gray-300 text-center py-4">다른 달 · 그 달로 이동해 확인</p>
-                  ) : dayPlans.length === 0 ? (
+                  ) : dayPlans.length === 0 && daySponsors.length === 0 ? (
                     <p className="text-[9px] text-gray-200 text-center py-4">등록 없음</p>
                   ) : (
                     <div className="flex flex-col gap-1">
+                      {daySponsors.map((s) => (
+                        <SponsorBadge key={`s-${s.id}`} s={s} compact />
+                      ))}
                       {dayPlans.map((p) => {
                         const c = ownerColor(p.owner_id);
                         const st = STATUS_META[p.status];
@@ -294,6 +333,7 @@ export default function PlanCalendar({
                 if (!day) return <div key={di} className="min-h-[68px]" />;
                 const ds = dateStr(day);
                 const dayPlans = byDate.get(ds) ?? [];
+                const daySponsors = byDateSponsor.get(ds) ?? [];
                 const isToday = ds === today;
 
                 return (
@@ -328,6 +368,9 @@ export default function PlanCalendar({
                       {isToday && <span className="w-1.5 h-1.5 rounded-full bg-periwinkle" />}
                     </div>
 
+                    {daySponsors.map((s) => (
+                      <SponsorBadge key={`s-${s.id}`} s={s} />
+                    ))}
                     {dayPlans.map((p) => {
                       const c = ownerColor(p.owner_id);
                       const st = STATUS_META[p.status];
@@ -377,7 +420,9 @@ export default function PlanCalendar({
                   </div>
                 );
               })}
-              <span className="text-[10px] text-gray-300 ml-auto">블록을 끌어 날짜를 옮길 수 있습니다 · 클릭하면 바로 작업 화면으로 이동합니다</span>
+              <span className="text-[10px] text-gray-300 ml-auto">
+                📸 는 협찬 촬영 일정입니다(콘텐츠와 별개) · 블록을 끌어 날짜를 옮길 수 있습니다 · 클릭하면 바로 작업 화면으로 이동합니다
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {(

@@ -629,6 +629,7 @@ export default function PapillonDashboard() {
                 month={month}
                 today={today}
                 plans={data.plans}
+                sponsorships={data.sponsorships ?? []}
                 members={members}
                 viewerAccountId={viewerAccountId}
                 isLead={isLead}
