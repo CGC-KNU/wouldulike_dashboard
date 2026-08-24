@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { PreviewableImg } from "@/components/ImagePreview";
 import { BannerRatio } from "./types";
 import {
   AiDiagnostics,
@@ -685,12 +686,11 @@ function WeekFolderCard({
                   {r.photos.length > 0 && (
                     <div className="flex items-center gap-1 overflow-x-auto pl-5 pb-0.5">
                       {r.photos.map((url, i) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <PreviewableImg
                           key={i}
                           src={url}
                           alt=""
-                          title={i === 0 ? "소재 사진(자동 사용됨)" : "등록된 사진"}
+                          title={i === 0 ? "소재 사진(자동 사용됨) — 클릭하면 크게 봅니다" : "등록된 사진 — 클릭하면 크게 봅니다"}
                           className={`w-20 h-20 rounded-lg object-cover shrink-0 ${i === 0 ? "ring-2 ring-periwinkle" : "opacity-60"}`}
                         />
                       ))}
@@ -996,16 +996,14 @@ function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: ()
             {target.restaurant_photos!.map((url) => {
               const selected = photoUrl === url;
               return (
-                <button
+                <PreviewableImg
                   key={url}
-                  type="button"
+                  src={url}
+                  alt=""
+                  title={selected ? "이 컷으로 생성" : "이 사진 선택 · 클릭하면 크게 봅니다"}
                   onClick={() => setPhotoUrl(url)}
-                  className={`relative shrink-0 rounded-lg overflow-hidden ${selected ? "ring-2 ring-periwinkle" : "opacity-70 hover:opacity-100"}`}
-                  title={selected ? "이 컷으로 생성" : "이 사진 선택"}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="w-14 h-14 object-cover" />
-                </button>
+                  className={`w-14 h-14 object-cover rounded-lg shrink-0 ${selected ? "ring-2 ring-periwinkle" : "opacity-70 hover:opacity-100"}`}
+                />
               );
             })}
           </div>
@@ -1017,8 +1015,7 @@ function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: ()
         {target.candidates.map((c) => (
           <div key={c.id} className="relative shrink-0">
             {c.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <PreviewableImg
                 src={c.image_url}
                 alt=""
                 className={`w-16 h-16 rounded-lg object-cover ${c.selected ? "ring-2 ring-periwinkle" : ""}`}
@@ -1101,8 +1098,7 @@ function PhotoSlot({
     <div className="flex items-center gap-2">
       {url ? (
         <div className="relative w-36 h-36 rounded-lg overflow-hidden bg-gray-100 group shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={url} alt="" className="w-full h-full object-cover" />
+          <PreviewableImg src={url} alt="" className="w-full h-full object-cover" />
           <button
             onClick={onRemove}
             className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100"
@@ -1122,6 +1118,46 @@ function PhotoSlot({
         </label>
       )}
       <p className="text-[10px] text-gray-400 flex-1">{label}</p>
+    </div>
+  );
+}
+
+/** GET .../figma-templates/<pk>/inspect/ 가 돌려주는 노드 트리 — 진단용 구조 확인. */
+interface FigmaNode {
+  id?: string;
+  name?: string;
+  type?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  characters?: string;
+  font_size?: number;
+  align?: string;
+  color?: string;
+  has_image_fill?: boolean;
+  children?: FigmaNode[];
+}
+
+function FigmaNodeView({ node, depth }: { node: FigmaNode; depth: number }) {
+  const box =
+    node.width != null && node.height != null
+      ? `${Math.round(node.x ?? 0)},${Math.round(node.y ?? 0)} ${Math.round(node.width)}×${Math.round(node.height)}`
+      : "";
+  return (
+    <div style={{ marginLeft: depth * 12 }} className="text-[10px] leading-relaxed">
+      <span className="font-semibold text-gray-700">{node.name || "(이름없음)"}</span>{" "}
+      <span className="text-gray-400">[{node.type}]</span>{" "}
+      {box && <span className="text-gray-400">{box}</span>}
+      {node.has_image_fill && <span className="ml-1 text-periwinkle">🖼 이미지 채우기</span>}
+      {node.type === "TEXT" && (
+        <span className="ml-1 text-emerald-600">
+          "{node.characters}" · {node.font_size}px · {node.align} · {node.color}
+        </span>
+      )}
+      {node.children?.map((c, i) => (
+        <FigmaNodeView key={c.id ?? i} node={c} depth={depth + 1} />
+      ))}
     </div>
   );
 }
@@ -1148,6 +1184,9 @@ function FigmaTemplatePicker({
   const [nodeId, setNodeId] = useState("");
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState("");
+  const [inspecting, setInspecting] = useState(false);
+  const [inspectTree, setInspectTree] = useState<FigmaNode | null>(null);
+  const [inspectErr, setInspectErr] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1196,6 +1235,24 @@ function FigmaTemplatePicker({
     }
   }
 
+  async function inspect() {
+    if (!value) return;
+    setInspecting(true);
+    setInspectErr("");
+    setInspectTree(null);
+    try {
+      const res = await fetch(`/api/bannerlab/figma-templates/${value}/inspect`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInspectErr(data.detail ?? "구조를 불러오지 못했습니다.");
+        return;
+      }
+      setInspectTree(data.tree ?? null);
+    } finally {
+      setInspecting(false);
+    }
+  }
+
   if (!loading && !figmaEnabled) {
     return (
       <p className="text-[10px] text-gray-300">
@@ -1219,6 +1276,15 @@ function FigmaTemplatePicker({
             </option>
           ))}
         </select>
+        {value && (
+          <button
+            onClick={inspect}
+            disabled={inspecting}
+            className="text-[10px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2 py-1.5 shrink-0 disabled:opacity-40"
+          >
+            {inspecting ? "확인 중..." : "구조 확인"}
+          </button>
+        )}
         <button
           onClick={() => setShowNew((v) => !v)}
           className="text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2 py-1.5 shrink-0"
@@ -1226,6 +1292,13 @@ function FigmaTemplatePicker({
           + 템플릿 등록
         </button>
       </div>
+
+      {inspectErr && <p className="text-[10px] text-red-500">{inspectErr}</p>}
+      {inspectTree && (
+        <div className="border border-gray-100 rounded-lg p-2 bg-gray-50 max-h-64 overflow-auto">
+          <FigmaNodeView node={inspectTree} depth={0} />
+        </div>
+      )}
 
       {showNew && (
         <div className="flex flex-col gap-1.5 border border-gray-100 rounded-lg p-2 bg-gray-50">

@@ -33,6 +33,9 @@ yarn-error.log*
 # session handoff notes (local only, not for github)
 /SESSION_HANDOFF.md
 
+# working docs (local only, not for github)
+/docs
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
