@@ -416,7 +416,7 @@ function WeekFolderCard({
   async function generateNow(forceNew: boolean) {
     const msg = forceNew
       ? "이미 생성된 후보가 있어도 다시 만들까요? 슬랙에 새 메시지가 또 발송됩니다."
-      : "지금 이 주차 배너(+팝업)를 생성해서 슬랙으로 보낼까요? (AI/슬랙 호출 비용이 듭니다)";
+      : "지금 이 주차 배너(+팝업)를 생성해서 슬랙으로 보낼까요? 식당 사진은 원본을 유지하고, 템플릿을 한 번 분석한 뒤 효과·문구를 합성합니다.";
     if (!confirm(msg)) return;
     setGenerating(true);
     try {
@@ -433,8 +433,9 @@ function WeekFolderCard({
       if (data.status === "skipped") {
         alert(`건너뜀: ${data.reason ?? "이미 생성됨"}`);
       } else {
-        // 실제 생성은 백엔드가 백그라운드로 돌린다(대상마다 AI 호출이 직렬로 이어져
-        // 몇 분씩 걸릴 수 있어서, 2026-08-24부터 요청을 붙잡지 않고 바로 응답한다).
+        // 실제 생성은 백엔드가 백그라운드로 돌린다. 식당 사진은 새로 그리지 않고
+        // 원본에 효과만 입히며, 템플릿 분석은 주차당 한 번이라 예전보다 훨씬 빨리
+        // 슬랙에 올라온다.
         alert("생성을 시작했습니다 — 대상별로 준비되는 대로 슬랙 채널에 순서대로 올라옵니다.");
       }
       onChanged();
@@ -585,7 +586,7 @@ function WeekFolderCard({
       <textarea
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
-        placeholder="AI 사진 보정 지시문 — 톤/분위기/효과를 문장으로 (예: 밝고 화사하게, 가장자리를 흐리게) — 문구가 아니라 사진에만 적용됩니다"
+        placeholder="원본 사진에 입힐 톤/분위기 (예: 밝고 화사하게, 가장자리를 살짝 어둡게) — 사진을 새로 만들지 않고 효과만 적용됩니다"
         rows={3}
         className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 my-1.5 focus:outline-none focus:border-periwinkle resize-none"
       />
@@ -766,7 +767,7 @@ function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: (
       value: diag.openai_key_configured ? "설정됨" : "미설정",
     },
     {
-      label: "AI 사진 보정 지시문(prompt_text)",
+      label: "AI 사진 효과 지시문(prompt_text)",
       ok: !!diag.prompt_text.trim(),
       value: diag.prompt_text.trim() ? diag.prompt_text : "비어있음",
     },
@@ -785,6 +786,16 @@ function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: (
       ok: diag.figma_enabled,
       value: diag.figma_enabled ? (diag.figma_template_id ? "연동됨 · 템플릿 선택됨" : "연동됨 · 템플릿 미선택") : "미연동",
     },
+    {
+      label: "사진 재생성",
+      ok: diag.uses_image_generation !== true,
+      value: diag.uses_image_generation ? "이미지 생성 API 사용" : "하지 않음 · 원본 유지",
+    },
+    {
+      label: "템플릿 분석 캐시",
+      ok: !!diag.has_cached_spec,
+      value: diag.has_cached_spec ? "있음 (같은 템플릿·문구면 재분석 안 함)" : "없음 · 이번 생성 때 1회 분석",
+    },
   ];
 
   return (
@@ -798,8 +809,8 @@ function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: (
           className={`text-[11px] font-bold ${diag.would_attempt_ai ? "text-green-700" : "text-amber-700"}`}
         >
           {diag.would_attempt_ai
-            ? "✅ 지금 생성하면 AI로 다듬은 시안을 시도합니다"
-            : "⚠️ 지금 생성해도 AI 없이 기본 사진으로만 나갑니다"}
+            ? "✅ 지금 생성하면 템플릿을 분석한 뒤 원본 사진에 효과만 입힙니다 (새 사진 생성 없음)"
+            : "⚠️ 지금 생성해도 템플릿 분석 없이 원본 사진+문구로만 나갑니다"}
         </span>
         <button onClick={onClose} className="text-[10px] text-gray-400 hover:text-gray-600">
           닫기
@@ -870,6 +881,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: () => void }) {
   const [promptOverride, setPromptOverride] = useState(target.prompt_override);
+  const [photoUrl, setPhotoUrl] = useState(target.photo_url_override || target.restaurant_photos?.[0] || "");
   const [regenerating, setRegenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [selectingId, setSelectingId] = useState<number | null>(null);
@@ -883,7 +895,7 @@ function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: ()
       const res = await fetch(`/api/bannerlab/weekly/targets/${target.id}/regenerate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt_override: promptOverride }),
+        body: JSON.stringify({ prompt_override: promptOverride, photo_url: photoUrl || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -976,6 +988,29 @@ function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: ()
         <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-2 py-1">🗣 {target.feedback_text}</p>
       )}
       {target.click_url && <p className="text-[9px] text-gray-400 truncate">이동 URL: {target.click_url}</p>}
+
+      {(target.restaurant_photos?.length ?? 0) > 0 && (
+        <div>
+          <p className="text-[9px] text-gray-400 mb-1">식당 사진 — 템플릿에 맞는 컷을 고르고 다시 생성</p>
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+            {target.restaurant_photos!.map((url) => {
+              const selected = photoUrl === url;
+              return (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setPhotoUrl(url)}
+                  className={`relative shrink-0 rounded-lg overflow-hidden ${selected ? "ring-2 ring-periwinkle" : "opacity-70 hover:opacity-100"}`}
+                  title={selected ? "이 컷으로 생성" : "이 사진 선택"}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="w-14 h-14 object-cover" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
         {target.candidates.length === 0 && <p className="text-[10px] text-gray-300">후보 없음</p>}
@@ -1093,9 +1128,9 @@ function PhotoSlot({
 
 /**
  * 피그마 템플릿 선택/등록 — 등록된 템플릿(파일 key + node id) 중 이 주차가 참고할
- * 것 하나를 고른다. AI 다듬기 시 이 템플릿 프레임의 렌더링 PNG를 무드 참고사진으로
- * 쓴다(services/weekly_generate.py). 등록 자체는 여기서 바로 할 수 있게 인라인
- * 미니폼을 둔다 — 별도 화면을 새로 만들 정도로 자주 쓰는 기능은 아니라서.
+ * 것 하나를 고른다. 생성 시 이 프레임 PNG를 비전 분석에 넣어 레이아웃·색감 스펙을
+ * 뽑는다. 식당 사진을 다시 그리는 무드 입력으로는 쓰지 않는다. 등록은 여기
+ * 인라인 미니폼으로 한다.
  */
 function FigmaTemplatePicker({
   value,

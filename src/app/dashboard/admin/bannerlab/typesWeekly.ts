@@ -78,6 +78,9 @@ export interface AiDiagnostics {
   figma_enabled: boolean;
   would_attempt_ai: boolean;
   reasons_ai_would_be_skipped: string[];
+  uses_image_generation?: boolean;
+  pipeline?: string;
+  has_cached_spec?: boolean;
 }
 
 export interface WeeklyCandidate {
@@ -111,6 +114,8 @@ export interface WeeklyTarget {
   is_reuse: boolean;
   feedback_text: string;
   prompt_override: string;
+  photo_url_override?: string;
+  restaurant_photos?: string[];
   updated_at: string;
   candidates: WeeklyCandidate[];
 }

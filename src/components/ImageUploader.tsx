@@ -90,6 +90,7 @@ export default function ImageUploader({
   const [saved, setSaved] = useState(false);
   const [compressCfg, setCompressCfg] = useState<CompressConfig>(COMPRESS_PRESETS[1].config);
   const [showSettings, setShowSettings] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleFiles(files: FileList) {
@@ -163,6 +164,17 @@ export default function ImageUploader({
     });
   }
 
+  function moveTo(from: number, to: number) {
+    if (from === to || from < 0 || to < 0) return;
+    setUrls((prev) => {
+      if (from >= prev.length || to >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  }
+
   async function handleSave() {
     setUploading(true);
     setError("");
@@ -215,41 +227,53 @@ export default function ImageUploader({
         )}
       </div>
 
-      {/* 이미지 그리드 */}
+      {/* 이미지 그리드 — 끌어다 놓거나 ‹ › 로 순서 변경. 1번이 대표(배너 소재) 사진 */}
       <div className={`grid ${isSingle ? "grid-cols-1" : "grid-cols-3"} gap-2 mb-3`}>
         {urls.map((url, i) => (
           <div
             key={url}
-            className={`relative ${isSingle ? "aspect-video" : "aspect-square"} rounded-xl overflow-hidden bg-gray-100 group`}
+            draggable={!isSingle}
+            onDragStart={() => setDragIndex(i)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragIndex != null) moveTo(dragIndex, i);
+              setDragIndex(null);
+            }}
+            onDragEnd={() => setDragIndex(null)}
+            className={`relative ${isSingle ? "aspect-video" : "aspect-square"} rounded-xl overflow-hidden bg-gray-100 cursor-grab active:cursor-grabbing ${
+              dragIndex === i ? "ring-2 ring-periwinkle opacity-70" : ""
+            }`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={`${label ?? "이미지"} ${i + 1}`} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-1.5">
-              {!isSingle && (
-                <div className="flex justify-between">
-                  <button
-                    onClick={() => moveLeft(i)}
-                    disabled={i === 0}
-                    className="w-6 h-6 rounded-full bg-white/80 text-gray-700 text-xs disabled:opacity-30 flex items-center justify-center"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    onClick={() => moveRight(i)}
-                    disabled={i === urls.length - 1}
-                    className="w-6 h-6 rounded-full bg-white/80 text-gray-700 text-xs disabled:opacity-30 flex items-center justify-center"
-                  >
-                    ›
-                  </button>
-                </div>
-              )}
-              <button
-                onClick={() => remove(i)}
-                className="self-center w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
-              >
-                ✕
-              </button>
-            </div>
+            <img src={url} alt={`${label ?? "이미지"} ${i + 1}`} className="w-full h-full object-cover pointer-events-none" />
+            {!isSingle && (
+              <div className="absolute top-1 right-1 flex gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => moveLeft(i)}
+                  disabled={i === 0}
+                  className="w-6 h-6 rounded-full bg-black/55 text-white text-xs disabled:opacity-30 flex items-center justify-center"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveRight(i)}
+                  disabled={i === urls.length - 1}
+                  className="w-6 h-6 rounded-full bg-black/55 text-white text-xs disabled:opacity-30 flex items-center justify-center"
+                >
+                  ›
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
+            >
+              ✕
+            </button>
             {!isSingle && (
               <span className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] flex items-center justify-center">
                 {i + 1}
@@ -299,7 +323,7 @@ export default function ImageUploader({
       </button>
       {!isSingle && (
         <p className="text-[10px] text-gray-400 text-center mt-2">
-          ‹ › 버튼으로 순서 변경 · ✕로 삭제 · 최대 {maxImages}장
+          사진을 끌어다 놓거나 ‹ › 로 순서 변경 · ✕로 삭제 · 1번이 대표 사진 · 최대 {maxImages}장
         </p>
       )}
     </div>

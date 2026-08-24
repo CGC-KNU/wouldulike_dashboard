@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import PapillonShell from "./satellite/PapillonShell";
 import ContentTab from "./ContentTab";
+import ImageUploader from "@/components/ImageUploader";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -138,6 +139,7 @@ function RestaurantDrawer({
   const [promoLoading, setPromoLoading] = useState(true);
   const [promoSaving, setPromoSaving] = useState(false);
   const [promoSaved, setPromoSaved] = useState(false);
+  const [photoUrls, setPhotoUrls] = useState<string[] | null>(null);
 
   useEffect(() => {
     fetch(`/api/dashboard/stats?rid=${r.restaurant_id}`)
@@ -157,6 +159,10 @@ function RestaurantDrawer({
       })
       .catch(() => {})
       .finally(() => setPromoLoading(false));
+    fetch(`/api/dashboard/restaurant?rid=${r.restaurant_id}`)
+      .then((res) => res.json())
+      .then((data: { s3_image_urls?: string[] }) => setPhotoUrls(data.s3_image_urls ?? []))
+      .catch(() => setPhotoUrls([]));
   }, [r.restaurant_id]);
 
   async function savePromoFiles() {
@@ -234,6 +240,30 @@ function RestaurantDrawer({
               </div>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-1">✕</button>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl p-4 mb-4">
+            <p className="text-xs font-semibold text-gray-500 mb-3">식당 사진</p>
+            {photoUrls == null ? (
+              <div className="flex justify-center py-2">
+                <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <ImageUploader
+                restaurantId={r.restaurant_id}
+                initialUrls={photoUrls}
+                onSave={async (urls) => {
+                  const res = await fetch(`/api/dashboard/restaurant?rid=${r.restaurant_id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ s3_image_urls: urls, restaurant_id: r.restaurant_id }),
+                  });
+                  if (!res.ok) throw new Error("저장 실패");
+                  setPhotoUrls(urls);
+                }}
+              />
+            )}
+            <p className="text-[10px] text-gray-400 mt-2">1번 사진이 배너 소재로 쓰입니다. 끌어다 놓거나 ‹ › 로 순서를 바꾸세요.</p>
           </div>
 
           <div className="bg-gray-50 rounded-xl p-4 mb-4">
