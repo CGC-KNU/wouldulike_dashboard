@@ -313,10 +313,7 @@ function WeekFolderCard({
   const [type, setType] = useState<WeekType>(week.type);
   const [captionText, setCaptionText] = useState(week.caption_text);
   const [promptText, setPromptText] = useState(week.prompt_text);
-  const [tone, setTone] = useState(week.tone);
-  const [fontLabel, setFontLabel] = useState(week.font_label);
   const [ratio, setRatio] = useState<BannerRatio>(week.ratio);
-  const [effect, setEffect] = useState(week.effect);
   const [councilName, setCouncilName] = useState(week.student_council_name);
   const [figmaTemplateId, setFigmaTemplateId] = useState<number | null>(week.figma_template_id);
   const [excluded, setExcluded] = useState<Set<number>>(new Set(week.excluded_restaurant_ids));
@@ -334,10 +331,7 @@ function WeekFolderCard({
     type !== week.type ||
     captionText !== week.caption_text ||
     promptText !== week.prompt_text ||
-    tone !== week.tone ||
-    fontLabel !== week.font_label ||
     ratio !== week.ratio ||
-    effect !== week.effect ||
     councilName !== week.student_council_name ||
     figmaTemplateId !== week.figma_template_id ||
     excluded.size !== week.excluded_restaurant_ids.length ||
@@ -355,10 +349,7 @@ function WeekFolderCard({
           type,
           caption_text: captionText,
           prompt_text: promptText,
-          tone,
-          font_label: fontLabel,
           ratio,
-          effect,
           student_council_name: councilName,
           figma_template_id: figmaTemplateId,
           excluded_restaurant_ids: [...excluded],
@@ -587,20 +578,18 @@ function WeekFolderCard({
         maxLength={200}
         className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 mt-1.5 focus:outline-none focus:border-periwinkle"
       />
+      {/* 톤/분위기/효과는 이 프롬프트 문장 안에 직접 써넣으면 된다 — 예전엔 별도
+          "톤"/"폰트"/"효과 메모" 입력칸이 있었는데, 톤은 결국 이 프롬프트 뒤에
+          문자열로 그대로 이어붙여질 뿐이었고 폰트·효과는 애초에 생성 결과 어디에도
+          반영된 적 없는 죽은 입력이라 2026-08-24 정리(RD 요청 — 중복/미사용 필드 제거). */}
       <textarea
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
-        placeholder="AI 사진 보정 지시문 — 톤/분위기/효과 (여기는 문구가 아니라 사진에만 적용됩니다)"
-        rows={2}
+        placeholder="AI 사진 보정 지시문 — 톤/분위기/효과를 문장으로 (예: 밝고 화사하게, 가장자리를 흐리게) — 문구가 아니라 사진에만 적용됩니다"
+        rows={3}
         className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 my-1.5 focus:outline-none focus:border-periwinkle resize-none"
       />
       <div className="flex items-center gap-1.5">
-        <input
-          value={tone}
-          onChange={(e) => setTone(e.target.value)}
-          placeholder="톤 (예: 밝고 화사하게)"
-          className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
-        />
         <select
           value={ratio}
           onChange={(e) => setRatio(e.target.value as BannerRatio)}
@@ -612,20 +601,6 @@ function WeekFolderCard({
             </option>
           ))}
         </select>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <input
-          value={fontLabel}
-          onChange={(e) => setFontLabel(e.target.value)}
-          placeholder="폰트"
-          className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
-        />
-        <input
-          value={effect}
-          onChange={(e) => setEffect(e.target.value)}
-          placeholder="효과 메모 (선택)"
-          className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
-        />
       </div>
 
       {isCouncil && (
@@ -800,7 +775,6 @@ function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: (
       ok: !!diag.caption_text.trim(),
       value: diag.caption_text.trim() || "비어있음 — 배너에 문구가 안 찍힘",
     },
-    { label: "톤", ok: !!diag.tone.trim(), value: diag.tone.trim() || "미입력" },
     {
       label: "템플릿 사진",
       ok: diag.has_template_photo,
@@ -824,8 +798,8 @@ function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: (
           className={`text-[11px] font-bold ${diag.would_attempt_ai ? "text-green-700" : "text-amber-700"}`}
         >
           {diag.would_attempt_ai
-            ? "✅ 지금 생성하면 AI 후보를 시도합니다"
-            : "⚠️ 지금 생성해도 AI 후보 없이 기본안만 나갑니다"}
+            ? "✅ 지금 생성하면 AI로 다듬은 시안을 시도합니다"
+            : "⚠️ 지금 생성해도 AI 없이 기본 사진으로만 나갑니다"}
         </span>
         <button onClick={onClose} className="text-[10px] text-gray-400 hover:text-gray-600">
           닫기

@@ -12,10 +12,7 @@ export interface WeekFolder {
   sort_order: number;
   caption_text: string;
   prompt_text: string;
-  tone: string;
-  font_label: string;
   ratio: BannerRatio;
-  effect: string;
   popup_photo_url: string;
   banner_photo_url: string;
   template_photo_url: string;
@@ -76,7 +73,6 @@ export interface AiDiagnostics {
   openai_key_configured: boolean;
   prompt_text: string;
   caption_text: string;
-  tone: string;
   has_template_photo: boolean;
   figma_template_id: number | null;
   figma_enabled: boolean;
