@@ -11,6 +11,7 @@ import {
   Semester,
   SemesterDetail,
   WeekFolder,
+  WeeklyCandidate,
   WeekType,
   WeeklyTarget,
 } from "./typesWeekly";
@@ -544,22 +545,33 @@ function WeekFolderCard({
         </div>
         {week.targets_summary.generated && (
           <>
-            <div className="flex items-center justify-between">
+            {/* 등록된 자료(대상·후보)를 직접 확인/수정/삭제하려면 아래 두 줄을 누르면
+                바로 목록이 펼쳐진다 — 전엔 맨 아래 "자세히 보기"까지 스크롤해야 했다
+                (2026-08-24, RD 요청). */}
+            <button
+              type="button"
+              onClick={() => setShowDetail(true)}
+              className="flex items-center justify-between hover:bg-periwinkle/5 rounded px-1 -mx-1 py-0.5 transition-colors"
+            >
               <span>배너</span>
               <span className="text-periwinkle font-semibold">
                 {week.targets_summary.banner.selected}/{week.targets_summary.banner.total}개 선택
                 {week.targets_summary.banner.reused > 0 ? ` · 재사용 ${week.targets_summary.banner.reused}` : ""}
                 {week.targets_summary.banner.applied > 0 ? ` · 앱 반영 ${week.targets_summary.banner.applied}` : ""}
               </span>
-            </div>
+            </button>
             {week.targets_summary.popup.total > 0 && (
-              <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowDetail(true)}
+                className="flex items-center justify-between hover:bg-periwinkle/5 rounded px-1 -mx-1 py-0.5 transition-colors"
+              >
                 <span>팝업</span>
                 <span className="text-periwinkle font-semibold">
                   {week.targets_summary.popup.selected}/{week.targets_summary.popup.total}개 선택
                   {week.targets_summary.popup.applied > 0 ? ` · 앱 반영 ${week.targets_summary.popup.applied}` : ""}
                 </span>
-              </div>
+              </button>
             )}
           </>
         )}
@@ -885,6 +897,10 @@ const STATUS_BADGE: Record<string, string> = {
 function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: () => void }) {
   const [promptOverride, setPromptOverride] = useState(target.prompt_override);
   const [regenerating, setRegenerating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [selectingId, setSelectingId] = useState<number | null>(null);
+  const [urlDraft, setUrlDraft] = useState("");
+  const [selecting, setSelecting] = useState(false);
 
   async function regenerate() {
     if (!confirm("이 대상만 골라서 새로 생성할까요? 슬랙에 새 메시지가 발송됩니다.")) return;
@@ -908,15 +924,78 @@ function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: ()
     }
   }
 
+  async function remove() {
+    if (!confirm(`[${target.kind_label}] ${target.restaurant_name}을(를) 삭제할까요? 생성된 후보 이미지도 같이 지워지고, 이미 앱에 반영된 상태였다면 노출도 꺼집니다.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/bannerlab/weekly/targets/${target.id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail ?? "삭제에 실패했습니다.");
+        return;
+      }
+      onChanged();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function startSelect(c: WeeklyCandidate) {
+    setSelectingId((prev) => (prev === c.id ? null : c.id));
+    setUrlDraft(target.click_url || "");
+  }
+
+  async function submitSelect(candidateId: number) {
+    const url = urlDraft.trim();
+    if (!url) {
+      alert("이동 URL을 입력해주세요.");
+      return;
+    }
+    setSelecting(true);
+    try {
+      const res = await fetch(`/api/bannerlab/weekly/candidates/${candidateId}/select`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ click_url: url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 207) {
+        alert(data.detail ?? "선택에 실패했습니다.");
+        return;
+      }
+      if (res.status === 207) alert(data.detail);
+      setSelectingId(null);
+      onChanged();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSelecting(false);
+    }
+  }
+
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-2 flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-semibold text-gray-700 truncate">
           [{target.kind_label}] {target.restaurant_name}
         </p>
-        <span className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${STATUS_BADGE[target.status] ?? "bg-gray-100"}`}>
-          {target.status_label}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${STATUS_BADGE[target.status] ?? "bg-gray-100"}`}>
+            {target.status_label}
+          </span>
+          <button
+            onClick={remove}
+            disabled={deleting}
+            title="이 대상 삭제"
+            className="text-gray-300 hover:text-red-500 disabled:opacity-30"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {target.feedback_text && (
@@ -945,10 +1024,37 @@ function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: ()
                   다운로드
                 </a>
               )}
+              {c.image_url && (
+                <button
+                  onClick={() => startSelect(c)}
+                  className={`text-[8px] font-semibold ${c.selected ? "text-periwinkle" : "text-gray-400 hover:text-periwinkle"}`}
+                >
+                  {c.selected ? "선택됨" : "선택"}
+                </button>
+              )}
             </div>
           </div>
         ))}
       </div>
+
+      {selectingId != null && (
+        <div className="flex items-center gap-1.5">
+          <input
+            value={urlDraft}
+            onChange={(e) => setUrlDraft(e.target.value)}
+            placeholder="이 후보로 선택 — 클릭 시 이동할 URL"
+            autoFocus
+            className="flex-1 text-[10px] border border-periwinkle/40 rounded-lg px-2 py-1 focus:outline-none"
+          />
+          <button
+            onClick={() => submitSelect(selectingId)}
+            disabled={selecting}
+            className="shrink-0 text-[10px] font-semibold text-white bg-periwinkle rounded-lg px-2 py-1 hover:bg-navy disabled:opacity-40"
+          >
+            {selecting ? "저장 중..." : "확정"}
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-1.5">
         <input
