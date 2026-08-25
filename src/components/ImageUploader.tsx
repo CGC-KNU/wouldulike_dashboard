@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useImagePreview } from "@/components/ImagePreview";
 
 /* ─── 압축 설정 타입 ─── */
 export interface CompressConfig {
@@ -91,6 +92,8 @@ export default function ImageUploader({
   const [compressCfg, setCompressCfg] = useState<CompressConfig>(COMPRESS_PRESETS[1].config);
   const [showSettings, setShowSettings] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const skipClick = useRef(false);
+  const preview = useImagePreview();
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleFiles(files: FileList) {
@@ -233,7 +236,10 @@ export default function ImageUploader({
           <div
             key={url}
             draggable={!isSingle}
-            onDragStart={() => setDragIndex(i)}
+            onDragStart={() => {
+              skipClick.current = true;
+              setDragIndex(i);
+            }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
@@ -241,9 +247,16 @@ export default function ImageUploader({
               setDragIndex(null);
             }}
             onDragEnd={() => setDragIndex(null)}
-            className={`relative ${isSingle ? "aspect-video" : "aspect-square"} rounded-xl overflow-hidden bg-gray-100 cursor-grab active:cursor-grabbing ${
-              dragIndex === i ? "ring-2 ring-periwinkle opacity-70" : ""
-            }`}
+            onClick={() => {
+              if (skipClick.current) {
+                skipClick.current = false;
+                return;
+              }
+              preview?.open(url, `${label ?? "이미지"} ${i + 1}`);
+            }}
+            className={`relative ${isSingle ? "aspect-video" : "aspect-square"} rounded-xl overflow-hidden bg-gray-100 cursor-zoom-in ${
+              !isSingle ? "active:cursor-grabbing" : ""
+            } ${dragIndex === i ? "ring-2 ring-periwinkle opacity-70" : ""}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={url} alt={`${label ?? "이미지"} ${i + 1}`} className="w-full h-full object-cover pointer-events-none" />
@@ -251,7 +264,10 @@ export default function ImageUploader({
               <div className="absolute top-1 right-1 flex gap-0.5">
                 <button
                   type="button"
-                  onClick={() => moveLeft(i)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveLeft(i);
+                  }}
                   disabled={i === 0}
                   className="w-6 h-6 rounded-full bg-black/55 text-white text-xs disabled:opacity-30 flex items-center justify-center"
                 >
@@ -259,7 +275,10 @@ export default function ImageUploader({
                 </button>
                 <button
                   type="button"
-                  onClick={() => moveRight(i)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveRight(i);
+                  }}
                   disabled={i === urls.length - 1}
                   className="w-6 h-6 rounded-full bg-black/55 text-white text-xs disabled:opacity-30 flex items-center justify-center"
                 >
@@ -269,7 +288,10 @@ export default function ImageUploader({
             )}
             <button
               type="button"
-              onClick={() => remove(i)}
+              onClick={(e) => {
+                e.stopPropagation();
+                remove(i);
+              }}
               className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
             >
               ✕

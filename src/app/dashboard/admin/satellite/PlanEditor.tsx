@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { PreviewableImg } from "@/components/ImagePreview";
 import AudioPicker from "./AudioPicker";
 import CommentThread from "./CommentThread";
 import LocationPicker from "./LocationPicker";
@@ -613,8 +614,7 @@ export default function PlanEditor({
                                     playsInline
                                   />
                                 ) : (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
+                                  <PreviewableImg
                                     src={a.preview_url}
                                     alt={a.alt_text || `카드 ${a.sort_order + 1}`}
                                     className="w-full h-full object-cover"
@@ -1286,8 +1286,7 @@ function AssetTile({
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <video src={asset.preview_url} controls playsInline className="w-full h-full object-cover bg-black" />
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={asset.preview_url} alt={`${index + 1}번째 장`} className="w-full h-full object-cover" />
+          <PreviewableImg src={asset.preview_url} alt={`${index + 1}번째 장`} className="w-full h-full object-cover" />
         )
       ) : (
         <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-300">

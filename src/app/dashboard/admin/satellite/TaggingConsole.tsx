@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { PreviewableImg } from "@/components/ImagePreview";
 import { SatelliteMember, TaggingPost } from "./types";
 
 /**
@@ -110,8 +111,7 @@ export default function TaggingConsole({ onClose, embedded = false }: Props) {
               {posts.map((p) => (
                 <div key={p.id} className="rounded-xl border border-gray-100 px-3 py-2.5 flex items-center gap-3">
                   {p.thumb_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.thumb_url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 bg-gray-100" />
+                    <PreviewableImg src={p.thumb_url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0 bg-gray-100" />
                   ) : (
                     <div className="w-12 h-12 rounded-lg bg-gray-100 shrink-0" />
                   )}

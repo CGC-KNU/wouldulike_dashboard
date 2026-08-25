@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { PreviewableImg } from "@/components/ImagePreview";
 import { AudioTrack } from "./types";
 
 /**
@@ -151,8 +152,7 @@ export default function AudioPicker({
                   className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-gray-50 text-left transition-colors"
                 >
                   {t.thumbnail_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={t.thumbnail_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                    <PreviewableImg src={t.thumbnail_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
                   ) : (
                     <span className="w-8 h-8 rounded bg-gray-100 shrink-0" />
                   )}

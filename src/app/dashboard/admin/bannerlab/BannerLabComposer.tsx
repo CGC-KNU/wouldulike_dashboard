@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { PreviewableImg } from "@/components/ImagePreview";
 import {
   BannerCampaignDetail,
   BannerCampaignSummary,
@@ -477,8 +478,7 @@ export default function BannerLabComposer() {
             <div className="flex items-center gap-2.5">
               {detail.mood_photo_url ? (
                 <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100 group shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={detail.mood_photo_url} alt="" className="w-full h-full object-cover" />
+                  <PreviewableImg src={detail.mood_photo_url} alt="" className="w-full h-full object-cover" />
                   <button
                     onClick={removeMoodPhoto}
                     disabled={removingMood}
@@ -526,8 +526,7 @@ export default function BannerLabComposer() {
               {detail.photos.map((p) => (
                 <div key={p.id} className="w-20">
                   <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.retouched_url || p.url} alt="" className="w-full h-full object-cover" />
+                    <PreviewableImg src={p.retouched_url || p.url} alt="" className="w-full h-full object-cover" />
                     {p.retouched_url && (
                       <span className="absolute bottom-0.5 left-0.5 text-[8px] font-bold text-white bg-periwinkle/90 rounded px-1">
                         AI
@@ -634,8 +633,7 @@ export default function BannerLabComposer() {
                       </span>
                     )}
                     {v.url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={v.url} alt="" className="w-full aspect-[4/5] object-cover bg-gray-50" />
+                      <PreviewableImg src={v.url} alt="" className="w-full aspect-[4/5] object-cover bg-gray-50" />
                     ) : (
                       <div className="w-full aspect-[4/5] bg-gray-50 flex items-center justify-center text-[10px] text-red-400 p-2 text-center">
                         {v.render_error || "합성 실패"}

@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { PreviewableImg } from "@/components/ImagePreview";
 import BannerLabComposer from "./bannerlab/BannerLabComposer";
 import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
 
@@ -103,14 +104,15 @@ function ImagePickerField({
   return (
     <div>
       <div
-        className="relative w-full h-32 rounded-xl border-2 border-dashed border-gray-200 overflow-hidden cursor-pointer hover:border-periwinkle transition-colors"
-        onClick={() => document.getElementById(`img-pick-${uploadType}`)?.click()}
+        className="relative w-full h-32 rounded-xl border-2 border-dashed border-gray-200 overflow-hidden hover:border-periwinkle transition-colors"
+        onClick={() => {
+          if (!value) document.getElementById(`img-pick-${uploadType}`)?.click();
+        }}
       >
         {value ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={value} alt="" className="w-full h-full object-cover" />
+          <PreviewableImg src={value} alt="" className="w-full h-full object-cover" />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-1">
+          <div className="flex flex-col items-center justify-center h-full gap-1 cursor-pointer">
             <span className="text-2xl text-gray-300">📷</span>
             <span className="text-xs text-gray-400">클릭하여 이미지 선택</span>
           </div>
@@ -121,9 +123,16 @@ function ImagePickerField({
           </div>
         )}
         {value && !uploading && (
-          <div className="absolute bottom-1 right-1">
+          <button
+            type="button"
+            className="absolute bottom-1 right-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              document.getElementById(`img-pick-${uploadType}`)?.click();
+            }}
+          >
             <span className="text-[10px] bg-black/50 text-white px-1.5 py-0.5 rounded">변경</span>
-          </div>
+          </button>
         )}
       </div>
       <input
@@ -340,8 +349,7 @@ function BannerSection() {
                 </button>
               </div>
               {t.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={t.image_url} alt={t.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
+                <PreviewableImg src={t.image_url} alt={t.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
               ) : (
                 <div className="w-20 h-12 rounded-lg bg-gray-200 shrink-0 flex items-center justify-center">
                   <span className="text-gray-400 text-xs">없음</span>
@@ -636,8 +644,7 @@ function PopupSection() {
                 </button>
               </div>
               {p.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.image_url} alt={p.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
+                <PreviewableImg src={p.image_url} alt={p.title} className="w-20 h-12 object-cover rounded-lg shrink-0 bg-gray-200" />
               ) : (
                 <div className="w-20 h-12 rounded-lg bg-gray-200 shrink-0" />
               )}
