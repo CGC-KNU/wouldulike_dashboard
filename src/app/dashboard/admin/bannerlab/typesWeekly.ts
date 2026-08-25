@@ -99,6 +99,14 @@ export interface FigmaTemplate {
   file_key: string;
   node_id: string;
   notes: string;
+  frame_width: number | null;
+  frame_height: number | null;
+  badge_node_id: string;
+  badge_x: number | null;
+  badge_y: number | null;
+  badge_width: number | null;
+  badge_height: number | null;
+  badge_image_url: string;
   created_at: string;
 }
 

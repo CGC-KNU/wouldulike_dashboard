@@ -1139,11 +1139,19 @@ interface FigmaNode {
   children?: FigmaNode[];
 }
 
-function FigmaNodeView({ node, depth }: { node: FigmaNode; depth: number }) {
-  const box =
-    node.width != null && node.height != null
-      ? `${Math.round(node.x ?? 0)},${Math.round(node.y ?? 0)} ${Math.round(node.width)}×${Math.round(node.height)}`
-      : "";
+function FigmaNodeView({
+  node,
+  depth,
+  onSetBadge,
+}: {
+  node: FigmaNode;
+  depth: number;
+  onSetBadge?: (node: FigmaNode) => void;
+}) {
+  const hasBox = node.width != null && node.height != null;
+  const box = hasBox
+    ? `${Math.round(node.x ?? 0)},${Math.round(node.y ?? 0)} ${Math.round(node.width!)}×${Math.round(node.height!)}`
+    : "";
   return (
     <div style={{ marginLeft: depth * 12 }} className="text-[10px] leading-relaxed">
       <span className="font-semibold text-gray-700">{node.name || "(이름없음)"}</span>{" "}
@@ -1155,8 +1163,16 @@ function FigmaNodeView({ node, depth }: { node: FigmaNode; depth: number }) {
           "{node.characters}" · {node.font_size}px · {node.align} · {node.color}
         </span>
       )}
+      {hasBox && onSetBadge && (
+        <button
+          onClick={() => onSetBadge(node)}
+          className="ml-1 text-[9px] font-semibold text-amber-600 underline"
+        >
+          배지로 등록
+        </button>
+      )}
       {node.children?.map((c, i) => (
-        <FigmaNodeView key={c.id ?? i} node={c} depth={depth + 1} />
+        <FigmaNodeView key={c.id ?? i} node={c} depth={depth + 1} onSetBadge={onSetBadge} />
       ))}
     </div>
   );
@@ -1253,6 +1269,43 @@ function FigmaTemplatePicker({
     }
   }
 
+  async function setBadge(node: FigmaNode) {
+    if (!value || node.width == null || node.height == null) return;
+    setInspectErr("");
+    try {
+      const res = await fetch(`/api/bannerlab/figma-templates/${value}/badge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          node_id: node.id,
+          x: node.x ?? 0,
+          y: node.y ?? 0,
+          width: node.width,
+          height: node.height,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInspectErr(data.detail ?? "배지 등록에 실패했습니다.");
+        return;
+      }
+      setTemplates((prev) => prev.map((t) => (t.id === value ? data : t)));
+    } catch (e) {
+      setInspectErr("배지 등록에 실패했습니다: " + (e as Error).message);
+    }
+  }
+
+  async function clearBadge() {
+    if (!value) return;
+    const res = await fetch(`/api/bannerlab/figma-templates/${value}/badge`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setTemplates((prev) => prev.map((t) => (t.id === value ? data : t)));
+    }
+  }
+
+  const selectedTemplate = templates.find((t) => t.id === value) ?? null;
+
   if (!loading && !figmaEnabled) {
     return (
       <p className="text-[10px] text-gray-300">
@@ -1293,10 +1346,23 @@ function FigmaTemplatePicker({
         </button>
       </div>
 
+      {selectedTemplate?.frame_width && selectedTemplate?.frame_height && (
+        <p className="text-[10px] text-gray-400">
+          프레임 크기 {selectedTemplate.frame_width}×{selectedTemplate.frame_height}
+          {selectedTemplate.badge_node_id && (
+            <>
+              {" · 배지 등록됨"}
+              <button onClick={clearBadge} className="ml-1 text-red-500 underline">
+                해제
+              </button>
+            </>
+          )}
+        </p>
+      )}
       {inspectErr && <p className="text-[10px] text-red-500">{inspectErr}</p>}
       {inspectTree && (
         <div className="border border-gray-100 rounded-lg p-2 bg-gray-50 max-h-64 overflow-auto">
-          <FigmaNodeView node={inspectTree} depth={0} />
+          <FigmaNodeView node={inspectTree} depth={0} onSetBadge={setBadge} />
         </div>
       )}
 
