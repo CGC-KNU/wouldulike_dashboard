@@ -12,6 +12,8 @@ export interface WeekFolder {
   sort_order: number;
   caption_text: string;
   prompt_text: string;
+  /** 2주차(한정 쿠폰) 전용 — 식당별 쿠폰 문구, {restaurant_id: text} */
+  restaurant_coupon_texts: Record<string, string>;
   ratio: BannerRatio;
   popup_photo_url: string;
   banner_photo_url: string;

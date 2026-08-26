@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { PaidRestaurant } from "./typesWeekly";
+
 /**
  * 배너 스튜디오 — 사진 위에 텍스트·그라디언트를 직접 배치해 배너/팝업 이미지를
  * 만드는 수동 편집기 (2026-08-26 도입). 배너랩(위 두 컴포저)의 AI 합성·Figma 분석
@@ -394,7 +396,20 @@ const btnPrimary =
 const chipCls =
   "flex items-center gap-2 border border-gray-100 rounded-lg px-2.5 py-1.5 text-[11px] cursor-pointer";
 
-export default function BannerStudioComposer() {
+/**
+ * 슬랙 메시징 세팅(주간 배너 자동화)의 1·2주차 안에 배너 스튜디오를 넣을 때만 넘겨준다
+ * (마케팅팀 피드백 2026-08-26). 이게 있으면 캔버스 아래에 "일괄 생성 · 슬랙 발송" 패널이
+ * 추가로 뜬다 — 서버는 이 이미지들을 다시 그리지 않고 그대로 슬랙에 올린다.
+ */
+export interface WeeklyBatchContext {
+  weekId: number;
+  weekType: "general" | "coupon";
+  restaurants: PaidRestaurant[];
+  couponTexts: Record<number, string>;
+  onCouponTextsChange: (next: Record<number, string>) => void;
+}
+
+export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: WeeklyBatchContext } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assetFileInputRef = useRef<HTMLInputElement>(null);
@@ -695,6 +710,99 @@ export default function BannerStudioComposer() {
     } catch {
       // 클립보드 권한이 없는 환경 — 사용자가 아래 텍스트 영역에서 직접 선택해 복사하면 된다.
     }
+  }
+
+  /* ─── 주간 배너 일괄 생성 (마케팅팀 피드백 2026-08-26) ───────────────── */
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [batchErrors, setBatchErrors] = useState<string[]>([]);
+
+  function loadImage(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("이미지를 불러오지 못했습니다."));
+      img.src = src;
+    });
+  }
+
+  /** 쿠폰 문구 안의 {{가게명}}/{{쿠폰내용}} 자리표시자를 식당별 값으로 바꾼다. */
+  function substituteTokens(text: string, restaurant: PaidRestaurant, couponText: string): string {
+    return text.replaceAll("{{가게명}}", restaurant.name).replaceAll("{{쿠폰내용}}", couponText || "");
+  }
+
+  async function renderVariant(bgImg: HTMLImageElement, layersForVariant: TextLayer[]): Promise<Blob> {
+    const canvas = document.createElement("canvas");
+    canvas.width = ratio.w;
+    canvas.height = ratio.h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("캔버스를 만들지 못했습니다.");
+    const imageState: ImageSceneState = { el: bgImg, zoom: scene.image.zoom, posX: scene.image.posX, posY: scene.image.posY, name: "" };
+    drawCoverImage(ctx, canvas.width, canvas.height, imageState);
+    drawGradient(ctx, canvas.width, canvas.height, scene.gradient);
+    assets.forEach((a) => drawAsset(ctx, a, false, canvas.width, canvas.height));
+    layersForVariant.forEach((l) => drawLayer(ctx, l, false, canvas.width, canvas.height));
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("이미지 생성에 실패했습니다."))), "image/jpeg", 0.92);
+    });
+  }
+
+  async function uploadAndSend(weekId: number, restaurantId: number | null, restaurantName: string, blob: Blob) {
+    const contentType = "image/jpeg";
+    const presign = await fetch(`/api/bannerlab/weekly/weeks/${weekId}/studio-targets/presign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: `${restaurantId ?? "banner"}.jpg`, content_type: contentType }),
+    });
+    const p = await presign.json().catch(() => ({}));
+    if (!presign.ok) throw new Error(p.detail ?? "업로드 URL 발급에 실패했습니다.");
+
+    const put = await fetch(p.upload_url, { method: "PUT", headers: { "Content-Type": contentType }, body: blob });
+    if (!put.ok) throw new Error(`S3 업로드 실패 (${put.status})`);
+
+    const reg = await fetch(`/api/bannerlab/weekly/weeks/${weekId}/studio-targets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "banner", restaurant_id: restaurantId, restaurant_name: restaurantName, key: p.key }),
+    });
+    const r = await reg.json().catch(() => ({}));
+    if (!reg.ok) throw new Error(r.detail ?? "슬랙 발송에 실패했습니다.");
+  }
+
+  async function runBatch() {
+    if (!weeklyBatch) return;
+    const { weekId, weekType, restaurants, couponTexts } = weeklyBatch;
+    if (restaurants.length === 0) {
+      alert("대상 식당이 없습니다.");
+      return;
+    }
+    setBatchErrors([]);
+    setBatchProgress({ done: 0, total: restaurants.length });
+
+    const errors: string[] = [];
+    for (let i = 0; i < restaurants.length; i++) {
+      const r = restaurants[i];
+      try {
+        let bgImg: HTMLImageElement;
+        let variantLayers: TextLayer[];
+        if (weekType === "coupon") {
+          if (!scene.image.el) throw new Error("고정 배경이 아직 로드되지 않았습니다.");
+          bgImg = scene.image.el;
+          const couponText = couponTexts[r.restaurant_id] || "";
+          variantLayers = layers.map((l) => ({ ...l, text: substituteTokens(l.text, r, couponText) }));
+        } else {
+          if (!r.photo_url) throw new Error("등록된 사진이 없습니다.");
+          bgImg = await loadImage(r.photo_url);
+          variantLayers = layers;
+        }
+        const blob = await renderVariant(bgImg, variantLayers);
+        await uploadAndSend(weekId, r.restaurant_id, r.name, blob);
+      } catch (e) {
+        errors.push(`${r.name}: ${(e as Error).message}`);
+      }
+      setBatchProgress({ done: i + 1, total: restaurants.length });
+    }
+    setBatchErrors(errors);
   }
 
   return (
@@ -1000,6 +1108,66 @@ export default function BannerStudioComposer() {
             </div>
           )}
         </div>
+
+        {weeklyBatch && weeklyBatch.weekType === mode && (
+          <div className="border border-periwinkle/30 rounded-xl p-3 flex flex-col gap-2.5 bg-periwinkle/[0.03]">
+            <p className="text-xs font-semibold text-navy">
+              일괄 생성 · 슬랙 발송 ({weeklyBatch.restaurants.length}개 식당)
+            </p>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              {mode === "coupon"
+                ? "위 텍스트에 {{가게명}} / {{쿠폰내용}} 을 넣으면 식당마다 자동으로 바뀝니다 — 배경은 고정 템플릿 그대로, 아래에서 식당별 쿠폰 문구를 입력하세요."
+                : "지금 배치된 문구·그라디언트·에셋은 그대로 두고, 배경 사진만 식당마다 자동으로 등록된 메인 사진으로 바뀝니다."}
+            </p>
+
+            {mode === "coupon" && (
+              <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                {weeklyBatch.restaurants.map((r) => (
+                  <div key={r.restaurant_id} className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-gray-500 w-20 shrink-0 truncate">{r.name}</span>
+                    <input
+                      type="text"
+                      value={weeklyBatch.couponTexts[r.restaurant_id] || ""}
+                      onChange={(e) =>
+                        weeklyBatch.onCouponTextsChange({
+                          ...weeklyBatch.couponTexts,
+                          [r.restaurant_id]: e.target.value,
+                        })
+                      }
+                      placeholder="쿠폰 내용 (예: 첫 방문 15% 할인)"
+                      className="flex-1 text-[10px] border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:border-periwinkle"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={runBatch}
+              disabled={!!batchProgress && batchProgress.done < batchProgress.total}
+              className="w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold disabled:opacity-50"
+            >
+              {batchProgress && batchProgress.done < batchProgress.total
+                ? `생성 중... (${batchProgress.done}/${batchProgress.total})`
+                : "일괄 생성 → 슬랙 발송"}
+            </button>
+            {batchProgress && batchProgress.done === batchProgress.total && batchErrors.length === 0 && (
+              <p className="text-[11px] text-emerald-600 font-semibold">
+                {batchProgress.total}건 전부 슬랙으로 보냈습니다.
+              </p>
+            )}
+            {batchErrors.length > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2">
+                <p className="text-[10px] font-bold text-red-600 mb-1">{batchErrors.length}건 실패</p>
+                {batchErrors.map((e, i) => (
+                  <p key={i} className="text-[10px] text-red-500 leading-relaxed">
+                    {e}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 flex items-start justify-center">
