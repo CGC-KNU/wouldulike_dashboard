@@ -58,6 +58,12 @@ export interface SemesterDetail extends Semester {
 
 export type RestaurantTier = "FREE" | "BOOST" | "CONTENT";
 
+export interface CouponBenefit {
+  id: number;
+  title: string;
+  subtitle: string;
+}
+
 export interface PaidRestaurant {
   restaurant_id: number;
   name: string;
@@ -65,6 +71,7 @@ export interface PaidRestaurant {
   is_paid: boolean;
   photo_url: string;
   photos: string[];
+  coupon_benefits: CouponBenefit[];
 }
 
 /** GET .../ai-diagnostics/ 응답 — 실제 OpenAI 호출 없이 AI 후보 시도 여부만 미리 확인. */

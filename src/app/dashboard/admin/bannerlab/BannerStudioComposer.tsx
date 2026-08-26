@@ -866,6 +866,7 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
   /* ─── 주간 배너 일괄 생성 (마케팅팀 피드백 2026-08-26) ───────────────── */
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [batchErrors, setBatchErrors] = useState<string[]>([]);
+  const [photoOverrides, setPhotoOverrides] = useState<Record<number, string>>({});
 
   function loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
@@ -942,8 +943,9 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
           const couponText = couponTexts[r.restaurant_id] || "";
           variantLayers = layers.map((l) => ({ ...l, text: substituteTokens(l.text, r, couponText) }));
         } else {
-          if (!r.photo_url) throw new Error("등록된 사진이 없습니다.");
-          bgImg = await loadImage(`/api/bannerlab/image-proxy?url=${encodeURIComponent(r.photo_url)}`);
+          const chosenUrl = photoOverrides[r.restaurant_id] || r.photo_url;
+          if (!chosenUrl) throw new Error("등록된 사진이 없습니다.");
+          bgImg = await loadImage(`/api/bannerlab/image-proxy?url=${encodeURIComponent(chosenUrl)}`);
           variantLayers = layers;
         }
         const blob = await renderVariant(bgImg, variantLayers);
@@ -1316,8 +1318,61 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
                       placeholder="쿠폰 내용 (예: 첫 방문 15% 할인)"
                       className="flex-1 text-[10px] border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:border-periwinkle"
                     />
+                    {r.coupon_benefits.length > 0 && (
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const b = r.coupon_benefits.find((x) => String(x.id) === e.target.value);
+                          if (!b) return;
+                          weeklyBatch.onCouponTextsChange({
+                            ...weeklyBatch.couponTexts,
+                            [r.restaurant_id]: b.subtitle ? `${b.title} ${b.subtitle}` : b.title,
+                          });
+                        }}
+                        className="text-[10px] border border-gray-200 rounded-md px-1 py-1 text-gray-500 shrink-0 max-w-[72px]"
+                      >
+                        <option value="">혜택 불러오기</option>
+                        {r.coupon_benefits.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.title}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {mode === "general" && (
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {weeklyBatch.restaurants.map((r) => {
+                  const chosen = photoOverrides[r.restaurant_id] || r.photo_url;
+                  return (
+                    <div key={r.restaurant_id} className="flex flex-col gap-1">
+                      <span className="text-[10px] text-gray-500 truncate">{r.name}</span>
+                      {r.photos.length === 0 ? (
+                        <p className="text-[10px] text-red-500">등록된 사진이 없습니다.</p>
+                      ) : (
+                        <div className="flex gap-1.5 overflow-x-auto">
+                          {r.photos.map((url) => (
+                            <button
+                              key={url}
+                              type="button"
+                              onClick={() => setPhotoOverrides((prev) => ({ ...prev, [r.restaurant_id]: url }))}
+                              className={`shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 ${
+                                url === chosen ? "border-periwinkle" : "border-transparent opacity-60"
+                              }`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt={r.name} className="w-full h-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
