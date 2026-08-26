@@ -190,10 +190,20 @@ export interface LocationResult {
   address: string;
 }
 
+export interface ContentBlockItem {
+  id: number;
+  sort_order: number;
+  block_type: "image" | "text";
+  text: string;
+  image_url: string;
+  created_at: string;
+}
+
 export interface PlanDetail {
   id: number;
-  owner_id: number;
+  owner_id: number | null;
   owner_name: string;
+  owner_name_override: string;
   scheduled_date: string;
   topic: string;
   media_type: MediaType;
@@ -212,6 +222,7 @@ export interface PlanDetail {
   collaborator_usernames: string[];
   ready_at: string | null;
   assets: PlanAsset[];
+  content_blocks: ContentBlockItem[];
   publish_jobs: PublishJobItem[];
   has_post: boolean;
   limits: { max_cards: number; max_hashtags: number; max_collaborators: number };

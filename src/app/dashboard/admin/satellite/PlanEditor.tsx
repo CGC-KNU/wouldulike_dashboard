@@ -5,8 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PreviewableImg } from "@/components/ImagePreview";
 import AudioPicker from "./AudioPicker";
 import CommentThread from "./CommentThread";
+import FreeformBlockEditor from "./FreeformBlockEditor";
 import LocationPicker from "./LocationPicker";
 import PerformancePanel from "./PerformancePanel";
+import ReelCoverPicker from "./ReelCoverPicker";
 import {
   AudioTrack,
   JOB_STATE_META,
@@ -44,7 +46,7 @@ export default function PlanEditor({
   onChanged: () => void;
   /** 어느 탭을 보고 있다가 열었는지에 맞춰 시작 탭을 다르게 준다 (예: 내 대시보드에서
    *  성과를 보러 들어온 경우 바로 "게시물 상세"로). 기본은 기존과 동일하게 "콘텐츠 피드백". */
-  initialTab?: "detail" | "content" | "publish" | "post";
+  initialTab?: "detail" | "content" | "post";
 }) {
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export default function PlanEditor({
   const [caption, setCaption] = useState("");
   const [publishAt, setPublishAt] = useState("");
   const [collabInput, setCollabInput] = useState("");
-  const [activeTab, setActiveTab] = useState<"detail" | "content" | "publish" | "post">(initialTab);
+  const [activeTab, setActiveTab] = useState<"detail" | "content" | "post">(initialTab);
   const fileInput = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -96,7 +98,7 @@ export default function PlanEditor({
   // 실제로는 권한이 없는 경우(예: 남의 게시물을 딥링크로 직접 열었을 때) 안전하게
   // "콘텐츠 피드백" 탭으로 되돌린다.
   useEffect(() => {
-    if (plan && !plan.can_edit && (activeTab === "content" || activeTab === "publish")) {
+    if (plan && !plan.can_edit && activeTab === "content") {
       setActiveTab("detail");
     }
   }, [plan, activeTab]);
@@ -549,11 +551,9 @@ export default function PlanEditor({
                 </button>
                 {plan.can_edit && (
                   <button
-                    onClick={() => setActiveTab((prev) => (prev === "content" || prev === "publish" ? prev : "content"))}
+                    onClick={() => setActiveTab("content")}
                     className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all min-h-[36px] ${
-                      activeTab === "content" || activeTab === "publish"
-                        ? "bg-white text-navy shadow-sm"
-                        : "text-gray-400 hover:text-gray-600"
+                      activeTab === "content" ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
                     }`}
                   >
                     에디터
@@ -642,27 +642,6 @@ export default function PlanEditor({
                 </>
               )}
 
-              {(activeTab === "content" || activeTab === "publish") && (
-                <div className="flex items-center gap-0.5 bg-gray-50 border border-gray-100 rounded-lg p-1">
-                  {(
-                    [
-                      ["content", "카드"],
-                      ["publish", "캡션 · 발행"],
-                    ] as ["content" | "publish", string][]
-                  ).map(([key, label]) => (
-                    <button
-                      key={key}
-                      onClick={() => setActiveTab(key)}
-                      className={`flex-1 py-1.5 text-[11px] font-semibold rounded-md transition-all ${
-                        activeTab === key ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
               {activeTab === "content" && (
                 <>
               {/* 유형 */}
@@ -701,11 +680,21 @@ export default function PlanEditor({
                 )}
                 {plan.media_type === "image" && (
                   <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
-                    자유 형식 콘텐츠입니다 — 이미지 없이 캡션(텍스트)만으로도 준비완료할 수 있습니다.
+                    자유 형식 콘텐츠입니다 — 발행 대상이 아니라 사진/텍스트 자료 보관용입니다.
+                    위치·협업자·발행 시간 같은 발행 관련 항목은 없습니다.
                   </p>
                 )}
               </section>
 
+              {plan.media_type === "image" ? (
+                <FreeformBlockEditor
+                  planId={plan.id}
+                  blocks={plan.content_blocks}
+                  editable={plan.can_edit}
+                  onChanged={(blocks) => setPlan((p) => (p ? { ...p, content_blocks: blocks } : p))}
+                />
+              ) : (
+                <>
               {/* 파일 */}
               <section className="bg-white rounded-2xl border border-gray-100 p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -859,35 +848,24 @@ export default function PlanEditor({
                   </label>
 
                   <div className="mt-2.5">
-                    <label className="text-[11px] text-gray-500 mb-1 block">커버 프레임 (초)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.1}
-                      disabled={!plan.can_edit}
-                      value={plan.reel_thumb_offset_ms != null ? plan.reel_thumb_offset_ms / 1000 : ""}
-                      placeholder="예: 2.5"
-                      onChange={(e) => {
-                        const sec = e.target.value === "" ? null : Number(e.target.value);
-                        setPlan((prev) =>
-                          prev
-                            ? { ...prev, reel_thumb_offset_ms: sec == null ? null : Math.round(sec * 1000) }
-                            : prev
-                        );
-                      }}
-                      onBlur={() =>
-                        patch({ reel_thumb_offset_ms: plan.reel_thumb_offset_ms }, true)
-                      }
-                      className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-periwinkle disabled:bg-gray-50"
-                    />
+                    <label className="text-[11px] text-gray-500 mb-1 block">커버 프레임</label>
+                    {plan.assets[0]?.preview_url ? (
+                      <ReelCoverPicker
+                        videoUrl={plan.assets[0].preview_url}
+                        offsetMs={plan.reel_thumb_offset_ms}
+                        editable={plan.can_edit}
+                        onChange={(ms) => {
+                          setPlan((prev) => (prev ? { ...prev, reel_thumb_offset_ms: ms } : prev));
+                          patch({ reel_thumb_offset_ms: ms }, true);
+                        }}
+                      />
+                    ) : (
+                      <p className="text-[11px] text-gray-400">동영상을 올리면 프레임을 고를 수 있습니다.</p>
+                    )}
                   </div>
                 </section>
               )}
-                </>
-              )}
 
-              {activeTab === "publish" && (
-                <>
               {/* 위치 */}
               <LocationPicker
                 locationId={plan.location_id}
@@ -1054,6 +1032,8 @@ export default function PlanEditor({
                   editRequestCount={plan.edit_request_count}
                   onDone={() => load({ preserveCaption: true, silent: true })}
                 />
+              )}
+                </>
               )}
                 </>
               )}
