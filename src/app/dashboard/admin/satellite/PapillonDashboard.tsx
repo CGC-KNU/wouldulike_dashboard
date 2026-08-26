@@ -6,22 +6,24 @@ import ContentKanban from "./ContentKanban";
 import LockApprovalQueue from "./LockApprovalQueue";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
-import PlanTable from "./PlanTable";
 import SponsorshipList from "./SponsorshipList";
 import { ContentPlan, MyWeek, PlansResponse, SatelliteMember, fmtMD } from "./types";
 
 /**
- * 메인 화면 3개 구획(리스트·콘텐츠 칸반·캘린더)의 표시 순서 — RD 요청(2026-08-21)으로
- * "콘텐츠 칸반" 사이드바 메뉴를 없애고 메인 화면 안(기본값: 리스트와 캘린더 사이)으로
- * 옮기면서, 순서 자체를 사용자가 바꿀 수 있게 했다. 팀 전체가 공유하는 설정이 아니라
- * "내 화면을 어떻게 보고 싶은지"에 가까운 개인 취향이라 서버가 아니라 브라우저
- * localStorage에 저장한다 — 기기·브라우저별로 따로 기억된다.
+ * 메인 화면 구획(콘텐츠 칸반·캘린더)의 표시 순서 — RD 요청(2026-08-21)으로
+ * "콘텐츠 칸반" 사이드바 메뉴를 없애고 메인 화면 안으로 옮기면서, 순서 자체를
+ * 사용자가 바꿀 수 있게 했다. 팀 전체가 공유하는 설정이 아니라 "내 화면을 어떻게
+ * 보고 싶은지"에 가까운 개인 취향이라 서버가 아니라 브라우저 localStorage에
+ * 저장한다 — 기기·브라우저별로 따로 기억된다.
  */
-type MainSectionKey = "list" | "kanban" | "calendar";
+// "list"(매거진 주제 리스트 표)는 2026-08-26 제거 — 콘텐츠 칸반과 완전히 같은
+// 데이터를 표로만 다시 보여주는 중복 화면이었다(마케팅팀 피드백). 기존에 저장된
+// localStorage 순서 값은 길이가 안 맞아 아래 loadMainSectionOrder()가 자동으로
+// 기본값으로 되돌린다 — 별도 마이그레이션 불필요.
+type MainSectionKey = "kanban" | "calendar";
 const MAIN_SECTION_ORDER_KEY = "papillon:main-section-order";
-const DEFAULT_MAIN_SECTION_ORDER: MainSectionKey[] = ["list", "kanban", "calendar"];
+const DEFAULT_MAIN_SECTION_ORDER: MainSectionKey[] = ["kanban", "calendar"];
 const MAIN_SECTION_LABEL: Record<MainSectionKey, string> = {
-  list: "리스트",
   kanban: "콘텐츠 칸반",
   calendar: "캘린더",
 };
@@ -591,24 +593,6 @@ export default function PapillonDashboard() {
       ) : (
         data &&
         sectionOrder.map((key) => {
-          if (key === "list") {
-            return (
-              <MainSection key="list" sectionKey="list" order={sectionOrder} onMove={moveSection}>
-                <PlanTable
-                  plans={data.plans}
-                  members={members}
-                  viewerAccountId={viewerAccountId}
-                  isLead={isLead}
-                  today={today}
-                  onPatch={patch}
-                  onDelete={remove}
-                  onCreate={create}
-                  onOpen={openPlan}
-                  busyId={busyId}
-                />
-              </MainSection>
-            );
-          }
           if (key === "kanban") {
             return (
               <MainSection key="kanban" sectionKey="kanban" order={sectionOrder} onMove={moveSection}>

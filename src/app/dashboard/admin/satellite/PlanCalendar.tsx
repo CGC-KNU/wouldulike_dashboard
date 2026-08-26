@@ -158,7 +158,9 @@ export default function PlanCalendar({
   });
 
   // 이 달에 등장한 담당자만 범례에 표시
-  const activeOwnerIds = Array.from(new Set(plans.map((p) => p.owner_id)));
+  const activeOwnerIds = Array.from(
+    new Set(plans.map((p) => p.owner_id).filter((id): id is number => id != null))
+  );
   const memberById = new Map(members.map((m) => [m.id, m]));
 
   const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("ko-KR", {

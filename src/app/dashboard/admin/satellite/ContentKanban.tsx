@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import AssigneePicker from "./AssigneePicker";
 import { DeleteConfirmModal } from "./PlanTable";
 import PlanEditor from "./PlanEditor";
-import { ContentPlan, KanbanResponse, MEDIA_META, MediaType, SatelliteMember, ownerColor } from "./types";
+import { ContentPlan, KanbanResponse, MEDIA_META, MediaType, SatelliteMember, fmtMD, ownerColor } from "./types";
 
 /**
  * 콘텐츠 칸반 (통합 업무 관리 기획안 §5) — 업무 목록 / 피드백 대기 / 완료.
@@ -44,7 +45,8 @@ export default function ContentKanban({
   const [adding, setAdding] = useState(false);
   const [newDate, setNewDate] = useState(today);
   const [newTopic, setNewTopic] = useState("");
-  const [newOwner, setNewOwner] = useState<number | "">(viewerAccountId ?? "");
+  const [newOwner, setNewOwner] = useState<number | null>(viewerAccountId ?? null);
+  const [newOwnerName, setNewOwnerName] = useState("");
   const [newMedia, setNewMedia] = useState<MediaType>("carousel");
   const [creating, setCreating] = useState(false);
   const activeMembers = members.filter((m) => m.is_active);
@@ -72,8 +74,8 @@ export default function ContentKanban({
   }, [load]);
 
   useEffect(() => {
-    if (viewerAccountId && newOwner === "") setNewOwner(viewerAccountId);
-  }, [viewerAccountId, newOwner]);
+    if (viewerAccountId && newOwner === null && !newOwnerName) setNewOwner(viewerAccountId);
+  }, [viewerAccountId, newOwner, newOwnerName]);
 
   async function submitNew() {
     if (!newDate) return;
@@ -82,7 +84,8 @@ export default function ContentKanban({
       const ok = await onCreate({
         scheduled_date: newDate,
         topic: newTopic.trim(),
-        owner_id: newOwner || undefined,
+        owner_id: newOwner ?? undefined,
+        owner_name_override: newOwnerName.trim() || undefined,
         media_type: newMedia,
       });
       if (ok) {
@@ -178,19 +181,19 @@ export default function ContentKanban({
               placeholder="주제 (나중에 채워도 됩니다)"
               className="flex-1 min-w-0 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle placeholder:text-gray-300"
             />
-            <select
-              value={newOwner}
-              onChange={(e) => setNewOwner(Number(e.target.value))}
-              disabled={!isLead}
-              className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle disabled:bg-gray-100 disabled:text-gray-400 md:w-32"
-            >
-              {activeMembers.length === 0 && <option value="">계정 없음</option>}
-              {activeMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.display_name || m.username}
-                </option>
-              ))}
-            </select>
+            <div className="md:w-36">
+              <AssigneePicker
+                members={activeMembers}
+                accountId={newOwner}
+                nameOverride={newOwnerName}
+                onChange={(id, name) => {
+                  setNewOwner(id);
+                  setNewOwnerName(name);
+                }}
+                disabled={!isLead}
+                unassignedLabel="담당자"
+              />
+            </div>
             <select
               value={newMedia}
               onChange={(e) => setNewMedia(e.target.value as MediaType)}
@@ -267,6 +270,15 @@ export default function ContentKanban({
                             <span className="text-[10px] text-gray-400 shrink-0">{MEDIA_META[p.media_type].label}</span>
                           </div>
                           <p className="text-xs text-gray-700 truncate">{p.topic || "(주제 미정)"}</p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] text-gray-400">
+                              업로드 {fmtMD(p.scheduled_date)}
+                              {p.desired_publish_at && ` ${new Date(p.desired_publish_at).getHours()}시`}
+                            </span>
+                            {p.deadline && (
+                              <span className="text-[10px] text-amber-500">마감 {fmtMD(p.deadline.slice(0, 10))}</span>
+                            )}
+                          </div>
                         </button>
                         {deletable && (
                           <button

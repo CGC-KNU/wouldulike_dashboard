@@ -76,6 +76,7 @@ export default function OverviewScreen() {
 
   const byOwner = new Map<number, { name: string; total: number; published: number; inProgress: number }>();
   for (const p of plans) {
+    if (p.owner_id == null) continue; // "기타" 담당자는 실제 계정이 아니라 멤버별 집계에서 제외
     const row = byOwner.get(p.owner_id) ?? { name: p.owner_name, total: 0, published: 0, inProgress: 0 };
     row.total += 1;
     if (p.status === "published") row.published += 1;

@@ -29,13 +29,16 @@ export type PipelineStage = "todo" | "feedback" | "done";
 
 export interface ContentPlan {
   id: number;
-  owner_id: number;
+  owner_id: number | null;
   owner_name: string;
+  owner_name_override: string;
   owner_active: boolean;
   shoot_owner_id: number | null;
   shoot_owner_name: string | null;
   shoot_date: string | null; // YYYY-MM-DD
   scheduled_date: string; // YYYY-MM-DD
+  desired_publish_at: string | null; // ISO
+  deadline: string | null; // ISO — "기타" 유형은 항상 null(발행 대상이 아니라 마감 개념이 없음)
   topic: string;
   media_type: MediaType;
   status: PlanStatus;
@@ -509,7 +512,8 @@ export const OWNER_PALETTE = [
   { chip: "bg-lime-100 text-lime-700", dot: "bg-lime-400", cell: "bg-lime-50" },
 ];
 
-export function ownerColor(ownerId: number) {
+export function ownerColor(ownerId: number | null) {
+  if (ownerId == null) return OWNER_PALETTE[0];
   return OWNER_PALETTE[ownerId % OWNER_PALETTE.length];
 }
 
