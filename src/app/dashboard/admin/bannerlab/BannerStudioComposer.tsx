@@ -1225,7 +1225,11 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
         )}
       </div>
 
-      <div className="flex-1 flex items-start justify-center">
+      {/* 왼쪽 설정 패널이 텍스트 레이어를 펼치면 캔버스보다 훨씬 길어져서, 스크롤하면
+          미리보기가 화면 밖으로 같이 밀려나 안 보이는 문제가 있었다(RD 2026-08-26
+          스크린샷 — "텍스트 수정 시 사진이 안 보임"). lg 화면에서 이 열을 상단에
+          붙여(sticky) 스크롤해도 계속 보이게 한다. */}
+      <div className="flex-1 flex items-start justify-center lg:sticky lg:top-4 lg:self-start">
         <div
           className="bg-[repeating-conic-gradient(#f3f3f3_0%_25%,#ffffff_0%_50%)] rounded-2xl border border-gray-100 shadow-sm overflow-hidden w-full max-w-[460px]"
           style={{ backgroundSize: "18px 18px" }}
