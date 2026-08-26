@@ -1518,6 +1518,143 @@ const PERM_FIELDS: { key: keyof Permissions; label: string }[] = [
   { key: "can_satellite", label: "세틀라이트" },
 ];
 
+function AccountRow({
+  account: a,
+  departments,
+  patchAccount,
+  remove,
+}: {
+  account: AdminAccountItem;
+  departments: DepartmentInfo[];
+  patchAccount: (username: string, body: Record<string, unknown>) => Promise<boolean>;
+  remove: (username: string) => Promise<void>;
+}) {
+  const [name, setName] = useState(a.display_name);
+  const [kakao, setKakao] = useState(a.kakao_id != null ? String(a.kakao_id) : "");
+
+  useEffect(() => {
+    setName(a.display_name);
+    setKakao(a.kakao_id != null ? String(a.kakao_id) : "");
+  }, [a.display_name, a.kakao_id]);
+
+  async function saveName() {
+    const next = name.trim();
+    if (next === (a.display_name || "")) return;
+    await patchAccount(a.username, { display_name: next });
+  }
+
+  async function saveKakao() {
+    const next = kakao.trim() || null;
+    const prev = a.kakao_id != null ? String(a.kakao_id) : null;
+    if (next === prev) return;
+    await patchAccount(a.username, { kakao_id: next });
+  }
+
+  return (
+    <div className="px-4 py-3 flex flex-col gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={saveName}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          placeholder="팀원명"
+          className="text-sm font-semibold text-gray-800 border border-gray-200 rounded-lg px-2 py-1 w-[140px] focus:outline-none focus:border-periwinkle"
+        />
+        <span className="text-[11px] text-gray-400">{a.username}</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${DEPT_CHIP[a.department]}`}>
+          {a.department_label}
+        </span>
+        {a.satellite_role === "LEAD" && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-periwinkle/10 text-periwinkle">
+            세틀 리드
+          </span>
+        )}
+        {a.kakao_id == null && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-50 text-red-500">
+            카카오 ID 없음
+          </span>
+        )}
+        <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+          a.is_active ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
+        }`}>
+          {a.is_active ? "활성" : "비활성"}
+        </span>
+      </div>
+
+      <label className="flex items-center gap-1.5 w-full">
+        <span className="text-[10px] text-gray-400 shrink-0">카카오 ID</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={kakao}
+          onChange={(e) => setKakao(e.target.value.replace(/[^0-9]/g, ""))}
+          onBlur={saveKakao}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          placeholder="미등록 · 비우면 로그인 차단"
+          className="flex-1 min-w-0 text-[11px] font-mono text-gray-600 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-periwinkle"
+        />
+      </label>
+
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <select
+          value={a.department}
+          onChange={(e) => patchAccount(a.username, { department: e.target.value })}
+          className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
+        >
+          {DEPT_ORDER.map((d) => (
+            <option key={d} value={d}>
+              {departments.find((x) => x.code === d)?.label ?? d}
+            </option>
+          ))}
+        </select>
+        <select
+          value={a.satellite_role}
+          onChange={(e) => patchAccount(a.username, { satellite_role: e.target.value })}
+          className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
+        >
+          <option value="MEMBER">세틀 멤버</option>
+          <option value="LEAD">세틀 리드</option>
+        </select>
+        <label className="flex items-center gap-1 text-[10px] text-gray-400">
+          주
+          <input
+            type="number" min={0} max={20}
+            defaultValue={a.weekly_quota}
+            onBlur={(e) => {
+              const v = Number(e.target.value);
+              if (v !== a.weekly_quota) patchAccount(a.username, { weekly_quota: v });
+            }}
+            className="w-10 text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1 py-1 text-center focus:outline-none focus:border-periwinkle"
+          />
+          건
+        </label>
+
+        <button
+          onClick={() => patchAccount(a.username, { is_active: !a.is_active })}
+          disabled={!a.is_active && a.kakao_id == null}
+          title={!a.is_active && a.kakao_id == null ? "카카오 ID를 먼저 등록하세요" : ""}
+          className={`ml-auto text-[10px] px-2 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            a.is_active
+              ? "text-amber-500 border-amber-100 hover:border-amber-400"
+              : "text-green-500 border-green-100 hover:border-green-400"
+          }`}
+        >
+          {a.is_active ? "비활성화" : "활성화"}
+        </button>
+        {a.department !== "MARKETING" && a.department !== "SUPERADMIN" && (
+          <button
+            onClick={() => remove(a.username)}
+            className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
+          >
+            삭제
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminAccountsSection() {
   const [isSuperadmin, setIsSuperadmin] = useState<boolean | null>(null);
   // 2차 인증
@@ -1537,9 +1674,6 @@ function AdminAccountsSection() {
   const [newSatRole, setNewSatRole] = useState<SatelliteRole>("MEMBER");
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState("");
-  // 카카오 ID 편집
-  const [kakaoTarget, setKakaoTarget] = useState<string | null>(null);
-  const [kakaoValue, setKakaoValue] = useState("");
 
   useEffect(() => {
     fetch("/api/dashboard/admin/me")
@@ -1619,12 +1753,6 @@ function AdminAccountsSection() {
       const d = await res.json().catch(() => ({}));
       alert(d.detail ?? "삭제 실패");
     }
-  }
-
-  async function saveKakaoId() {
-    if (!kakaoTarget) return;
-    const ok = await patchAccount(kakaoTarget, { kakao_id: kakaoValue.trim() || null });
-    if (ok) { setKakaoTarget(null); setKakaoValue(""); }
   }
 
   async function togglePerm(dept: Department, field: keyof Permissions, next: boolean) {
@@ -1738,121 +1866,14 @@ function AdminAccountsSection() {
           ) : (
             <div className="divide-y divide-gray-50">
               {accounts.map((a) => (
-                <div key={a.username} className="px-4 py-3 flex flex-col gap-2">
-                  {/* 1행 — 이름 · 직무 · 상태 */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-gray-800">
-                      {a.display_name || a.username}
-                    </span>
-                    <span className="text-[11px] text-gray-400">{a.username}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${DEPT_CHIP[a.department]}`}>
-                      {a.department_label}
-                    </span>
-                    {a.satellite_role === "LEAD" && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-periwinkle/10 text-periwinkle">
-                        세틀 리드
-                      </span>
-                    )}
-                    {a.kakao_id == null && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-50 text-red-500">
-                        카카오 ID 없음
-                      </span>
-                    )}
-                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      a.is_active ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"
-                    }`}>
-                      {a.is_active ? "활성" : "비활성"}
-                    </span>
-                  </div>
-
-                  {/* 2행 — 카카오 ID */}
-                  <button
-                    onClick={() => { setKakaoTarget(a.username); setKakaoValue(a.kakao_id ? String(a.kakao_id) : ""); }}
-                    className="text-left text-[11px] font-mono text-gray-500 hover:text-periwinkle w-fit"
-                  >
-                    카카오 {a.kakao_id ?? "— 미등록"} <span className="font-sans">✎</span>
-                  </button>
-
-                  {/* 3행 — 조작 */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <select
-                      value={a.department}
-                      onChange={(e) => patchAccount(a.username, { department: e.target.value })}
-                      className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
-                    >
-                      {DEPT_ORDER.map((d) => (
-                        <option key={d} value={d}>
-                          {departments.find((x) => x.code === d)?.label ?? d}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={a.satellite_role}
-                      onChange={(e) => patchAccount(a.username, { satellite_role: e.target.value })}
-                      className="text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
-                    >
-                      <option value="MEMBER">세틀 멤버</option>
-                      <option value="LEAD">세틀 리드</option>
-                    </select>
-                    <label className="flex items-center gap-1 text-[10px] text-gray-400">
-                      주
-                      <input
-                        type="number" min={0} max={20}
-                        defaultValue={a.weekly_quota}
-                        onBlur={(e) => {
-                          const v = Number(e.target.value);
-                          if (v !== a.weekly_quota) patchAccount(a.username, { weekly_quota: v });
-                        }}
-                        className="w-10 text-[10px] text-gray-600 border border-gray-200 rounded-lg px-1 py-1 text-center focus:outline-none focus:border-periwinkle"
-                      />
-                      건
-                    </label>
-
-                    <button
-                      onClick={() => patchAccount(a.username, { is_active: !a.is_active })}
-                      disabled={!a.is_active && a.kakao_id == null}
-                      title={!a.is_active && a.kakao_id == null ? "카카오 ID를 먼저 등록하세요" : ""}
-                      className={`ml-auto text-[10px] px-2 py-1 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                        a.is_active
-                          ? "text-amber-500 border-amber-100 hover:border-amber-400"
-                          : "text-green-500 border-green-100 hover:border-green-400"
-                      }`}
-                    >
-                      {a.is_active ? "비활성화" : "활성화"}
-                    </button>
-                    {a.department !== "MARKETING" && a.department !== "SUPERADMIN" && (
-                      <button
-                        onClick={() => remove(a.username)}
-                        className="text-[10px] text-red-400 hover:text-red-600 px-2 py-1 rounded-lg border border-red-100 hover:border-red-300"
-                      >
-                        삭제
-                      </button>
-                    )}
-                  </div>
-                </div>
+                <AccountRow
+                  key={a.username}
+                  account={a}
+                  departments={departments}
+                  patchAccount={patchAccount}
+                  remove={remove}
+                />
               ))}
-            </div>
-          )}
-
-          {/* 카카오 ID 편집 */}
-          {kakaoTarget && (
-            <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2">
-              <p className="text-xs font-semibold text-amber-700">{kakaoTarget} 카카오 ID</p>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={kakaoValue}
-                onChange={(e) => setKakaoValue(e.target.value.replace(/[^0-9]/g, ""))}
-                onKeyDown={(e) => { if (e.key === "Enter") saveKakaoId(); }}
-                placeholder="예: 4424485763 (비우면 로그인 차단)"
-                className="w-full px-3 py-2 text-sm font-mono border border-amber-200 rounded-lg focus:outline-none bg-white"
-              />
-              <div className="flex gap-2">
-                <button onClick={() => { setKakaoTarget(null); setKakaoValue(""); }}
-                  className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 bg-white">취소</button>
-                <button onClick={saveKakaoId}
-                  className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold">저장</button>
-              </div>
             </div>
           )}
 
