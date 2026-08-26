@@ -103,9 +103,16 @@ export interface PlansResponse {
 
 export type SponsorshipStatus = "scheduled" | "completed";
 
+export interface ShootOwner {
+  account_id: number | null;
+  name: string;
+}
+
 export interface Sponsorship {
   id: number;
   store_name: string;
+  shoot_owners: ShootOwner[];
+  /** 하위 호환 — shoot_owners[0]. 새 코드는 shoot_owners를 쓴다. */
   shoot_owner_id: number | null;
   shoot_owner_name: string | null;
   shoot_datetime: string; // ISO

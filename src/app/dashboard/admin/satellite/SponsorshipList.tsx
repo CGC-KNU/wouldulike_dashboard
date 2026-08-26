@@ -2,7 +2,83 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { SPONSORSHIP_STATUS_META, Sponsorship, SatelliteMember } from "./types";
+import AssigneePicker from "./AssigneePicker";
+import { SPONSORSHIP_STATUS_META, ShootOwner, Sponsorship, SatelliteMember } from "./types";
+
+/**
+ * 촬영 담당자 복수 선택 + 직접입력 (마케팅팀 피드백 2026-08-26: "촬영 담당자를
+ * 복수로 선택할 수 있게", 목록 인원과 직접입력 혼용 가능). 칩으로 이미 고른 사람을
+ * 보여주고, AssigneePicker로 하나씩 추가한다.
+ */
+function ShootOwnersEditor({
+  members,
+  value,
+  onChange,
+}: {
+  members: SatelliteMember[];
+  value: ShootOwner[];
+  onChange: (next: ShootOwner[]) => void;
+}) {
+  const [pendingId, setPendingId] = useState<number | null>(null);
+  const [pendingName, setPendingName] = useState("");
+
+  function add() {
+    if (pendingId != null) {
+      if (value.some((o) => o.account_id === pendingId)) return;
+      const m = members.find((mm) => mm.id === pendingId);
+      onChange([...value, { account_id: pendingId, name: m ? m.display_name || m.username : "" }]);
+    } else if (pendingName.trim()) {
+      onChange([...value, { account_id: null, name: pendingName.trim() }]);
+    } else {
+      return;
+    }
+    setPendingId(null);
+    setPendingName("");
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((o, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-periwinkle bg-periwinkle/10 border border-periwinkle/20 rounded-full pl-2.5 pr-1.5 py-1"
+            >
+              {o.name}
+              <button
+                onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+                className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-periwinkle/20"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex items-start gap-1.5">
+        <div className="flex-1 min-w-0">
+          <AssigneePicker
+            members={members}
+            accountId={pendingId}
+            nameOverride={pendingName}
+            onChange={(id, name) => {
+              setPendingId(id);
+              setPendingName(name);
+            }}
+            unassignedLabel="촬영 담당자 추가"
+          />
+        </div>
+        <button
+          onClick={add}
+          className="shrink-0 text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1.5 hover:bg-periwinkle/5"
+        >
+          추가
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * 협찬 목록 (통합 업무 관리 기획안 §2·§4, 마케팅팀 피드백 2026-08-20) — 콘텐츠 칸반과
@@ -49,7 +125,7 @@ export default function SponsorshipList() {
 
   const [showForm, setShowForm] = useState(false);
   const [storeName, setStoreName] = useState("");
-  const [shootOwner, setShootOwner] = useState<number | "">("");
+  const [shootOwners, setShootOwners] = useState<ShootOwner[]>([]);
   const [shootAt, setShootAt] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -99,7 +175,7 @@ export default function SponsorshipList() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           store_name: storeName.trim(),
-          shoot_owner_id: shootOwner || null,
+          shoot_owners: shootOwners.map((o) => (o.account_id ? { account_id: o.account_id } : { name: o.name })),
           shoot_datetime: shootAt,
           notes: notes.trim(),
         }),
@@ -110,7 +186,7 @@ export default function SponsorshipList() {
         return;
       }
       setStoreName("");
-      setShootOwner("");
+      setShootOwners([]);
       setShootAt("");
       setNotes("");
       setShowForm(false);
@@ -181,18 +257,6 @@ export default function SponsorshipList() {
                 placeholder="가게명 / 업무명"
                 className="flex-1 min-w-0 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle"
               />
-              <select
-                value={shootOwner}
-                onChange={(e) => setShootOwner(e.target.value ? Number(e.target.value) : "")}
-                className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle md:w-40"
-              >
-                <option value="">촬영 담당자</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name || m.username}
-                  </option>
-                ))}
-              </select>
               <input
                 type="datetime-local"
                 value={shootAt}
@@ -200,6 +264,7 @@ export default function SponsorshipList() {
                 className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle md:w-52"
               />
             </div>
+            <ShootOwnersEditor members={members} value={shootOwners} onChange={setShootOwners} />
             <input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -269,20 +334,6 @@ export default function SponsorshipList() {
                           }}
                           className="flex-1 min-w-0 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle"
                         />
-                        <select
-                          defaultValue={s.shoot_owner_id ?? ""}
-                          onChange={(e) =>
-                            patchRow(s.id, { shoot_owner_id: e.target.value ? Number(e.target.value) : null })
-                          }
-                          className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle md:w-40"
-                        >
-                          <option value="">담당 미정</option>
-                          {members.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.display_name || m.username}
-                            </option>
-                          ))}
-                        </select>
                         <input
                           type="datetime-local"
                           defaultValue={toLocalInputValue(s.shoot_datetime)}
@@ -290,6 +341,15 @@ export default function SponsorshipList() {
                           className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle md:w-52"
                         />
                       </div>
+                      <ShootOwnersEditor
+                        members={members}
+                        value={s.shoot_owners}
+                        onChange={(next) =>
+                          patchRow(s.id, {
+                            shoot_owners: next.map((o) => (o.account_id ? { account_id: o.account_id } : { name: o.name })),
+                          })
+                        }
+                      />
                       <input
                         defaultValue={s.notes}
                         onBlur={(e) => {
