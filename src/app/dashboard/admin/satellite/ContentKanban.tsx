@@ -49,7 +49,9 @@ export default function ContentKanban({
   const [newOwnerName, setNewOwnerName] = useState("");
   const [newMedia, setNewMedia] = useState<MediaType>("carousel");
   const [creating, setCreating] = useState(false);
-  const activeMembers = members.filter((m) => m.is_active);
+  // 담당자(편집 담당) 후보 — 활성 계정 + 배정 가능(satellite_assignable) 만.
+  // 리드라도 이게 꺼져 있으면 열람 전용이라 이 목록엔 안 뜬다(RD 요청 2026-08-26).
+  const activeMembers = members.filter((m) => m.is_active && m.satellite_assignable);
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (!opts?.soft) setLoading(true);
@@ -74,8 +76,13 @@ export default function ContentKanban({
   }, [load]);
 
   useEffect(() => {
-    if (viewerAccountId && newOwner === null && !newOwnerName) setNewOwner(viewerAccountId);
-  }, [viewerAccountId, newOwner, newOwnerName]);
+    // 열람 전용 계정(리드라도 satellite_assignable=false)은 자기 자신으로 기본
+    // 지정되면 안 된다 — 어차피 서버가 거부하지만, 담당자 목록에도 안 뜨는데
+    // 자동으로 선택돼 있으면 혼란스럽다.
+    if (viewerAccountId && newOwner === null && !newOwnerName && activeMembers.some((m) => m.id === viewerAccountId)) {
+      setNewOwner(viewerAccountId);
+    }
+  }, [viewerAccountId, newOwner, newOwnerName, activeMembers]);
 
   async function submitNew() {
     if (!newDate) return;

@@ -329,6 +329,7 @@ function MemberRow({
   const [activeFrom, setActiveFrom] = useState(member.active_from ?? "");
   const [activeUntil, setActiveUntil] = useState(member.active_until ?? "");
   const [isActive, setIsActive] = useState(member.is_active);
+  const [assignable, setAssignable] = useState(member.satellite_assignable);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -338,7 +339,8 @@ function MemberRow({
     role !== member.satellite_role ||
     activeFrom !== (member.active_from ?? "") ||
     activeUntil !== (member.active_until ?? "") ||
-    isActive !== member.is_active;
+    isActive !== member.is_active ||
+    assignable !== member.satellite_assignable;
 
   async function save() {
     setSaving(true);
@@ -354,6 +356,7 @@ function MemberRow({
           active_from: activeFrom || null,
           active_until: activeUntil || null,
           is_active: isActive,
+          satellite_assignable: assignable,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -389,6 +392,11 @@ function MemberRow({
           {!member.is_active && (
             <span className="ml-1.5 text-[9px] font-bold text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5">
               비활성
+            </span>
+          )}
+          {!member.satellite_assignable && (
+            <span className="ml-1.5 text-[9px] font-bold text-amber-600 bg-amber-50 rounded-full px-1.5 py-0.5">
+              열람 전용
             </span>
           )}
         </div>
@@ -444,6 +452,13 @@ function MemberRow({
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
             <span className="text-[11px] text-gray-500">활성 계정 (끄면 로그인 불가, 과거 콘텐츠엔 이름 유지)</span>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={assignable} onChange={(e) => setAssignable(e.target.checked)} />
+            <span className="text-[11px] text-gray-500">
+              담당자로 배정 가능 (끄면 "담당자" 목록에서 빠지고 열람만 가능 — 리드 권한은 그대로 유지됨)
+            </span>
           </label>
 
           {error && <p className="text-[10px] text-red-500">{error}</p>}

@@ -19,6 +19,8 @@ export interface SatelliteMember {
   department: Department;
   department_label: string;
   satellite_role: SatelliteRole;
+  /** 담당자(편집 담당)로 지정 가능한지 — false면 열람만(리드 권한은 별개로 유지). */
+  satellite_assignable: boolean;
   weekly_quota: number;
   is_active: boolean;
   active_from: string | null; // YYYY-MM-DD
