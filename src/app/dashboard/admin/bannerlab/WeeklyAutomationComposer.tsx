@@ -36,7 +36,6 @@ const TYPE_OPTIONS: { value: WeekType; label: string }[] = [
   { value: "general", label: "일반 배너 홍보" },
   { value: "coupon", label: "한정 쿠폰 발급" },
   { value: "mileage", label: "마일리지 2배 이벤트" },
-  { value: "council", label: "학생회 배너 홍보" },
 ];
 
 const TIER_BADGE: Record<string, string> = {

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { PreviewableImg } from "@/components/ImagePreview";
 import BannerLabComposer from "./bannerlab/BannerLabComposer";
+import BannerStudioComposer from "./bannerlab/BannerStudioComposer";
 import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
 
 interface TrendItem {
@@ -748,6 +749,20 @@ export default function ContentTab() {
         </div>
         <div className="p-4">
           <BannerLabComposer />
+        </div>
+      </div>
+      {/* 배너 스튜디오 — 사진 위 텍스트·그라디언트 직접 편집 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">배너 스튜디오 — 직접 편집</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              배경 사진 위에 텍스트·그라디언트·이미지 에셋을 직접 배치해 PNG로 뽑는 수동 편집기 · 완성한 이미지는 위 배너랩 소재 사진으로 올리거나 슬랙에 바로 첨부하세요
+            </p>
+          </div>
+        </div>
+        <div className="p-4">
+          <BannerStudioComposer />
         </div>
       </div>
       {/* 배너 (기존 수동 URL 등록) */}
