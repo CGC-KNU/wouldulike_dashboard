@@ -26,33 +26,45 @@ export default function FreeformBlockEditor({
 }) {
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [dragId, setDragId] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const sorted = [...blocks].sort((a, b) => a.sort_order - b.sort_order);
 
-  function exportMarkdown() {
-    const lines: string[] = [];
-    const title = topic.trim();
-    if (title) {
-      lines.push(`# ${title}`, "");
-    }
-    for (const b of sorted) {
-      if (b.block_type === "image") {
-        if (b.image_url) lines.push(`![](${b.image_url})`, "");
-      } else if (b.text.trim()) {
-        lines.push(b.text.trim(), "");
+  async function exportMarkdown() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}/export-md`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(d.detail ?? "AI 정리에 실패했습니다.");
+        return;
       }
+      const md = typeof d.markdown === "string" ? d.markdown : "";
+      if (!md.trim()) {
+        alert("정리된 문서가 비어 있습니다.");
+        return;
+      }
+      const fallback = (topic.trim() || "기타").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+      const name = (d.filename as string) || `${fallback}.md`;
+      const blob = new Blob([md.endsWith("\n") ? md : `${md}\n`], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setExporting(false);
     }
-    const md = (lines.join("\n").trimEnd() || "# (제목 없음)") + "\n";
-    const safe = (title || "기타").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
-    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${safe}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   async function addText() {
@@ -155,13 +167,15 @@ export default function FreeformBlockEditor({
         <button
           type="button"
           onClick={exportMarkdown}
-          className="shrink-0 text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5"
+          disabled={exporting}
+          className="shrink-0 text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-50"
         >
-          .md 내보내기
+          {exporting ? "정리 중..." : "AI로 .md 정리"}
         </button>
       </div>
       <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
         카드뉴스 주제 정하기, 학생회 단톡에 뿌릴 글처럼 발행하지 않는 자료를 사진·텍스트로 자유롭게 모으세요.
+        내보내면 AI가 작업 내용을 Markdown으로 정리합니다.
       </p>
 
       {sorted.length > 0 && (
