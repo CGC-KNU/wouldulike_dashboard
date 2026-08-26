@@ -976,6 +976,8 @@ function AiDiagnosticsPanel({ diag, onClose }: { diag: AiDiagnostics; onClose: (
 function WeeklyTargetsPanel({ weekId }: { weekId: number }) {
   const [targets, setTargets] = useState<WeeklyTarget[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -992,14 +994,84 @@ function WeeklyTargetsPanel({ weekId }: { weekId: number }) {
     load();
   }, [load]);
 
+  // 목록이 새로 로드되면(삭제 등으로) 이제 없는 id는 선택 목록에서도 지운다.
+  useEffect(() => {
+    setCheckedIds((prev) => {
+      const ids = new Set(targets.map((t) => t.id));
+      const next = new Set([...prev].filter((id) => ids.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [targets]);
+
+  function toggleChecked(id: number) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setCheckedIds((prev) => (prev.size === targets.length ? new Set() : new Set(targets.map((t) => t.id))));
+  }
+
+  async function bulkDelete() {
+    if (checkedIds.size === 0) return;
+    if (!confirm(`선택한 ${checkedIds.size}건을 삭제할까요? 생성된 후보 이미지도 같이 지워지고, 이미 앱에 반영된 상태였다면 노출도 꺼집니다.`)) {
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      const ids = [...checkedIds];
+      const results = await Promise.all(
+        ids.map((id) => fetch(`/api/bannerlab/weekly/targets/${id}`, { method: "DELETE" }))
+      );
+      const failed = results.filter((r) => !r.ok && r.status !== 204).length;
+      if (failed > 0) alert(`${failed}건 삭제에 실패했습니다.`);
+      setCheckedIds(new Set());
+      await load();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2 border border-gray-100 rounded-lg p-2 bg-gray-50/50">
       {loading && <p className="text-[10px] text-gray-300 text-center py-2">불러오는 중...</p>}
       {!loading && targets.length === 0 && (
         <p className="text-[10px] text-gray-300 text-center py-2">아직 생성된 대상이 없습니다.</p>
       )}
+      {!loading && targets.length > 0 && (
+        <div className="flex items-center justify-between gap-2 px-0.5">
+          <label className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            <input
+              type="checkbox"
+              checked={checkedIds.size === targets.length}
+              onChange={toggleAll}
+              className="accent-periwinkle"
+            />
+            전체 선택
+          </label>
+          {checkedIds.size > 0 && (
+            <button
+              onClick={bulkDelete}
+              disabled={bulkDeleting}
+              className="text-[10px] font-semibold text-red-500 border border-red-200 rounded-lg px-2 py-1 hover:bg-red-50 disabled:opacity-40"
+            >
+              {bulkDeleting ? "삭제 중..." : `선택 삭제 (${checkedIds.size})`}
+            </button>
+          )}
+        </div>
+      )}
       {targets.map((t) => (
-        <TargetCard key={t.id} target={t} onChanged={load} />
+        <TargetCard
+          key={t.id}
+          target={t}
+          onChanged={load}
+          checked={checkedIds.has(t.id)}
+          onToggleChecked={() => toggleChecked(t.id)}
+        />
       ))}
     </div>
   );
@@ -1012,7 +1084,17 @@ const STATUS_BADGE: Record<string, string> = {
   feedback: "bg-amber-50 text-amber-600",
 };
 
-function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: () => void }) {
+function TargetCard({
+  target,
+  onChanged,
+  checked,
+  onToggleChecked,
+}: {
+  target: WeeklyTarget;
+  onChanged: () => void;
+  checked: boolean;
+  onToggleChecked: () => void;
+}) {
   const [promptOverride, setPromptOverride] = useState(target.prompt_override);
   const [photoUrl, setPhotoUrl] = useState(target.photo_url_override || target.restaurant_photos?.[0] || "");
   const [regenerating, setRegenerating] = useState(false);
@@ -1097,9 +1179,12 @@ function TargetCard({ target, onChanged }: { target: WeeklyTarget; onChanged: ()
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-2 flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold text-gray-700 truncate">
-          [{target.kind_label}] {target.restaurant_name}
-        </p>
+        <label className="flex items-center gap-1.5 min-w-0">
+          <input type="checkbox" checked={checked} onChange={onToggleChecked} className="accent-periwinkle shrink-0" />
+          <p className="text-[11px] font-semibold text-gray-700 truncate">
+            [{target.kind_label}] {target.restaurant_name}
+          </p>
+        </label>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${STATUS_BADGE[target.status] ?? "bg-gray-100"}`}>
             {target.status_label}

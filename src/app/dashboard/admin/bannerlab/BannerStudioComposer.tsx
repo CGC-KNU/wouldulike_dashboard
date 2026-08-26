@@ -74,6 +74,13 @@ interface Scene {
   gradient: GradientState;
 }
 
+/** 실행 취소/다시 실행 스냅샷 하나 — 편집 가능한 상태 전체(모드 두 개 다) */
+interface DocSnapshot {
+  scenes: Record<BannerMode, Scene>;
+  layersByMode: Record<BannerMode, TextLayer[]>;
+  assetsByMode: Record<BannerMode, ImageAssetLayer[]>;
+}
+
 interface LayerBox {
   x: number;
   y: number;
@@ -442,6 +449,85 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
   const selectedLayer = selectedKind === "text" ? layers.find((l) => l.id === selectedId) ?? null : null;
   const selectedAsset = selectedKind === "asset" ? assets.find((a) => a.id === selectedId) ?? null : null;
 
+  /* ─── 실행 취소 / 다시 실행 ───────────────────────────────────────
+   * scenes/layersByMode/assetsByMode 셋을 한 묶음으로 기록한다(RD 요청
+   * 2026-08-26). 슬라이더를 드래그하는 동안 값이 계속 바뀌는데 그걸 한 칸씩 다
+   * 기록하면 되돌리기를 여러 번 눌러야 해서, 변경이 0.4초 잠잠해진 시점에만
+   * 스냅샷 하나로 묶어 쌓는다. */
+  const [history, setHistory] = useState<DocSnapshot[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isRestoringRef = useRef(false);
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isRestoringRef.current) {
+      isRestoringRef.current = false;
+      return;
+    }
+    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = setTimeout(() => {
+      setHistory((prev) => {
+        const base = prev.slice(0, historyIndex + 1);
+        return [...base, { scenes, layersByMode, assetsByMode }].slice(-50);
+      });
+      setHistoryIndex((prev) => Math.min(prev + 1, 49));
+    }, 400);
+    return () => {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenes, layersByMode, assetsByMode]);
+
+  function undo() {
+    if (historyIndex <= 0) return;
+    const target = history[historyIndex - 1];
+    isRestoringRef.current = true;
+    setScenes(target.scenes);
+    setLayersByMode(target.layersByMode);
+    setAssetsByMode(target.assetsByMode);
+    setHistoryIndex(historyIndex - 1);
+    setSelectedKind(null);
+    setSelectedId(null);
+  }
+
+  function redo() {
+    if (historyIndex >= history.length - 1) return;
+    const target = history[historyIndex + 1];
+    isRestoringRef.current = true;
+    setScenes(target.scenes);
+    setLayersByMode(target.layersByMode);
+    setAssetsByMode(target.assetsByMode);
+    setHistoryIndex(historyIndex + 1);
+    setSelectedKind(null);
+    setSelectedId(null);
+  }
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  // Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z(또는 Ctrl+Y) — 입력칸에 포커스가 있으면 그 필드의
+  // 기본 되돌리기를 그대로 두고 여기서는 가로채지 않는다.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      const isEditable = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (isEditable) return;
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+      if (e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyIndex, history]);
+
   // RiaSans 웹폰트 로드 (public/fonts/RiaSans-Bold.ttf) — 단일 굵기 파일이라
   // weight 범위를 넓게 등록해 어떤 굵기를 요청해도 이 페이스로 매칭되게 한다.
   useEffect(() => {
@@ -635,11 +721,32 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
     dragRef.current = null;
   }
 
-  function exportPng() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.toBlob((blob) => {
-      if (!blob) return;
+  /**
+   * 화면에 보이는 캔버스(canvasRef)를 그대로 내보내면, 지금 선택 중인 텍스트/에셋의
+   * 점선 테두리(편집용 UI)까지 같이 찍힌다(RD 스크린샷 2026-08-26 — "다운받으면
+   * 수정되던 부분에 점선까지 같이 출력"). 내보내기 전용으로 선택 표시 없이 새
+   * 캔버스에 다시 그린다 — renderVariant()/sendAsPopup() 이 이미 쓰던 것과 같은 방식.
+   */
+  function renderClean(format: "png" | "jpeg"): Promise<Blob> {
+    const canvas = document.createElement("canvas");
+    canvas.width = ratio.w;
+    canvas.height = ratio.h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return Promise.reject(new Error("캔버스를 만들지 못했습니다."));
+    drawCoverImage(ctx, canvas.width, canvas.height, scene.image);
+    drawGradient(ctx, canvas.width, canvas.height, scene.gradient);
+    assets.forEach((a) => drawAsset(ctx, a, false, canvas.width, canvas.height));
+    layers.forEach((l) => drawLayer(ctx, l, false, canvas.width, canvas.height));
+    return new Promise((resolve, reject) => {
+      const callback: BlobCallback = (b) => (b ? resolve(b) : reject(new Error("이미지 생성에 실패했습니다.")));
+      if (format === "png") canvas.toBlob(callback, "image/png");
+      else canvas.toBlob(callback, "image/jpeg", 0.92);
+    });
+  }
+
+  async function exportPng() {
+    try {
+      const blob = await renderClean("png");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -648,7 +755,9 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    }, "image/png");
+    } catch (e) {
+      alert((e as Error).message);
+    }
   }
 
   function buildSpec() {
@@ -724,13 +833,9 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
 
   async function sendAsPopup() {
     if (!weeklyBatch) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
     setSendingPopup(true);
     try {
-      const blob: Blob = await new Promise((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("이미지 생성에 실패했습니다."))), "image/jpeg", 0.92);
-      });
+      const blob = await renderClean("jpeg");
       const contentType = "image/jpeg";
       const presign = await fetch(`/api/bannerlab/weekly/weeks/${weeklyBatch.weekId}/studio-targets/presign`, {
         method: "POST",
@@ -866,6 +971,25 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
               {MODE_LABEL[m]}
             </button>
           ))}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            title="실행 취소 (Cmd/Ctrl+Z)"
+            className="flex-1 text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50 disabled:opacity-30"
+          >
+            ↩ 실행 취소
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            title="다시 실행 (Cmd/Ctrl+Shift+Z)"
+            className="flex-1 text-[11px] font-semibold text-gray-500 border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50 disabled:opacity-30"
+          >
+            다시 실행 ↪
+          </button>
         </div>
 
         <div>
