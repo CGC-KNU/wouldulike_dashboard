@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PreviewableImg } from "@/components/ImagePreview";
+import BannerStudioComposer from "./BannerStudioComposer";
 import { BannerRatio } from "./types";
 import {
   AiDiagnostics,
@@ -318,6 +319,9 @@ function WeekFolderCard({
   const [figmaTemplateId, setFigmaTemplateId] = useState<number | null>(week.figma_template_id);
   const [excluded, setExcluded] = useState<Set<number>>(new Set(week.excluded_restaurant_ids));
   const [included, setIncluded] = useState<Set<number>>(new Set(week.included_restaurant_ids));
+  const [couponTexts, setCouponTexts] = useState<Record<number, string>>(() =>
+    Object.fromEntries(Object.entries(week.restaurant_coupon_texts || {}).map(([k, v]) => [Number(k), v]))
+  );
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showRestaurants, setShowRestaurants] = useState(false);
@@ -325,7 +329,16 @@ function WeekFolderCard({
   const [generating, setGenerating] = useState(false);
   const [aiDiag, setAiDiag] = useState<AiDiagnostics | null>(null);
   const [checkingAiDiag, setCheckingAiDiag] = useState(false);
+  // 슬랙 메시징 세팅 화면이 배너 스튜디오까지 품게 되면서 카드 하나가 세로로 매우
+  // 길어졌다 — 학기>월을 고른 뒤엔 주차 목록을 접어두고 클릭해야 펼쳐지게 한다
+  // (마케팅팀 피드백 2026-08-26: "자리를 꽤 차지하기 때문에 ... 펼쳐지지 않은
+  // 상태로 보여지고, 클릭하면 편집할 수 있는 공간이 열리는 방식으로").
+  const [expanded, setExpanded] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // 3주차 — 완성된 사진 1장을 그대로 올리면 슬랙 없이 바로 적용된다.
+  const [directFile, setDirectFile] = useState<File | null>(null);
+  const [directClickUrl, setDirectClickUrl] = useState("");
+  const [applyingDirect, setApplyingDirect] = useState(false);
 
   const dirty =
     type !== week.type ||
@@ -337,7 +350,8 @@ function WeekFolderCard({
     excluded.size !== week.excluded_restaurant_ids.length ||
     [...excluded].some((id) => !week.excluded_restaurant_ids.includes(id)) ||
     included.size !== week.included_restaurant_ids.length ||
-    [...included].some((id) => !week.included_restaurant_ids.includes(id));
+    [...included].some((id) => !week.included_restaurant_ids.includes(id)) ||
+    JSON.stringify(couponTexts) !== JSON.stringify(week.restaurant_coupon_texts || {});
 
   async function save(): Promise<boolean> {
     setSaving(true);
@@ -354,6 +368,7 @@ function WeekFolderCard({
           figma_template_id: figmaTemplateId,
           excluded_restaurant_ids: [...excluded],
           included_restaurant_ids: [...included],
+          restaurant_coupon_texts: couponTexts,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -478,6 +493,54 @@ function WeekFolderCard({
     }
   }
 
+  /**
+   * 3주차(마일리지) — 완성된 사진 1장을 올리면 슬랙 승인 절차 없이 곧바로 그 주
+   * 기간 동안 앱에 반영된다(마케팅팀 피드백 2026-08-26).
+   */
+  async function applyDirect() {
+    if (!directFile || !directClickUrl.trim()) return;
+    setApplyingDirect(true);
+    try {
+      const presign = await fetch(`/api/bannerlab/weekly/weeks/${week.id}/studio-targets/presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: directFile.name, content_type: directFile.type || "image/jpeg" }),
+      });
+      const p = await presign.json().catch(() => ({}));
+      if (!presign.ok) {
+        alert(p.detail ?? "업로드 URL 발급에 실패했습니다.");
+        return;
+      }
+      const put = await fetch(p.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": directFile.type || "image/jpeg" },
+        body: directFile,
+      });
+      if (!put.ok) {
+        alert(`업로드 실패 (S3 ${put.status})`);
+        return;
+      }
+      const res = await fetch(`/api/bannerlab/weekly/weeks/${week.id}/apply-direct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: p.key, click_url: directClickUrl.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.detail ?? "적용에 실패했습니다.");
+        return;
+      }
+      alert("적용됐습니다 — 이번 주 기간 동안 앱에 바로 반영됩니다.");
+      setDirectFile(null);
+      setDirectClickUrl("");
+      onChanged();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setApplyingDirect(false);
+    }
+  }
+
   function toggleExcluded(id: number) {
     setExcluded((prev) => {
       const next = new Set(prev);
@@ -512,37 +575,42 @@ function WeekFolderCard({
   const isCouncil = type === "council";
   const usesPaidRestaurants = !isMileage; // 1·2·4주차 — 유료 식당 전체 기반
 
-  return (
-    <div className="rounded-xl border border-gray-100 p-3 flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-bold text-gray-700 shrink-0">{week.week_number}주차</p>
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value as WeekType)}
-          className="flex-1 text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle"
-        >
-          {TYPE_OPTIONS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-        {dirty && <span className="text-[9px] text-amber-500 shrink-0">저장 안 됨</span>}
-      </div>
+  // 1·2주차 — 배너 스튜디오 일괄 생성으로 완전히 전환(마케팅팀 피드백 2026-08-26).
+  // 3주차 — 완성된 사진 1장 직접 업로드(슬랙 없이 즉시 적용). 4주차는 아직 손대지
+  // 않은 예전 방식 그대로 둔다(RD: "로직은 남겨두자") — week_number로 가른다(type은
+  // 관리자가 자유롭게 바꿀 수 있는 값이라 이 갈래에는 안 맞는다).
+  const isStudioFlow = week.week_number === 1 || week.week_number === 2;
+  const isDirectApplyFlow = week.week_number === 3;
+  const isLegacyFlow = !isStudioFlow && !isDirectApplyFlow;
 
-      <div className="flex flex-col gap-1 text-[10px] text-gray-400 bg-gray-50 rounded-lg px-2 py-1.5">
+  return (
+    <div className="rounded-xl border border-gray-100 flex flex-col gap-2.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center justify-between gap-2 text-left p-3 pb-0"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[11px] font-bold text-gray-700 shrink-0">{week.week_number}주차</span>
+          <span className="text-[11px] text-gray-500 truncate">{week.type_label}</span>
+          {dirty && <span className="text-[9px] text-amber-500 shrink-0">저장 안 됨</span>}
+        </div>
+        <span className="text-gray-300 text-[10px] shrink-0">{expanded ? "접기 ▲" : "펼치기 ▼"}</span>
+      </button>
+
+      <div className="flex flex-col gap-1 text-[10px] text-gray-400 bg-gray-50 mx-3 rounded-lg px-2 py-1.5">
         <div className="flex items-center justify-between">
           <span>노출 시작(예정): {week.week_start}</span>
           {!week.targets_summary.generated && <span>아직 생성 안 됨</span>}
         </div>
         {week.targets_summary.generated && (
           <>
-            {/* 등록된 자료(대상·후보)를 직접 확인/수정/삭제하려면 아래 두 줄을 누르면
-                바로 목록이 펼쳐진다 — 전엔 맨 아래 "자세히 보기"까지 스크롤해야 했다
-                (2026-08-24, RD 요청). */}
             <button
               type="button"
-              onClick={() => setShowDetail(true)}
+              onClick={() => {
+                setExpanded(true);
+                setShowDetail(true);
+              }}
               className="flex items-center justify-between hover:bg-periwinkle/5 rounded px-1 -mx-1 py-0.5 transition-colors"
             >
               <span>배너</span>
@@ -555,7 +623,10 @@ function WeekFolderCard({
             {week.targets_summary.popup.total > 0 && (
               <button
                 type="button"
-                onClick={() => setShowDetail(true)}
+                onClick={() => {
+                  setExpanded(true);
+                  setShowDetail(true);
+                }}
                 className="flex items-center justify-between hover:bg-periwinkle/5 rounded px-1 -mx-1 py-0.5 transition-colors"
               >
                 <span>팝업</span>
@@ -569,190 +640,253 @@ function WeekFolderCard({
         )}
       </div>
 
-      {/* 배너에 실제로 찍히는 문구 — AI 지시문(prompt_text)과 분리(2026-08-24, RD 요청).
-          예전엔 한 칸이 캡션과 AI 지시문을 겸해서, AI 리터치 호출에 캡션 문구가 그대로
-          섞여 들어가 gpt-image-1이 그 문구를 사진에 실제로 그려 넣는 사고가 있었다. */}
-      <input
-        value={captionText}
-        onChange={(e) => setCaptionText(e.target.value)}
-        placeholder="배너 문구 — 배너에 실제로 찍히는 짧은 문구 (예: 비오는 날 뜨끈한 해물크림짬뽕 어떠세요?)"
-        maxLength={200}
-        className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 mt-1.5 focus:outline-none focus:border-periwinkle"
-      />
-      {/* 톤/분위기/효과는 이 프롬프트 문장 안에 직접 써넣으면 된다 — 예전엔 별도
-          "톤"/"폰트"/"효과 메모" 입력칸이 있었는데, 톤은 결국 이 프롬프트 뒤에
-          문자열로 그대로 이어붙여질 뿐이었고 폰트·효과는 애초에 생성 결과 어디에도
-          반영된 적 없는 죽은 입력이라 2026-08-24 정리(RD 요청 — 중복/미사용 필드 제거). */}
-      <textarea
-        value={promptText}
-        onChange={(e) => setPromptText(e.target.value)}
-        placeholder="원본 사진에 입힐 톤/분위기 (예: 밝고 화사하게, 가장자리를 살짝 어둡게) — 사진을 새로 만들지 않고 효과만 적용됩니다"
-        rows={3}
-        className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 my-1.5 focus:outline-none focus:border-periwinkle resize-none"
-      />
-      <div className="flex items-center gap-1.5">
-        <select
-          value={ratio}
-          onChange={(e) => setRatio(e.target.value as BannerRatio)}
-          className="text-[11px] border border-gray-200 rounded-lg px-1 py-1.5"
-        >
-          {RATIO_OPTIONS.map((r) => (
-            <option key={r.value} value={r.value}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {isCouncil && (
-        <input
-          value={councilName}
-          onChange={(e) => setCouncilName(e.target.value)}
-          placeholder="학생회명 (예: OO대학 학생회) — 배너에 '~학생회에 적용' 문구로 들어감"
-          className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
-        />
-      )}
-
-      {/* 디자인 템플릿(프레임/로고 등) — 이 주차의 모든 배너/팝업 맨 위에 공통으로 얹힘 */}
-      <PhotoSlot
-        label="템플릿 사진 (선택 — 프레임/로고 등, 투명 배경 PNG 권장. 문구까지 얹은 결과 맨 위에 합성됨)"
-        url={week.template_photo_url}
-        uploading={uploadingPhoto}
-        onUpload={(f) => uploadPhoto("template", f)}
-        onRemove={() => removePhoto("template")}
-      />
-
-      {/* 피그마 템플릿(선택) — AI 다듬기 시 이 프레임의 색감·구도를 무드 참고사진으로 삼는다 */}
-      <FigmaTemplatePicker value={figmaTemplateId} onChange={setFigmaTemplateId} />
-
-      {/* 3주차: 배너용 사진 1장 */}
-      {isMileage && (
-        <PhotoSlot
-          label="배너용 사진 (앱 전체 공통 1개 — 팝업도 이 결과물을 비율만 바꿔 재사용)"
-          url={week.banner_photo_url}
-          uploading={uploadingPhoto}
-          onUpload={(f) => uploadPhoto("banner", f)}
-          onRemove={() => removePhoto("banner")}
-        />
-      )}
-
-      {/* 1·2·4주차: 팝업용 대표 사진 1장 + 유료 식당 목록 */}
-      {usesPaidRestaurants && (
-        <>
-          <PhotoSlot
-            label="팝업용 대표 사진 1장 (식당별 아님 — 이 주차를 대표하는 사진 1장)"
-            url={week.popup_photo_url}
-            uploading={uploadingPhoto}
-            onUpload={(f) => uploadPhoto("popup", f)}
-            onRemove={() => removePhoto("popup")}
-          />
-          <button
-            onClick={() => setShowRestaurants((v) => !v)}
-            className="self-start text-[10px] text-periwinkle font-semibold"
+      {expanded && (
+        <div className="flex flex-col gap-2.5 p-3 pt-0">
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as WeekType)}
+            className="text-[11px] border border-gray-200 rounded-lg px-1.5 py-1 focus:outline-none focus:border-periwinkle self-start"
           >
-            {showRestaurants
-              ? "식당 목록 접기"
-              : `식당 목록 보기 (${paidRestaurants.filter((r) => isChecked(r)).length}/${paidRestaurants.length}개 포함)`}
-          </button>
-          {showRestaurants && (
-            <div className="max-h-56 overflow-y-auto flex flex-col gap-1 border border-gray-100 rounded-lg p-1.5">
-              {paidRestaurants.length === 0 && (
-                <p className="text-[10px] text-gray-300 px-1 py-1">
-                  플랜이 지정된 식당이 없습니다. 식당 관리 탭에서 먼저 플랜을 설정해주세요.
-                </p>
+            {TYPE_OPTIONS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+
+          {isLegacyFlow && (
+            <>
+              {/* 배너에 실제로 찍히는 문구 — AI 지시문(prompt_text)과 분리(2026-08-24, RD 요청).
+                  예전엔 한 칸이 캡션과 AI 지시문을 겸해서, AI 리터치 호출에 캡션 문구가 그대로
+                  섞여 들어가 gpt-image-1이 그 문구를 사진에 실제로 그려 넣는 사고가 있었다. */}
+              <input
+                value={captionText}
+                onChange={(e) => setCaptionText(e.target.value)}
+                placeholder="배너 문구 — 배너에 실제로 찍히는 짧은 문구 (예: 비오는 날 뜨끈한 해물크림짬뽕 어떠세요?)"
+                maxLength={200}
+                className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+              />
+              <textarea
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                placeholder="원본 사진에 입힐 톤/분위기 (예: 밝고 화사하게, 가장자리를 살짝 어둡게) — 사진을 새로 만들지 않고 효과만 적용됩니다"
+                rows={3}
+                className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle resize-none"
+              />
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={ratio}
+                  onChange={(e) => setRatio(e.target.value as BannerRatio)}
+                  className="text-[11px] border border-gray-200 rounded-lg px-1 py-1.5"
+                >
+                  {RATIO_OPTIONS.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {isCouncil && (
+                <input
+                  value={councilName}
+                  onChange={(e) => setCouncilName(e.target.value)}
+                  placeholder="학생회명 (예: OO대학 학생회) — 배너에 '~학생회에 적용' 문구로 들어감"
+                  className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+                />
               )}
-              {paidRestaurants.map((r) => (
-                <div key={r.restaurant_id} className="flex flex-col gap-1 px-1 py-1.5 border-b border-gray-50 last:border-0">
-                  <label className="flex items-center gap-1.5 text-[10px]">
-                    <input
-                      type="checkbox"
-                      checked={isChecked(r)}
-                      onChange={() => toggleRestaurant(r)}
-                      className="accent-periwinkle shrink-0"
-                    />
-                    <span
-                      className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
-                        r.is_paid ? TIER_BADGE[r.tier ?? ""] ?? "bg-periwinkle/10 text-periwinkle" : "bg-gray-100 text-gray-400"
-                      }`}
-                    >
-                      {r.is_paid ? r.tier ?? "유료" : "무료"}
-                    </span>
-                    <span className="truncate flex-1">{r.name}</span>
-                    {r.photos.length === 0 && <span className="text-[9px] text-red-400 shrink-0">사진 없음</span>}
-                  </label>
-                  {/* 소재 사진 리스트 — "첫 번째 등록 사진이 안 불러와진다"는 문제를 눈으로 바로 확인할 수 있게
-                      전부 보여준다. 가로 폭에 안 들어가면 잘라서 숨기지 않고 옆으로 슬라이드해서 본다. */}
-                  {r.photos.length > 0 && (
-                    <div className="flex items-center gap-1 overflow-x-auto pl-5 pb-0.5">
-                      {r.photos.map((url, i) => (
-                        <PreviewableImg
-                          key={i}
-                          src={url}
-                          alt=""
-                          title={i === 0 ? "소재 사진(자동 사용됨) — 클릭하면 크게 봅니다" : "등록된 사진 — 클릭하면 크게 봅니다"}
-                          className={`w-20 h-20 rounded-lg object-cover shrink-0 ${i === 0 ? "ring-2 ring-periwinkle" : "opacity-60"}`}
-                        />
-                      ))}
-                    </div>
-                  )}
+
+              <PhotoSlot
+                label="템플릿 사진 (선택 — 프레임/로고 등, 투명 배경 PNG 권장. 문구까지 얹은 결과 맨 위에 합성됨)"
+                url={week.template_photo_url}
+                uploading={uploadingPhoto}
+                onUpload={(f) => uploadPhoto("template", f)}
+                onRemove={() => removePhoto("template")}
+              />
+              <FigmaTemplatePicker value={figmaTemplateId} onChange={setFigmaTemplateId} />
+
+              {usesPaidRestaurants && (
+                <>
+                  <PhotoSlot
+                    label="팝업용 대표 사진 1장 (식당별 아님 — 이 주차를 대표하는 사진 1장)"
+                    url={week.popup_photo_url}
+                    uploading={uploadingPhoto}
+                    onUpload={(f) => uploadPhoto("popup", f)}
+                    onRemove={() => removePhoto("popup")}
+                  />
+                  <button
+                    onClick={() => setShowRestaurants((v) => !v)}
+                    className="self-start text-[10px] text-periwinkle font-semibold"
+                  >
+                    {showRestaurants
+                      ? "식당 목록 접기"
+                      : `식당 목록 보기 (${paidRestaurants.filter((r) => isChecked(r)).length}/${paidRestaurants.length}개 포함)`}
+                  </button>
+                  {showRestaurants && <RestaurantChecklist paidRestaurants={paidRestaurants} isChecked={isChecked} toggleRestaurant={toggleRestaurant} />}
+                </>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => generateNow(week.targets_summary.generated)}
+                    disabled={generating}
+                    className="text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-30"
+                  >
+                    {generating ? "생성 중..." : week.targets_summary.generated ? "다시 생성해서 발송" : "지금 생성해서 슬랙 발송"}
+                  </button>
+                  <button
+                    onClick={checkAiDiagnostics}
+                    disabled={checkingAiDiag || saving}
+                    title={
+                      dirty
+                        ? "OpenAI 호출 없이 무료로 확인합니다 — 저장 안 된 변경사항이 있어 먼저 저장한 뒤 진단합니다"
+                        : "OpenAI를 실제로 호출하지 않고, AI 후보가 시도될 조건인지만 무료로 확인합니다"
+                    }
+                    className="text-[10px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 disabled:opacity-30"
+                  >
+                    {checkingAiDiag || (saving && dirty) ? "확인 중..." : "AI 진단 (무료)"}
+                  </button>
                 </div>
+              </div>
+              {aiDiag && <AiDiagnosticsPanel diag={aiDiag} onClose={() => setAiDiag(null)} />}
+            </>
+          )}
+
+          {isStudioFlow && (
+            <>
+              <button
+                onClick={() => setShowRestaurants((v) => !v)}
+                className="self-start text-[10px] text-periwinkle font-semibold"
+              >
+                {showRestaurants
+                  ? "식당 목록 접기"
+                  : `식당 목록 보기 (${paidRestaurants.filter((r) => isChecked(r)).length}/${paidRestaurants.length}개 포함)`}
+              </button>
+              {showRestaurants && <RestaurantChecklist paidRestaurants={paidRestaurants} isChecked={isChecked} toggleRestaurant={toggleRestaurant} />}
+
+              <BannerStudioComposer
+                weeklyBatch={{
+                  weekId: week.id,
+                  weekType: type === "coupon" ? "coupon" : "general",
+                  restaurants: paidRestaurants.filter((r) => isChecked(r)),
+                  couponTexts,
+                  onCouponTextsChange: setCouponTexts,
+                }}
+              />
+            </>
+          )}
+
+          {isDirectApplyFlow && (
+            <div className="border border-gray-100 rounded-lg p-2.5 flex flex-col gap-2">
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                완성된 사진 1장을 올리면 슬랙 승인 없이 곧바로 이번 주 기간 동안 앱에 반영됩니다.
+              </p>
+              {week.banner_photo_url && (
+                <img src={week.banner_photo_url} alt="현재 적용된 배너" className="w-24 h-24 rounded-lg object-cover" />
+              )}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => setDirectFile(e.target.files?.[0] ?? null)}
+                className="text-[11px]"
+              />
+              <input
+                type="text"
+                value={directClickUrl}
+                onChange={(e) => setDirectClickUrl(e.target.value)}
+                placeholder="탭했을 때 이동할 URL"
+                className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+              />
+              <button
+                onClick={applyDirect}
+                disabled={!directFile || !directClickUrl.trim() || applyingDirect}
+                className="text-[11px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1.5 hover:bg-periwinkle disabled:opacity-40"
+              >
+                {applyingDirect ? "적용 중..." : "적용"}
+              </button>
+            </div>
+          )}
+
+          <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" />
+
+          <div className="flex items-center justify-end">
+            <button
+              onClick={save}
+              disabled={saving || !dirty}
+              className="text-[10px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1 hover:bg-periwinkle disabled:opacity-30"
+            >
+              {saving ? "저장 중..." : "저장"}
+            </button>
+          </div>
+
+          {week.targets_summary.generated && (
+            <>
+              <button
+                onClick={() => setShowDetail((v) => !v)}
+                className="self-start text-[10px] text-navy font-semibold underline underline-offset-2"
+              >
+                {showDetail ? "자세히 보기 닫기" : "자세히 보기 (승인/피드백 · 다운로드 · 재생성)"}
+              </button>
+              {showDetail && <WeeklyTargetsPanel weekId={week.id} />}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RestaurantChecklist({
+  paidRestaurants,
+  isChecked,
+  toggleRestaurant,
+}: {
+  paidRestaurants: PaidRestaurant[];
+  isChecked: (r: PaidRestaurant) => boolean;
+  toggleRestaurant: (r: PaidRestaurant) => void;
+}) {
+  return (
+    <div className="max-h-56 overflow-y-auto flex flex-col gap-1 border border-gray-100 rounded-lg p-1.5">
+      {paidRestaurants.length === 0 && (
+        <p className="text-[10px] text-gray-300 px-1 py-1">
+          플랜이 지정된 식당이 없습니다. 식당 관리 탭에서 먼저 플랜을 설정해주세요.
+        </p>
+      )}
+      {paidRestaurants.map((r) => (
+        <div key={r.restaurant_id} className="flex flex-col gap-1 px-1 py-1.5 border-b border-gray-50 last:border-0">
+          <label className="flex items-center gap-1.5 text-[10px]">
+            <input
+              type="checkbox"
+              checked={isChecked(r)}
+              onChange={() => toggleRestaurant(r)}
+              className="accent-periwinkle shrink-0"
+            />
+            <span
+              className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${
+                r.is_paid ? TIER_BADGE[r.tier ?? ""] ?? "bg-periwinkle/10 text-periwinkle" : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              {r.is_paid ? r.tier ?? "유료" : "무료"}
+            </span>
+            <span className="truncate flex-1">{r.name}</span>
+            {r.photos.length === 0 && <span className="text-[9px] text-red-400 shrink-0">사진 없음</span>}
+          </label>
+          {r.photos.length > 0 && (
+            <div className="flex items-center gap-1 overflow-x-auto pl-5 pb-0.5">
+              {r.photos.map((url, i) => (
+                <PreviewableImg
+                  key={i}
+                  src={url}
+                  alt=""
+                  title={i === 0 ? "소재 사진(자동 사용됨) — 클릭하면 크게 봅니다" : "등록된 사진 — 클릭하면 크게 봅니다"}
+                  className={`w-20 h-20 rounded-lg object-cover shrink-0 ${i === 0 ? "ring-2 ring-periwinkle" : "opacity-60"}`}
+                />
               ))}
             </div>
           )}
-        </>
-      )}
-
-      <input
-        ref={fileInput}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        className="hidden"
-      />
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => generateNow(week.targets_summary.generated)}
-            disabled={generating}
-            className="text-[10px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-30"
-          >
-            {generating ? "생성 중..." : week.targets_summary.generated ? "다시 생성해서 발송" : "지금 생성해서 슬랙 발송"}
-          </button>
-          <button
-            onClick={checkAiDiagnostics}
-            disabled={checkingAiDiag || saving}
-            title={
-              dirty
-                ? "OpenAI 호출 없이 무료로 확인합니다 — 저장 안 된 변경사항이 있어 먼저 저장한 뒤 진단합니다"
-                : "OpenAI를 실제로 호출하지 않고, AI 후보가 시도될 조건인지만 무료로 확인합니다"
-            }
-            className="text-[10px] font-semibold text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50 disabled:opacity-30"
-          >
-            {checkingAiDiag || (saving && dirty) ? "확인 중..." : "AI 진단 (무료)"}
-          </button>
         </div>
-        <button
-          onClick={save}
-          disabled={saving || !dirty}
-          className="text-[10px] font-semibold text-white bg-navy rounded-lg px-2.5 py-1 hover:bg-periwinkle disabled:opacity-30"
-        >
-          {saving ? "저장 중..." : "저장"}
-        </button>
-      </div>
-
-      {aiDiag && <AiDiagnosticsPanel diag={aiDiag} onClose={() => setAiDiag(null)} />}
-
-      {week.targets_summary.generated && (
-        <>
-          <button
-            onClick={() => setShowDetail((v) => !v)}
-            className="self-start text-[10px] text-navy font-semibold underline underline-offset-2"
-          >
-            {showDetail ? "자세히 보기 닫기" : "자세히 보기 (승인/피드백 · 다운로드 · 재생성)"}
-          </button>
-          {showDetail && <WeeklyTargetsPanel weekId={week.id} />}
-        </>
-      )}
+      ))}
     </div>
   );
 }

@@ -712,6 +712,52 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
     }
   }
 
+  /**
+   * 팝업(표지) — 그 주차를 대표하는 사진 1장. 배너처럼 식당마다 자동으로 여러 장
+   * 만드는 게 아니라, 지금 캔버스에 있는 시안 그대로 1장만 슬랙으로 보낸다(마케팅팀
+   * 피드백 2026-08-26 — RD 확인: "팝업도 배너 스튜디오로, 일반/쿠폰 둘 다 밑에 사진을
+   * 넣을 수 있는 방식으로. 배너처럼 식당 사진을 자동으로 쓰는 것과는 다름"). 일반
+   * 배너 모드는 지금 올려둔 배경 사진 그대로, 쿠폰 모드는 고정 템플릿 배경 그대로 —
+   * 둘 다 이미 "배경 사진 아래" 구조라 새로 만들 게 없다.
+   */
+  const [sendingPopup, setSendingPopup] = useState(false);
+
+  async function sendAsPopup() {
+    if (!weeklyBatch) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setSendingPopup(true);
+    try {
+      const blob: Blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("이미지 생성에 실패했습니다."))), "image/jpeg", 0.92);
+      });
+      const contentType = "image/jpeg";
+      const presign = await fetch(`/api/bannerlab/weekly/weeks/${weeklyBatch.weekId}/studio-targets/presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: "popup.jpg", content_type: contentType }),
+      });
+      const p = await presign.json().catch(() => ({}));
+      if (!presign.ok) throw new Error(p.detail ?? "업로드 URL 발급에 실패했습니다.");
+
+      const put = await fetch(p.upload_url, { method: "PUT", headers: { "Content-Type": contentType }, body: blob });
+      if (!put.ok) throw new Error(`S3 업로드 실패 (${put.status})`);
+
+      const reg = await fetch(`/api/bannerlab/weekly/weeks/${weeklyBatch.weekId}/studio-targets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "popup", restaurant_id: null, restaurant_name: "", key: p.key }),
+      });
+      const r = await reg.json().catch(() => ({}));
+      if (!reg.ok) throw new Error(r.detail ?? "슬랙 발송에 실패했습니다.");
+      alert("팝업 시안을 슬랙으로 보냈습니다.");
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSendingPopup(false);
+    }
+  }
+
   /* ─── 주간 배너 일괄 생성 (마케팅팀 피드백 2026-08-26) ───────────────── */
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [batchErrors, setBatchErrors] = useState<string[]>([]);
@@ -1093,6 +1139,15 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
         </div>
 
         <div className="flex flex-col gap-2">
+          {weeklyBatch && (
+            <button
+              onClick={sendAsPopup}
+              disabled={sendingPopup}
+              className="w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold disabled:opacity-50"
+            >
+              {sendingPopup ? "보내는 중..." : "이 시안을 팝업(표지)으로 슬랙 발송"}
+            </button>
+          )}
           <button onClick={exportPng} className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold">
             PNG로 다운로드
           </button>
