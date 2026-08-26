@@ -943,7 +943,7 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
           variantLayers = layers.map((l) => ({ ...l, text: substituteTokens(l.text, r, couponText) }));
         } else {
           if (!r.photo_url) throw new Error("등록된 사진이 없습니다.");
-          bgImg = await loadImage(r.photo_url);
+          bgImg = await loadImage(`/api/bannerlab/image-proxy?url=${encodeURIComponent(r.photo_url)}`);
           variantLayers = layers;
         }
         const blob = await renderVariant(bgImg, variantLayers);
