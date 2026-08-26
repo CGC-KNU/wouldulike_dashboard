@@ -514,7 +514,8 @@ export const MEDIA_META: Record<MediaType, { label: string }> = {
   carousel: { label: "카드뉴스" },
   reel: { label: "릴스" },
   // DB 값은 "image" 그대로 — 라벨만 "기타"로 변경 (마케팅팀 피드백 2026-08-20,
-  // 통합 업무 관리 기획안 §2·§5). 텍스트·이미지 여러 장 등 자유 형식 콘텐츠용.
+  // 통합 업무 관리 기획안 §2·§5). 인스타 발행이 아니라 카드뉴스 주제 정리,
+  // 학생회 단톡에 뿌릴 글 같은 자유 형식 자료용.
   image: { label: "기타" },
 };
 

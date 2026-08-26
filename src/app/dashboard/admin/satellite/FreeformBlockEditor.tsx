@@ -8,15 +8,18 @@ import { ContentBlockItem } from "./types";
 /**
  * "기타" 유형 전용 자유 콘텐츠 편집기 (마케팅팀 피드백 2026-08-26) — 사진과 텍스트를
  * 순서 상관없이 섞어 넣는다. 카드뉴스/릴스의 발행용 자산(PlanAsset)과는 완전히 별개
- * (백엔드 ContentBlock) — 장수 제한도, 발행 전 점검도, 위치·협업자·발행시간도 없다.
+ * (백엔드 ContentBlock). 용례: 카드뉴스 주제 정하기, 학생회 단톡에 뿌릴 글 등
+ * 인스타에 올리지 않는 자료. 장수 제한·발행 전 점검·위치·협업자·발행시간은 없다.
  */
 export default function FreeformBlockEditor({
   planId,
+  topic,
   blocks,
   editable,
   onChanged,
 }: {
   planId: number;
+  topic: string;
   blocks: ContentBlockItem[];
   editable: boolean;
   onChanged: (blocks: ContentBlockItem[]) => void;
@@ -27,6 +30,30 @@ export default function FreeformBlockEditor({
   const fileInput = useRef<HTMLInputElement>(null);
 
   const sorted = [...blocks].sort((a, b) => a.sort_order - b.sort_order);
+
+  function exportMarkdown() {
+    const lines: string[] = [];
+    const title = topic.trim();
+    if (title) {
+      lines.push(`# ${title}`, "");
+    }
+    for (const b of sorted) {
+      if (b.block_type === "image") {
+        if (b.image_url) lines.push(`![](${b.image_url})`, "");
+      } else if (b.text.trim()) {
+        lines.push(b.text.trim(), "");
+      }
+    }
+    const md = (lines.join("\n").trimEnd() || "# (제목 없음)") + "\n";
+    const safe = (title || "기타").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safe}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function addText() {
     if (!text.trim()) return;
@@ -123,9 +150,18 @@ export default function FreeformBlockEditor({
 
   return (
     <section className="bg-white rounded-2xl border border-gray-100 p-4">
-      <h3 className="text-sm font-bold text-gray-800 mb-1">자유 콘텐츠</h3>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <h3 className="text-sm font-bold text-gray-800">자유 콘텐츠</h3>
+        <button
+          type="button"
+          onClick={exportMarkdown}
+          className="shrink-0 text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5"
+        >
+          .md 내보내기
+        </button>
+      </div>
       <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
-        사진과 텍스트를 순서 상관없이 자유롭게 추가하세요 — 발행용이 아니라 자료 보관용입니다.
+        카드뉴스 주제 정하기, 학생회 단톡에 뿌릴 글처럼 발행하지 않는 자료를 사진·텍스트로 자유롭게 모으세요.
       </p>
 
       {sorted.length > 0 && (

@@ -680,8 +680,9 @@ export default function PlanEditor({
                 )}
                 {plan.media_type === "image" && (
                   <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
-                    자유 형식 콘텐츠입니다 — 발행 대상이 아니라 사진/텍스트 자료 보관용입니다.
-                    위치·협업자·발행 시간 같은 발행 관련 항목은 없습니다.
+                    인스타 발행용이 아닙니다. 카드뉴스 주제 정리, 학생회 단톡에 뿌릴 글처럼
+                    텍스트·사진을 자유롭게 모아 두는 용도입니다. 위치·협업자·발행 시간 같은
+                    발행 항목은 없습니다.
                   </p>
                 )}
               </section>
@@ -689,6 +690,7 @@ export default function PlanEditor({
               {plan.media_type === "image" ? (
                 <FreeformBlockEditor
                   planId={plan.id}
+                  topic={plan.topic}
                   blocks={plan.content_blocks}
                   editable={plan.can_edit}
                   onChanged={(blocks) => setPlan((p) => (p ? { ...p, content_blocks: blocks } : p))}

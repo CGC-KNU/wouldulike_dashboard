@@ -162,7 +162,7 @@ export default function ContentKanban({
         </div>
 
         {adding && (
-          <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/60 flex flex-col md:flex-row gap-2">
+          <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/60 flex flex-col md:flex-row md:flex-wrap gap-2">
             <input
               type="date"
               value={newDate}
@@ -212,6 +212,11 @@ export default function ContentKanban({
             >
               {creating ? "등록 중..." : "등록"}
             </button>
+            {newMedia === "image" && (
+              <p className="basis-full text-[10px] text-gray-400 leading-relaxed">
+                기타는 인스타 발행이 아니라, 카드뉴스 주제 정리·학생회 단톡에 뿌릴 글처럼 자료를 모아 두는 용도입니다.
+              </p>
+            )}
           </div>
         )}
 
