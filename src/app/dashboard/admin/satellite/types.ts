@@ -186,12 +186,6 @@ export interface AudioTrack {
   thumbnail_url: string;
 }
 
-export interface LocationResult {
-  location_id: string;
-  name: string;
-  address: string;
-}
-
 export interface ContentBlockItem {
   id: number;
   sort_order: number;
@@ -219,8 +213,6 @@ export interface PlanDetail {
   audio_volume: number | null;
   reel_share_to_feed: boolean;
   reel_thumb_offset_ms: number | null;
-  location_id: string;
-  location_name: string;
   collaborator_usernames: string[];
   ready_at: string | null;
   assets: PlanAsset[];

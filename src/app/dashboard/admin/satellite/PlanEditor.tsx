@@ -6,7 +6,6 @@ import { PreviewableImg } from "@/components/ImagePreview";
 import AudioPicker from "./AudioPicker";
 import CommentThread from "./CommentThread";
 import FreeformBlockEditor from "./FreeformBlockEditor";
-import LocationPicker from "./LocationPicker";
 import PerformancePanel from "./PerformancePanel";
 import ReelCoverPicker from "./ReelCoverPicker";
 import {
@@ -867,18 +866,6 @@ export default function PlanEditor({
                   </div>
                 </section>
               )}
-
-              {/* 위치 */}
-              <LocationPicker
-                locationId={plan.location_id}
-                locationName={plan.location_name}
-                editable={plan.can_edit}
-                onSelect={(id: string, name: string) => {
-                  patch({ location_id: id, location_name: name }, true).then((ok) => {
-                    if (ok) setPlan((p) => (p ? { ...p, location_id: id, location_name: name } : p));
-                  });
-                }}
-              />
 
               {/* 협업자 */}
               <section className="bg-white rounded-2xl border border-gray-100 p-4">
