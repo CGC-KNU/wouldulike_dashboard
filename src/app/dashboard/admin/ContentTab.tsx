@@ -11,7 +11,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { PreviewableImg } from "@/components/ImagePreview";
-import BannerLabComposer from "./bannerlab/BannerLabComposer";
 import BannerStudioComposer from "./bannerlab/BannerStudioComposer";
 import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
 
@@ -737,27 +736,16 @@ export default function ContentTab() {
           <WeeklyAutomationComposer />
         </div>
       </div>
-      {/* 배너 자동화 (배너랩) — 직접 만들어 슬랙 발송 */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700">배너 자동화 (배너랩) — 직접 만들어 슬랙 발송</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
-              사진+문구 조합을 자동 합성해 슬랙으로 발송 · 위 자동화와 별개로 필요할 때 직접 캠페인을 만들어 보내는 수동 도구예요
-            </p>
-          </div>
-        </div>
-        <div className="p-4">
-          <BannerLabComposer />
-        </div>
-      </div>
-      {/* 배너 스튜디오 — 사진 위 텍스트·그라디언트 직접 편집 */}
+      {/* 배너 스튜디오 — 사진 위 텍스트·그라디언트 직접 편집 (2026-08-26부터 위 슬랙
+          메시징 세팅 1·2주차 안에도 같은 컴포넌트가 일괄 생성용으로 들어가 있다 —
+          여기 이 사본은 주차와 무관하게 자유롭게 써보거나 PNG로만 내려받고 싶을 때용.
+          "배너랩"(사진×문구 조합 자동화+AI 리터치)은 이 도구로 대체되어 제거됐다.) */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-gray-700">배너 스튜디오 — 직접 편집</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              배경 사진 위에 텍스트·그라디언트·이미지 에셋을 직접 배치해 PNG로 뽑는 수동 편집기 · 완성한 이미지는 위 배너랩 소재 사진으로 올리거나 슬랙에 바로 첨부하세요
+              배경 사진 위에 텍스트·그라디언트·이미지 에셋을 직접 배치해 PNG로 뽑는 수동 편집기 · 특정 주차와 무관하게 자유롭게 써보거나 다운로드만 하고 싶을 때 여기서
             </p>
           </div>
         </div>
