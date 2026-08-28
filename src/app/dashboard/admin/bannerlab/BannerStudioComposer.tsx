@@ -147,15 +147,17 @@ function clamp(v: number, min: number, max: number): number {
 function makePreset(mode: BannerMode): TextLayer[] {
   if (mode === "coupon") {
     return [
-      { id: uid(), text: "SPECIAL COUPON", fontSize: 30, weight: 800, fontFamily: "Pretendard", color: "#FF5630", align: "left", xPct: 50, yPct: 59, maxWidthPct: 85, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
-      { id: uid(), text: "첫 예약 15% 할인", fontSize: 70, weight: 800, fontFamily: "Pretendard", color: "#17181A", align: "left", xPct: 50, yPct: 69, maxWidthPct: 85, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
-      { id: uid(), text: "8월 31일까지 사용 가능", fontSize: 30, weight: 400, fontFamily: "Pretendard", color: "#17181A", align: "left", xPct: 50, yPct: 79, maxWidthPct: 85, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
-      { id: uid(), text: "코드 WELCOME15", fontSize: 26, weight: 700, fontFamily: "Pretendard", color: "#FFFFFF", align: "center", xPct: 26, yPct: 90, maxWidthPct: 60, rotation: 0, chip: true, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
+      { id: uid(), text: "가게명 작성", fontSize: 32, weight: 800, fontFamily: "RiaSans", color: "#5D63DA", align: "left", xPct: 50.5, yPct: 30, maxWidthPct: 36, rotation: -12, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: { enabled: true, color: "#6970F7", opacity: 55, blur: 6, offsetX: 1, offsetY: -1 } },
+      { id: uid(), text: "딱 이번 주만 혜택 UP!", fontSize: 73, weight: 600, fontFamily: "Pretendard", color: "#17181A", align: "center", xPct: 50.1, yPct: 73.3, maxWidthPct: 98, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
+      { id: uid(), text: "가게명 한정 쿠폰", fontSize: 92, weight: 800, fontFamily: "Pretendard", color: "#454FF8", align: "center", xPct: 50.1, yPct: 83.1, maxWidthPct: 98, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
+      { id: uid(), text: "9. 11 - 9. 22", fontSize: 24, weight: 800, fontFamily: "Pretendard", color: "#D7D4F4", align: "center", xPct: 50.1, yPct: 64.7, maxWidthPct: 98, rotation: 0, chip: true, chipColor: "#454FF8", chipOpacity: 85, innerShadow: defaultShadow() },
+      { id: uid(), text: "쿠폰 내용 작성", fontSize: 48, weight: 700, fontFamily: "RiaSans", color: "#5D63DA", align: "left", xPct: 52, yPct: 35.2, maxWidthPct: 36, rotation: -13, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: { enabled: true, color: "#6970F7", opacity: 55, blur: 6, offsetX: 1, offsetY: -1 } },
+      { id: uid(), text: "내 지갑 > 쿠폰에서 확인해보세요!", fontSize: 25, weight: 400, fontFamily: "Pretendard", color: "#17181A", align: "right", xPct: 68.7, yPct: 95.6, maxWidthPct: 55, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
     ];
   }
   return [
-    { id: uid(), text: "이번 주 추천", fontSize: 32, weight: 800, fontFamily: "Pretendard", color: "#FFD866", align: "left", xPct: 28.9, yPct: 65.9, maxWidthPct: 43, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
-    { id: uid(), text: "비오는 날 뜨끈한\n해물크림짬뽕 어떠세요?", fontSize: 92, weight: 600, fontFamily: "Pretendard", color: "#FFFFFF", align: "left", xPct: 49.7, yPct: 78.4, maxWidthPct: 85, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
+    { id: uid(), text: "오늘의 추천", fontSize: 32, weight: 800, fontFamily: "Pretendard", color: "#FFD866", align: "left", xPct: 28.9, yPct: 65.9, maxWidthPct: 43, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
+    { id: uid(), text: "AI 추천 멘트 작성\n문맥에 맞춰 2줄 구성", fontSize: 88, weight: 600, fontFamily: "Pretendard", color: "#FFFFFF", align: "left", xPct: 49.7, yPct: 78.4, maxWidthPct: 85, rotation: 0, chip: false, chipColor: "#000000", chipOpacity: 28, innerShadow: defaultShadow() },
   ];
 }
 
