@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import PapillonShell from "./satellite/PapillonShell";
+import ProductShell from "./ProductShell";
 import ContentTab from "./ContentTab";
 import ImageUploader from "@/components/ImageUploader";
 import { BenefitCatalogSection, StampRuleSection } from "@/components/CouponCatalog";
@@ -2349,12 +2350,12 @@ function Field({
  * 관리자 설정만은 권한 설정과 무관하게 슈퍼관리자 전용이다 —
  * 권한 설정을 권한 설정으로 열 수 있으면 누구나 자기 권한을 올릴 수 있다.
  */
-const TABS: { key: Tab; label: string; allow: (me: AdminMe) => boolean }[] = [
-  { key: "restaurants", label: "식당 관리", allow: (me) => me.permissions.can_restaurants },
-  { key: "content", label: "배너 & 팝업", allow: (me) => me.permissions.can_content },
-  { key: "notifications", label: "마케팅", allow: (me) => me.permissions.can_marketing },
-  { key: "satellite", label: "세틀라이트", allow: (me) => me.permissions.can_satellite },
-  { key: "settings", label: "관리자 설정", allow: (me) => me.is_superadmin },
+const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boolean }[] = [
+  { key: "restaurants", label: "식당 관리", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
+  { key: "content", label: "배너 & 팝업", icon: "▥", allow: (me) => me.permissions.can_content },
+  { key: "notifications", label: "마케팅", icon: "✉", allow: (me) => me.permissions.can_marketing },
+  { key: "satellite", label: "세틀라이트", icon: "▦", allow: (me) => me.permissions.can_satellite },
+  { key: "settings", label: "관리자 설정", icon: "⚙", allow: (me) => me.is_superadmin },
 ];
 
 /**
@@ -2607,32 +2608,30 @@ export default function AdminHomePage() {
         </p>
       )}
 
-      {productTabs.length > 1 && (
-        <div className="flex gap-1 bg-gray-100 rounded-2xl p-1 mb-5">
-          {productTabs.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex-1 py-2 text-xs font-semibold rounded-xl transition-all ${
-                activeTab === key
-                  ? "bg-white text-navy shadow-sm"
-                  : "text-gray-400 hover:text-gray-600"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      {selectedProduct !== "papillon" && <div className="mb-5" />}
 
-      {productTabs.length <= 1 && <div className="mb-5" />}
-
-      {/* 탭 컨텐츠 */}
-      {activeTab === "restaurants" && <RestaurantsTab />}
-      {activeTab === "content" && <ContentTab />}
-      {activeTab === "notifications" && <MarketingTab />}
+      {/* 탭 컨텐츠 — Papillon(마케팅 툴)은 자체 사이드바 셸(PapillonShell)을 그대로 쓰고,
+          Aether·Astro는 그 사이드바 셸 패턴을 공용화한 ProductShell로 감싼다(§0-30). */}
       {activeTab === "satellite" && <PapillonShell />}
-      {activeTab === "settings" && <SettingsTab />}
+
+      {activeTab && activeTab !== "satellite" && (selectedProduct === "aether" || selectedProduct === "astro") && (
+        <ProductShell
+          navItems={productTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
+          activeKey={activeTab}
+          onSelect={(key) => setActiveTab(key as Tab)}
+          footer={
+            <div>
+              <p className="text-xs font-bold text-white">{me.display_name || me.username}</p>
+              <p className="text-[10px] text-white/50 mt-0.5">{me.department_label}</p>
+            </div>
+          }
+        >
+          {activeTab === "restaurants" && <RestaurantsTab />}
+          {activeTab === "content" && <ContentTab />}
+          {activeTab === "notifications" && <MarketingTab />}
+          {activeTab === "settings" && <SettingsTab />}
+        </ProductShell>
+      )}
 
       {selectedProduct === "probe" && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
