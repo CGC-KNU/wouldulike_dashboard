@@ -322,6 +322,9 @@ function WeekFolderCard({
   const [couponTexts, setCouponTexts] = useState<Record<number, string>>(() =>
     Object.fromEntries(Object.entries(week.restaurant_coupon_texts || {}).map(([k, v]) => [Number(k), v]))
   );
+  // 1·2주차(배너 스튜디오) — 배너 클릭 시 이동할 URL. 식당별로 다르지 않고 그 주는
+  // 전부 같은 URL을 쓰는 게 보통이라 식당마다 입력받지 않고 주차 하나에만 둔다.
+  const [clickUrl, setClickUrl] = useState(week.click_url ?? "");
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showRestaurants, setShowRestaurants] = useState(false);
@@ -351,7 +354,8 @@ function WeekFolderCard({
     [...excluded].some((id) => !week.excluded_restaurant_ids.includes(id)) ||
     included.size !== week.included_restaurant_ids.length ||
     [...included].some((id) => !week.included_restaurant_ids.includes(id)) ||
-    JSON.stringify(couponTexts) !== JSON.stringify(week.restaurant_coupon_texts || {});
+    JSON.stringify(couponTexts) !== JSON.stringify(week.restaurant_coupon_texts || {}) ||
+    clickUrl !== (week.click_url ?? "");
 
   async function save(): Promise<boolean> {
     setSaving(true);
@@ -369,6 +373,7 @@ function WeekFolderCard({
           excluded_restaurant_ids: [...excluded],
           included_restaurant_ids: [...included],
           restaurant_coupon_texts: couponTexts,
+          click_url: clickUrl.trim(),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -755,6 +760,13 @@ function WeekFolderCard({
 
           {isStudioFlow && (
             <>
+              <input
+                value={clickUrl}
+                onChange={(e) => setClickUrl(e.target.value)}
+                placeholder="배너 클릭 시 이동할 URL (식당과 상관없이 이번 주는 전부 이 URL로 통일)"
+                className="text-[11px] border border-periwinkle/30 bg-periwinkle/5 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+              />
+
               <button
                 onClick={() => setShowRestaurants((v) => !v)}
                 className="self-start text-[10px] text-periwinkle font-semibold"
@@ -772,6 +784,7 @@ function WeekFolderCard({
                   restaurants: paidRestaurants.filter((r) => isChecked(r)),
                   couponTexts,
                   onCouponTextsChange: setCouponTexts,
+                  clickUrl: clickUrl.trim(),
                 }}
               />
             </>

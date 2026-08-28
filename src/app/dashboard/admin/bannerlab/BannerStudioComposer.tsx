@@ -416,6 +416,8 @@ export interface WeeklyBatchContext {
   restaurants: PaidRestaurant[];
   couponTexts: Record<number, string>;
   onCouponTextsChange: (next: Record<number, string>) => void;
+  /** 배너 클릭 시 이동할 URL — 식당마다 다르지 않고 그 주는 전부 이 값으로 통일된다. */
+  clickUrl: string;
 }
 
 export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: WeeklyBatchContext } = {}) {
@@ -901,7 +903,7 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
     });
   }
 
-  async function uploadAndSend(weekId: number, restaurantId: number | null, restaurantName: string, blob: Blob) {
+  async function uploadAndSend(weekId: number, restaurantId: number | null, restaurantName: string, blob: Blob, clickUrl: string) {
     const contentType = "image/jpeg";
     const presign = await fetch(`/api/bannerlab/weekly/weeks/${weekId}/studio-targets/presign`, {
       method: "POST",
@@ -917,7 +919,13 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
     const reg = await fetch(`/api/bannerlab/weekly/weeks/${weekId}/studio-targets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "banner", restaurant_id: restaurantId, restaurant_name: restaurantName, key: p.key }),
+      body: JSON.stringify({
+        kind: "banner",
+        restaurant_id: restaurantId,
+        restaurant_name: restaurantName,
+        key: p.key,
+        click_url: clickUrl || "",
+      }),
     });
     const r = await reg.json().catch(() => ({}));
     if (!reg.ok) throw new Error(r.detail ?? "슬랙 발송에 실패했습니다.");
@@ -925,7 +933,7 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
 
   async function runBatch() {
     if (!weeklyBatch) return;
-    const { weekId, weekType, restaurants, couponTexts } = weeklyBatch;
+    const { weekId, weekType, restaurants, couponTexts, clickUrl } = weeklyBatch;
     if (restaurants.length === 0) {
       alert("대상 식당이 없습니다.");
       return;
@@ -951,7 +959,7 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
           variantLayers = layers;
         }
         const blob = await renderVariant(bgImg, variantLayers);
-        await uploadAndSend(weekId, r.restaurant_id, r.name, blob);
+        await uploadAndSend(weekId, r.restaurant_id, r.name, blob, clickUrl);
       } catch (e) {
         errors.push(`${r.name}: ${(e as Error).message}`);
       }

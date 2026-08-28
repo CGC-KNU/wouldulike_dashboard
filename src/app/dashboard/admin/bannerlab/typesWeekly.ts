@@ -14,6 +14,8 @@ export interface WeekFolder {
   prompt_text: string;
   /** 2주차(한정 쿠폰) 전용 — 식당별 쿠폰 문구, {restaurant_id: text} */
   restaurant_coupon_texts: Record<string, string>;
+  /** 1·2주차(배너 스튜디오) 전용 — 배너 클릭 시 이동할 URL, 식당 상관없이 그 주는 전부 동일하게 적용 */
+  click_url: string;
   ratio: BannerRatio;
   popup_photo_url: string;
   banner_photo_url: string;
