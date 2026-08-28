@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import PapillonShell from "./satellite/PapillonShell";
 import ContentTab from "./ContentTab";
 import ImageUploader from "@/components/ImageUploader";
+import { BenefitCatalogSection, StampRuleSection } from "@/components/CouponCatalog";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -1978,8 +1979,8 @@ function RestaurantsTab() {
   }
 
   function handleCreated(r: Restaurant) {
+    // 모달은 닫지 않는다 — 등록 직후 쿠폰/스탬프 설정 단계를 보여준 뒤 모달이 스스로 닫는다.
     setRestaurants((prev) => [r, ...prev]);
-    setShowNew(false);
   }
 
   return (
@@ -2101,6 +2102,7 @@ function NewRestaurantModal({
   const [couponContent, setCouponContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [created, setCreated] = useState<Restaurant | null>(null);
 
   async function submit() {
     if (!name.trim()) {
@@ -2138,17 +2140,67 @@ function NewRestaurantModal({
         setErr(data.detail ?? "식당 등록에 실패했습니다.");
         return;
       }
-      onCreated({
+      const r: Restaurant = {
         restaurant_id: data.restaurant_id,
         name: data.name,
         tier: data.tier ?? null,
         is_affiliate: data.is_affiliate,
-      });
+      };
+      onCreated(r);
+      setCreated(r); // 등록 완료 → 쿠폰/스탬프 설정 단계로 전환 (모달은 유지)
     } catch (e) {
       setErr((e as Error).message);
     } finally {
       setSaving(false);
     }
+  }
+
+  // ── 2단계: 등록 완료 후 쿠폰/스탬프 설정 ──
+  if (created) {
+    const rid = String(created.restaurant_id);
+    return (
+      <>
+        <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+        <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-xl max-h-[85vh] overflow-y-auto">
+          <div className="flex justify-center pt-3 pb-1">
+            <div className="w-10 h-1 rounded-full bg-gray-200" />
+          </div>
+          <div className="px-5 pb-8 pt-2">
+            <div className="flex items-start justify-between mb-1">
+              <div>
+                <p className="text-[10px] text-green-600 font-semibold">등록 완료 ✓</p>
+                <h2 className="text-lg font-bold text-navy">{created.name} — 쿠폰·스탬프 설정</h2>
+              </div>
+              <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-1">✕</button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">지금 바로 설정하거나, 나중에 &quot;사장님 모드&quot;에서 설정할 수 있어요.</p>
+
+            <section className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">혜택 카탈로그</h3>
+                <span className="text-[10px] text-gray-400">일반·특별·스탬프 혜택을 만들고 쿠폰에 연결</span>
+              </div>
+              <BenefitCatalogSection rid={rid} />
+            </section>
+
+            <section className="mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">스탬프 규칙</h3>
+                <span className="text-[10px] text-gray-400">방문 적립 → 보상 쿠폰 자동 지급</span>
+              </div>
+              <StampRuleSection rid={rid} />
+            </section>
+
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold hover:bg-periwinkle transition-colors"
+            >
+              완료
+            </button>
+          </div>
+        </div>
+      </>
+    );
   }
 
   return (
@@ -2229,10 +2281,8 @@ function NewRestaurantModal({
               <span className="text-xs text-gray-600">앱에 표시 (실제 앱 내 노출 여부 — 끄면 등록만 되고 사용자에게는 안 보여요)</span>
             </label>
 
-            {/* 쿠폰/스탬프 — 요청대로 임시 범위. 쿠폰은 기존 네이버 알림쿠폰 필드를 재사용하고,
-                스탬프 규칙은 별도 마스터 데이터가 필요해 지금은 안내만 표시한다. */}
             <div className="rounded-lg border border-gray-100 p-2.5 flex flex-col gap-2">
-              <p className="text-[11px] font-semibold text-gray-600">쿠폰 혜택 (임시)</p>
+              <p className="text-[11px] font-semibold text-gray-600">네이버 알림쿠폰</p>
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -2240,7 +2290,7 @@ function NewRestaurantModal({
                   onChange={(e) => setCouponEnabled(e.target.checked)}
                   className="accent-periwinkle"
                 />
-                <span className="text-xs text-gray-600">쿠폰 혜택 사용</span>
+                <span className="text-xs text-gray-600">네이버 스마트플레이스 알림쿠폰 사용</span>
               </label>
               <input
                 value={couponContent}
@@ -2249,7 +2299,7 @@ function NewRestaurantModal({
                 className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-periwinkle"
               />
               <p className="text-[10px] text-gray-300">
-                스탬프 적립 규칙은 아직 여기서 설정할 수 없어요 — 등록 후 개발팀에 요청해주세요.
+                앱 안에서 실제로 발급되는 쿠폰·스탬프 혜택은 등록 후 다음 단계에서 설정해요.
               </p>
             </div>
 
@@ -2258,7 +2308,7 @@ function NewRestaurantModal({
               disabled={saving || !name.trim()}
               className="mt-1 w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold hover:bg-periwinkle transition-colors disabled:opacity-40"
             >
-              {saving ? "등록 중..." : "식당 등록"}
+              {saving ? "등록 중..." : "식당 등록 → 쿠폰 설정"}
             </button>
           </div>
         </div>
