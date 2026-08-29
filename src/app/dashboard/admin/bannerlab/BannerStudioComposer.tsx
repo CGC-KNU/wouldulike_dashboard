@@ -1275,15 +1275,6 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
         </div>
 
         <div className="flex flex-col gap-2">
-          {weeklyBatch && (
-            <button
-              onClick={sendAsPopup}
-              disabled={sendingPopup}
-              className="w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold disabled:opacity-50"
-            >
-              {sendingPopup ? "보내는 중..." : "이 시안을 팝업(표지)으로 슬랙 발송"}
-            </button>
-          )}
           <button onClick={exportPng} className="w-full py-2.5 rounded-xl bg-periwinkle text-white text-sm font-bold">
             PNG로 다운로드
           </button>
@@ -1300,10 +1291,30 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
           )}
         </div>
 
+        {/* 팝업(표지) — 배너 일괄 생성과는 완전히 별개의 구역·동작이다(마케팅팀 피드백
+            2026-08-28: "배너와 통합된 느낌이라 구분이 어렵다"). 이 버튼을 누르면 지금
+            화면 그대로 1장이 업로드·등록되고, 등록과 동시에 슬랙 발송까지 한 번에
+            처리된다 — 저장만 해두는 것으로는 발송되지 않고, 반드시 이 버튼을 눌러야 한다. */}
+        {weeklyBatch && (
+          <div className="border border-navy/25 rounded-xl p-3 flex flex-col gap-2.5 bg-navy/[0.03]">
+            <p className="text-xs font-semibold text-navy">팝업(표지) — 배너와 별개로 발송</p>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              지금 화면에 보이는 시안 그대로 1장만 이번 주 팝업(표지)으로 슬랙에 보냅니다. 아래 배너 일괄 생성과는 별개 동작이고, 식당마다 여러 장 만드는 배너와 달리 팝업은 항상 1장입니다. 버튼을 누르면 업로드와 슬랙 발송이 한 번에 처리됩니다.
+            </p>
+            <button
+              onClick={sendAsPopup}
+              disabled={sendingPopup}
+              className="w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold disabled:opacity-50"
+            >
+              {sendingPopup ? "보내는 중..." : "이 시안을 팝업(표지)으로 슬랙 발송"}
+            </button>
+          </div>
+        )}
+
         {weeklyBatch && weeklyBatch.weekType === mode && (
           <div className="border border-periwinkle/30 rounded-xl p-3 flex flex-col gap-2.5 bg-periwinkle/[0.03]">
             <p className="text-xs font-semibold text-navy">
-              일괄 생성 · 슬랙 발송 ({weeklyBatch.restaurants.length}개 식당)
+              배너 일괄 생성 · 슬랙 발송 ({weeklyBatch.restaurants.length}개 식당)
             </p>
             <p className="text-[10px] text-gray-400 leading-relaxed">
               {mode === "coupon"
