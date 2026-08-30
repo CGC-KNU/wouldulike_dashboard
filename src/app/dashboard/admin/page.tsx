@@ -5,7 +5,7 @@ import PapillonShell from "./satellite/PapillonShell";
 import ProductShell from "./ProductShell";
 import ContentTab from "./ContentTab";
 import ImageUploader from "@/components/ImageUploader";
-import { BenefitCatalogSection, StampRuleSection } from "@/components/CouponCatalog";
+import { BenefitCatalogSection, BenefitGlance, StampRuleSection } from "@/components/CouponCatalog";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -301,6 +301,20 @@ function RestaurantDrawer({
             ) : (
               <p className="text-xs text-gray-400 text-center py-1">통계를 불러오지 못했습니다.</p>
             )}
+          </div>
+
+          {/* ── 혜택 한눈에 보기 ── */}
+          <div className="bg-gray-50 rounded-xl p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-gray-500">혜택 한눈에 보기</p>
+              <a
+                href={`/dashboard/owner/coupons?rid=${r.restaurant_id}`}
+                className="text-[10px] text-periwinkle hover:underline shrink-0"
+              >
+                관리하기 →
+              </a>
+            </div>
+            <BenefitGlance rid={String(r.restaurant_id)} />
           </div>
 
           {/* ── 홍보물 파일 관리 ── */}
@@ -1937,6 +1951,7 @@ function RestaurantsTab() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [glanceOpenId, setGlanceOpenId] = useState<number | null>(null);
 
   const fetchRestaurants = useCallback((query: string) => {
     setLoading(true);
@@ -2061,6 +2076,46 @@ function RestaurantsTab() {
                 <span className="text-xs text-gray-300 shrink-0">›</span>
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+
+      {/* 혜택 조회 — 식당명을 클릭하면 DB에서 혜택을 불러와 한눈에 보여준다 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden mt-4">
+        <div className="px-4 py-3 border-b border-gray-50">
+          <h2 className="text-sm font-semibold text-gray-700">혜택 조회</h2>
+          <p className="text-[10px] text-gray-400 mt-0.5">식당을 클릭하면 등록된 쿠폰·스탬프 혜택이 바로 보여요.</p>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sorted.length === 0 ? (
+          <p className="text-center text-sm text-gray-400 py-8">
+            {search ? "검색 결과가 없습니다." : "식당 목록을 불러오지 못했습니다."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-gray-50">
+            {sorted.map((r) => {
+              const open = glanceOpenId === r.restaurant_id;
+              return (
+                <li key={r.restaurant_id}>
+                  <button
+                    onClick={() => setGlanceOpenId(open ? null : r.restaurant_id)}
+                    className="w-full flex items-center px-4 py-3 gap-2 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <span className="w-10 text-xs text-gray-400 shrink-0">{r.restaurant_id}</span>
+                    <span className="flex-1 min-w-0 text-sm font-medium text-gray-800 truncate">{r.name}</span>
+                    <span className={`text-xs text-gray-300 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+                  </button>
+                  {open && (
+                    <div className="px-4 pb-4 bg-gray-50/60">
+                      <BenefitGlance rid={String(r.restaurant_id)} />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

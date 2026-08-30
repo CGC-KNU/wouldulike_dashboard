@@ -570,6 +570,95 @@ export function BenefitCatalogSection({ rid }: { rid: string | null }) {
 }
 
 /* ════════════════════════════════════════════════════
+   혜택 한눈에 보기 — 영업툴(admin)에서 쓰는 읽기 전용 요약.
+   편집은 여전히 BenefitCatalogSection(사장님 모드)에서 한다.
+════════════════════════════════════════════════════ */
+export function BenefitGlance({ rid }: { rid: string | null }) {
+  const [benefits, setBenefits] = useState<RestaurantBenefit[] | null>(null);
+  const [err, setErr] = useState("");
+
+  const rq = ridQ(rid);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBenefits(null);
+    setErr("");
+    fetch(`/api/dashboard/restaurant-benefits${rq}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(data?.detail ?? "혜택 불러오기 실패");
+        setBenefits(Array.isArray(data) ? data : []);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setErr(e instanceof Error ? e.message : "불러오기 실패");
+      });
+    return () => { cancelled = true; };
+  }, [rq]);
+
+  if (err) return <p className="text-xs text-red-500">{err}</p>;
+
+  if (benefits === null) {
+    return (
+      <div className="flex justify-center py-4">
+        <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (benefits.length === 0) {
+    return <p className="text-xs text-gray-400 text-center py-3">등록된 혜택이 없습니다.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {KIND_LIST.map((k) => {
+        const items = benefits.filter((b) => b.kind === k);
+        if (items.length === 0) return null;
+        return (
+          <div key={k}>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+              {KIND_LABEL[k]} ({items.length})
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {items.map((b) => (
+                <div key={b.id} className="bg-white rounded-lg px-3 py-2 flex items-start gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${b.active ? "bg-green-400" : "bg-gray-300"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {b.kind === "STAMP" && b.stamp_key && (
+                        <span className="text-[9px] font-mono bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full shrink-0">
+                          {b.stamp_key}개째
+                        </span>
+                      )}
+                      <p className="text-xs font-medium text-gray-800 truncate">{b.title}</p>
+                    </div>
+                    {benefitLabel(b.benefit_json) && (
+                      <p className="text-[10px] text-periwinkle mt-0.5">{benefitLabel(b.benefit_json)}</p>
+                    )}
+                    <div className="flex items-center gap-1 flex-wrap mt-1">
+                      {b.linked_coupon_types.length === 0 ? (
+                        <span className="text-[9px] text-amber-500">연결된 쿠폰 없음</span>
+                      ) : (
+                        b.linked_coupon_types.map((lt) => (
+                          <span key={lt.coupon_type_code} className="text-[9px] font-mono bg-periwinkle/10 text-periwinkle px-1.5 py-0.5 rounded-full">
+                            {lt.coupon_type_code}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
    섹션 2: 스탬프 규칙 (StampRewardRule)
 ════════════════════════════════════════════════════ */
 export function StampRuleSection({ rid }: { rid: string | null }) {
