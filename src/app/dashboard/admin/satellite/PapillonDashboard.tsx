@@ -6,6 +6,7 @@ import ContentKanban from "./ContentKanban";
 import LockApprovalQueue from "./LockApprovalQueue";
 import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
+import { DeleteConfirmModal } from "./PlanTable";
 import SponsorshipList from "./SponsorshipList";
 import { ContentPlan, MyWeek, PlansResponse, SatelliteMember, fmtMD } from "./types";
 
@@ -171,6 +172,7 @@ export default function PapillonDashboard() {
   const [editorInitialTab, setEditorInitialTab] = useState<"detail" | "content">("detail");
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
   const [sectionOrder, setSectionOrder] = useState<MainSectionKey[]>(DEFAULT_MAIN_SECTION_ORDER);
+  const [dismissTarget, setDismissTarget] = useState<PublishStatus["unresolved_failures"][number] | null>(null);
 
   useEffect(() => {
     setSectionOrder(loadMainSectionOrder());
@@ -352,6 +354,11 @@ export default function PapillonDashboard() {
       const res = await fetch(`/api/satellite/plans/${id}`, { method: "DELETE" });
       if (res.ok || res.status === 204) {
         setData((prev) => (prev ? { ...prev, plans: prev.plans.filter((p) => p.id !== id) } : prev));
+        // 소프트 삭제된 건은 발행 실패 배너에서도 같이 사라져야 한다 — 안 지우면
+        // 다음 새로고침 전까지 지운 콘텐츠가 그대로 남아 보인다.
+        setPubStatus((prev) =>
+          prev ? { ...prev, unresolved_failures: prev.unresolved_failures.filter((f) => f.plan_id !== id) } : prev
+        );
         loadMyWeek();
       } else {
         const d = await res.json().catch(() => ({}));
@@ -471,24 +478,40 @@ export default function PapillonDashboard() {
           </p>
           <div className="flex flex-col gap-1.5">
             {pubStatus.unresolved_failures.map((f) => (
-              <button
+              <div
                 key={f.plan_id}
-                onClick={() => setEditorPlanId(f.plan_id)}
-                className="text-left flex items-start gap-2 hover:bg-orange-100/60 rounded-lg px-1.5 py-1 transition-colors"
+                className="group flex items-start gap-2 hover:bg-orange-100/60 rounded-lg px-1.5 py-1 transition-colors"
               >
-                <span className="text-[10px] font-semibold text-orange-600 shrink-0 mt-0.5">
-                  {fmtMD(f.scheduled_date)}
-                </span>
-                <span className="min-w-0">
-                  <span className="text-[11px] text-orange-700 font-medium">
-                    {f.topic || "(주제 미정)"}
+                <button onClick={() => setEditorPlanId(f.plan_id)} className="text-left flex items-start gap-2 flex-1 min-w-0">
+                  <span className="text-[10px] font-semibold text-orange-600 shrink-0 mt-0.5">
+                    {fmtMD(f.scheduled_date)}
                   </span>
-                  <span className="text-[10px] text-orange-500 ml-1.5">· {f.owner_name}</span>
-                  <span className="block text-[10px] text-orange-500 leading-relaxed">
-                    [{f.error_code}] {f.error_message.slice(0, 90)}
+                  <span className="min-w-0">
+                    <span className="text-[11px] text-orange-700 font-medium">
+                      {f.topic || "(주제 미정)"}
+                    </span>
+                    <span className="text-[10px] text-orange-500 ml-1.5">· {f.owner_name}</span>
+                    <span className="block text-[10px] text-orange-500 leading-relaxed">
+                      [{f.error_code}] {f.error_message.slice(0, 90)}
+                    </span>
                   </span>
-                </span>
-              </button>
+                </button>
+                {pubStatus.is_lead && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDismissTarget(f);
+                    }}
+                    aria-label="이 알림 지우기"
+                    title="이 알림 지우기"
+                    className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-orange-300 opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -635,6 +658,17 @@ export default function PapillonDashboard() {
           initialTab={editorInitialTab}
           onClose={() => setEditorPlanId(null)}
           onChanged={afterEditorChange}
+        />
+      )}
+
+      {dismissTarget && (
+        <DeleteConfirmModal
+          plan={{ scheduled_date: dismissTarget.scheduled_date, topic: dismissTarget.topic, status: "failed" }}
+          onCancel={() => setDismissTarget(null)}
+          onConfirmed={async () => {
+            await remove(dismissTarget.plan_id);
+            setDismissTarget(null);
+          }}
         />
       )}
     </div>

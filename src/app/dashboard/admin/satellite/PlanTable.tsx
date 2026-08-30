@@ -19,7 +19,7 @@ export function DeleteConfirmModal({
   onCancel,
   onConfirmed,
 }: {
-  plan: ContentPlan;
+  plan: Pick<ContentPlan, "scheduled_date" | "topic" | "status">;
   onCancel: () => void;
   onConfirmed: () => void | Promise<void>;
 }) {
