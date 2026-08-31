@@ -164,14 +164,24 @@ export default function FreeformBlockEditor({
     <section className="bg-white rounded-2xl border border-gray-100 p-4">
       <div className="flex items-start justify-between gap-2 mb-1">
         <h3 className="text-sm font-bold text-gray-800">자유 콘텐츠</h3>
-        <button
-          type="button"
-          onClick={exportMarkdown}
-          disabled={exporting}
-          className="shrink-0 text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-50"
-        >
-          {exporting ? "정리 중..." : "AI로 .md 정리"}
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {sorted.some((b) => b.block_type === "image") && (
+            <a
+              href={`/api/satellite/plans/${planId}/assets/download-zip`}
+              className="text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5"
+            >
+              사진 전체 다운로드
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={exportMarkdown}
+            disabled={exporting}
+            className="shrink-0 text-[11px] font-semibold text-periwinkle border border-periwinkle/30 rounded-lg px-2.5 py-1 hover:bg-periwinkle/5 disabled:opacity-50"
+          >
+            {exporting ? "정리 중..." : "AI로 .md 정리"}
+          </button>
+        </div>
       </div>
       <p className="text-[11px] text-gray-400 mb-3 leading-relaxed">
         카드뉴스 주제 정하기, 학생회 단톡에 뿌릴 글처럼 발행하지 않는 자료를 사진·텍스트로 자유롭게 모으세요.
@@ -194,7 +204,22 @@ export default function FreeformBlockEditor({
               className={`relative rounded-xl border border-gray-100 p-2 group ${editable ? "cursor-grab active:cursor-grabbing" : ""}`}
             >
               {b.block_type === "image" ? (
-                <PreviewableImg src={b.image_url} alt="" className="w-full max-h-64 object-contain rounded-lg bg-gray-50" />
+                <>
+                  <PreviewableImg src={b.image_url} alt="" className="w-full max-h-64 object-contain rounded-lg bg-gray-50" />
+                  {b.download_url && (
+                    <a
+                      href={b.download_url}
+                      download
+                      aria-label="다운로드"
+                      title="다운로드"
+                      className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-opacity"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </a>
+                  )}
+                </>
               ) : (
                 <textarea
                   defaultValue={b.text}

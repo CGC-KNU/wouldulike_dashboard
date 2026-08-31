@@ -627,16 +627,24 @@ export default function PlanEditor({
                     </div>
                     {plan.assets.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-50">
-                        <p className="text-[10px] text-gray-400 font-semibold mb-1.5">
-                          등록된 콘텐츠 · {plan.assets.length}장
-                        </p>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-[10px] text-gray-400 font-semibold">
+                            등록된 콘텐츠 · {plan.assets.length}장
+                          </p>
+                          <a
+                            href={`/api/satellite/plans/${plan.id}/assets/download-zip`}
+                            className="text-[10px] font-semibold text-periwinkle hover:underline"
+                          >
+                            전체 다운로드
+                          </a>
+                        </div>
                         <div className="flex gap-2 overflow-x-auto pb-1">
                           {[...plan.assets]
                             .sort((a, b) => a.sort_order - b.sort_order)
                             .map((a: PlanAsset) => (
                               <div
                                 key={a.id}
-                                className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-gray-100 bg-gray-50"
+                                className="group relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border border-gray-100 bg-gray-50"
                               >
                                 {a.kind === "video" ? (
                                   <video
@@ -656,6 +664,19 @@ export default function PlanEditor({
                                   <span className="absolute bottom-1 right-1 text-[9px] font-bold text-white bg-black/50 rounded px-1">
                                     ▶
                                   </span>
+                                )}
+                                {a.download_url && (
+                                  <a
+                                    href={a.download_url}
+                                    download
+                                    aria-label="다운로드"
+                                    title="다운로드"
+                                    className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition-opacity"
+                                  >
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                                      <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                  </a>
                                 )}
                               </div>
                             ))}
@@ -1448,6 +1469,21 @@ function AssetTile({
             </div>
           )}
         </>
+      )}
+
+      {asset.download_url && (
+        <a
+          href={asset.download_url}
+          download
+          aria-label="다운로드"
+          title="다운로드"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </a>
       )}
     </div>
   );

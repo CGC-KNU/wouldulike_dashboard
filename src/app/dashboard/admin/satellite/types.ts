@@ -164,6 +164,8 @@ export interface PlanAsset {
   convert_error: string;
   alt_text: string;
   preview_url: string;
+  /** Content-Disposition: attachment 가 걸린 다운로드 전용 URL */
+  download_url: string;
   uploaded_at: string;
 }
 
@@ -195,6 +197,7 @@ export interface ContentBlockItem {
   block_type: "image" | "text";
   text: string;
   image_url: string;
+  download_url: string;
   created_at: string;
 }
 
