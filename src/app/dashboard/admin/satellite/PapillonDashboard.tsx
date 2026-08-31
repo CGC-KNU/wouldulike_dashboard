@@ -8,7 +8,7 @@ import PlanCalendar from "./PlanCalendar";
 import PlanEditor from "./PlanEditor";
 import { DeleteConfirmModal } from "./PlanTable";
 import SponsorshipList from "./SponsorshipList";
-import { ContentPlan, MyWeek, PlansResponse, SatelliteMember, fmtMD } from "./types";
+import { ContentPlan, PlansResponse, SatelliteMember, fmtMD } from "./types";
 
 /**
  * 메인 화면 구획(콘텐츠 칸반·캘린더)의 표시 순서 — RD 요청(2026-08-21)으로
@@ -164,7 +164,6 @@ export default function PapillonDashboard() {
 
   const [data, setData] = useState<PlansResponse | null>(null);
   const [members, setMembers] = useState<SatelliteMember[]>([]);
-  const [myWeek, setMyWeek] = useState<MyWeek | null>(null);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<LoadError[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -235,20 +234,6 @@ export default function PapillonDashboard() {
     }
   }, [year, month]);
 
-  const loadMyWeek = useCallback(async () => {
-    try {
-      const res = await fetch("/api/satellite/my-week");
-      const e = await toError(res, "이번 주 배너");
-      if (e) setErrors((prev) => [...prev.filter((x) => x.source !== e.source), e]);
-      else {
-        setErrors((prev) => prev.filter((x) => x.source !== "이번 주 배너"));
-        setMyWeek(await res.json());
-      }
-    } catch {
-      /* 배너는 부가 정보 — 조용히 넘어간다 */
-    }
-  }, []);
-
   const loadMembers = useCallback(async () => {
     try {
       const res = await fetch("/api/satellite/members");
@@ -283,7 +268,6 @@ export default function PapillonDashboard() {
   function retryAll() {
     setErrors([]);
     loadPlans();
-    loadMyWeek();
     loadMembers();
     loadPubStatus();
   }
@@ -291,10 +275,6 @@ export default function PapillonDashboard() {
   useEffect(() => {
     loadPlans();
   }, [loadPlans]);
-
-  useEffect(() => {
-    loadMyWeek();
-  }, [loadMyWeek]);
 
   /* ─── 변경 핸들러 ───────────────────────────────── */
 
@@ -316,7 +296,6 @@ export default function PapillonDashboard() {
       setData((prev) =>
         prev ? { ...prev, plans: prev.plans.map((p) => (p.id === id ? { ...p, ...d } : p)) } : prev
       );
-      loadMyWeek();
       return true;
     } catch {
       alert("네트워크 오류");
@@ -340,7 +319,6 @@ export default function PapillonDashboard() {
         return false;
       }
       await loadPlans();
-      loadMyWeek();
       return true;
     } catch {
       alert("네트워크 오류");
@@ -359,7 +337,6 @@ export default function PapillonDashboard() {
         setPubStatus((prev) =>
           prev ? { ...prev, unresolved_failures: prev.unresolved_failures.filter((f) => f.plan_id !== id) } : prev
         );
-        loadMyWeek();
       } else {
         const d = await res.json().catch(() => ({}));
         const { detail, hint } = describe(res.status, d.detail ?? `HTTP ${res.status}`);
@@ -413,7 +390,6 @@ export default function PapillonDashboard() {
 
   async function afterEditorChange() {
     await loadPlans({ soft: true });
-    loadMyWeek();
     loadPubStatus();
   }
 
@@ -426,45 +402,6 @@ export default function PapillonDashboard() {
       {/* 협찬 목록 — 콘텐츠 칸반과 완전히 분리된 모델이라(통합 업무 관리 기획안 §2·§4)
           리스트·칸반·캘린더 순서조정 대상에 안 넣고 메인 화면 맨 위에 항상 고정한다. */}
       <SponsorshipList />
-
-      {/* 이번 주 내 몫 배너 — 근태의 1차 방어선 */}
-      {myWeek?.has_account && (
-        <div
-          className={`rounded-2xl border px-4 py-3 flex items-center justify-between gap-3 ${
-            myWeek.satisfied
-              ? "border-green-200 bg-gradient-to-r from-green-50 to-emerald-50"
-              : "border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50"
-          }`}
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <span
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                myWeek.satisfied ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"
-              }`}
-            >
-              {myWeek.satisfied ? (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              ) : (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-                  <path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </span>
-            <div className="min-w-0">
-              <p className={`text-xs font-bold ${myWeek.satisfied ? "text-green-700" : "text-amber-700"}`}>
-                {myWeek.satisfied ? "이번 주 몫 등록 완료" : "이번 주 주제를 아직 다 등록하지 않았습니다"}
-              </p>
-              <p className={`text-[11px] mt-0.5 ${myWeek.satisfied ? "text-green-600" : "text-amber-600"}`}>
-                {fmtMD(myWeek.week_start)}~{fmtMD(myWeek.week_end)} · 주제 {myWeek.with_topic}/{myWeek.quota}건
-                {(myWeek.ready ?? 0) > 0 && ` · 준비완료 ${myWeek.ready}건`}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 업로드 예정 시간을 넘겨 잠긴 콘텐츠 — 리드 전용 (설계서 §16-6, §10 건별 실시간) */}
       {isLead && <LockApprovalQueue onOpenPlan={(id) => setEditorPlanId(id)} />}
