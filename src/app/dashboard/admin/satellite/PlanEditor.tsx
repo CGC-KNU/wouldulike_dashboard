@@ -436,7 +436,10 @@ export default function PlanEditor({
                     const next = topicEdit.trim();
                     if (next === plan.topic) return;
                     patch({ topic: next }, true).then((ok) => {
-                      if (ok) load({ preserveCaption: true, silent: true });
+                      if (ok) {
+                        load({ preserveCaption: true, silent: true });
+                        onChanged(); // 칸반 목록 카드 제목도 같이 갱신
+                      }
                     });
                   }}
                   placeholder="(주제 미정)"
@@ -1005,7 +1008,10 @@ export default function PlanEditor({
                     const current = plan.deadline ? plan.deadline.slice(0, 10) : "";
                     if (deadlineEdit === current) return;
                     patch({ deadline: deadlineEdit || null }, true).then((ok) => {
-                      if (ok) load({ preserveCaption: true, silent: true });
+                      if (ok) {
+                        load({ preserveCaption: true, silent: true });
+                        onChanged(); // 칸반 목록 마감 배지도 같이 갱신
+                      }
                     });
                   }}
                   disabled={!plan.can_edit}
@@ -1034,7 +1040,10 @@ export default function PlanEditor({
                         key={opt.value}
                         onClick={() =>
                           patch({ attendance_override: opt.value || null }, true).then((ok) => {
-                            if (ok) load({ preserveCaption: true, silent: true });
+                            if (ok) {
+                              load({ preserveCaption: true, silent: true });
+                              onChanged(); // 근태 표 집계도 같이 갱신
+                            }
                           })
                         }
                         className={`flex-1 text-[11px] font-semibold rounded-xl px-2.5 py-2 border transition-colors ${
@@ -1065,7 +1074,10 @@ export default function PlanEditor({
                       patch({
                         desired_publish_at: publishAt ? new Date(publishAt).toISOString() : null,
                       }, true).then((ok) => {
-                        if (ok) load({ preserveCaption: true, silent: true });
+                        if (ok) {
+                          load({ preserveCaption: true, silent: true });
+                          onChanged(); // 업로드일이 같이 바뀌므로 칸반 목록도 갱신
+                        }
                       })
                     }
                     disabled={!plan.can_edit}
@@ -1077,7 +1089,10 @@ export default function PlanEditor({
                       const v = toLocalInput(d.toISOString());
                       setPublishAt(v);
                       patch({ desired_publish_at: d.toISOString() }, true).then((ok) => {
-                        if (ok) load({ preserveCaption: true, silent: true });
+                        if (ok) {
+                          load({ preserveCaption: true, silent: true });
+                          onChanged(); // 업로드일이 같이 바뀌므로 칸반 목록도 갱신
+                        }
                       });
                     }}
                     disabled={!plan.can_edit}
