@@ -3,27 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 
 /* ─── 타입 ─────────────────────────────────────────── */
-export interface CouponBenefit {
-  id: number;
-  coupon_type_code: string;
-  coupon_type_title: string;
-  benefit_json: Record<string, unknown>;
-  title: string;
-  subtitle: string;
-  notes: string;
-  sort_order: number;
-  active: boolean;
-  updated_at: string;
-}
-
-export interface CouponType {
-  id: number;
-  code: string;
-  title: string;
-  benefit_json: Record<string, unknown>;
-  valid_days: number;
-}
-
 export interface StampThreshold {
   stamps: number;
   coupon_type_code: string;
@@ -58,12 +37,22 @@ export function benefitLabel(bj: Record<string, unknown>): string {
 
 /* ════════════════════════════════════════════════════
    섹션 1: 혜택 카탈로그 (RestaurantBenefit)
-   식당 혜택 마스터 — 일반/특별/스탬프 3종으로 구분되며,
-   각 혜택을 원하는 쿠폰 타입에 연결(link)해 발급에 반영한다.
+   식당 혜택 마스터 — 일반/한정/스탬프 3종으로 구분된다.
+   쿠폰 타입 연결은 사장님 모드에 노출하지 않는다 —
+   일반 혜택은 상시 쿠폰 코드에 자동 연결하고, 한정 혜택의
+   기획전 코드 연결은 영업팀이 별도로 처리한다. 스탬프 혜택은
+   아래 스탬프 규칙 섹션에서만 만들고 관리한다.
 ════════════════════════════════════════════════════ */
 export const KIND_LIST = ["GENERAL", "SPECIAL", "STAMP"] as const;
 export type BenefitKind = (typeof KIND_LIST)[number];
-export const KIND_LABEL: Record<BenefitKind, string> = { GENERAL: "일반", SPECIAL: "특별", STAMP: "스탬프" };
+export const KIND_LABEL: Record<BenefitKind, string> = { GENERAL: "일반 쿠폰", SPECIAL: "한정 쿠폰", STAMP: "스탬프" };
+
+// 사장님 모드 혜택 카탈로그에는 일반/한정만 노출한다 (스탬프는 아래 스탬프 규칙 섹션 전용)
+const CATALOG_KIND_LIST = ["GENERAL", "SPECIAL"] as const;
+
+// 일반 혜택은 상시로 나가는 표준 쿠폰 코드(가입/친구초대)에 자동 연결한다.
+// 이 코드들은 시스템 전역에서 이미 쓰이고 있어 자동 연결이 안전하다 — 점주가 직접 고를 필요가 없다.
+const GENERAL_AUTO_LINK_CODES = ["WELCOME_3000", "REFERRAL_BONUS_REFERRER", "REFERRAL_BONUS_REFEREE"];
 
 export interface LinkedCouponType {
   coupon_type_code: string;
@@ -99,11 +88,14 @@ type BenefitFormData = {
 function BenefitMasterForm({
   kind,
   initial,
+  fixedStampKey,
   onSave,
   onCancel,
 }: {
   kind: BenefitKind;
   initial?: Partial<RestaurantBenefit>;
+  /** 스탬프 규칙 섹션에서 호출할 때 — 구간 번호가 이미 정해져 있으니 입력을 숨기고 이 값을 강제한다 */
+  fixedStampKey?: string;
   onSave: (data: BenefitFormData) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -111,7 +103,7 @@ function BenefitMasterForm({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [subtitle, setSubtitle] = useState(initial?.subtitle ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
-  const [stampKey, setStampKey] = useState(initial?.stamp_key ?? "");
+  const [stampKey, setStampKey] = useState(fixedStampKey ?? initial?.stamp_key ?? "");
   const [active, setActive] = useState(initial?.active ?? true);
   const [bjType, setBjType] = useState<"" | "fixed" | "percent">(
     (initialBj.type as "fixed" | "percent") ?? ""
@@ -122,8 +114,9 @@ function BenefitMasterForm({
   const [err, setErr] = useState("");
 
   const handleSubmit = async () => {
+    const finalStampKey = (fixedStampKey ?? stampKey).trim();
     if (!title.trim()) { setErr("제목을 입력해주세요."); return; }
-    if (kind === "STAMP" && !stampKey.trim()) { setErr("스탬프 구간(개수)을 입력해주세요."); return; }
+    if (kind === "STAMP" && !finalStampKey) { setErr("스탬프 구간(개수)을 입력해주세요."); return; }
     setLoading(true);
     setErr("");
     try {
@@ -131,7 +124,7 @@ function BenefitMasterForm({
         bjType === "fixed" ? { type: "fixed", value: Number(bjValue) || 0 }
         : bjType === "percent" ? { type: "percent", value: Number(bjValue) || 0, ...(bjMax ? { max: Number(bjMax) } : {}) }
         : {};
-      await onSave({ kind, title, subtitle, notes, stamp_key: stampKey.trim(), active, benefit_json });
+      await onSave({ kind, title, subtitle, notes, stamp_key: finalStampKey, active, benefit_json });
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "저장 실패");
     } finally {
@@ -199,7 +192,7 @@ function BenefitMasterForm({
         )}
       </div>
 
-      {kind === "STAMP" && (
+      {kind === "STAMP" && !fixedStampKey && (
         <div>
           <label className="text-xs text-gray-500 mb-1 block">스탬프 구간 (몇 개째 보상인지) *</label>
           <input
@@ -211,7 +204,6 @@ function BenefitMasterForm({
             placeholder="예: 5"
             className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
           />
-          <p className="text-[10px] text-gray-400 mt-1">아래 스탬프 규칙 섹션에서 같은 구간에 연결해야 앱에 노출됩니다.</p>
         </div>
       )}
 
@@ -257,74 +249,22 @@ function BenefitMasterForm({
   );
 }
 
-function LinkPicker({
-  couponTypes,
-  excludeCodes,
-  onLink,
-  onClose,
-}: {
-  couponTypes: CouponType[];
-  excludeCodes: string[];
-  onLink: (code: string) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const options = couponTypes.filter((ct) => !excludeCodes.includes(ct.code));
-
-  return (
-    <div className="flex items-center gap-1.5 mt-1.5">
-      <select
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
-      >
-        <option value="">-- 연결할 쿠폰 타입 --</option>
-        {options.map((ct) => (
-          <option key={ct.code} value={ct.code}>{ct.code} · {ct.title}</option>
-        ))}
-      </select>
-      <button
-        disabled={!code || loading}
-        onClick={async () => { setLoading(true); await onLink(code); setLoading(false); }}
-        className="text-[11px] font-semibold text-white bg-periwinkle rounded-lg px-2.5 py-1.5 disabled:opacity-50 hover:bg-navy transition-colors"
-      >
-        연결
-      </button>
-      <button onClick={onClose} className="text-[11px] text-gray-400 px-1.5">✕</button>
-    </div>
-  );
-}
-
 function BenefitCard({
   b,
-  couponTypes,
   onToggleActive,
   onEdit,
   onDelete,
-  onLink,
-  onUnlink,
 }: {
   b: RestaurantBenefit;
-  couponTypes: CouponType[];
   onToggleActive: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onLink: (code: string) => Promise<void>;
-  onUnlink: (code: string) => Promise<void>;
 }) {
-  const [showPicker, setShowPicker] = useState(false);
-
   return (
     <div className={`bg-white border rounded-2xl p-4 shadow-sm ${b.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            {b.kind === "STAMP" && b.stamp_key && (
-              <span className="text-[10px] font-mono bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">
-                {b.stamp_key}개째
-              </span>
-            )}
             {b.active ? (
               <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
             ) : (
@@ -339,41 +279,6 @@ function BenefitCard({
           {benefitLabel(b.benefit_json) && (
             <p className="text-[10px] text-periwinkle mt-1">{benefitLabel(b.benefit_json)}</p>
           )}
-
-          {/* 연결된 쿠폰 타입 */}
-          <div className="mt-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] text-gray-400">연결된 쿠폰:</span>
-              {b.linked_coupon_types.length === 0 && !showPicker && (
-                <span className="text-[10px] text-amber-500">없음 — 발급되지 않아요</span>
-              )}
-              {b.linked_coupon_types.map((lt) => (
-                <span
-                  key={lt.coupon_type_code}
-                  className="text-[10px] font-mono bg-periwinkle/10 text-periwinkle px-2 py-0.5 rounded-full flex items-center gap-1"
-                >
-                  {lt.coupon_type_code}
-                  <button onClick={() => onUnlink(lt.coupon_type_code)} className="text-periwinkle/60 hover:text-red-400">✕</button>
-                </span>
-              ))}
-              {!showPicker && (
-                <button
-                  onClick={() => setShowPicker(true)}
-                  className="text-[10px] text-gray-400 hover:text-periwinkle underline"
-                >
-                  + 연결
-                </button>
-              )}
-            </div>
-            {showPicker && (
-              <LinkPicker
-                couponTypes={couponTypes}
-                excludeCodes={b.linked_coupon_types.map((lt) => lt.coupon_type_code)}
-                onLink={async (code) => { await onLink(code); setShowPicker(false); }}
-                onClose={() => setShowPicker(false)}
-              />
-            )}
-          </div>
         </div>
         <div className="flex flex-col gap-1 shrink-0">
           <button
@@ -402,10 +307,9 @@ function BenefitCard({
 
 export function BenefitCatalogSection({ rid }: { rid: string | null }) {
   const [benefits, setBenefits] = useState<RestaurantBenefit[]>([]);
-  const [couponTypes, setCouponTypes] = useState<CouponType[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [activeKind, setActiveKind] = useState<BenefitKind>("GENERAL");
+  const [activeKind, setActiveKind] = useState<(typeof CATALOG_KIND_LIST)[number]>("GENERAL");
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
 
@@ -415,14 +319,10 @@ export function BenefitCatalogSection({ rid }: { rid: string | null }) {
     setLoading(true);
     setErr("");
     try {
-      const [bRes, tRes] = await Promise.all([
-        fetch(`/api/dashboard/restaurant-benefits${rq}`),
-        fetch(`/api/dashboard/coupon-types${rq}`),
-      ]);
-      const [bData, tData] = await Promise.all([bRes.json(), tRes.json()]);
+      const bRes = await fetch(`/api/dashboard/restaurant-benefits${rq}`);
+      const bData = await bRes.json();
       if (!bRes.ok) throw new Error(bData?.detail ?? "혜택 불러오기 실패");
       setBenefits(Array.isArray(bData) ? bData : []);
-      setCouponTypes(Array.isArray(tData) ? tData : []);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "불러오기 실패");
     } finally {
@@ -442,6 +342,19 @@ export function BenefitCatalogSection({ rid }: { rid: string | null }) {
     if (!res.ok) throw new Error(d.detail ?? "생성 실패");
     setBenefits((prev) => [...prev, d]);
     setShowForm(false);
+
+    // 일반 쿠폰은 상시 코드에 자동 연결 — 점주가 직접 고를 필요 없음
+    if (data.kind === "GENERAL") {
+      await Promise.all(
+        GENERAL_AUTO_LINK_CODES.map((code) =>
+          fetch(`/api/dashboard/coupon-types/${encodeURIComponent(code)}/benefits${rq}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ restaurant_benefit_id: d.id }),
+          }).catch(() => null)
+        )
+      );
+    }
   }
 
   async function update(id: number, data: BenefitFormData) {
@@ -473,25 +386,6 @@ export function BenefitCatalogSection({ rid }: { rid: string | null }) {
     if (res.ok) setBenefits((prev) => prev.map((x) => (x.id === b.id ? d : x)));
   }
 
-  async function link(b: RestaurantBenefit, code: string) {
-    const res = await fetch(`/api/dashboard/coupon-types/${encodeURIComponent(code)}/benefits${rq}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ restaurant_benefit_id: b.id }),
-    });
-    const d = await res.json().catch(() => null);
-    if (!res.ok || !d) { setErr("쿠폰 연결 실패"); return; }
-    setBenefits((prev) => prev.map((x) => (x.id === b.id ? { ...x, linked_coupon_types: d.linked_coupon_types } : x)));
-  }
-
-  async function unlink(b: RestaurantBenefit, code: string) {
-    const res = await fetch(`/api/dashboard/coupon-types/${encodeURIComponent(code)}/benefits/${b.id}${rq}`, { method: "DELETE" });
-    if (!res.ok && res.status !== 204) { setErr("연결 해제 실패"); return; }
-    setBenefits((prev) =>
-      prev.map((x) => (x.id === b.id ? { ...x, linked_coupon_types: x.linked_coupon_types.filter((lt) => lt.coupon_type_code !== code) } : x))
-    );
-  }
-
   if (loading) return (
     <div className="flex justify-center py-6">
       <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
@@ -507,7 +401,7 @@ export function BenefitCatalogSection({ rid }: { rid: string | null }) {
 
       {/* 종류 탭 */}
       <div className="flex gap-1.5">
-        {KIND_LIST.map((k) => {
+        {CATALOG_KIND_LIST.map((k) => {
           const count = benefits.filter((b) => b.kind === k).length;
           return (
             <button
@@ -544,12 +438,9 @@ export function BenefitCatalogSection({ rid }: { rid: string | null }) {
             <BenefitCard
               key={b.id}
               b={b}
-              couponTypes={couponTypes}
               onToggleActive={() => toggleActive(b)}
               onEdit={() => setEditId(b.id)}
               onDelete={() => remove(b.id)}
-              onLink={(code) => link(b, code)}
-              onUnlink={(code) => unlink(b, code)}
             />
           )
         )}
@@ -661,10 +552,40 @@ export function BenefitGlance({ rid }: { rid: string | null }) {
 /* ════════════════════════════════════════════════════
    섹션 2: 스탬프 규칙 (StampRewardRule)
 ════════════════════════════════════════════════════ */
+function StampBenefitRow({
+  benefit,
+  onEdit,
+}: {
+  benefit: RestaurantBenefit | undefined;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex-1 min-w-0">
+        {benefit ? (
+          <>
+            <p className="text-xs font-medium text-gray-700 truncate">{benefit.title}</p>
+            {benefitLabel(benefit.benefit_json) && (
+              <p className="text-[10px] text-periwinkle">{benefitLabel(benefit.benefit_json)}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-[10px] text-amber-500">혜택 미설정</p>
+        )}
+      </div>
+      <button
+        onClick={onEdit}
+        className="text-[10px] text-gray-400 hover:text-periwinkle underline shrink-0"
+      >
+        {benefit ? "수정" : "혜택 설정"}
+      </button>
+    </div>
+  );
+}
+
 export function StampRuleSection({ rid }: { rid: string | null }) {
   const [rule, setRule] = useState<StampRule | null>(null);
-  const [couponTypes, setCouponTypes] = useState<CouponType[]>([]);
-  const [benefits, setBenefits] = useState<CouponBenefit[]>([]);
+  const [benefits, setBenefits] = useState<RestaurantBenefit[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -675,6 +596,8 @@ export function StampRuleSection({ rid }: { rid: string | null }) {
   const [thresholds, setThresholds] = useState<StampThreshold[]>([]);
   const [ruleActive, setRuleActive] = useState(true);
   const [notes, setNotes] = useState("");
+  // 구간별 혜택 내용을 인라인으로 만들거나 수정할 때 — 편집/보기 모드 어느 쪽 목록이든 공유한다
+  const [editingBenefitIdx, setEditingBenefitIdx] = useState<number | null>(null);
 
   const rq = ridQ(rid);
 
@@ -682,17 +605,15 @@ export function StampRuleSection({ rid }: { rid: string | null }) {
     setLoading(true);
     setErr("");
     try {
-      const [rRes, tRes, bRes] = await Promise.all([
+      const [rRes, bRes] = await Promise.all([
         fetch(`/api/dashboard/stamp-rule${rq}`),
-        fetch(`/api/dashboard/coupon-types${rq}`),
-        fetch(`/api/dashboard/coupon-benefits${rq}`),
+        fetch(`/api/dashboard/restaurant-benefits${rq ? `${rq}&kind=STAMP` : "?kind=STAMP"}`),
       ]);
-      const [rData, tData, bData] = await Promise.all([rRes.json(), tRes.json(), bRes.json()]);
+      const [rData, bData] = await Promise.all([rRes.json(), bRes.json()]);
       // 404 = 규칙 없음, 다른 에러는 throw
       if (rRes.ok) setRule(rData);
       else if (rRes.status === 404) setRule(null);
       else throw new Error(rData?.detail ?? "스탬프 규칙 불러오기 실패");
-      setCouponTypes(Array.isArray(tData) ? tData : []);
       setBenefits(Array.isArray(bData) ? bData : []);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "불러오기 실패");
@@ -710,6 +631,37 @@ export function StampRuleSection({ rid }: { rid: string | null }) {
     setRuleActive(rule?.active ?? true);
     setNotes(cfg.notes ?? "");
     setEditing(true);
+  }
+
+  async function saveStampBenefit(stamps: number, data: BenefitFormData) {
+    const existing = benefits.find((b) => b.stamp_key === String(stamps));
+    if (existing) {
+      const res = await fetch(`/api/dashboard/restaurant-benefits/${existing.id}${rq}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.detail ?? "저장 실패");
+      setBenefits((prev) => prev.map((b) => (b.id === existing.id ? d : b)));
+    } else {
+      const res = await fetch(`/api/dashboard/restaurant-benefits${rq}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.detail ?? "생성 실패");
+      // 스탬프 구간 코드(STAMP_REWARD_N)에 자동 연결 — 점주가 직접 고를 필요 없음
+      const code = `STAMP_REWARD_${stamps}`;
+      const linkRes = await fetch(`/api/dashboard/coupon-types/${encodeURIComponent(code)}/benefits${rq}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurant_benefit_id: d.id }),
+      });
+      setBenefits((prev) => [...prev, d]);
+      if (!linkRes.ok) throw new Error(`혜택은 저장했지만 ${code} 코드 연결에 실패했습니다.`);
+    }
   }
 
   async function saveRule() {
@@ -783,8 +735,21 @@ export function StampRuleSection({ rid }: { rid: string | null }) {
           ) : (
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               {thresholds.map((t, idx) => {
-                const autoCode = `STAMP_REWARD_${t.stamps}`;
-                const benefit = benefits.find((b) => b.coupon_type_code === autoCode);
+                const benefit = benefits.find((b) => b.stamp_key === String(t.stamps));
+                if (editingBenefitIdx === idx) {
+                  return (
+                    <div key={idx} className="px-3 py-3 border-b border-gray-50 last:border-0">
+                      <p className="text-[10px] text-gray-400 mb-1.5">{t.stamps}개째 혜택</p>
+                      <BenefitMasterForm
+                        kind="STAMP"
+                        fixedStampKey={String(t.stamps)}
+                        initial={benefit}
+                        onSave={async (data) => { await saveStampBenefit(t.stamps, data); setEditingBenefitIdx(null); }}
+                        onCancel={() => setEditingBenefitIdx(null)}
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <div
                     key={idx}
@@ -815,18 +780,7 @@ export function StampRuleSection({ rid }: { rid: string | null }) {
                     </div>
 
                     {/* 연결된 혜택 내용 */}
-                    <div className="flex-1 min-w-0">
-                      {benefit ? (
-                        <>
-                          <p className="text-xs font-medium text-gray-700 truncate">{benefit.title}</p>
-                          {benefitLabel(benefit.benefit_json) && (
-                            <p className="text-[10px] text-periwinkle">{benefitLabel(benefit.benefit_json)}</p>
-                          )}
-                        </>
-                      ) : (
-                        <p className="text-[10px] text-amber-500">혜택 미설정 ({autoCode})</p>
-                      )}
-                    </div>
+                    <StampBenefitRow benefit={benefit} onEdit={() => setEditingBenefitIdx(idx)} />
 
                     {/* 삭제 */}
                     <button
@@ -958,21 +912,32 @@ export function StampRuleSection({ rid }: { rid: string | null }) {
       {thresholdList.length > 0 && (
         <div className="flex flex-col gap-1 mb-2">
           {thresholdList.map((t, i) => {
-            const ct = couponTypes.find((c) => c.code === t.coupon_type_code);
-            const benefit = benefits.find((b) => b.coupon_type_code === t.coupon_type_code);
+            const benefit = benefits.find((b) => b.stamp_key === String(t.stamps));
+            if (editingBenefitIdx === i) {
+              return (
+                <div key={i} className="py-1.5 border-b border-gray-50 last:border-0">
+                  <p className="text-[10px] text-gray-400 mb-1.5">{t.stamps}개째 혜택</p>
+                  <BenefitMasterForm
+                    kind="STAMP"
+                    fixedStampKey={String(t.stamps)}
+                    initial={benefit}
+                    onSave={async (data) => { await saveStampBenefit(t.stamps, data); setEditingBenefitIdx(null); }}
+                    onCancel={() => setEditingBenefitIdx(null)}
+                  />
+                </div>
+              );
+            }
             return (
               <div key={i} className="flex flex-col gap-0.5 py-1.5 border-b border-gray-50 last:border-0">
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold shrink-0 text-[10px]">
                     {t.stamps}
                   </span>
-                  <span className="font-medium">{benefit?.title ?? ct?.title ?? t.coupon_type_code}</span>
-                  <span className="text-[10px] text-gray-300 font-mono ml-auto">{t.coupon_type_code}</span>
+                  <StampBenefitRow benefit={benefit} onEdit={() => setEditingBenefitIdx(i)} />
                 </div>
-                {benefit && (
+                {benefit?.notes && (
                   <div className="ml-7 flex flex-wrap gap-x-3 gap-y-0.5">
-                    <span className="text-[10px] text-periwinkle">{benefitLabel(benefit.benefit_json)}</span>
-                    {benefit.notes && <span className="text-[10px] text-gray-400">{benefit.notes}</span>}
+                    <span className="text-[10px] text-gray-400">{benefit.notes}</span>
                   </div>
                 )}
               </div>

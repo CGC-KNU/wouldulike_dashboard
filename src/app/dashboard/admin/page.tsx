@@ -2234,7 +2234,7 @@ function NewRestaurantModal({
             <section className="mb-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">혜택 카탈로그</h3>
-                <span className="text-[10px] text-gray-400">일반·특별·스탬프 혜택을 만들고 쿠폰에 연결</span>
+                <span className="text-[10px] text-gray-400">일반 쿠폰과 한정 쿠폰 혜택을 등록해요</span>
               </div>
               <BenefitCatalogSection rid={rid} />
             </section>
