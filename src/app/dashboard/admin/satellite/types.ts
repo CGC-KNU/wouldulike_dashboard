@@ -40,7 +40,7 @@ export interface ContentPlan {
   shoot_date: string | null; // YYYY-MM-DD
   scheduled_date: string; // YYYY-MM-DD
   desired_publish_at: string | null; // ISO
-  deadline: string | null; // ISO — "기타" 유형은 항상 null(발행 대상이 아니라 마감 개념이 없음)
+  deadline: string | null; // ISO — "기타"도 마감일로 완료 판정을 하므로 값이 채워진다
   /** true면 마감일을 직접 지정한 것 — false면 예전 방식(업로드일-1일 등) 자동 계산값 */
   deadline_is_manual: boolean;
   attendance_override: "on_time" | "late" | null;

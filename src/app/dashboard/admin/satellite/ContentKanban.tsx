@@ -292,10 +292,12 @@ export default function ContentKanban({
                             {p.deadline && (
                               <span className="text-[10px] font-semibold text-amber-500">마감 {fmtMD(p.deadline.slice(0, 10))}</span>
                             )}
-                            <span className="text-[10px] text-gray-400">
-                              업로드 {fmtMD(p.scheduled_date)}
-                              {p.desired_publish_at && ` ${new Date(p.desired_publish_at).getHours()}시`}
-                            </span>
+                            {p.media_type !== "image" && (
+                              <span className="text-[10px] text-gray-400">
+                                업로드 {fmtMD(p.scheduled_date)}
+                                {p.desired_publish_at && ` ${new Date(p.desired_publish_at).getHours()}시`}
+                              </span>
+                            )}
                           </div>
                         </button>
                         {deletable && (

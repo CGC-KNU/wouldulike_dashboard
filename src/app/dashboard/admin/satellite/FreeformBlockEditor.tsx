@@ -25,7 +25,8 @@ export default function FreeformBlockEditor({
   onChanged: (blocks: ContentBlockItem[]) => void;
 }) {
   const [text, setText] = useState("");
-  const [uploading, setUploading] = useState(false);
+  // 0이면 업로드 중이 아님 — 그 외엔 "N/전체" 진행률 표시용
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [dragId, setDragId] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -83,8 +84,8 @@ export default function FreeformBlockEditor({
     setText("");
   }
 
-  async function handleFile(file: File) {
-    setUploading(true);
+  /** 한 장 업로드 — 성공하면 추가된 블록을, 실패하면 null을 돌려준다 */
+  async function uploadOne(file: File): Promise<ContentBlockItem | null> {
     try {
       const pres = await fetch(`/api/satellite/plans/${planId}/blocks/image/presign`, {
         method: "POST",
@@ -93,13 +94,13 @@ export default function FreeformBlockEditor({
       });
       const p = await pres.json().catch(() => ({}));
       if (!pres.ok) {
-        alert(p.detail ?? "업로드 URL 발급에 실패했습니다.");
-        return;
+        alert(`${file.name}: ${p.detail ?? "업로드 URL 발급에 실패했습니다."}`);
+        return null;
       }
       const put = await fetch(p.upload_url, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       if (!put.ok) {
-        alert(`업로드에 실패했습니다. (S3 ${put.status})`);
-        return;
+        alert(`${file.name}: 업로드에 실패했습니다. (S3 ${put.status})`);
+        return null;
       }
       const reg = await fetch(`/api/satellite/plans/${planId}/blocks`, {
         method: "POST",
@@ -108,15 +109,36 @@ export default function FreeformBlockEditor({
       });
       const r = await reg.json().catch(() => ({}));
       if (!reg.ok) {
-        alert(r.detail ?? "등록에 실패했습니다.");
-        return;
+        alert(`${file.name}: ${r.detail ?? "등록에 실패했습니다."}`);
+        return null;
       }
-      onChanged([...blocks, r]);
+      return r as ContentBlockItem;
     } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setUploading(false);
+      alert(`${file.name}: ${(e as Error).message}`);
+      return null;
     }
+  }
+
+  /**
+   * 여러 장을 한 번에 선택해도 순서대로 하나씩 올린다(마케팅팀 피드백 2026-08-31,
+   * 예전엔 한 번에 한 장만 가능했다) — 동시에 여러 건을 올리면 sort_order가
+   * 서버에서 같은 값으로 배정돼 충돌할 수 있어 일부러 병렬로 안 돌린다. 매 장마다
+   * onChanged를 불러서 화면에 하나씩 쌓이는 걸 보여준다.
+   */
+  async function handleFiles(fileList: FileList) {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+    setUploadProgress({ done: 0, total: files.length });
+    let acc = blocks;
+    for (let i = 0; i < files.length; i++) {
+      const added = await uploadOne(files[i]);
+      if (added) {
+        acc = [...acc, added];
+        onChanged(acc);
+      }
+      setUploadProgress({ done: i + 1, total: files.length });
+    }
+    setUploadProgress(null);
   }
 
   async function removeBlock(id: number) {
@@ -268,18 +290,18 @@ export default function FreeformBlockEditor({
           </div>
           <button
             onClick={() => fileInput.current?.click()}
-            disabled={uploading}
+            disabled={!!uploadProgress}
             className="text-xs font-semibold text-gray-500 border-2 border-dashed border-gray-200 rounded-xl py-2.5 hover:border-periwinkle hover:text-periwinkle transition-colors disabled:opacity-50"
           >
-            {uploading ? "업로드 중..." : "+ 사진 추가"}
+            {uploadProgress ? `업로드 중... (${uploadProgress.done}/${uploadProgress.total})` : "+ 사진 추가 (여러 장 선택 가능)"}
           </button>
           <input
             ref={fileInput}
             type="file"
             accept="image/png,image/jpeg,image/webp"
+            multiple
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFile(f);
+              if (e.target.files && e.target.files.length > 0) handleFiles(e.target.files);
               if (fileInput.current) fileInput.current.value = "";
             }}
             className="hidden"
