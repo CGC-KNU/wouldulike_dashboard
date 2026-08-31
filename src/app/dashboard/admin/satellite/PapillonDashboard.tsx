@@ -454,60 +454,6 @@ export default function PapillonDashboard() {
         </div>
       )}
 
-      {/* 발행 대상 계정 + 설정 상태 — 어느 계정에 올라가는지 항상 보이게 한다 */}
-      {pubStatus && (pubStatus.account || !pubStatus.publish_enabled) && (
-        <div
-          className={`rounded-2xl border px-4 py-2.5 flex items-center gap-2.5 ${
-            pubStatus.publish_enabled
-              ? "border-green-200 bg-green-50"
-              : "border-gray-200 bg-white"
-          }`}
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-              pubStatus.publish_enabled ? "bg-green-500" : "bg-gray-300"
-            }`}
-          />
-          <div className="min-w-0 flex-1">
-            {pubStatus.account ? (
-              <p
-                className={`text-[11px] leading-relaxed ${
-                  pubStatus.publish_enabled ? "text-green-700" : "text-gray-500"
-                }`}
-              >
-                발행 대상{" "}
-                <span className="font-bold">@{pubStatus.account.username}</span>
-                {pubStatus.account.followers != null && (
-                  <span className="opacity-70">
-                    {" "}
-                    · 팔로워 {pubStatus.account.followers.toLocaleString()}
-                  </span>
-                )}
-                {!pubStatus.publish_enabled && (
-                  <span className="block mt-0.5 text-gray-500">
-                    자동 발행이 꺼져 있어 실제로는 올라가지 않습니다.
-                  </span>
-                )}
-              </p>
-            ) : (
-              <p className="text-[11px] text-gray-500 leading-relaxed">
-                자동 발행이 꺼져 있습니다 — 콘텐츠는 저장되지만 인스타에 올라가지 않습니다.
-                {!pubStatus.configured && " 인스타 연동 환경변수도 아직 설정되지 않았습니다."}
-              </p>
-            )}
-          </div>
-          {pubStatus.quota && (
-            <span
-              className={`text-[10px] shrink-0 ${
-                pubStatus.publish_enabled ? "text-green-600" : "text-gray-400"
-              }`}
-            >
-              쿼터 {pubStatus.quota.quota_usage}/{pubStatus.quota.quota_total}
-            </span>
-          )}
-        </div>
-      )}
-
       {errors.length > 0 && (
         <div className="rounded-2xl border border-red-200 bg-red-50 overflow-hidden">
           <div className="px-4 py-3 flex items-start gap-3">
