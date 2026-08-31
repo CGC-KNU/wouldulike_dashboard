@@ -427,6 +427,14 @@ export interface CommentItem {
   reactions: CommentReaction[];
 }
 
+export interface AttendanceLatePlan {
+  id: number;
+  topic: string;
+  scheduled_date: string; // YYYY-MM-DD
+  deadline: string | null; // ISO
+  attendance_override: "on_time" | "late" | null;
+}
+
 export interface AttendanceRow {
   account_id: number;
   name: string;
@@ -438,6 +446,7 @@ export interface AttendanceRow {
   late: number;
   edit_requests: number;
   publish_failed_ref: number;
+  late_plans: AttendanceLatePlan[];
 }
 
 export interface AttendanceResponse {

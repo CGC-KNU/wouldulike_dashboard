@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { AttendanceResponse, AttendanceRow } from "./types";
+import { AttendanceResponse, AttendanceRow, fmtMD } from "./types";
 
 /**
  * 멤버별 근태 표 (설계서 §16-6, §16-7) — 리드 전용.
@@ -30,9 +30,11 @@ export default function AttendanceDashboard({ onClose, embedded = false }: Props
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [savingPlanId, setSavingPlanId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
+    if (!opts?.soft) setLoading(true);
     setErr("");
     try {
       const res = await fetch(`/api/satellite/attendance?week_start=${weekAnchorDate(weekOffset)}`);
@@ -46,9 +48,30 @@ export default function AttendanceDashboard({ onClose, embedded = false }: Props
     } catch (e) {
       setErr((e as Error).message);
     } finally {
-      setLoading(false);
+      if (!opts?.soft) setLoading(false);
     }
   }, [weekOffset]);
+
+  async function setOverride(planId: number, override: "on_time" | "late" | "") {
+    setSavingPlanId(planId);
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attendance_override: override || null }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.detail ?? "저장에 실패했습니다.");
+        return;
+      }
+      await load({ soft: true });
+    } catch {
+      alert("네트워크 오류");
+    } finally {
+      setSavingPlanId(null);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -131,7 +154,16 @@ export default function AttendanceDashboard({ onClose, embedded = false }: Props
             </thead>
             <tbody>
               {data.rows.map((r) => (
-                <AttendanceRowLine key={r.account_id} row={r} />
+                <AttendanceRowLine
+                  key={r.account_id}
+                  row={r}
+                  expanded={expandedId === r.account_id}
+                  onToggleExpand={() =>
+                    setExpandedId((v) => (v === r.account_id ? null : r.account_id))
+                  }
+                  savingPlanId={savingPlanId}
+                  onOverride={setOverride}
+                />
               ))}
             </tbody>
           </table>
@@ -153,23 +185,97 @@ export default function AttendanceDashboard({ onClose, embedded = false }: Props
   );
 }
 
-function AttendanceRowLine({ row }: { row: AttendanceRow }) {
+function AttendanceRowLine({
+  row,
+  expanded,
+  onToggleExpand,
+  savingPlanId,
+  onOverride,
+}: {
+  row: AttendanceRow;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  savingPlanId: number | null;
+  onOverride: (planId: number, override: "on_time" | "late" | "") => void;
+}) {
+  const hasLate = row.late > 0;
   return (
-    <tr className="border-b border-gray-50">
-      <td className="py-2">
-        <span className={row.is_active ? "text-gray-700 font-medium" : "text-gray-300"}>{row.name}</span>
-        {row.not_registered && (
-          <span className="ml-1.5 text-[9px] font-bold text-amber-500 bg-amber-50 rounded-full px-1.5 py-0.5">
-            미등록
-          </span>
-        )}
-      </td>
-      <td className="text-right py-2 text-gray-400">{row.weekly_quota}</td>
-      <td className="text-right py-2 text-gray-600">{row.registered}</td>
-      <td className="text-right py-2 text-green-600 font-semibold">{row.on_time}</td>
-      <td className="text-right py-2 text-red-500 font-semibold">{row.late || "-"}</td>
-      <td className="text-right py-2 text-gray-500">{row.edit_requests || "-"}</td>
-      <td className="text-right py-2 text-gray-300">{row.publish_failed_ref || "-"}</td>
-    </tr>
+    <>
+      <tr className="border-b border-gray-50">
+        <td className="py-2">
+          <span className={row.is_active ? "text-gray-700 font-medium" : "text-gray-300"}>{row.name}</span>
+          {row.not_registered && (
+            <span className="ml-1.5 text-[9px] font-bold text-amber-500 bg-amber-50 rounded-full px-1.5 py-0.5">
+              미등록
+            </span>
+          )}
+        </td>
+        <td className="text-right py-2 text-gray-400">{row.weekly_quota}</td>
+        <td className="text-right py-2 text-gray-600">{row.registered}</td>
+        <td className="text-right py-2 text-green-600 font-semibold">{row.on_time}</td>
+        <td className="text-right py-2">
+          {hasLate ? (
+            <button
+              onClick={onToggleExpand}
+              className="font-semibold text-red-500 underline decoration-dotted underline-offset-2 hover:text-red-600"
+              title="클릭해서 지연 건 목록 보기"
+            >
+              {row.late}
+            </button>
+          ) : (
+            <span className="text-red-500 font-semibold">-</span>
+          )}
+        </td>
+        <td className="text-right py-2 text-gray-500">{row.edit_requests || "-"}</td>
+        <td className="text-right py-2 text-gray-300">{row.publish_failed_ref || "-"}</td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-gray-50 bg-red-50/30">
+          <td colSpan={7} className="py-2 px-2">
+            {row.late_plans.length === 0 ? (
+              <p className="text-[11px] text-gray-400 py-1">지연 건이 없습니다.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {row.late_plans.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-2 bg-white rounded-lg border border-red-100 px-2.5 py-1.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-gray-700 truncate">{p.topic || "(주제 미정)"}</p>
+                      <p className="text-[10px] text-gray-400">
+                        업로드 {fmtMD(p.scheduled_date)}
+                        {p.deadline && ` · 마감 ${fmtMD(p.deadline.slice(0, 10))}`}
+                      </p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {(
+                        [
+                          { value: "", label: "자동 판정" },
+                          { value: "on_time", label: "정시로 인정" },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.value}
+                          disabled={savingPlanId === p.id}
+                          onClick={() => onOverride(p.id, opt.value)}
+                          className={`text-[10px] font-semibold rounded-lg px-2 py-1.5 border transition-colors disabled:opacity-40 ${
+                            (p.attendance_override ?? "") === opt.value
+                              ? "bg-periwinkle text-white border-periwinkle"
+                              : "text-gray-500 border-gray-200 hover:border-periwinkle/40"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
