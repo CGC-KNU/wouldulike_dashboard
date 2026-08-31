@@ -41,6 +41,9 @@ export interface ContentPlan {
   scheduled_date: string; // YYYY-MM-DD
   desired_publish_at: string | null; // ISO
   deadline: string | null; // ISO — "기타" 유형은 항상 null(발행 대상이 아니라 마감 개념이 없음)
+  /** true면 마감일을 직접 지정한 것 — false면 예전 방식(업로드일-1일 등) 자동 계산값 */
+  deadline_is_manual: boolean;
+  attendance_override: "on_time" | "late" | null;
   topic: string;
   media_type: MediaType;
   status: PlanStatus;
@@ -201,6 +204,9 @@ export interface PlanDetail {
   owner_name: string;
   owner_name_override: string;
   scheduled_date: string;
+  deadline: string | null;
+  deadline_is_manual: boolean;
+  attendance_override: "on_time" | "late" | null;
   topic: string;
   media_type: MediaType;
   status: PlanStatus;

@@ -89,7 +89,7 @@ export default function ContentKanban({
     setCreating(true);
     try {
       const ok = await onCreate({
-        scheduled_date: newDate,
+        deadline: newDate,
         topic: newTopic.trim(),
         owner_id: newOwner ?? undefined,
         owner_name_override: newOwnerName.trim() || undefined,
@@ -169,13 +169,16 @@ export default function ContentKanban({
         </div>
 
         {adding && (
-          <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/60 flex flex-col md:flex-row md:flex-wrap gap-2">
-            <input
-              type="date"
-              value={newDate}
-              onChange={(e) => setNewDate(e.target.value)}
-              className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle md:w-40"
-            />
+          <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/60 flex flex-col md:flex-row md:flex-wrap gap-2 md:items-start">
+            <div className="flex flex-col gap-1 md:w-40">
+              <span className="text-[10px] font-semibold text-gray-400">마감일</span>
+              <input
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle"
+              />
+            </div>
             <input
               type="text"
               autoFocus
@@ -219,6 +222,9 @@ export default function ContentKanban({
             >
               {creating ? "등록 중..." : "등록"}
             </button>
+            <p className="basis-full text-[10px] text-gray-400 leading-relaxed">
+              업로드 예정일·시간은 등록 후 카드를 열어 &quot;희망 발행 시간&quot;에서 따로 정할 수 있습니다.
+            </p>
             {newMedia === "image" && (
               <p className="basis-full text-[10px] text-gray-400 leading-relaxed">
                 기타는 인스타 발행이 아니라, 카드뉴스 주제 정리·학생회 단톡에 뿌릴 글처럼 자료를 모아 두는 용도입니다.
@@ -283,13 +289,13 @@ export default function ContentKanban({
                           </div>
                           <p className="text-xs text-gray-700 truncate">{p.topic || "(주제 미정)"}</p>
                           <div className="flex items-center gap-1.5 mt-1">
+                            {p.deadline && (
+                              <span className="text-[10px] font-semibold text-amber-500">마감 {fmtMD(p.deadline.slice(0, 10))}</span>
+                            )}
                             <span className="text-[10px] text-gray-400">
                               업로드 {fmtMD(p.scheduled_date)}
                               {p.desired_publish_at && ` ${new Date(p.desired_publish_at).getHours()}시`}
                             </span>
-                            {p.deadline && (
-                              <span className="text-[10px] text-amber-500">마감 {fmtMD(p.deadline.slice(0, 10))}</span>
-                            )}
                           </div>
                         </button>
                         {deletable && (

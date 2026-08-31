@@ -57,6 +57,8 @@ export default function PlanEditor({
   // 편집 중 값 (저장 전)
   const [caption, setCaption] = useState("");
   const [publishAt, setPublishAt] = useState("");
+  const [topicEdit, setTopicEdit] = useState("");
+  const [deadlineEdit, setDeadlineEdit] = useState("");
   const [collabInput, setCollabInput] = useState("");
   const [activeTab, setActiveTab] = useState<"detail" | "content" | "post">(initialTab);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -79,6 +81,8 @@ export default function PlanEditor({
           // 입력 중이던 글자와 충돌해서 한글 조합이 끊기거나 중복 입력처럼 보인다.
           if (!opts?.preserveCaption) setCaption(d.caption ?? "");
           setPublishAt(d.desired_publish_at ? toLocalInput(d.desired_publish_at) : "");
+          setTopicEdit(d.topic ?? "");
+          setDeadlineEdit(d.deadline ? String(d.deadline).slice(0, 10) : "");
         }
       } catch (e) {
         setErr((e as Error).message);
@@ -420,11 +424,31 @@ export default function PlanEditor({
       <div className="bg-background w-full sm:max-w-2xl max-h-[92vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col shadow-xl">
         {/* 헤더 */}
         <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Editor</p>
-            <h2 className="text-sm font-bold text-navy truncate">
-              {plan ? `${fmtMD(plan.scheduled_date)} · ${plan.topic || "(주제 미정)"}` : "불러오는 중"}
-            </h2>
+            {plan ? (
+              plan.can_edit ? (
+                <input
+                  type="text"
+                  value={topicEdit}
+                  onChange={(e) => setTopicEdit(e.target.value)}
+                  onBlur={() => {
+                    const next = topicEdit.trim();
+                    if (next === plan.topic) return;
+                    patch({ topic: next }, true).then((ok) => {
+                      if (ok) load({ preserveCaption: true, silent: true });
+                    });
+                  }}
+                  placeholder="(주제 미정)"
+                  className="w-full text-sm font-bold text-navy bg-transparent border-b border-transparent hover:border-gray-200 focus:border-periwinkle focus:outline-none truncate"
+                />
+              ) : (
+                <h2 className="text-sm font-bold text-navy truncate">{plan.topic || "(주제 미정)"}</h2>
+              )
+            ) : (
+              <h2 className="text-sm font-bold text-navy truncate">불러오는 중</h2>
+            )}
+            {plan && <p className="text-[11px] text-gray-400 mt-0.5">업로드 {fmtMD(plan.scheduled_date)}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {plan && (
@@ -585,6 +609,12 @@ export default function PlanEditor({
                         <p className="text-[10px] text-gray-400 font-semibold">업로드 예정일</p>
                         <p className="text-xs text-gray-700 mt-0.5">{fmtMD(plan.scheduled_date)}</p>
                       </div>
+                      {plan.deadline && (
+                        <div>
+                          <p className="text-[10px] text-gray-400 font-semibold">마감일</p>
+                          <p className="text-xs text-amber-600 mt-0.5">{fmtMD(plan.deadline.slice(0, 10))}</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-[10px] text-gray-400 font-semibold">카드 · 해시태그</p>
                         <p className="text-xs text-gray-700 mt-0.5">
@@ -959,6 +989,66 @@ export default function PlanEditor({
                   </p>
                 )}
               </section>
+
+              {/* 마감일 — 업로드 예정일(scheduled_date)·희망 발행 시간과 별개로 직접 정한다
+                  (마케팅팀 피드백 2026-08-31). */}
+              <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                <h3 className="text-sm font-bold text-gray-800 mb-1">마감일</h3>
+                <p className="text-[11px] text-gray-400 mb-2.5">
+                  업로드 예정일과 별개입니다. 이 날짜 23:59까지 작업물을 등록해야 합니다.
+                </p>
+                <input
+                  type="date"
+                  value={deadlineEdit}
+                  onChange={(e) => setDeadlineEdit(e.target.value)}
+                  onBlur={() => {
+                    const current = plan.deadline ? plan.deadline.slice(0, 10) : "";
+                    if (deadlineEdit === current) return;
+                    patch({ deadline: deadlineEdit || null }, true).then((ok) => {
+                      if (ok) load({ preserveCaption: true, silent: true });
+                    });
+                  }}
+                  disabled={!plan.can_edit}
+                  className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-periwinkle disabled:bg-gray-50"
+                />
+              </section>
+
+              {/* 근태 수동 조정 — 리드 전용, 카드 단위 예외 처리 (§16-6·§16-7,
+                  마케팅팀 피드백 2026-08-31). 언락해도 locked_at 이력은 안 지워져서
+                  자동 판정만으로는 계속 지각으로 잡히는 건을 여기서 바로잡는다. */}
+              {plan.is_lead && (
+                <section className="bg-white rounded-2xl border border-gray-100 p-4">
+                  <h3 className="text-sm font-bold text-gray-800 mb-1">근태 (리드 전용)</h3>
+                  <p className="text-[11px] text-gray-400 mb-2.5">
+                    자동 판정이 실제와 다르면 이 카드만 예외로 바꿀 수 있습니다.
+                  </p>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { value: "", label: "자동 판정" },
+                        { value: "on_time", label: "정시로 인정" },
+                        { value: "late", label: "지각으로 처리" },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() =>
+                          patch({ attendance_override: opt.value || null }, true).then((ok) => {
+                            if (ok) load({ preserveCaption: true, silent: true });
+                          })
+                        }
+                        className={`flex-1 text-[11px] font-semibold rounded-xl px-2.5 py-2 border transition-colors ${
+                          (plan.attendance_override ?? "") === opt.value
+                            ? "bg-periwinkle text-white border-periwinkle"
+                            : "text-gray-500 border-gray-200 hover:border-periwinkle/40"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* 희망 발행 시간 */}
               <section className="bg-white rounded-2xl border border-gray-100 p-4">
