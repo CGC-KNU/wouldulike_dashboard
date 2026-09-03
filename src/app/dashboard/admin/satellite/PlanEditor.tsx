@@ -300,25 +300,32 @@ export default function PlanEditor({
 
   async function dropOn(targetId: number) {
     if (!plan || dragId == null || dragId === targetId) return;
-    const ids = plan.assets.map((a) => a.id);
-    const from = ids.indexOf(dragId);
-    const to = ids.indexOf(targetId);
+    const from = plan.assets.findIndex((a) => a.id === dragId);
+    const to = plan.assets.findIndex((a) => a.id === targetId);
+    setDragId(null);
     if (from < 0 || to < 0) return;
 
-    ids.splice(to, 0, ...ids.splice(from, 1));
-    setDragId(null);
+    const reordered = [...plan.assets];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    const ids = reordered.map((a) => a.id);
 
     // 낙관적 반영 — 서버 응답을 기다리지 않고 먼저 그린다
-    setPlan({ ...plan, assets: ids.map((id) => plan.assets.find((a) => a.id === id)!) });
+    setPlan({ ...plan, assets: reordered });
 
-    const res = await fetch(`/api/satellite/plans/${planId}/assets/reorder`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order: ids }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      alert(d.detail ?? "순서 변경에 실패했습니다.");
+    try {
+      const res = await fetch(`/api/satellite/plans/${planId}/assets/reorder`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: ids }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.detail ?? "순서 변경에 실패했습니다.");
+        await load({ preserveCaption: true, silent: true });
+      }
+    } catch (e) {
+      alert(`순서 변경에 실패했습니다: ${(e as Error).message}`);
       await load({ preserveCaption: true, silent: true });
     }
   }
@@ -366,7 +373,11 @@ export default function PlanEditor({
   }
 
   async function publishNow() {
-    if (!confirm("지금 바로 인스타그램에 발행합니다.\n\n되돌릴 수 없습니다. 계속할까요?")) return;
+    const isOther = plan?.media_type === "image";
+    const confirmMsg = isOther
+      ? "지금 바로 완료 처리합니다.\n\n되돌릴 수 없습니다. 계속할까요?"
+      : "지금 바로 인스타그램에 발행합니다.\n\n되돌릴 수 없습니다. 계속할까요?";
+    if (!confirm(confirmMsg)) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/satellite/plans/${planId}/publish-now`, { method: "POST" });
@@ -375,11 +386,11 @@ export default function PlanEditor({
         const problems: string[] = d.problems ?? [];
         alert(
           problems.length
-            ? `발행 조건을 만족하지 않습니다.\n\n${problems.map((p) => `· ${p}`).join("\n")}`
-            : d.detail ?? "발행 요청에 실패했습니다."
+            ? `${isOther ? "완료" : "발행"} 조건을 만족하지 않습니다.\n\n${problems.map((p) => `· ${p}`).join("\n")}`
+            : d.detail ?? `${isOther ? "완료" : "발행"} 요청에 실패했습니다.`
         );
       } else {
-        alert("발행 대기열에 넣었습니다. 크론이 곧 처리합니다.");
+        alert(isOther ? "완료 처리했습니다." : "발행 대기열에 넣었습니다. 크론이 곧 처리합니다.");
       }
       await load({ preserveCaption: true, silent: true });
       onChanged();
@@ -456,7 +467,7 @@ export default function PlanEditor({
           <div className="flex items-center gap-2 shrink-0">
             {plan && (
               <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${STATUS_META[plan.status].cls}`}>
-                {STATUS_META[plan.status].label}
+                {plan.media_type === "image" && plan.status === "published" ? "완료" : STATUS_META[plan.status].label}
               </span>
             )}
             <button
@@ -1184,7 +1195,9 @@ export default function PlanEditor({
                 {saving ? "저장 중..." : "준비완료로 전환"}
               </button>
             ) : plan.status === "published" ? (
-              <p className="flex-1 text-center text-xs text-gray-400">발행이 완료된 콘텐츠입니다</p>
+              <p className="flex-1 text-center text-xs text-gray-400">
+                {plan.media_type === "image" ? "완료된 콘텐츠입니다" : "발행이 완료된 콘텐츠입니다"}
+              </p>
             ) : (
               <>
                 <button
@@ -1200,13 +1213,13 @@ export default function PlanEditor({
                     disabled={saving || plan.validation.length > 0}
                     className="flex-1 py-2.5 bg-navy text-white text-xs font-bold rounded-xl hover:bg-periwinkle transition-colors disabled:opacity-40"
                   >
-                    지금 발행
+                    {plan.media_type === "image" ? "완료" : "지금 발행"}
                   </button>
                 )}
               </>
             )}
 
-            {plan.is_lead && (plan.status !== "published" || !plan.has_post) && (
+            {plan.media_type !== "image" && plan.is_lead && (plan.status !== "published" || !plan.has_post) && (
               <button
                 onClick={manualPublish}
                 className="px-3 py-2.5 text-[11px] font-semibold text-amber-600 border border-amber-200 rounded-xl hover:bg-amber-50"

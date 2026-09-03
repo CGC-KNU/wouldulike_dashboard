@@ -124,12 +124,29 @@ function BackfillSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dry_run: dryRun }),
       });
-      const data: BackfillResult = await res.json();
-      if (dryRun) setPreview(data);
+      const data = await res.json().catch(() => ({}));
+      // 백엔드 프록시는 에러 시 { ok, created, skipped } 대신 { detail } 형태를 내려준다 —
+      // res.ok 를 함께 확인해야 실패 시 빈 에러 박스만 뜨는 걸 막을 수 있다.
+      const normalized: BackfillResult =
+        res.ok && data.ok !== false
+          ? {
+              ok: true,
+              created: data.created ?? 0,
+              skipped: data.skipped ?? 0,
+              dry_run: data.dry_run,
+              insight_errors: data.insight_errors,
+              needs_tagging: data.needs_tagging,
+            }
+          : { ok: false, created: 0, skipped: 0, error: data.error ?? data.detail ?? "백필 요청에 실패했습니다." };
+      if (dryRun) setPreview(normalized);
       else {
-        setResult(data);
+        setResult(normalized);
         setPreview(null);
       }
+    } catch (e) {
+      const failed: BackfillResult = { ok: false, created: 0, skipped: 0, error: (e as Error).message };
+      if (dryRun) setPreview(failed);
+      else setResult(failed);
     } finally {
       setLoading(false);
     }
@@ -175,7 +192,12 @@ function BackfillSection() {
               </div>
             </>
           ) : (
-            <p className="text-[11px] text-red-500">{preview.error}</p>
+            <>
+              <p className="text-[11px] text-red-500">{preview.error}</p>
+              <button onClick={() => setPreview(null)} className="text-[10px] text-gray-400 mt-2">
+                닫기
+              </button>
+            </>
           )}
         </div>
       )}
