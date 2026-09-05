@@ -7,7 +7,18 @@ import { NextRequest, NextResponse } from "next/server";
  * 직접 RFC 5987 인코딩한 Content-Disposition을 붙여 내려준다.
  * (@/lib/downloadProxy 의 safeDownloadHref 가 링크를 만든다)
  */
-const ALLOWED_HOSTS = ["wouldulike-bucket.s3.ap-northeast-2.amazonaws.com"];
+/**
+ * 실제 자산 버킷은 wouldulike-default-bucket-lunching 하나뿐이다(백엔드
+ * AWS_STORAGE_BUCKET_NAME 기본값 — trends/satellite/bannerlab 전부 동일).
+ * boto3 presigned URL은 리전 없는 글로벌 호스트(*.s3.amazonaws.com)를 쓰고,
+ * 대시보드가 직접 문자열로 조립하는 URL(trends/large-banners)은 리전을 포함한
+ * 호스트(*.s3.ap-northeast-2.amazonaws.com)를 쓴다 — 둘 다 허용한다.
+ * (next.config.ts의 "wouldulike-bucket" 도메인은 실제로 쓰이는 값이 아니다.)
+ */
+const ALLOWED_HOSTS = [
+  "wouldulike-default-bucket-lunching.s3.amazonaws.com",
+  "wouldulike-default-bucket-lunching.s3.ap-northeast-2.amazonaws.com",
+];
 
 export async function GET(req: NextRequest) {
   const src = req.nextUrl.searchParams.get("url");
