@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { PreviewableImg } from "@/components/ImagePreview";
+import { safeDownloadHref } from "@/lib/downloadProxy";
 import { ContentBlockItem } from "./types";
 
 /**
@@ -230,7 +231,7 @@ export default function FreeformBlockEditor({
                   <PreviewableImg src={b.image_url} alt="" className="w-full max-h-64 object-contain rounded-lg bg-gray-50" />
                   {b.download_url && (
                     <a
-                      href={b.download_url}
+                      href={safeDownloadHref(b.image_url, b.download_url)}
                       download
                       aria-label="다운로드"
                       title="다운로드"

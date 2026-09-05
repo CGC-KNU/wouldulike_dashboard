@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PreviewableImg } from "@/components/ImagePreview";
+import { safeDownloadHref } from "@/lib/downloadProxy";
 import AudioPicker from "./AudioPicker";
 import CommentThread from "./CommentThread";
 import FreeformBlockEditor from "./FreeformBlockEditor";
@@ -678,7 +679,7 @@ export default function PlanEditor({
                                 )}
                                 {a.download_url && (
                                   <a
-                                    href={a.download_url}
+                                    href={safeDownloadHref(a.preview_url, a.download_url)}
                                     download
                                     aria-label="다운로드"
                                     title="다운로드"
@@ -1486,7 +1487,7 @@ function AssetTile({
 
       {asset.download_url && (
         <a
-          href={asset.download_url}
+          href={safeDownloadHref(asset.preview_url, asset.download_url)}
           download
           aria-label="다운로드"
           title="다운로드"

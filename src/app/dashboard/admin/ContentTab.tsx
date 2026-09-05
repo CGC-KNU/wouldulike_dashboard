@@ -34,6 +34,15 @@ interface PopupItem {
   display_order: number;
   created_at: string;
 }
+interface LargeBannerItem {
+  id: number;
+  title: string;
+  image_url: string | null;
+  link_url: string;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+}
 
 /* ═══════════════════════════════════════════════════
    인라인 이미지 업로드 필드 (폼 내부용)
@@ -45,7 +54,7 @@ function ImagePickerField({
 }: {
   value: string;
   onChange: (url: string) => void;
-  uploadType: "trend" | "popup";
+  uploadType: "trend" | "popup" | "large_banner";
 }) {
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
@@ -144,6 +153,286 @@ function ImagePickerField({
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
       />
       {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   배너(큰 해상도) 섹션 — 배너 스튜디오에서 만든 1080×1250 등
+   고해상도 이미지를 등록한다. 기존(작은 사이즈) 배너와는 별도 슬롯.
+═══════════════════════════════════════════════════ */
+const EMPTY_LARGE_BANNER = { title: "", image_url: "", link_url: "", is_active: true, display_order: 0 };
+
+function LargeBannerForm({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial?: Partial<LargeBannerItem>;
+  onSave: (data: typeof EMPTY_LARGE_BANNER) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({ ...EMPTY_LARGE_BANNER, ...initial, image_url: initial?.image_url ?? "" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const set = (k: keyof typeof EMPTY_LARGE_BANNER, v: string | number | boolean) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  async function submit() {
+    if (!form.image_url) { setErr("이미지를 업로드해주세요."); return; }
+    setSaving(true);
+    setErr("");
+    try {
+      await onSave(form);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl">
+      <ImagePickerField value={form.image_url} onChange={(u) => set("image_url", u)} uploadType="large_banner" />
+      <input
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+        placeholder="제목 (내부 구분용, 선택)"
+        value={form.title}
+        onChange={(e) => set("title", e.target.value)}
+      />
+      <input
+        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+        placeholder="연결 링크 (https://..., 선택)"
+        value={form.link_url}
+        onChange={(e) => set("link_url", e.target.value)}
+      />
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} className="w-4 h-4 accent-periwinkle" />
+          <span className="text-xs text-gray-600">활성화</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500">노출 순서</label>
+          <input
+            type="number"
+            className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            value={form.display_order}
+            onChange={(e) => set("display_order", Number(e.target.value))}
+          />
+        </div>
+      </div>
+      {err && <p className="text-xs text-red-500">{err}</p>}
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 bg-white">
+          취소
+        </button>
+        <button onClick={submit} disabled={saving} className="flex-1 py-2 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
+          {saving ? "저장 중..." : "저장"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LargeBannerSection() {
+  const [items, setItems] = useState<LargeBannerItem[]>([]);
+  const [savedIds, setSavedIds] = useState<number[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [err, setErr] = useState("");
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  const orderChanged = JSON.stringify(items.map((b) => b.id)) !== JSON.stringify(savedIds);
+
+  useEffect(() => {
+    fetch("/api/dashboard/admin/large-banners")
+      .then((r) => r.json())
+      .then((d) => {
+        const list = Array.isArray(d) ? d : [];
+        setItems(list);
+        setSavedIds(list.map((b: LargeBannerItem) => b.id));
+      })
+      .catch(() => setErr("불러오기 실패"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function move(idx: number, dir: -1 | 1) {
+    const next = idx + dir;
+    if (next < 0 || next >= items.length) return;
+    setItems((prev) => {
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
+  }
+
+  async function saveOrder() {
+    setSavingOrder(true);
+    setErr("");
+    try {
+      await Promise.all(
+        items.map((b, idx) =>
+          fetch(`/api/dashboard/admin/large-banners/${b.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ display_order: idx }),
+          })
+        )
+      );
+      setItems((prev) => prev.map((b, idx) => ({ ...b, display_order: idx })));
+      setSavedIds(items.map((b) => b.id));
+    } catch {
+      setErr("순서 저장에 실패했습니다.");
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  async function create(data: typeof EMPTY_LARGE_BANNER) {
+    const res = await fetch("/api/dashboard/admin/large-banners", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...data, display_order: items.length }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "생성 실패");
+    setItems((prev) => [...prev, d]);
+    setSavedIds((prev) => [...prev, d.id]);
+    setShowForm(false);
+  }
+
+  async function update(id: number, data: typeof EMPTY_LARGE_BANNER) {
+    const res = await fetch(`/api/dashboard/admin/large-banners/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "수정 실패");
+    setItems((prev) => prev.map((b) => (b.id === id ? d : b)));
+    setEditId(null);
+  }
+
+  async function remove(id: number) {
+    if (!confirm("배너를 삭제할까요?")) return;
+    const res = await fetch(`/api/dashboard/admin/large-banners/${id}`, { method: "DELETE" });
+    if (!res.ok) { setErr("삭제 실패"); return; }
+    setItems((prev) => prev.filter((b) => b.id !== id));
+    setSavedIds((prev) => prev.filter((x) => x !== id));
+  }
+
+  async function toggleActive(b: LargeBannerItem) {
+    const res = await fetch(`/api/dashboard/admin/large-banners/${b.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !b.is_active }),
+    });
+    const d = await res.json();
+    if (res.ok) setItems((prev) => prev.map((x) => (x.id === b.id ? d : x)));
+  }
+
+  if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
+
+  return (
+    <div>
+      {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
+      <div className="flex flex-col gap-2 mb-3">
+        {items.map((b, idx) =>
+          editId === b.id ? (
+            <LargeBannerForm
+              key={b.id}
+              initial={{ ...b }}
+              onSave={(d) => update(b.id, d)}
+              onCancel={() => setEditId(null)}
+            />
+          ) : (
+            <div key={b.id} className="flex items-center gap-2 bg-gray-50 rounded-xl p-2.5">
+              {/* 순서 이동 버튼 */}
+              <div className="flex flex-col gap-0.5 shrink-0">
+                <button
+                  onClick={() => move(idx, -1)}
+                  disabled={idx === 0}
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => move(idx, 1)}
+                  disabled={idx === items.length - 1}
+                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                >
+                  ▼
+                </button>
+              </div>
+              {b.image_url ? (
+                <PreviewableImg src={b.image_url} alt={b.title} className="w-16 h-20 object-cover rounded-lg shrink-0 bg-gray-200" />
+              ) : (
+                <div className="w-16 h-20 rounded-lg bg-gray-200 shrink-0 flex items-center justify-center">
+                  <span className="text-gray-400 text-xs">없음</span>
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <p className="text-sm font-medium text-gray-800 truncate">{b.title || "(제목 없음)"}</p>
+                  {b.is_active ? (
+                    <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full shrink-0">활성</span>
+                  ) : (
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">비활성</span>
+                  )}
+                </div>
+                {b.link_url && (
+                  <a href={b.link_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-periwinkle hover:underline">
+                    연결 링크 →
+                  </a>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => toggleActive(b)}
+                  className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                    b.is_active ? "text-gray-400 hover:text-amber-500 hover:bg-amber-50" : "text-green-500 hover:bg-green-50"
+                  }`}
+                >
+                  {b.is_active ? "중단" : "활성"}
+                </button>
+                <button onClick={() => setEditId(b.id)} className="text-xs text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded hover:bg-gray-100">
+                  수정
+                </button>
+                <button onClick={() => remove(b.id)} className="text-xs text-gray-300 hover:text-red-400 px-1.5 py-1 rounded hover:bg-red-50">
+                  삭제
+                </button>
+              </div>
+            </div>
+          )
+        )}
+        {items.length === 0 && !showForm && (
+          <div className="text-center py-6 bg-gray-50 rounded-xl">
+            <p className="text-xs text-gray-400">등록된 배너가 없습니다.</p>
+          </div>
+        )}
+      </div>
+      {/* 순서 저장 버튼 */}
+      {orderChanged && !showForm && (
+        <button
+          onClick={saveOrder}
+          disabled={savingOrder}
+          className="w-full py-2.5 mb-2 rounded-xl bg-navy text-white text-sm font-bold hover:bg-navy/90 disabled:opacity-60 transition-colors"
+        >
+          {savingOrder ? "저장 중..." : "순서 저장"}
+        </button>
+      )}
+      {showForm ? (
+        <LargeBannerForm onSave={create} onCancel={() => setShowForm(false)} />
+      ) : (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
+        >
+          + 배너 추가
+        </button>
+      )}
     </div>
   );
 }
@@ -753,11 +1042,25 @@ export default function ContentTab() {
           <BannerStudioComposer />
         </div>
       </div>
+      {/* 배너 (큰 해상도) — 배너 스튜디오에서 만든 1080×1250 등 고해상도 이미지 등록 */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">배너 (큰 해상도)</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              배너 스튜디오에서 만든 1080×1250 등 큰 이미지 등록 · GET /trends/large_banner_list/
+            </p>
+          </div>
+        </div>
+        <div className="p-4">
+          <LargeBannerSection />
+        </div>
+      </div>
       {/* 배너 (기존 수동 URL 등록) */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-700">배너</h2>
+            <h2 className="text-sm font-semibold text-gray-700">배너 (기존)</h2>
             <p className="text-xs text-gray-400 mt-0.5">앱 메인화면 슬라이드 · GET /trends/trend_list/</p>
           </div>
         </div>

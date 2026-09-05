@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PreviewableImg } from "@/components/ImagePreview";
+import { safeDownloadHref } from "@/lib/downloadProxy";
 import BannerStudioComposer from "./BannerStudioComposer";
 import { BannerRatio } from "./types";
 import {
@@ -1257,7 +1258,7 @@ function TargetCard({
             <div className="flex items-center gap-1 mt-0.5">
               {c.is_ai_retouched && <span className="text-[8px] text-periwinkle font-semibold">AI</span>}
               {c.download_url && (
-                <a href={c.download_url} download className="text-[8px] text-gray-400 underline">
+                <a href={safeDownloadHref(c.image_url, c.download_url)} download className="text-[8px] text-gray-400 underline">
                   다운로드
                 </a>
               )}
