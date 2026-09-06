@@ -34,14 +34,28 @@ interface PopupItem {
   display_order: number;
   created_at: string;
 }
-interface LargeBannerItem {
-  id: number;
-  title: string;
-  image_url: string | null;
+interface FeaturedItem {
+  id?: number;
+  restaurant_id: number | null;
+  badge: string;
+  benefit_title: string;
+  benefit_subtitle: string;
+  image_url: string;
   link_url: string;
-  is_active: boolean;
-  display_order: number;
-  created_at: string;
+  sort_order: number;
+}
+interface FeaturedCampaign {
+  id: number;
+  code: string;
+  title: string;
+  subtitle: string;
+  zone: string;
+  image_url: string;
+  starts_at: string;
+  ends_at: string;
+  active: boolean;
+  sort_order: number;
+  items: FeaturedItem[];
 }
 
 /* ═══════════════════════════════════════════════════
@@ -51,10 +65,12 @@ function ImagePickerField({
   value,
   onChange,
   uploadType,
+  inputId,
 }: {
   value: string;
   onChange: (url: string) => void;
-  uploadType: "trend" | "popup" | "large_banner";
+  uploadType: "trend" | "popup" | "large_banner" | "featured_banner";
+  inputId?: string;
 }) {
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
@@ -115,7 +131,7 @@ function ImagePickerField({
       <div
         className="relative w-full h-32 rounded-xl border-2 border-dashed border-gray-200 overflow-hidden hover:border-periwinkle transition-colors"
         onClick={() => {
-          if (!value) document.getElementById(`img-pick-${uploadType}`)?.click();
+          if (!value) document.getElementById(inputId ?? `img-pick-${uploadType}`)?.click();
         }}
       >
         {value ? (
@@ -137,7 +153,7 @@ function ImagePickerField({
             className="absolute bottom-1 right-1"
             onClick={(e) => {
               e.stopPropagation();
-              document.getElementById(`img-pick-${uploadType}`)?.click();
+              document.getElementById(inputId ?? `img-pick-${uploadType}`)?.click();
             }}
           >
             <span className="text-[10px] bg-black/50 text-white px-1.5 py-0.5 rounded">변경</span>
@@ -145,7 +161,7 @@ function ImagePickerField({
         )}
       </div>
       <input
-        id={`img-pick-${uploadType}`}
+        id={inputId ?? `img-pick-${uploadType}`}
         ref={ref}
         type="file"
         accept="image/*"
@@ -158,26 +174,68 @@ function ImagePickerField({
 }
 
 /* ═══════════════════════════════════════════════════
-   배너(큰 해상도) 섹션 — 배너 스튜디오에서 만든 1080×1250 등
-   고해상도 이미지를 등록한다. 기존(작은 사이즈) 배너와는 별도 슬롯.
+   기획전 배너 — 앱 홈 캐러셀 (GET /api/promotions/featured/current/)
+   기간은 화면에서 한국시간으로 넣고, 저장 시 UTC로 보냄.
 ═══════════════════════════════════════════════════ */
-const EMPTY_LARGE_BANNER = { title: "", image_url: "", link_url: "", is_active: true, display_order: 0 };
+function nowKstInput() {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
+}
+function plusYearsKstInput(years: number) {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  kst.setUTCFullYear(kst.getUTCFullYear() + years);
+  return kst.toISOString().slice(0, 16);
+}
+function isoToKstInput(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Date(d.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
+}
+function kstInputToApi(local: string) {
+  const [date, time = "00:00"] = local.split("T");
+  const [y, mo, d] = date.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
+  return new Date(Date.UTC(y, mo - 1, d, hh, mm) - 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
+}
+function isFeaturedLive(c: FeaturedCampaign) {
+  const now = Date.now();
+  const start = new Date(c.starts_at).getTime();
+  const end = new Date(c.ends_at).getTime();
+  return c.active && !Number.isNaN(start) && !Number.isNaN(end) && start <= now && now <= end && (c.items?.length ?? 0) > 0;
+}
+function itemPayload(items: FeaturedItem[]) {
+  return items.map((it, idx) => ({
+    restaurant_id: it.restaurant_id,
+    badge: it.badge ?? "",
+    benefit_title: it.benefit_title ?? "",
+    benefit_subtitle: it.benefit_subtitle ?? "",
+    image_url: it.image_url ?? "",
+    link_url: it.link_url ?? "",
+    sort_order: idx,
+  }));
+}
 
-function LargeBannerForm({
-  initial,
+const EMPTY_FEATURED_ITEM = {
+  restaurant_id: null as number | null,
+  badge: "",
+  benefit_title: "",
+  benefit_subtitle: "",
+  image_url: "",
+  link_url: "",
+  sort_order: 0,
+};
+
+function FeaturedItemForm({
+  inputId,
   onSave,
   onCancel,
 }: {
-  initial?: Partial<LargeBannerItem>;
-  onSave: (data: typeof EMPTY_LARGE_BANNER) => Promise<void>;
+  inputId: string;
+  onSave: (data: typeof EMPTY_FEATURED_ITEM) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState({ ...EMPTY_LARGE_BANNER, ...initial, image_url: initial?.image_url ?? "" });
+  const [form, setForm] = useState(EMPTY_FEATURED_ITEM);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-
-  const set = (k: keyof typeof EMPTY_LARGE_BANNER, v: string | number | boolean) =>
-    setForm((f) => ({ ...f, [k]: v }));
 
   async function submit() {
     if (!form.image_url) { setErr("이미지를 업로드해주세요."); return; }
@@ -193,41 +251,29 @@ function LargeBannerForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl">
-      <ImagePickerField value={form.image_url} onChange={(u) => set("image_url", u)} uploadType="large_banner" />
+    <div className="flex flex-col gap-3 p-4 bg-white rounded-xl border border-gray-100">
+      <ImagePickerField
+        value={form.image_url}
+        onChange={(u) => setForm((f) => ({ ...f, image_url: u }))}
+        uploadType="featured_banner"
+        inputId={inputId}
+      />
       <input
         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-        placeholder="제목 (내부 구분용, 선택)"
-        value={form.title}
-        onChange={(e) => set("title", e.target.value)}
+        placeholder="제목 (앱 카드 문구, 선택)"
+        value={form.benefit_title}
+        onChange={(e) => setForm((f) => ({ ...f, benefit_title: e.target.value }))}
       />
       <input
         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
         placeholder="연결 링크 (https://..., 선택)"
         value={form.link_url}
-        onChange={(e) => set("link_url", e.target.value)}
+        onChange={(e) => setForm((f) => ({ ...f, link_url: e.target.value }))}
       />
-      <div className="flex items-center gap-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} className="w-4 h-4 accent-periwinkle" />
-          <span className="text-xs text-gray-600">활성화</span>
-        </label>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500">노출 순서</label>
-          <input
-            type="number"
-            className="w-16 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-            value={form.display_order}
-            onChange={(e) => set("display_order", Number(e.target.value))}
-          />
-        </div>
-      </div>
       {err && <p className="text-xs text-red-500">{err}</p>}
       <div className="flex gap-2">
-        <button onClick={onCancel} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 bg-white">
-          취소
-        </button>
-        <button onClick={submit} disabled={saving} className="flex-1 py-2 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
+        <button type="button" onClick={onCancel} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 bg-white">취소</button>
+        <button type="button" onClick={submit} disabled={saving} className="flex-1 py-2 rounded-xl bg-periwinkle text-white text-sm font-bold disabled:opacity-60">
           {saving ? "저장 중..." : "저장"}
         </button>
       </div>
@@ -235,102 +281,147 @@ function LargeBannerForm({
   );
 }
 
-function LargeBannerSection() {
-  const [items, setItems] = useState<LargeBannerItem[]>([]);
-  const [savedIds, setSavedIds] = useState<number[]>([]);
+function FeaturedCampaignSection() {
+  const [campaigns, setCampaigns] = useState<FeaturedCampaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
   const [err, setErr] = useState("");
-  const [savingOrder, setSavingOrder] = useState(false);
-
-  const orderChanged = JSON.stringify(items.map((b) => b.id)) !== JSON.stringify(savedIds);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [addingItemFor, setAddingItemFor] = useState<number | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    starts_at: nowKstInput(),
+    ends_at: plusYearsKstInput(1),
+    image_url: "",
+    link_url: "",
+  });
 
   useEffect(() => {
-    fetch("/api/dashboard/admin/large-banners")
+    fetch("/api/dashboard/admin/featured-campaigns")
       .then((r) => r.json())
-      .then((d) => {
-        const list = Array.isArray(d) ? d : [];
-        setItems(list);
-        setSavedIds(list.map((b: LargeBannerItem) => b.id));
-      })
+      .then((d) => setCampaigns(Array.isArray(d) ? d : []))
       .catch(() => setErr("불러오기 실패"))
       .finally(() => setLoading(false));
   }, []);
 
-  function move(idx: number, dir: -1 | 1) {
-    const next = idx + dir;
-    if (next < 0 || next >= items.length) return;
-    setItems((prev) => {
-      const arr = [...prev];
-      [arr[idx], arr[next]] = [arr[next], arr[idx]];
-      return arr;
-    });
+  function replaceCampaign(next: FeaturedCampaign) {
+    setCampaigns((prev) => prev.map((c) => (c.id === next.id ? next : c)));
   }
 
-  async function saveOrder() {
-    setSavingOrder(true);
+  async function patchCampaign(id: number, body: Record<string, unknown>) {
+    const res = await fetch(`/api/dashboard/admin/featured-campaigns/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail ?? "저장 실패");
+    replaceCampaign(d);
+    return d as FeaturedCampaign;
+  }
+
+  async function toggleOpen(c: FeaturedCampaign) {
     setErr("");
+    setSavingId(c.id);
     try {
-      await Promise.all(
-        items.map((b, idx) =>
-          fetch(`/api/dashboard/admin/large-banners/${b.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ display_order: idx }),
-          })
-        )
-      );
-      setItems((prev) => prev.map((b, idx) => ({ ...b, display_order: idx })));
-      setSavedIds(items.map((b) => b.id));
-    } catch {
-      setErr("순서 저장에 실패했습니다.");
+      if (c.active) {
+        await patchCampaign(c.id, { active: false });
+        return;
+      }
+      const now = nowKstInput();
+      const ends = isoToKstInput(c.ends_at);
+      await patchCampaign(c.id, {
+        active: true,
+        starts_at: kstInputToApi(now),
+        ends_at: kstInputToApi(!ends || ends <= now ? plusYearsKstInput(1) : ends),
+      });
+    } catch (e) {
+      setErr(String(e));
     } finally {
-      setSavingOrder(false);
+      setSavingId(null);
     }
   }
 
-  async function create(data: typeof EMPTY_LARGE_BANNER) {
-    const res = await fetch("/api/dashboard/admin/large-banners", {
+  async function savePeriod(c: FeaturedCampaign, starts: string, ends: string) {
+    setErr("");
+    try {
+      await patchCampaign(c.id, {
+        starts_at: kstInputToApi(starts),
+        ends_at: kstInputToApi(ends),
+      });
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  async function saveItems(c: FeaturedCampaign, items: FeaturedItem[]) {
+    setErr("");
+    try {
+      await patchCampaign(c.id, { items: itemPayload(items) });
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  async function addItem(c: FeaturedCampaign, data: typeof EMPTY_FEATURED_ITEM) {
+    await saveItems(c, [...(c.items ?? []), { ...data, sort_order: c.items?.length ?? 0 }]);
+    setAddingItemFor(null);
+  }
+
+  async function removeItem(c: FeaturedCampaign, idx: number) {
+    if (!confirm("이 배너를 삭제할까요?")) return;
+    await saveItems(c, (c.items ?? []).filter((_, i) => i !== idx));
+  }
+
+  function moveItem(c: FeaturedCampaign, idx: number, dir: -1 | 1) {
+    const next = idx + dir;
+    const items = [...(c.items ?? [])];
+    if (next < 0 || next >= items.length) return;
+    [items[idx], items[next]] = [items[next], items[idx]];
+    setCampaigns((prev) => prev.map((x) => (x.id === c.id ? { ...x, items } : x)));
+  }
+
+  async function persistItemOrder(c: FeaturedCampaign) {
+    await saveItems(c, c.items ?? []);
+  }
+
+  async function createCampaign() {
+    if (!createForm.title.trim()) { setErr("제목을 입력해주세요."); return; }
+    if (!createForm.image_url) { setErr("이미지를 업로드해주세요."); return; }
+    setErr("");
+    const res = await fetch("/api/dashboard/admin/featured-campaigns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, display_order: items.length }),
+      body: JSON.stringify({
+        code: `BANNER_${Date.now().toString(36).toUpperCase()}`.slice(0, 40),
+        title: createForm.title.trim(),
+        starts_at: kstInputToApi(createForm.starts_at),
+        ends_at: kstInputToApi(createForm.ends_at),
+        active: true,
+        sort_order: campaigns.length,
+        items: [{
+          ...EMPTY_FEATURED_ITEM,
+          benefit_title: createForm.title.trim(),
+          image_url: createForm.image_url,
+          link_url: createForm.link_url,
+        }],
+      }),
     });
     const d = await res.json();
-    if (!res.ok) throw new Error(d.detail ?? "생성 실패");
-    setItems((prev) => [...prev, d]);
-    setSavedIds((prev) => [...prev, d.id]);
-    setShowForm(false);
+    if (!res.ok) { setErr(d.detail ?? "생성 실패"); return; }
+    setCampaigns((prev) => [...prev, d]);
+    setShowCreate(false);
+    setCreateForm({ title: "", starts_at: nowKstInput(), ends_at: plusYearsKstInput(1), image_url: "", link_url: "" });
+    setOpenId(d.id);
   }
 
-  async function update(id: number, data: typeof EMPTY_LARGE_BANNER) {
-    const res = await fetch(`/api/dashboard/admin/large-banners/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.detail ?? "수정 실패");
-    setItems((prev) => prev.map((b) => (b.id === id ? d : b)));
-    setEditId(null);
-  }
-
-  async function remove(id: number) {
-    if (!confirm("배너를 삭제할까요?")) return;
-    const res = await fetch(`/api/dashboard/admin/large-banners/${id}`, { method: "DELETE" });
+  async function removeCampaign(id: number) {
+    if (!confirm("기획전을 삭제할까요? 앱에서도 바로 내려갑니다.")) return;
+    const res = await fetch(`/api/dashboard/admin/featured-campaigns/${id}`, { method: "DELETE" });
     if (!res.ok) { setErr("삭제 실패"); return; }
-    setItems((prev) => prev.filter((b) => b.id !== id));
-    setSavedIds((prev) => prev.filter((x) => x !== id));
-  }
-
-  async function toggleActive(b: LargeBannerItem) {
-    const res = await fetch(`/api/dashboard/admin/large-banners/${b.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !b.is_active }),
-    });
-    const d = await res.json();
-    if (res.ok) setItems((prev) => prev.map((x) => (x.id === b.id ? d : x)));
+    setCampaigns((prev) => prev.filter((c) => c.id !== id));
+    if (openId === id) setOpenId(null);
   }
 
   if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
@@ -339,103 +430,171 @@ function LargeBannerSection() {
     <div>
       {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
       <div className="flex flex-col gap-2 mb-3">
-        {items.map((b, idx) =>
-          editId === b.id ? (
-            <LargeBannerForm
-              key={b.id}
-              initial={{ ...b }}
-              onSave={(d) => update(b.id, d)}
-              onCancel={() => setEditId(null)}
-            />
-          ) : (
-            <div key={b.id} className="flex items-center gap-2 bg-gray-50 rounded-xl p-2.5">
-              {/* 순서 이동 버튼 */}
-              <div className="flex flex-col gap-0.5 shrink-0">
-                <button
-                  onClick={() => move(idx, -1)}
-                  disabled={idx === 0}
-                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
-                >
-                  ▲
-                </button>
-                <button
-                  onClick={() => move(idx, 1)}
-                  disabled={idx === items.length - 1}
-                  className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
-                >
-                  ▼
-                </button>
-              </div>
-              {b.image_url ? (
-                <PreviewableImg src={b.image_url} alt={b.title} className="w-16 h-20 object-cover rounded-lg shrink-0 bg-gray-200" />
-              ) : (
-                <div className="w-16 h-20 rounded-lg bg-gray-200 shrink-0 flex items-center justify-center">
-                  <span className="text-gray-400 text-xs">없음</span>
+        {campaigns.map((c) => {
+          const live = isFeaturedLive(c);
+          const expanded = openId === c.id;
+          return (
+            <div key={c.id} className="bg-gray-50 rounded-xl p-2.5">
+              <div className="flex items-center gap-2">
+                {c.items?.[0]?.image_url ? (
+                  <PreviewableImg src={c.items[0].image_url} alt={c.title} className="w-16 h-20 object-cover rounded-lg shrink-0 bg-gray-200" />
+                ) : (
+                  <div className="w-16 h-20 rounded-lg bg-gray-200 shrink-0 flex items-center justify-center">
+                    <span className="text-gray-400 text-xs">없음</span>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <p className="text-sm font-medium text-gray-800 truncate">{c.title || "(제목 없음)"}</p>
+                    {live ? (
+                      <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full shrink-0">앱 노출</span>
+                    ) : c.active ? (
+                      <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full shrink-0">기간 밖</span>
+                    ) : (
+                      <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">닫힘</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400 truncate">
+                    {c.items?.length ?? 0}개 배너 · {isoToKstInput(c.starts_at).replace("T", " ")} ~ {isoToKstInput(c.ends_at).replace("T", " ")} (한국시간)
+                  </p>
                 </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <p className="text-sm font-medium text-gray-800 truncate">{b.title || "(제목 없음)"}</p>
-                  {b.is_active ? (
-                    <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full shrink-0">활성</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    disabled={savingId === c.id}
+                    onClick={() => toggleOpen(c)}
+                    className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                      c.active ? "text-gray-400 hover:text-amber-500 hover:bg-amber-50" : "text-green-500 hover:bg-green-50"
+                    }`}
+                  >
+                    {c.active ? "닫기" : "열기"}
+                  </button>
+                  <button onClick={() => setOpenId(expanded ? null : c.id)} className="text-xs text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded hover:bg-gray-100">
+                    {expanded ? "접기" : "수정"}
+                  </button>
+                  <button onClick={() => removeCampaign(c.id)} className="text-xs text-gray-300 hover:text-red-400 px-1.5 py-1 rounded hover:bg-red-50">
+                    삭제
+                  </button>
+                </div>
+              </div>
+              {expanded && (
+                <div className="mt-3 flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] text-gray-500">
+                      시작 (한국시간)
+                      <input
+                        type="datetime-local"
+                        className="mt-1 w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg"
+                        defaultValue={isoToKstInput(c.starts_at)}
+                        onBlur={(e) => savePeriod(c, e.target.value, isoToKstInput(c.ends_at))}
+                      />
+                    </label>
+                    <label className="text-[10px] text-gray-500">
+                      종료 (한국시간)
+                      <input
+                        type="datetime-local"
+                        className="mt-1 w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg"
+                        defaultValue={isoToKstInput(c.ends_at)}
+                        onBlur={(e) => savePeriod(c, isoToKstInput(c.starts_at), e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  {(c.items ?? []).map((it, idx) => (
+                    <div key={`${it.id ?? "n"}-${idx}`} className="flex items-center gap-2 bg-white rounded-xl p-2">
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button type="button" onClick={() => moveItem(c, idx, -1)} disabled={idx === 0} className="w-6 h-6 text-xs text-gray-400 disabled:opacity-20">▲</button>
+                        <button type="button" onClick={() => moveItem(c, idx, 1)} disabled={idx === (c.items?.length ?? 0) - 1} className="w-6 h-6 text-xs text-gray-400 disabled:opacity-20">▼</button>
+                      </div>
+                      {it.image_url ? (
+                        <PreviewableImg src={it.image_url} alt="" className="w-12 h-14 object-cover rounded-lg bg-gray-200 shrink-0" />
+                      ) : (
+                        <div className="w-12 h-14 rounded-lg bg-gray-200 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-700 truncate">{it.benefit_title || (it.restaurant_id ? `식당 #${it.restaurant_id}` : "(제목 없음)")}</p>
+                        {it.link_url && <p className="text-[10px] text-periwinkle truncate">{it.link_url}</p>}
+                      </div>
+                      <button type="button" onClick={() => removeItem(c, idx)} className="text-[10px] text-gray-300 hover:text-red-400 px-1.5 py-1">삭제</button>
+                    </div>
+                  ))}
+                  {(c.items?.length ?? 0) > 1 && (
+                    <button type="button" onClick={() => persistItemOrder(c)} className="w-full py-2 rounded-xl bg-navy text-white text-xs font-bold">
+                      순서 저장
+                    </button>
+                  )}
+                  {addingItemFor === c.id ? (
+                    <FeaturedItemForm
+                      inputId={`featured-item-${c.id}`}
+                      onSave={(d) => addItem(c, d)}
+                      onCancel={() => setAddingItemFor(null)}
+                    />
                   ) : (
-                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">비활성</span>
+                    <button
+                      type="button"
+                      onClick={() => setAddingItemFor(c.id)}
+                      className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle"
+                    >
+                      + 배너 추가
+                    </button>
                   )}
                 </div>
-                {b.link_url && (
-                  <a href={b.link_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-periwinkle hover:underline">
-                    연결 링크 →
-                  </a>
-                )}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => toggleActive(b)}
-                  className={`text-xs px-1.5 py-1 rounded transition-colors ${
-                    b.is_active ? "text-gray-400 hover:text-amber-500 hover:bg-amber-50" : "text-green-500 hover:bg-green-50"
-                  }`}
-                >
-                  {b.is_active ? "중단" : "활성"}
-                </button>
-                <button onClick={() => setEditId(b.id)} className="text-xs text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded hover:bg-gray-100">
-                  수정
-                </button>
-                <button onClick={() => remove(b.id)} className="text-xs text-gray-300 hover:text-red-400 px-1.5 py-1 rounded hover:bg-red-50">
-                  삭제
-                </button>
-              </div>
+              )}
             </div>
-          )
-        )}
-        {items.length === 0 && !showForm && (
+          );
+        })}
+        {campaigns.length === 0 && !showCreate && (
           <div className="text-center py-6 bg-gray-50 rounded-xl">
-            <p className="text-xs text-gray-400">등록된 배너가 없습니다.</p>
+            <p className="text-xs text-gray-400">등록된 기획전 배너가 없습니다.</p>
           </div>
         )}
       </div>
-      {/* 순서 저장 버튼 */}
-      {orderChanged && !showForm && (
-        <button
-          onClick={saveOrder}
-          disabled={savingOrder}
-          className="w-full py-2.5 mb-2 rounded-xl bg-navy text-white text-sm font-bold hover:bg-navy/90 disabled:opacity-60 transition-colors"
-        >
-          {savingOrder ? "저장 중..." : "순서 저장"}
-        </button>
-      )}
-      {showForm ? (
-        <LargeBannerForm onSave={create} onCancel={() => setShowForm(false)} />
+      {showCreate ? (
+        <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl">
+          <ImagePickerField
+            value={createForm.image_url}
+            onChange={(u) => setCreateForm((f) => ({ ...f, image_url: u }))}
+            uploadType="featured_banner"
+            inputId="featured-create"
+          />
+          <input
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
+            placeholder="제목"
+            value={createForm.title}
+            onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+          />
+          <input
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
+            placeholder="연결 링크 (https://..., 선택)"
+            value={createForm.link_url}
+            onChange={(e) => setCreateForm((f) => ({ ...f, link_url: e.target.value }))}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[10px] text-gray-500">
+              시작 (한국시간)
+              <input type="datetime-local" className="mt-1 w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg" value={createForm.starts_at} onChange={(e) => setCreateForm((f) => ({ ...f, starts_at: e.target.value }))} />
+            </label>
+            <label className="text-[10px] text-gray-500">
+              종료 (한국시간)
+              <input type="datetime-local" className="mt-1 w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg" value={createForm.ends_at} onChange={(e) => setCreateForm((f) => ({ ...f, ends_at: e.target.value }))} />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setShowCreate(false)} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 bg-white">취소</button>
+            <button type="button" onClick={createCampaign} className="flex-1 py-2 rounded-xl bg-periwinkle text-white text-sm font-bold">열고 저장</button>
+          </div>
+        </div>
       ) : (
         <button
-          onClick={() => setShowForm(true)}
+          type="button"
+          onClick={() => setShowCreate(true)}
           className="w-full py-2 border-2 border-dashed border-gray-200 rounded-xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
         >
-          + 배너 추가
+          + 기획전 배너 추가
         </button>
       )}
     </div>
   );
 }
+
 
 /* ═══════════════════════════════════════════════════
    배너(Trend) 섹션
@@ -1042,18 +1201,18 @@ export default function ContentTab() {
           <BannerStudioComposer />
         </div>
       </div>
-      {/* 배너 (큰 해상도) — 배너 스튜디오에서 만든 1080×1250 등 고해상도 이미지 등록 */}
+      {/* 기획전 배너 — 앱 홈 캐러셀. 큰 배너(LargeBanner)가 아니라 FeaturedCampaign */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-700">배너 (큰 해상도)</h2>
+            <h2 className="text-sm font-semibold text-gray-700">기획전 배너</h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              배너 스튜디오에서 만든 1080×1250 등 큰 이미지 등록 · GET /trends/large_banner_list/
+              앱 홈 캐러셀 · GET /api/promotions/featured/current/ · 열기/닫기로 노출 제어 (한국시간 기간)
             </p>
           </div>
         </div>
         <div className="p-4">
-          <LargeBannerSection />
+          <FeaturedCampaignSection />
         </div>
       </div>
       {/* 배너 (기존 수동 URL 등록) */}
