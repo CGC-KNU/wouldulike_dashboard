@@ -16,6 +16,15 @@ interface RestaurantInfo {
   address: string;
   category: string;
   s3_image_urls: string[];
+  pin: string | null;
+}
+
+interface Category {
+  code: string;
+  label: string;
+  icon_key: string;
+  sort_order: number;
+  aliases: string[];
 }
 
 interface CouponBenefit {
@@ -66,10 +75,11 @@ const FIELD_META: {
   placeholder: string;
   multiline?: boolean;
   readOnly?: boolean;
+  select?: boolean;
 }[] = [
   { key: "name",         label: "식당명",             placeholder: "",                                             readOnly: true  },
-  { key: "address",      label: "주소",                placeholder: "",                                             readOnly: true  },
-  { key: "category",     label: "업종",                placeholder: "",                                             readOnly: true  },
+  { key: "address",      label: "주소",                placeholder: "도로명 주소를 입력해주세요"                                 },
+  { key: "category",     label: "업종",                placeholder: "",                                             select: true    },
   { key: "phone_number", label: "전화번호",             placeholder: "02-1234-5678"                                              },
   { key: "main_menu",    label: "대표 메뉴",            placeholder: "예: 돼지국밥, 수육"                                         },
   { key: "url",          label: "웹사이트 / 지도 링크", placeholder: "https://naver.me/..."                                      },
@@ -97,9 +107,8 @@ function benefitLabel(bj: Record<string, unknown>): string {
 /* ═══════════════════════════════════════════════
    PIN 변경 섹션
 ═══════════════════════════════════════════════ */
-function PinChangeSection() {
+function PinChangeSection({ pin }: { pin: string | null }) {
   const [open, setOpen]             = useState(false);
-  const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin]         = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [loading, setLoading]       = useState(false);
@@ -108,27 +117,27 @@ function PinChangeSection() {
 
   const handleChange = async () => {
     setErr("");
-    if (!currentPin || !newPin || !confirmPin) { setErr("모든 항목을 입력해주세요."); return; }
-    if (newPin !== confirmPin)                 { setErr("새 PIN이 일치하지 않습니다."); return; }
-    if (!/^\d{4,}$/.test(newPin))             { setErr("PIN은 4자리 이상 숫자여야 합니다."); return; }
+    if (!pin)                      { setErr("현재 PIN 정보를 불러오지 못했습니다."); return; }
+    if (!newPin || !confirmPin)    { setErr("모든 항목을 입력해주세요."); return; }
+    if (newPin !== confirmPin)     { setErr("새 PIN이 일치하지 않습니다."); return; }
+    if (!/^\d{4,}$/.test(newPin)) { setErr("PIN은 4자리 이상 숫자여야 합니다."); return; }
     setLoading(true);
     try {
       const res = await fetch("/api/dashboard/auth/change-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_pin: currentPin, new_pin: newPin }),
+        body: JSON.stringify({ current_pin: pin, new_pin: newPin }),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.detail ?? "변경에 실패했습니다."); return; }
       setSuccess(true);
-      setCurrentPin(""); setNewPin(""); setConfirmPin("");
+      setNewPin(""); setConfirmPin("");
       setTimeout(() => { setSuccess(false); setOpen(false); }, 2000);
     } catch { setErr("오류가 발생했습니다."); }
     finally   { setLoading(false); }
   };
 
   const fields = [
-    { label: "현재 PIN", value: currentPin, setter: setCurrentPin },
     { label: "새 PIN",   value: newPin,     setter: setNewPin     },
     { label: "새 PIN 확인", value: confirmPin, setter: setConfirmPin },
   ];
@@ -151,6 +160,12 @@ function PinChangeSection() {
       {open && (
         <div className="mt-2 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
           <p className="text-xs text-gray-400">로그인 PIN을 변경합니다. 4자리 이상 숫자만 사용 가능합니다.</p>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">현재 PIN</label>
+            <div className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm tracking-widest text-gray-700 font-semibold">
+              {pin ?? "확인 불가"}
+            </div>
+          </div>
           {fields.map(({ label, value, setter }) => (
             <div key={label}>
               <label className="text-xs text-gray-500 mb-1 block">{label}</label>
@@ -461,6 +476,7 @@ export default function RestaurantPage() {
 
   const [info, setInfo]           = useState<RestaurantInfo | null>(null);
   const [draft, setDraft]         = useState<Partial<RestaurantInfo>>({});
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
@@ -476,18 +492,27 @@ export default function RestaurantPage() {
       .then((data) => {
         setInfo({ ...data, s3_image_urls: data.s3_image_urls ?? [] });
         originalRef.current = data;
-        setDraft({ phone_number: data.phone_number, main_menu: data.main_menu, url: data.url, description: data.description });
+        setDraft({ phone_number: data.phone_number, main_menu: data.main_menu, url: data.url, description: data.description, address: data.address, category: data.category });
       })
       .catch(() => setError("식당 정보를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }, [ridReady, rq]);
+
+  useEffect(() => {
+    fetch("/api/dashboard/categories")
+      .then((r) => r.json())
+      .then((data) => setCategories(Array.isArray(data?.categories) ? data.categories.filter((c: Category) => c.code !== "ALL") : []))
+      .catch(() => setCategories([]));
+  }, []);
 
   const isDirty =
     originalRef.current &&
     (draft.phone_number !== originalRef.current.phone_number ||
      draft.main_menu    !== originalRef.current.main_menu    ||
      draft.url          !== originalRef.current.url          ||
-     draft.description  !== originalRef.current.description);
+     draft.description  !== originalRef.current.description  ||
+     draft.address      !== originalRef.current.address      ||
+     draft.category     !== originalRef.current.category);
 
   const handleSave = async () => {
     if (!isDirty) return;
@@ -496,7 +521,7 @@ export default function RestaurantPage() {
       const res = await fetch(`/api/dashboard/restaurant${rq}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone_number: draft.phone_number, main_menu: draft.main_menu, url: draft.url, description: draft.description }),
+        body: JSON.stringify({ phone_number: draft.phone_number, main_menu: draft.main_menu, url: draft.url, description: draft.description, address: draft.address, category: draft.category }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.detail || "저장에 실패했습니다."); return; }
@@ -544,7 +569,7 @@ export default function RestaurantPage() {
           )}
 
           <div className="flex flex-col gap-4">
-            {FIELD_META.map(({ key, label, placeholder, multiline, readOnly }) => {
+            {FIELD_META.map(({ key, label, placeholder, multiline, readOnly, select }) => {
               const value = readOnly
                 ? (info?.[key] ?? "")
                 : (draft[key as keyof typeof draft] ?? "");
@@ -558,7 +583,21 @@ export default function RestaurantPage() {
                       </span>
                     )}
                   </label>
-                  {multiline ? (
+                  {select ? (
+                    <select
+                      value={value as string}
+                      onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-periwinkle"
+                    >
+                      {value && !categories.some((c) => c.label === value) && (
+                        <option value={value as string}>{value as string}</option>
+                      )}
+                      {categories.length === 0 && <option value="">불러오는 중...</option>}
+                      {categories.map((c) => (
+                        <option key={c.code} value={c.label}>{c.label}</option>
+                      ))}
+                    </select>
+                  ) : multiline ? (
                     <textarea
                       rows={4}
                       value={value as string}
@@ -597,7 +636,7 @@ export default function RestaurantPage() {
               {saved ? "✓ 저장되었습니다" : saving ? "저장 중..." : "저장"}
             </button>
             <p className="text-xs text-gray-400 text-center mt-3">
-              식당명·주소·업종 변경은{" "}
+              식당명 변경은{" "}
               <span className="text-gray-500 font-medium">우주라이크 팀</span>에 문의해주세요.
             </p>
           </div>
@@ -623,7 +662,7 @@ export default function RestaurantPage() {
             </div>
           )}
 
-          <PinChangeSection />
+          <PinChangeSection pin={info?.pin ?? null} />
         </>
       )}
 
