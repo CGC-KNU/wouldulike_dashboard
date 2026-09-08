@@ -107,7 +107,7 @@ function benefitLabel(bj: Record<string, unknown>): string {
 /* ═══════════════════════════════════════════════
    PIN 변경 섹션
 ═══════════════════════════════════════════════ */
-function PinChangeSection({ pin }: { pin: string | null }) {
+function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null }) {
   const [open, setOpen]             = useState(false);
   const [newPin, setNewPin]         = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -123,7 +123,7 @@ function PinChangeSection({ pin }: { pin: string | null }) {
     if (!/^\d{4,}$/.test(newPin)) { setErr("PIN은 4자리 이상 숫자여야 합니다."); return; }
     setLoading(true);
     try {
-      const res = await fetch("/api/dashboard/auth/change-pin", {
+      const res = await fetch(`/api/dashboard/auth/change-pin${ridQ(rid)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ current_pin: pin, new_pin: newPin }),
@@ -662,7 +662,7 @@ export default function RestaurantPage() {
             </div>
           )}
 
-          <PinChangeSection pin={info?.pin ?? null} />
+          <PinChangeSection pin={info?.pin ?? null} rid={rid ?? null} />
         </>
       )}
 
