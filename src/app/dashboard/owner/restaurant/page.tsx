@@ -108,6 +108,7 @@ function benefitLabel(bj: Record<string, unknown>): string {
    PIN 변경 섹션
 ═══════════════════════════════════════════════ */
 function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null }) {
+  const hasPin = !!pin;
   const [open, setOpen]             = useState(false);
   const [newPin, setNewPin]         = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -117,7 +118,6 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
 
   const handleChange = async () => {
     setErr("");
-    if (!pin)                      { setErr("현재 PIN 정보를 불러오지 못했습니다."); return; }
     if (!newPin || !confirmPin)    { setErr("모든 항목을 입력해주세요."); return; }
     if (newPin !== confirmPin)     { setErr("새 PIN이 일치하지 않습니다."); return; }
     if (!/^\d{4,}$/.test(newPin)) { setErr("PIN은 4자리 이상 숫자여야 합니다."); return; }
@@ -126,10 +126,10 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
       const res = await fetch(`/api/dashboard/auth/change-pin${ridQ(rid)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_pin: pin, new_pin: newPin }),
+        body: JSON.stringify(hasPin ? { current_pin: pin, new_pin: newPin } : { new_pin: newPin }),
       });
       const data = await res.json();
-      if (!res.ok) { setErr(data.detail ?? "변경에 실패했습니다."); return; }
+      if (!res.ok) { setErr(data.detail ?? "저장에 실패했습니다."); return; }
       setSuccess(true);
       setNewPin(""); setConfirmPin("");
       setTimeout(() => { setSuccess(false); setOpen(false); }, 2000);
@@ -138,8 +138,8 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
   };
 
   const fields = [
-    { label: "새 PIN",   value: newPin,     setter: setNewPin     },
-    { label: "새 PIN 확인", value: confirmPin, setter: setConfirmPin },
+    { label: hasPin ? "새 PIN" : "등록할 PIN",   value: newPin,     setter: setNewPin     },
+    { label: hasPin ? "새 PIN 확인" : "PIN 확인", value: confirmPin, setter: setConfirmPin },
   ];
 
   return (
@@ -150,7 +150,7 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
       >
         <div className="flex items-center gap-2">
           <span className="text-base">🔐</span>
-          <span>PIN 변경</span>
+          <span>{hasPin ? "PIN 변경" : "PIN 등록"}</span>
         </div>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={`transition-transform ${open ? "rotate-180" : ""}`}>
           <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -159,13 +159,19 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
 
       {open && (
         <div className="mt-2 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
-          <p className="text-xs text-gray-400">로그인 PIN을 변경합니다. 4자리 이상 숫자만 사용 가능합니다.</p>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">현재 PIN</label>
-            <div className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm tracking-widest text-gray-700 font-semibold">
-              {pin ?? "확인 불가"}
+          <p className="text-xs text-gray-400">
+            {hasPin
+              ? "로그인 PIN을 변경합니다. 4자리 이상 숫자만 사용 가능합니다."
+              : "아직 등록된 PIN이 없는 매장입니다. 새 PIN을 등록합니다. 4자리 이상 숫자만 사용 가능합니다."}
+          </p>
+          {hasPin && (
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">현재 PIN</label>
+              <div className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm tracking-widest text-gray-700 font-semibold">
+                {pin}
+              </div>
             </div>
-          </div>
+          )}
           {fields.map(({ label, value, setter }) => (
             <div key={label}>
               <label className="text-xs text-gray-500 mb-1 block">{label}</label>
@@ -190,7 +196,7 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
                 : "bg-periwinkle text-white hover:bg-navy disabled:opacity-60"
             }`}
           >
-            {success ? "✓ 변경 완료" : loading ? "변경 중..." : "PIN 변경"}
+            {success ? "✓ 저장되었습니다" : loading ? "저장 중..." : hasPin ? "PIN 변경" : "PIN 등록"}
           </button>
         </div>
       )}
