@@ -19,7 +19,9 @@ export function metricsOf(p: PostPerformance | null): ReportMetric[] {
     const median = c?.median ?? null;
     const hidden = Boolean(c?.hidden);
     const n = c?.n ?? 0;
-    const ok = !hidden && n >= MIN_COHORT && median !== null && median > 0;
+    // 게시물 기준(D7/누적)과 코호트 기준이 다르면 비교가 불공정하다 — 비교하지 않는다 (2라운드 비교 게이트).
+    const basisOk = !c?.basis || c.basis === "none" || !p.basis || c.basis === p.basis;
+    const ok = !hidden && basisOk && n >= MIN_COHORT && median !== null && median > 0;
     return { key, value: m.value, median, p10: c?.p10 ?? null, p90: c?.p90 ?? null, n, window_days: c?.window_days ?? null, hidden, delta_pct: ok ? Math.round(((m.value - (median as number)) / (median as number)) * 100) : null };
   });
 }
