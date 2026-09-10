@@ -20,6 +20,7 @@ interface TrendItem {
   description: string;
   image_url: string | null;
   blog_link: string;
+  is_active: boolean;
   display_order: number;
   created_at: string;
 }
@@ -599,7 +600,7 @@ function FeaturedCampaignSection() {
 /* ═══════════════════════════════════════════════════
    배너(Trend) 섹션
 ═══════════════════════════════════════════════════ */
-const EMPTY_TREND = { title: "", description: "", image_url: "", blog_link: "", display_order: 0 };
+const EMPTY_TREND = { title: "", description: "", image_url: "", blog_link: "", is_active: true, display_order: 0 };
 
 function TrendForm({
   initial,
@@ -614,8 +615,8 @@ function TrendForm({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  const set = (k: keyof typeof EMPTY_TREND, v: string | number) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const set = (k: keyof typeof EMPTY_TREND, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit() {
     if (!form.title.trim()) { setErr("제목을 입력해주세요."); return; }
@@ -652,15 +653,21 @@ function TrendForm({
         value={form.blog_link}
         onChange={(e) => set("blog_link", e.target.value)}
       />
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-gray-500 shrink-0">노출 순서</label>
-        <input
-          type="number"
-          className="w-20 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-          value={form.display_order}
-          onChange={(e) => set("display_order", Number(e.target.value))}
-        />
-        <span className="text-xs text-gray-400">(작을수록 먼저 표시)</span>
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={form.is_active} onChange={(e) => set("is_active", e.target.checked)} className="w-4 h-4 accent-periwinkle" />
+          <span className="text-xs text-gray-600">활성화</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500 shrink-0">노출 순서</label>
+          <input
+            type="number"
+            className="w-20 px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
+            value={form.display_order}
+            onChange={(e) => set("display_order", Number(e.target.value))}
+          />
+          <span className="text-xs text-gray-400">(작을수록 먼저 표시)</span>
+        </div>
       </div>
       {err && <p className="text-xs text-red-500">{err}</p>}
       <div className="flex gap-2">
@@ -763,6 +770,16 @@ function BannerSection() {
     setSavedIds((prev) => prev.filter((x) => x !== id));
   }
 
+  async function toggleActive(t: TrendItem) {
+    const res = await fetch(`/api/dashboard/admin/trends/${t.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !t.is_active }),
+    });
+    const d = await res.json();
+    if (res.ok) setItems((prev) => prev.map((x) => (x.id === t.id ? d : x)));
+  }
+
   if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -804,7 +821,14 @@ function BannerSection() {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{t.title}</p>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <p className="text-sm font-medium text-gray-800 truncate">{t.title}</p>
+                  {t.is_active ? (
+                    <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full shrink-0">활성</span>
+                  ) : (
+                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">비활성</span>
+                  )}
+                </div>
                 {t.description && <p className="text-xs text-gray-400 truncate mt-0.5">{t.description}</p>}
                 {t.blog_link && (
                   <a href={t.blog_link} target="_blank" rel="noopener noreferrer" className="text-[10px] text-periwinkle hover:underline">
@@ -813,6 +837,14 @@ function BannerSection() {
                 )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => toggleActive(t)}
+                  className={`text-xs px-1.5 py-1 rounded transition-colors ${
+                    t.is_active ? "text-gray-400 hover:text-amber-500 hover:bg-amber-50" : "text-green-500 hover:bg-green-50"
+                  }`}
+                >
+                  {t.is_active ? "중단" : "활성"}
+                </button>
                 <button onClick={() => setEditId(t.id)} className="text-xs text-gray-400 hover:text-periwinkle px-1.5 py-1 rounded hover:bg-gray-100">
                   수정
                 </button>
