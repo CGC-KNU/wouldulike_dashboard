@@ -239,6 +239,60 @@ export interface SalesDoc {
 
 export const DOC_EDITABLE = ["kind", "title", "version", "url", "when", "note"] as const satisfies readonly (keyof SalesDoc)[];
 
+/**
+ * 세금계산서 — 애딧 '세발'(sebal.adit.now) 상태머신을 그대로 가져왔다 (0830 분석).
+ * 국세청 발행은 되돌리기 어려운 외부 부작용이라 발행 앞에 승인 단계와 경고를 두고, 응답이 애매하면
+ * RESULT_UNKNOWN 으로 멈춰 사람이 볼타 대시보드를 보게 한다. 이 "멈춤"이 없으면 재시도 클릭이 이중 발행을 만든다.
+ */
+export type TaxInvoiceStatus = "PENDING" | "APPROVED" | "ISSUING" | "ISSUED" | "FAILED" | "RESULT_UNKNOWN" | "REJECTED" | "CANCELED";
+export const TAX_STATUS_LABEL: Record<TaxInvoiceStatus, string> = {
+  PENDING: "품의", APPROVED: "승인", ISSUING: "발행 중", ISSUED: "발행 완료", FAILED: "발행 실패", RESULT_UNKNOWN: "결과 불명", REJECTED: "반려", CANCELED: "취소",
+};
+
+export interface TaxInvoice {
+  id: string;
+  restaurant_id: number;
+  name: string; // 매장명 (공급받는자 상호)
+  title: string; // "우주라이크 파트너 플랜 2026년 9월분"
+  period: string; // "2026-09"
+  supply: number; // 공급가액
+  tax: number; // 세액
+  total: number;
+  tax_type: "TAXABLE" | "TAX_FREE" | "ZERO_RATE";
+  receipt_type: "RECEIPT" | "CLAIM"; // 영수 / 청구
+  write_date: string; // 작성일자
+  counterparty: { biz_no: string | null; ceo: string | null; email: string | null; phone: string | null };
+  status: TaxInvoiceStatus;
+  requested_by: string;
+  requested_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  issued_at: string | null;
+  nts_no: string | null; // 국세청 승인번호
+  bolta_key: string | null;
+  url: string | null; // 세금계산서 보기
+  fail_code: string | null;
+  attempts: number;
+  reject_reason: string | null;
+  paid_at: string | null; // 입금 확인 → StoreOps.billing 과 동기화
+  memo: string | null;
+}
+
+/** 발행 주체 설정 — Console '세금계산서(볼타) 설정' 화면. 우주라이크는 발행 주체가 하나(개인사업자 코끼리)라 선택 UI 없이 설정값이다. */
+export interface IssuerSettings {
+  name: string;
+  biz_no: string;
+  ceo: string;
+  address: string;
+  email: string;
+  bolta_customer_key: string | null;
+  cert_expires_at: string | null; // 공동인증서 만료
+  item_template: string; // "우주라이크 파트너 플랜 {period}분"
+  approver: string; // 승인자 (대표)
+  slack_channel: string;
+  updated_at: string | null;
+}
+
 /* ═══════════ Probe ═══════════ */
 
 export type QualitySeverity = "high" | "medium" | "low";

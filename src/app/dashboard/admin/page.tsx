@@ -16,6 +16,7 @@ import AstroOverview from "./astro/AstroOverview";
 import LeadPipeline from "./astro/LeadPipeline";
 import BillingBoard from "./astro/BillingBoard";
 import AstroDocs from "./astro/AstroDocs";
+import TaxInvoices from "./astro/TaxInvoices";
 import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
 import CastorMap from "./castor/CastorMap";
@@ -48,6 +49,7 @@ type Tab =
   | "astro-leads"
   | "astro-billing"
   | "astro-docs"
+  | "astro-tax"
   // Probe(지표·데이터)
   | "probe-home"
   | "probe-metrics"
@@ -2451,6 +2453,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "astro-ops", label: "매장 현황", icon: "◉", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-leads", label: "입점 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-tax", label: "세금계산서", icon: "▥", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-docs", label: "자료실", icon: "▤", allow: (me) => me.permissions.can_restaurants },
 
   // ── Probe. 입금·계약 상태까지 다루므로 식당 관리와 같은 권한이다.
@@ -2494,7 +2497,7 @@ const PRODUCTS: {
     name: "Astro",
     subtitle: "영업 툴",
     description: "매장 현황 · 신규 컨택 · 입금 · 쿠폰",
-    tabs: ["astro-home", "astro-ops", "astro-leads", "astro-billing", "astro-docs", "restaurants"],
+    tabs: ["astro-home", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs", "restaurants"],
     ready: true,
   },
   {
@@ -2720,6 +2723,7 @@ export default function AdminHomePage() {
           {activeTab === "astro-home" && <AstroHome onGo={(t) => setActiveTab(t as Tab)} />}
           {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={(t) => setActiveTab(t as Tab)} />}
           {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
+          {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} />}
           {activeTab === "astro-leads" && <LeadPipeline actor={actorName} />}
           {activeTab === "astro-billing" && <BillingBoard actor={actorName} />}
 

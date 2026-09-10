@@ -197,3 +197,63 @@ class SalesDoc(models.Model):
 
     class Meta:
         db_table = "astro_sales_doc"
+
+
+class Issuer(models.Model):
+    """발행 주체 — 우주라이크는 하나(개인사업자 코끼리). 볼타 고객 키와 공동인증서 만료일을 갖는다."""
+
+    name = models.CharField(max_length=60)
+    biz_no = models.CharField(max_length=20)
+    ceo = models.CharField(max_length=30, blank=True)
+    address = models.CharField(max_length=200, blank=True)
+    email = models.EmailField(blank=True)
+    bolta_customer_key = models.CharField(max_length=80, blank=True)
+    cert_expires_at = models.DateField(null=True, blank=True)
+    item_template = models.CharField(max_length=100, default="우주라이크 파트너 플랜 {period}분")
+    approver = models.CharField(max_length=30, blank=True)
+    slack_channel = models.CharField(max_length=40, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "astro_issuer"
+
+
+class TaxInvoice(models.Model):
+    """
+    전자세금계산서 — 애딧 세발 상태머신 그대로.
+    국세청 발행은 되돌리기 어려운 외부 부작용이라 승인 단계를 두고, 볼타 응답이 애매하면 RESULT_UNKNOWN 으로 멈춘다.
+    """
+
+    STATUS = (("PENDING", "품의"), ("APPROVED", "승인"), ("ISSUING", "발행 중"), ("ISSUED", "발행 완료"),
+              ("FAILED", "발행 실패"), ("RESULT_UNKNOWN", "결과 불명"), ("REJECTED", "반려"), ("CANCELED", "취소"))
+
+    restaurant_id = models.IntegerField()
+    name = models.CharField(max_length=100)
+    title = models.CharField(max_length=120)
+    period = models.CharField(max_length=7)  # YYYY-MM
+    supply = models.PositiveIntegerField()
+    tax = models.PositiveIntegerField()
+    total = models.PositiveIntegerField()
+    tax_type = models.CharField(max_length=10, default="TAXABLE")
+    receipt_type = models.CharField(max_length=10, default="CLAIM")
+    write_date = models.DateField()
+    counterparty = models.JSONField(default=dict)  # {biz_no, ceo, email, phone}
+    status = models.CharField(max_length=16, choices=STATUS, default="PENDING")
+    requested_by = models.CharField(max_length=30)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    approved_by = models.CharField(max_length=30, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    issued_at = models.DateTimeField(null=True, blank=True)
+    nts_no = models.CharField(max_length=40, blank=True)  # 국세청 승인번호
+    bolta_key = models.CharField(max_length=80, blank=True)
+    url = models.URLField(blank=True)
+    fail_code = models.CharField(max_length=40, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    reject_reason = models.TextField(blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    memo = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "astro_tax_invoice"
+        indexes = [models.Index(fields=["period", "status"])]
+        constraints = [models.UniqueConstraint(fields=["restaurant_id", "period"], condition=models.Q(status__in=["PENDING", "APPROVED", "ISSUING", "ISSUED"]), name="one_open_invoice_per_store_period")]

@@ -18,6 +18,7 @@ import {
   IconHome,
   IconDeviceMobile,
   IconFiles,
+  IconFileInvoice,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -46,6 +47,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "astro-leads": IconTargetArrow,
   "astro-billing": IconCash,
   "astro-docs": IconFiles,
+  "astro-tax": IconFileInvoice,
   "probe-metrics": IconChartBar,
   "probe-quality": IconAlertTriangle,
   "castor-map": IconSitemap,

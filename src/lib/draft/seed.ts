@@ -1,4 +1,4 @@
-import type { Activity, CastorExperiment, CastorGraph, Lead, SalesDoc, StoreOps } from "./types";
+import type { Activity, CastorExperiment, CastorGraph, IssuerSettings, Lead, SalesDoc, StoreOps, TaxInvoice } from "./types";
 
 /**
  * 초안 시드.
@@ -126,6 +126,28 @@ export function seedDocs(): SalesDoc[] {
     { id: "doc-team-intro", kind: "소개서", title: "팀 소개서 (대외용)", version: "0818", url: null, when: "미팅", note: "드라이브 링크 등록 필요. 실명판은 별도", updated_at: t, updated_by: "seed" },
     { id: "doc-poster-benefit", kind: "포스터", title: "혜택 정리 포스터 · QR 스티커", version: "0906", url: null, when: "입금 확인 → 비치물 전달", note: "매장별 혜택 %가 다르니 출력 전 확인 (라라더 오기재 사례). 링크 등록 필요", updated_at: t, updated_by: "seed" },
   ];
+}
+
+/** 발행 주체 — 개인사업자 코끼리. 사업자번호는 09-02 카톡에서 팀이 공유한 값이다. 볼타 키·인증서는 아직 없다. */
+export function seedIssuer(): IssuerSettings {
+  return {
+    name: "코끼리 (우주라이크)",
+    biz_no: "",
+    ceo: "노재민",
+    address: "",
+    email: "",
+    bolta_customer_key: null,
+    cert_expires_at: null,
+    item_template: "우주라이크 파트너 플랜 {period}분",
+    approver: "노재민",
+    slack_channel: "ops-partner",
+    updated_at: null,
+  };
+}
+
+/** 계산서 건은 비워 둔다. '이번 달 일괄 생성' 버튼이 유료 매장에서 만든다. */
+export function seedInvoices(): TaxInvoice[] {
+  return [];
 }
 
 export function seedActivities(): Activity[] {
