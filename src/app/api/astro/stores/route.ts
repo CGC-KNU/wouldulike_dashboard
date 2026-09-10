@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { readDraft } from "@/lib/draft/store";
 import { seedStoreOps } from "@/lib/draft/seed";
-import type { BackendRestaurant, StoreOps } from "@/lib/draft/types";
+import { emptyStoreOps, type BackendRestaurant, type StoreOps } from "@/lib/draft/types";
 import { requireTool } from "@/lib/draft/guard";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 
@@ -25,7 +25,8 @@ export async function GET() {
 
   // 운영 필드는 아직 백엔드에 테이블이 없다 — 초안 저장소에서 읽는다
   const opsList = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
-  const opsById = new Map(opsList.map((o) => [o.id, o]));
+  // 스키마가 늘어도 예전 행이 깨지지 않게 기본값 위에 얹는다
+  const opsById = new Map(opsList.map((o) => [o.id, { ...emptyStoreOps(o.id), ...o }]));
 
   const stores = restaurants.map((r) => ({
     restaurant_id: r.restaurant_id,

@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const list = readDraft<StoreOps[]>(KEY, seedStoreOps);
   const found = list.find((o) => String(o.id) === id) ?? null;
-  return NextResponse.json({ ops: found, draft: true });
+  return NextResponse.json({ ops: found ? { ...emptyStoreOps(found.id), ...found } : null, draft: true });
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

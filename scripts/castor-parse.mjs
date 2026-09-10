@@ -153,7 +153,8 @@ function commit() {
   }
 }
 
-const pages = fromManifest() ?? fromGlob();
+// Next 내부 라우트(`/_not-found` 등)는 사람이 다니는 화면이 아니다
+const pages = (fromManifest() ?? fromGlob()).filter((p) => !p.route.startsWith("/_"));
 const byRoute = new Map(pages.map((p) => [p.route, p]));
 
 const screens = [];

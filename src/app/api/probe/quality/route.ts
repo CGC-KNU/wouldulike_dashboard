@@ -196,7 +196,7 @@ export async function GET() {
 
   // ⑥ 방치된 컨택 — Pitchr 대시보드의 "7일+ 무응답"을 그대로 가져왔다
   for (const l of leads) {
-    if (l.stage === "거절" || l.stage === "입점완료") continue;
+    if (l.stage === "거절" || l.stage === "보류" || l.stage === "계약 완료") continue;
     const idle = daysSince(l.last_touch_at);
     if (idle !== null && idle >= 7) {
       push({

@@ -1,34 +1,270 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect } from "react";
+import { IconX } from "@tabler/icons-react";
 
 /**
- * Astro·Probe·Castor 가 같이 쓰는 작은 조각들.
+ * Astro·Probe·Castor 공용 UI 키트.
  *
- * Papillon 이 먼저 굳힌 시각 문법을 그대로 따른다 — 흰 카드 `rounded-2xl shadow-sm`,
- * 마이크로 라벨 `text-[10px] text-gray-400`, 강조는 navy, 인터랙션은 periwinkle.
- * 새 문법을 만들지 않는 게 목적이다. 툴이 늘어날수록 이게 흔들리면 한 제품처럼 안 보인다.
+ * 애딧 Pitchr/Console 을 레퍼런스로 삼았다. 그쪽에서 가져온 규칙:
+ *   · 본문 13px, 라벨 12px. 10px 는 타임스탬프에만. 팀원이 하루 종일 보는 화면이라 가독성이 먼저다.
+ *   · 그림자 대신 1px 선. 흰 표면 + 회색 200 테두리. 카드는 "묶음"일 때만.
+ *   · 색은 하나(navy). 활성 메뉴·주 CTA 에만 쓴다. 상태는 색이 아니라 칩 텍스트가 말한다.
+ *   · 모서리 규칙: 버튼·입력 8px, 카드·패널 12px, 상태 칩만 pill. 이 셋 외 반지름 없음.
+ *   · 총량 KPI 는 없다. "지금 막힌 것"을 띄우고, 빨강은 0 보다 클 때만.
+ *   · 상세는 인라인 펼침이 아니라 오른쪽 슬라이드 패널. 목록을 잃지 않는다.
  */
 
-/* ─── 초안 배지 ───────────────────────────────────────
-   실데이터와 초안 데이터가 한 화면에 섞이는 구간이 있다. 섞이는 것 자체는 괜찮지만
-   **어느 쪽인지 모르는 게** 문제다. 그래서 초안이면 반드시 이 배지가 붙는다. */
+/* ═══════════ 토큰 (문자열로 두는 이유: tailwind JIT 가 정적 문자열만 읽는다) ═══════════ */
+
+export const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/50 focus-visible:ring-offset-1";
+
+export const surface = "bg-white border border-gray-200 rounded-xl";
+
+/* ═══════════ 버튼 ═══════════ */
+
+type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Size = "sm" | "md";
+
+const VARIANT: Record<Variant, string> = {
+  primary: "bg-navy text-white hover:bg-[#0a0a8a] active:translate-y-px disabled:bg-gray-300",
+  secondary: "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 active:translate-y-px disabled:text-gray-400",
+  ghost: "bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:text-gray-300",
+  danger: "bg-white text-red-600 border border-red-200 hover:bg-red-50 active:translate-y-px",
+};
+const SIZE: Record<Size, string> = {
+  sm: "h-8 px-3 text-[12px] gap-1.5 rounded-lg",
+  md: "h-9 px-3.5 text-[13px] gap-2 rounded-lg",
+};
+
+export const Button = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; icon?: ReactNode }
+>(function Button({ variant = "secondary", size = "md", icon, className = "", children, ...rest }, ref) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={`inline-flex items-center justify-center whitespace-nowrap font-semibold transition-colors touch-manipulation disabled:cursor-not-allowed ${VARIANT[variant]} ${SIZE[size]} ${focusRing} ${className}`}
+      {...rest}
+    >
+      {icon && <span className="shrink-0 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>}
+      {children}
+    </button>
+  );
+});
+
+/* ═══════════ 입력 ═══════════ */
+
+const fieldBase =
+  "w-full h-9 px-3 text-[13px] text-gray-900 bg-white border border-gray-300 rounded-lg placeholder:text-gray-400 hover:border-gray-400 focus:border-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/40 disabled:bg-gray-50 disabled:text-gray-400";
+
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
+  { className = "", ...rest },
+  ref
+) {
+  return <input ref={ref} autoComplete="off" spellCheck={false} className={`${fieldBase} ${className}`} {...rest} />;
+});
+
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
+  { className = "", children, ...rest },
+  ref
+) {
+  return (
+    <select ref={ref} className={`${fieldBase} pr-8 appearance-none bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%236b7280%22 stroke-width=%222.5%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22m6 9 6 6 6-6%22/></svg>')] bg-no-repeat bg-[right_10px_center] ${className}`} {...rest}>
+      {children}
+    </select>
+  );
+});
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function Textarea({ className = "", ...rest }, ref) {
+    return (
+      <textarea
+        ref={ref}
+        className={`${fieldBase} h-auto py-2 leading-relaxed resize-none ${className}`}
+        {...rest}
+      />
+    );
+  }
+);
+
+/** 라벨은 입력 위에. placeholder 를 라벨로 쓰지 않는다. */
+export function Field({
+  label,
+  hint,
+  error,
+  required,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-[12px] font-semibold text-gray-700 mb-1.5">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </span>
+      {children}
+      {error ? (
+        <span className="block text-[12px] text-red-600 mt-1" role="alert">
+          {error}
+        </span>
+      ) : hint ? (
+        <span className="block text-[12px] text-gray-500 mt-1">{hint}</span>
+      ) : null}
+    </label>
+  );
+}
+
+/* ═══════════ 상태 칩 ═══════════
+   색이 상태를 말하지 않는다. 텍스트가 말하고 색은 거든다. 점(dot)은 "지금 행동이 필요함" 같은
+   실제 상태에만 붙인다. 장식용 점은 쓰지 않는다. */
+
+export type ChipTone = "gray" | "green" | "amber" | "red" | "blue" | "navy";
+
+const CHIP: Record<ChipTone, string> = {
+  gray: "bg-gray-100 text-gray-700 border-gray-200",
+  green: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  amber: "bg-amber-50 text-amber-800 border-amber-200",
+  red: "bg-red-50 text-red-700 border-red-200",
+  blue: "bg-blue-50 text-blue-800 border-blue-200",
+  navy: "bg-navy/5 text-navy border-navy/20",
+};
+
+export function Chip({ children, tone = "gray", dot }: { children: ReactNode; tone?: ChipTone; dot?: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border text-[12px] font-medium whitespace-nowrap ${CHIP[tone]}`}
+    >
+      {dot && <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />}
+      {children}
+    </span>
+  );
+}
+
+/** 초안 데이터 배지. 실데이터와 섞이는 화면에서 어느 쪽인지 반드시 보이게 한다. */
 export function DraftBadge({ note }: { note?: string }) {
   return (
     <span
       title={note}
-      className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"
+      className="inline-flex items-center h-6 px-2 rounded-full border border-amber-200 bg-amber-50 text-amber-800 text-[12px] font-medium whitespace-nowrap"
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" aria-hidden="true" />
       초안 데이터
     </span>
   );
 }
 
-/* ─── KPI ─────────────────────────────────────────────
-   ADIT Pitchr 대시보드에서 가장 잘 훔칠 것: **총량이 아니라 지금 막힌 것**을 띄운다.
-   "전체 식당 34" 는 아무 행동도 못 만들지만 "입금 미확인 7" 은 오늘 할 일이 된다.
-   `tone="alert"` 는 0보다 클 때만 빨강이 된다 — 항상 빨갛면 아무도 안 본다. */
+/* ═══════════ 페이지 헤더 ═══════════
+   Pitchr: 왼쪽 H1(+설명), 오른쪽 주 CTA 하나. 필터는 그 아래 한 줄. */
+
+export function PageHeader({
+  title,
+  description,
+  actions,
+  children,
+}: {
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[20px] font-bold text-gray-900 leading-tight text-balance">{title}</h1>
+          {description && <p className="text-[13px] text-gray-500 mt-1 max-w-[60ch]">{description}</p>}
+        </div>
+        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      </div>
+      {children && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
+
+/* ═══════════ 필터 알약 (Pitchr 파이프라인 상단의 전사/미배정/담당자) ═══════════ */
+
+export function FilterPills<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: { key: T; label: string; count?: number }[];
+  value: T;
+  onChange: (v: T) => void;
+  label?: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label={label}>
+      {options.map((o) => {
+        const on = value === o.key;
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            aria-pressed={on}
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[12px] font-semibold transition-colors touch-manipulation ${focusRing} ${
+              on ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            {o.label}
+            {o.count !== undefined && (
+              <span className={`tabular-nums ${on ? "text-white/70" : "text-gray-400"}`}>{o.count}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 테이블 ⇄ 칸반 같은 뷰 전환. */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: { key: T; label: string; icon?: ReactNode }[];
+  value: T;
+  onChange: (v: T) => void;
+  label?: string;
+}) {
+  return (
+    <div className="inline-flex h-9 p-0.5 bg-gray-100 rounded-lg" role="group" aria-label={label}>
+      {options.map((o) => {
+        const on = value === o.key;
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            aria-pressed={on}
+            className={`inline-flex items-center gap-1.5 px-3 rounded-md text-[12px] font-semibold transition-colors touch-manipulation ${focusRing} ${
+              on ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            {o.icon && <span className="[&>svg]:w-4 [&>svg]:h-4">{o.icon}</span>}
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════ KPI ═══════════
+   Pitchr 대시보드: 라벨 / 큰 숫자 / 한 줄 설명. 빨강은 값이 0 보다 클 때만.
+   누르면 그 조건으로 목록이 걸러진다. 숫자를 보는 것과 행동하는 것 사이에 클릭 하나. */
+
 export function Kpi({
   label,
   value,
@@ -46,148 +282,325 @@ export function Kpi({
   onClick?: () => void;
   active?: boolean;
 }) {
-  const isAlert = tone === "alert" && typeof value === "number" && value > 0;
-  const valueColor = isAlert ? "text-red-600" : tone === "good" ? "text-emerald-600" : "text-navy";
-  const ring = active ? "ring-2 ring-periwinkle" : "ring-1 ring-transparent";
-
+  const alert = tone === "alert" && typeof value === "number" && value > 0;
+  const color = alert ? "text-red-600" : tone === "good" ? "text-emerald-700" : "text-gray-900";
+  const base = `${surface} px-4 py-3.5 text-left min-w-0 transition-colors`;
   const inner = (
     <>
-      <p className="text-[10px] text-gray-400 truncate">{label}</p>
-      <p className={`text-xl font-bold mt-0.5 tabular-nums ${valueColor}`}>
+      <p className="text-[12px] font-medium text-gray-500 truncate">{label}</p>
+      <p className={`text-[24px] font-bold leading-tight mt-1 tabular-nums ${color}`}>
         {value}
-        {suffix && <span className="text-[11px] font-semibold text-gray-400 ml-0.5">{suffix}</span>}
+        {suffix && <span className="text-[13px] font-semibold text-gray-400 ml-1">{suffix}</span>}
       </p>
-      {hint && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{hint}</p>}
+      {hint && <p className="text-[12px] text-gray-500 mt-1 truncate">{hint}</p>}
     </>
   );
-
-  return onClick ? (
+  if (!onClick) return <div className={base}>{inner}</div>;
+  return (
     <button
+      type="button"
       onClick={onClick}
-      className={`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/60 touch-manipulation bg-white rounded-2xl px-3.5 py-3 shadow-sm text-left hover:bg-gray-50 transition-colors ${ring}`}
+      aria-pressed={active}
+      className={`${base} hover:bg-gray-50 ${focusRing} ${active ? "border-navy ring-1 ring-navy" : ""}`}
     >
       {inner}
     </button>
-  ) : (
-    <div className={`bg-white rounded-2xl px-3.5 py-3 shadow-sm ${ring}`}>{inner}</div>
   );
 }
 
-/* ─── 카드 ─── */
-export function Card({
-  title,
-  desc,
-  right,
-  children,
-  padded = true,
+/** Console 정산 관리의 단계 타일. 왼→오른쪽으로 흐르는 상태를 한 줄에. */
+export function StepTiles({
+  steps,
+  active,
+  onSelect,
 }: {
-  title?: string;
-  desc?: string;
-  right?: ReactNode;
-  children: ReactNode;
-  padded?: boolean;
+  steps: { key: string; label: string; count: number; hint?: string; tone?: "plain" | "alert" | "good" }[];
+  active?: string | null;
+  onSelect?: (key: string) => void;
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      {(title || right) && (
-        <div className="px-4 py-3 border-b border-gray-50 flex items-start justify-between gap-3">
+    <ol className="flex gap-2 overflow-x-auto pb-1 -mb-1">
+      {steps.map((s, i) => {
+        const alert = s.tone === "alert" && s.count > 0;
+        const on = active === s.key;
+        return (
+          <li key={s.key} className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => onSelect?.(s.key)}
+              aria-pressed={on}
+              className={`${surface} min-w-[9.5rem] px-3.5 py-3 text-left hover:bg-gray-50 ${focusRing} ${on ? "border-navy ring-1 ring-navy" : ""}`}
+            >
+              <p className="text-[12px] font-medium text-gray-500">{s.label}</p>
+              <p className={`text-[22px] font-bold leading-tight mt-0.5 tabular-nums ${alert ? "text-red-600" : s.tone === "good" ? "text-emerald-700" : "text-gray-900"}`}>
+                {s.count}
+                <span className="text-[12px] font-medium text-gray-400 ml-1">곳</span>
+              </p>
+              {s.hint && <p className="text-[12px] text-gray-500 mt-0.5 truncate">{s.hint}</p>}
+            </button>
+            {i < steps.length - 1 && <span className="text-gray-300" aria-hidden="true">›</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/* ═══════════ 카드 / 섹션 ═══════════ */
+
+export function Card({
+  title,
+  description,
+  actions,
+  children,
+  flush,
+  className = "",
+}: {
+  title?: string;
+  description?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+  flush?: boolean;
+  className?: string;
+}) {
+  return (
+    <section className={`${surface} overflow-hidden ${className}`}>
+      {(title || actions) && (
+        <header className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            {title && <h2 className="text-sm font-semibold text-gray-700">{title}</h2>}
-            {desc && <p className="text-[10px] text-gray-400 mt-0.5">{desc}</p>}
+            {title && <h2 className="text-[14px] font-semibold text-gray-900">{title}</h2>}
+            {description && <p className="text-[12px] text-gray-500 mt-0.5">{description}</p>}
           </div>
-          {right && <div className="shrink-0">{right}</div>}
-        </div>
+          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+        </header>
       )}
-      <div className={padded ? "p-4" : ""}>{children}</div>
+      <div className={flush ? "" : "p-4"}>{children}</div>
+    </section>
+  );
+}
+
+/* ═══════════ 테이블 (Pitchr 리드 목록) ═══════════ */
+
+export function Table({ children, minWidth = "40rem" }: { children: ReactNode; minWidth?: string }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[13px] border-collapse" style={{ minWidth }}>
+        {children}
+      </table>
     </div>
   );
 }
 
-/* ─── 세그먼트 토글 (테이블 ⇄ 칸반 등) ─── */
-export function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
+export function Th({
+  children,
+  align = "left",
+  width,
+  onClick,
+  sorted,
 }: {
-  options: { key: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
+  children?: ReactNode;
+  align?: "left" | "right" | "center";
+  width?: string;
+  onClick?: () => void;
+  sorted?: "asc" | "desc" | null;
+}) {
+  const cls = `px-3 py-2.5 text-[12px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap text-${align}`;
+  if (!onClick) return <th scope="col" style={{ width }} className={cls}>{children}</th>;
+  return (
+    <th scope="col" style={{ width }} className={cls} aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"}>
+      <button type="button" onClick={onClick} className={`inline-flex items-center gap-1 hover:text-gray-900 ${focusRing} rounded`}>
+        {children}
+        <span className={`text-[10px] ${sorted ? "text-navy" : "text-gray-300"}`} aria-hidden="true">
+          {sorted === "desc" ? "▼" : "▲"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+export function Td({
+  children,
+  align = "left",
+  className = "",
+  numeric,
+}: {
+  children?: ReactNode;
+  align?: "left" | "right" | "center";
+  className?: string;
+  numeric?: boolean;
 }) {
   return (
-    <div className="inline-flex bg-gray-100 rounded-lg p-0.5">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          onClick={() => onChange(o.key)}
-          className={`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/60 touch-manipulation text-[11px] font-semibold px-3 py-1.5 rounded-md transition-colors ${
-            value === o.key ? "bg-white text-navy shadow-sm" : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          {o.label}
-        </button>
+    <td className={`px-3 py-2.5 border-b border-gray-100 align-middle text-${align} ${numeric ? "tabular-nums" : ""} ${className}`}>
+      {children}
+    </td>
+  );
+}
+
+/** 행 전체가 클릭 대상이면 tr 에 이걸 준다. 키보드로도 열려야 하므로 버튼 하나를 안에 둔다. */
+export const rowClickable = "hover:bg-gray-50 cursor-pointer transition-colors";
+
+/* ═══════════ 상태 ═══════════ */
+
+/** 스피너 대신 최종 레이아웃 모양의 뼈대. 화면이 어디에 무엇이 올지 미리 보여준다. */
+export function Skeleton({ rows = 6, cols = 5 }: { rows?: number; cols?: number }) {
+  return (
+    <div role="status" aria-label="불러오는 중…" className="p-4 space-y-3">
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} className="flex gap-3">
+          {Array.from({ length: cols }).map((_, c) => (
+            <div
+              key={c}
+              className="h-4 bg-gray-100 rounded animate-pulse motion-reduce:animate-none"
+              style={{ width: c === 0 ? "28%" : `${10 + ((r + c) % 3) * 4}%` }}
+            />
+          ))}
+        </div>
       ))}
     </div>
   );
 }
 
-/* ─── 상태 칩 ─── */
-export function Chip({
-  children,
-  tone = "gray",
+export function Empty({
+  title,
+  detail,
+  action,
 }: {
-  children: ReactNode;
-  tone?: "gray" | "green" | "amber" | "red" | "indigo" | "blue";
+  title: string;
+  detail?: string;
+  action?: ReactNode;
 }) {
+  return (
+    <div className="py-14 px-6 text-center">
+      <p className="text-[14px] font-semibold text-gray-800 text-balance">{title}</p>
+      {detail && <p className="text-[13px] text-gray-500 mt-1.5 max-w-[48ch] mx-auto leading-relaxed">{detail}</p>}
+      {action && <div className="mt-4 flex justify-center gap-2">{action}</div>}
+    </div>
+  );
+}
+
+export function Notice({ tone = "amber", title, children }: { tone?: "amber" | "red" | "blue"; title: string; children?: ReactNode }) {
   const map = {
-    gray: "bg-gray-100 text-gray-600",
-    green: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-100 text-amber-700",
-    red: "bg-red-50 text-red-600",
-    indigo: "bg-indigo-100 text-indigo-700",
-    blue: "bg-blue-50 text-blue-700",
-  } as const;
+    amber: "bg-amber-50 border-amber-200 text-amber-900",
+    red: "bg-red-50 border-red-200 text-red-800",
+    blue: "bg-blue-50 border-blue-200 text-blue-900",
+  };
   return (
-    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${map[tone]}`}>
+    <div className={`border rounded-xl px-4 py-3 ${map[tone]}`} role={tone === "red" ? "alert" : "status"}>
+      <p className="text-[13px] font-semibold">{title}</p>
+      {children && <div className="text-[12px] mt-0.5 leading-relaxed opacity-90">{children}</div>}
+    </div>
+  );
+}
+
+/* ═══════════ 슬라이드 패널 (Console 캠페인 상세) ═══════════
+   목록을 가리지 않고 오른쪽에서 열린다. ESC 로 닫힌다. 폰에서는 바텀시트가 된다. */
+
+export function SlideOver({
+  open,
+  onClose,
+  title,
+  subtitle,
+  badge,
+  footer,
+  children,
+  width = "md",
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  badge?: ReactNode;
+  footer?: ReactNode;
+  children: ReactNode;
+  width?: "md" | "lg";
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-stretch md:justify-end" role="dialog" aria-modal="true" aria-label={title}>
+      <button
+        type="button"
+        aria-label="닫기"
+        onClick={onClose}
+        className="absolute inset-0 bg-gray-900/30 cursor-default"
+      />
+      <div
+        className={`relative bg-white w-full ${width === "lg" ? "md:w-[36rem]" : "md:w-[28rem]"} max-h-[92vh] md:max-h-none md:h-full flex flex-col rounded-t-2xl md:rounded-none md:border-l border-gray-200 shadow-xl`}
+      >
+        <header className="px-5 pt-4 pb-3 border-b border-gray-200 flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-[16px] font-bold text-gray-900 truncate">{title}</h2>
+              {badge}
+            </div>
+            {subtitle && <p className="text-[12px] text-gray-500 mt-0.5">{subtitle}</p>}
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="닫기" icon={<IconX />} />
+        </header>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">{children}</div>
+        {footer && <footer className="px-5 py-3 border-t border-gray-200 bg-white flex items-center gap-2">{footer}</footer>}
+      </div>
+    </div>
+  );
+}
+
+/** Console 상세 상단의 단계 표시줄. 지나온 단계는 채우고 현재는 진하게. */
+export function Stepper({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <ol className="flex gap-1" aria-label="진행 단계">
+      {steps.map((s, i) => {
+        const done = i < current;
+        const now = i === current;
+        return (
+          <li key={s} className="flex-1 min-w-0">
+            <div className={`h-1.5 rounded-full ${done || now ? "bg-navy" : "bg-gray-200"} ${now ? "" : done ? "opacity-60" : ""}`} />
+            <p className={`text-[11px] mt-1 truncate ${now ? "text-navy font-semibold" : "text-gray-400"}`} aria-current={now ? "step" : undefined}>
+              {s}
+            </p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** 상세 패널 안의 "라벨 : 값" 묶음 (Console 상세의 일정/상품 블록). */
+export function DefList({ items }: { items: { label: string; value: ReactNode }[] }) {
+  return (
+    <dl className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+      {items.map((it) => (
+        <div key={it.label} className="flex items-center justify-between gap-4 px-3 py-2">
+          <dt className="text-[12px] text-gray-500 shrink-0">{it.label}</dt>
+          <dd className="text-[13px] text-gray-900 text-right min-w-0 truncate">{it.value ?? <span className="text-gray-300">-</span>}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** 상세 패널 섹션 제목. */
+export function PanelSection({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide">{title}</h3>
+        {actions}
+      </div>
       {children}
-    </span>
+    </section>
   );
 }
 
-/* ─── 로딩 / 빈 상태 ───────────────────────────────────
-   빈 상태에 "데이터가 없습니다"만 쓰지 않는다. **왜 비었는지와 다음 행동**을 같이 준다.
-   Papillon 에서 팀원들이 가장 많이 막혔던 지점이라 처음부터 규칙으로 박아 둔다. */
-export function Spinner() {
-  return (
-    <div className="flex items-center justify-center py-10" role="status" aria-label="불러오는 중…">
-      <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin motion-reduce:animate-none" aria-hidden="true" />
-    </div>
-  );
-}
+/* ═══════════ 시간 ═══════════ */
 
-export function Empty({ title, detail, action }: { title: string; detail?: string; action?: ReactNode }) {
-  return (
-    <div className="py-10 text-center">
-      <p className="text-sm font-semibold text-gray-600 text-balance">{title}</p>
-      {detail && <p className="text-[11px] text-gray-400 mt-1 max-w-md mx-auto leading-relaxed">{detail}</p>}
-      {action && <div className="mt-3">{action}</div>}
-    </div>
-  );
-}
-
-/* ─── 인라인 편집 필드 ─── */
-export function Labeled({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-[10px] font-semibold text-gray-400">{label}</span>
-      <div className="mt-1">{children}</div>
-    </label>
-  );
-}
-
-export const inputCls =
-  "w-full text-xs px-2.5 py-1.5 bg-white text-gray-800 border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle focus-visible:ring-2 focus-visible:ring-periwinkle/40";
-
-/** 며칠 전인지. 방치 감지·최근 접촉 표시에 두루 쓴다. */
 export function daysSince(iso: string | null | undefined): number | null {
   if (!iso) return null;
   const t = Date.parse(iso);
@@ -201,4 +614,11 @@ export function agoLabel(iso: string | null | undefined): string {
   if (d === 0) return "오늘";
   if (d === 1) return "어제";
   return `${d}일 전`;
+}
+
+export function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric" }).format(t);
 }
