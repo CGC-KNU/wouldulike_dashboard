@@ -180,7 +180,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
       </PageHeader>
 
       {/* 총량이 아니라 '지금 막힌 것'. 누르면 표가 그것만 남는다. */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
         <Kpi label="제휴 매장" value={loading ? "-" : affiliate.length} hint={`유료 ${paid.length}곳`} onClick={() => setFilter("all")} active={filter === "all"} />
         <Kpi label="입금 미확인" value={loading ? "-" : stuck.unpaid.length} tone="alert" hint="유료 매장 중" onClick={() => setFilter("unpaid")} active={filter === "unpaid"} />
         <Kpi label="계산서 미회신" value={loading ? "-" : stuck.invoice.length} tone="alert" hint="보냈는데 답이 없음" onClick={() => setFilter("invoice")} active={filter === "invoice"} />

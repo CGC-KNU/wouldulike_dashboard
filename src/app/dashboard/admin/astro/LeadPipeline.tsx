@@ -189,7 +189,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
         )}
       </PageHeader>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
         <Kpi label="진행 중" value={loading ? "-" : active.length} hint="재컨택·보류·거절 제외" />
         <Kpi label={`${STALE_DAYS}일 이상 멈춤`} value={loading ? "-" : stale.length} tone="alert" hint="기록이 없는 후보" />
         <Kpi label="미컨택" value={loading ? "-" : byStage.get("미컨택")?.length ?? 0} hint="아직 연락 안 함" />

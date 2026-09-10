@@ -115,7 +115,7 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="높음" value={loading ? "-" : data?.counts.high ?? 0} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => setSev(sev === "high" ? "all" : "high")} active={sev === "high"} />
         <Kpi label="보통" value={loading ? "-" : data?.counts.medium ?? 0} hint="곧 문제가 됨" onClick={() => setSev(sev === "medium" ? "all" : "medium")} active={sev === "medium"} />
         <Kpi label="낮음" value={loading ? "-" : data?.counts.low ?? 0} hint="비어 있는 칸" onClick={() => setSev(sev === "low" ? "all" : "low")} active={sev === "low"} />

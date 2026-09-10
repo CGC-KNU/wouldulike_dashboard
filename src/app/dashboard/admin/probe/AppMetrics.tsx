@@ -58,7 +58,7 @@ export default function AppMetrics() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="채워진 지표" value={loading ? "-" : `${filled} / ${total}`} hint="출처가 연결된 칸" />
         <Kpi label="연결된 출처" value={loading ? "-" : `${connected} / ${data?.sources.length ?? 4}`} hint="DB · 푸시 · GA4 · Firebase" />
         <Kpi label="다음 연결" value={loading ? "-" : "GA4"} hint="세션 · 퍼널 · 리텐션이 살아난다" />

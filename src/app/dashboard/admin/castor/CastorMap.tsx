@@ -82,7 +82,7 @@ export default function CastorMap({ onDraftVariant }: { onDraftVariant?: (screen
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+          <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
             <Kpi label="화면" value={screens.length} />
             <Kpi label="이동" value={edges.length} hint="Link · router.push · redirect" />
             <Kpi label="조건 분기" value={graph?.guards.length ?? 0} hint="middleware 매처" />

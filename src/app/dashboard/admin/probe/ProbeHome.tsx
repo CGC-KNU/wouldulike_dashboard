@@ -35,7 +35,7 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
         actions={<a href={slackUrl(probe)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{probe.slack.channel}</Button></a>}
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="정합성 · 높음" value={loading ? "-" : q?.counts?.high ?? 0} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => onGo("probe-quality")} />
         <Kpi label="조용한 매장" value={loading ? "-" : ov?.totals?.silent ?? 0} tone="alert" hint="이번 달 쿠폰·스탬프 0" onClick={() => onGo("probe-metrics")} />
         <Kpi label="지표 못 읽음" value={loading ? "-" : ov?.totals?.unavailable ?? 0} suffix="곳" hint="0 이 아니라 모름" onClick={() => onGo("probe-metrics")} />

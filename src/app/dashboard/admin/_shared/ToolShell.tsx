@@ -88,7 +88,7 @@ export default function ToolShell({
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-6 items-start">
-      <aside className="md:sticky md:top-4 bg-white/70 rounded-2xl border border-black/[0.05] overflow-hidden">
+      <aside className="md:sticky md:top-16 bg-white/70 backdrop-blur-xl rounded-[18px] border border-white/60 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_16px_40px_-28px_rgba(5,0,114,0.35)] overflow-hidden">
         {/* 제품 표시 + 런처로 돌아가기 */}
         <div className="px-3 pt-3 pb-2 border-b border-black/[0.05]">
           {onBack ? (
@@ -99,7 +99,7 @@ export default function ToolShell({
             >
               <ToolIcon k={product.key} />
               <span className="min-w-0">
-                <span className="block text-[13px] font-bold text-gray-900 leading-tight">{product.name}</span>
+                <span className="block text-[14px] font-bold text-gray-900 leading-tight tracking-[-0.01em]">{product.name}</span>
                 <span className="block text-[11px] text-gray-500 leading-tight">{product.subtitle}</span>
               </span>
               <IconChevronLeft size={16} className="ml-auto text-gray-400 shrink-0" aria-hidden="true" />
@@ -126,11 +126,11 @@ export default function ToolShell({
                     type="button"
                     onClick={() => onSelect(n.key)}
                     aria-current={on ? "page" : undefined}
-                    className={`w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px] font-semibold whitespace-nowrap transition-colors touch-manipulation ${focusRing} ${
-                      on ? "bg-navy/[0.08] text-navy" : "text-gray-600 hover:bg-black/[0.04] hover:text-gray-900"
+                    className={`w-full flex items-center gap-2.5 h-9 px-3 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 touch-manipulation ${focusRing} ${
+                      on ? "bg-[linear-gradient(180deg,#1512a3,#050072)] text-white shadow-[0_6px_16px_-8px_rgba(5,0,114,0.7)]" : "text-gray-600 hover:bg-navy/[0.05] hover:text-gray-900"
                     }`}
                   >
-                    <Icon size={18} stroke={1.75} className={on ? "text-navy" : "text-gray-400"} aria-hidden="true" />
+                    <Icon size={18} stroke={1.75} className={on ? "text-white/90" : "text-gray-400"} aria-hidden="true" />
                     {n.label}
                   </button>
                 </li>
@@ -140,7 +140,7 @@ export default function ToolShell({
         </nav>
 
         <div className="hidden md:flex items-center gap-2.5 px-4 py-3 border-t border-black/[0.05]">
-          <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 text-[12px] font-bold flex items-center justify-center shrink-0">
+          <span className="w-7 h-7 rounded-full bg-[linear-gradient(135deg,#6366E0,#050072)] text-white text-[12px] font-bold flex items-center justify-center shrink-0">
             {user.name.slice(0, 1)}
           </span>
           <span className="min-w-0">

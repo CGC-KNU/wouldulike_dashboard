@@ -20,7 +20,7 @@ import { IconX } from "@tabler/icons-react";
 export const focusRing =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/50 focus-visible:ring-offset-1";
 
-export const surface = "bg-white rounded-2xl border border-black/[0.06] shadow-[0_1px_2px_rgba(16,24,40,0.04)]";
+export const surface = "bg-white rounded-[18px] border border-black/[0.05] shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-24px_rgba(5,0,114,0.25)]";
 
 /* ═══════════ 버튼 ═══════════ */
 
@@ -28,7 +28,7 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 const VARIANT: Record<Variant, string> = {
-  primary: "bg-navy text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-[#0b0a86] disabled:bg-gray-300 disabled:shadow-none",
+  primary: "bg-[linear-gradient(180deg,#1512a3_0%,#050072_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_6px_16px_-8px_rgba(5,0,114,0.6)] hover:brightness-110 disabled:bg-gray-300 disabled:bg-none disabled:shadow-none",
   secondary: "bg-black/[0.05] text-gray-800 hover:bg-black/[0.08] disabled:text-gray-400 disabled:bg-black/[0.03]",
   ghost: "bg-transparent text-gray-600 hover:bg-black/[0.05] hover:text-gray-900 disabled:text-gray-300",
   danger: "bg-red-50 text-red-600 hover:bg-red-100",
@@ -178,8 +178,8 @@ export function PageHeader({
     <div className="mb-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-bold text-gray-900 leading-tight tracking-[-0.02em] text-balance">{title}</h1>
-          {description && <p className="text-[13px] text-gray-500 mt-1 max-w-[60ch]">{description}</p>}
+          <h1 className="text-[24px] font-bold text-gray-900 leading-tight tracking-[-0.025em] text-balance">{title}</h1>
+          {description && <p className="text-[13.5px] text-gray-500 mt-1.5 max-w-[60ch] leading-relaxed">{description}</p>}
         </div>
         {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
       </div>
@@ -212,7 +212,7 @@ export function FilterPills<T extends string>({
             onClick={() => onChange(o.key)}
             aria-pressed={on}
             className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] border text-[12px] font-semibold transition-[background-color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 touch-manipulation ${focusRing} ${
-              on ? "bg-gray-900 text-white border-gray-900" : "bg-black/[0.05] text-gray-700 border-transparent hover:bg-black/[0.08]"
+              on ? "bg-navy text-white border-navy shadow-[0_4px_12px_-6px_rgba(5,0,114,0.6)]" : "bg-black/[0.05] text-gray-700 border-transparent hover:bg-black/[0.08]"
             }`}
           >
             {o.label}
@@ -249,7 +249,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.key)}
             aria-pressed={on}
             className={`inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12px] font-semibold transition-[background-color,color,box-shadow] duration-150 touch-manipulation ${focusRing} ${
-              on ? "bg-white text-gray-900 shadow-[0_1px_3px_rgba(16,24,40,0.12)]" : "text-gray-500 hover:text-gray-800"
+              on ? "bg-white text-navy shadow-[0_1px_3px_rgba(16,24,40,0.12)]" : "text-gray-500 hover:text-gray-800"
             }`}
           >
             {o.icon && <span className="[&>svg]:w-4 [&>svg]:h-4">{o.icon}</span>}
@@ -284,11 +284,13 @@ export function Kpi({
 }) {
   const alert = tone === "alert" && typeof value === "number" && value > 0;
   const color = alert ? "text-red-600" : tone === "good" ? "text-emerald-700" : "text-gray-900";
-  const base = `${surface} px-4 py-3.5 text-left min-w-0 transition-colors`;
+  // 막힌 것은 배경도 아주 옅게 붉다. 숫자 색 하나로는 스캔이 안 된다.
+  const wash = alert ? "bg-[linear-gradient(180deg,rgba(239,68,68,0.06),rgba(255,255,255,0))]" : tone === "good" ? "bg-[linear-gradient(180deg,rgba(16,185,129,0.06),rgba(255,255,255,0))]" : "";
+  const base = `${surface} ${wash} px-4 py-3.5 text-left min-w-0 transition-[transform,box-shadow] duration-200 ease-out`;
   const inner = (
     <>
-      <p className="text-[12px] font-medium text-gray-500 truncate">{label}</p>
-      <p className={`text-[26px] font-bold leading-none mt-1.5 tracking-[-0.02em] tabular-nums ${color}`}>
+      <p className="text-[12px] font-semibold text-gray-500 truncate tracking-[-0.01em]">{label}</p>
+      <p className={`text-[28px] font-bold leading-none mt-2 tracking-[-0.03em] tabular-nums ${color}`}>
         {value}
         {suffix && <span className="text-[13px] font-semibold text-gray-400 ml-1">{suffix}</span>}
       </p>
@@ -301,7 +303,7 @@ export function Kpi({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`${base} hover:bg-white hover:shadow-[0_6px_16px_-8px_rgba(5,0,114,0.18)] active:scale-[0.99] motion-reduce:active:scale-100 ${focusRing} ${active ? "ring-2 ring-navy/70 border-transparent" : ""}`}
+      className={`${base} hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-16px_rgba(5,0,114,0.35)] active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${focusRing} ${active ? "ring-2 ring-navy border-transparent" : ""}`}
     >
       {inner}
     </button>
@@ -329,7 +331,7 @@ export function StepTiles({
               type="button"
               onClick={() => onSelect?.(s.key)}
               aria-pressed={on}
-              className={`${surface} min-w-[9.5rem] px-3.5 py-3 text-left transition-[box-shadow] hover:shadow-[0_6px_16px_-8px_rgba(5,0,114,0.18)] ${focusRing} ${on ? "ring-2 ring-navy/70 border-transparent" : ""}`}
+              className={`${surface} min-w-[9.5rem] px-3.5 py-3 text-left transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-16px_rgba(5,0,114,0.35)] motion-reduce:hover:translate-y-0 ${focusRing} ${on ? "ring-2 ring-navy border-transparent" : ""}`}
             >
               <p className="text-[12px] font-medium text-gray-500">{s.label}</p>
               <p className={`text-[22px] font-bold leading-tight mt-0.5 tabular-nums ${alert ? "text-red-600" : s.tone === "good" ? "text-emerald-700" : "text-gray-900"}`}>
@@ -368,7 +370,7 @@ export function Card({
       {(title || actions) && (
         <header className="px-4 py-3 border-b border-black/[0.06] flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            {title && <h2 className="text-[14px] font-semibold text-gray-900">{title}</h2>}
+            {title && <h2 className="text-[15px] font-semibold text-gray-900 tracking-[-0.01em]">{title}</h2>}
             {description && <p className="text-[12px] text-gray-500 mt-0.5">{description}</p>}
           </div>
           {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
@@ -437,7 +439,7 @@ export function Td({
 }
 
 /** 행 전체가 클릭 대상이면 tr 에 이걸 준다. 키보드로도 열려야 하므로 버튼 하나를 안에 둔다. */
-export const rowClickable = "hover:bg-black/[0.025] cursor-pointer transition-colors duration-100";
+export const rowClickable = "hover:bg-navy/[0.03] cursor-pointer transition-colors duration-100";
 
 /* ═══════════ 상태 ═══════════ */
 

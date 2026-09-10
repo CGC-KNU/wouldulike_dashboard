@@ -103,7 +103,7 @@ export default function ProbeOverview() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
         <Kpi label="제휴 매장" value={loading ? "-" : totals?.affiliate ?? 0} hint={`유료 ${totals?.paid ?? 0}곳`} />
         <Kpi label="조용한 매장" value={loading ? "-" : totals?.silent ?? 0} tone="alert" hint="이번 달 쿠폰·스탬프 0" onClick={() => setScope("silent")} active={scope === "silent"} />
         <Kpi label="쿠폰 사용" value={loading ? "-" : (totals?.coupon_redeemed ?? 0).toLocaleString()} suffix="건" hint="이번 달, 읽은 매장만" />

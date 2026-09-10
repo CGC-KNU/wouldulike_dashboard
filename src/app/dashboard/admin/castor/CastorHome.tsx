@@ -33,7 +33,7 @@ export default function CastorHome({ onGo }: { onGo: (tab: string) => void }) {
         actions={<a href={slackUrl(castor)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{castor.slack.channel}</Button></a>}
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="화면" value={loading ? "-" : graph?.screens.length ?? 0} hint={graph?.source.commit ? `커밋 ${graph.source.commit}` : "아직 파싱 전"} onClick={() => onGo("castor-map")} />
         <Kpi label="이동" value={loading ? "-" : graph?.edges.length ?? 0} hint="Link · push · redirect" onClick={() => onGo("castor-map")} />
         <Kpi label="못 잡은 이동" value={loading ? "-" : graph?.unresolved ?? 0} tone="alert" hint="손으로 보정할 것" onClick={() => onGo("castor-map")} />

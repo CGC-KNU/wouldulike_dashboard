@@ -72,12 +72,12 @@ export default function Launcher({ available, userName, onSelect }: { available:
       <header className="mb-8">
         <p className="text-[13px] font-semibold text-navy tracking-wide">Satellite</p>
         <h1 className="text-[34px] md:text-[40px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.1] mt-1 text-balance">
-          {greet}, {userName}님.
+          {greet}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{userName}</span>님.
         </h1>
         <p className="text-[15px] text-gray-500 mt-2">오늘 볼 도구를 고르세요. 숫자는 지금 막힌 일입니다.</p>
       </header>
 
-      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <ul className="sat-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {tools.map((t) => {
           const st = STATUS[t.status];
           const external = t.status === "external";
@@ -88,7 +88,7 @@ export default function Launcher({ available, userName, onSelect }: { available:
               <button
                 type="button"
                 onClick={open}
-                className={`group w-full h-full text-left bg-white rounded-[22px] p-5 border border-black/[0.06] transition-[transform,box-shadow,border-color] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_32px_-12px_rgba(5,0,114,0.18)] hover:border-navy/20 active:translate-y-0 active:shadow-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${focusRing}`}
+                className={`group w-full h-full text-left bg-white/90 backdrop-blur rounded-[22px] p-5 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_16px_40px_-28px_rgba(5,0,114,0.35)] transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_24px_48px_-24px_rgba(5,0,114,0.45)] active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${focusRing}`}
               >
                 <div className="flex items-start justify-between">
                   <span className={`w-14 h-14 rounded-2xl ${TINT[t.key]} flex items-center justify-center`}>

@@ -55,7 +55,7 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="입금 미확인" value={loading ? "-" : unpaid.length} tone="alert" hint="유료 매장 중" onClick={() => onGo("astro-billing")} />
         <Kpi label="계산서 미회신" value={loading ? "-" : noReply.length} tone="alert" hint="다시 연락할 차례" onClick={() => onGo("astro-billing")} />
         <Kpi label="7일 이상 멈춘 후보" value={loading ? "-" : stale.length} tone="alert" hint="기록이 없는 곳" onClick={() => onGo("astro-leads")} />
