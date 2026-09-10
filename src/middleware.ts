@@ -27,6 +27,11 @@ export function middleware(req: NextRequest) {
 
   const token = req.cookies.get("access_token")?.value;
 
+  // Castor 파서(CI)는 쿠키가 없다. 이 한 경로만 라우트 안에서 X-Castor-Token 으로 판정한다.
+  if (!token && pathname === "/api/castor/graph" && req.method === "POST" && req.headers.has("x-castor-token")) {
+    return NextResponse.next();
+  }
+
   if (!token) {
     // 앱 → 웹 자동로그인: ?token= 파라미터 있으면 처리 페이지로
     const appToken = req.nextUrl.searchParams.get("token");

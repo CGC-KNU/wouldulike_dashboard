@@ -6,6 +6,13 @@ import ProductShell from "./ProductShell";
 import ContentTab from "./ContentTab";
 import ImageUploader from "@/components/ImageUploader";
 import { BenefitCatalogSection, BenefitGlance, StampRuleSection } from "@/components/CouponCatalog";
+import AstroOverview from "./astro/AstroOverview";
+import LeadPipeline from "./astro/LeadPipeline";
+import BillingBoard from "./astro/BillingBoard";
+import ProbeOverview from "./probe/ProbeOverview";
+import DataQuality from "./probe/DataQuality";
+import CastorMap from "./castor/CastorMap";
+import CastorExperiments, { type VariantSeed } from "./castor/CastorExperiments";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -22,7 +29,22 @@ interface Stats {
 }
 type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
-type Tab = "restaurants" | "content" | "notifications" | "satellite" | "settings";
+type Tab =
+  | "restaurants"
+  | "content"
+  | "notifications"
+  | "satellite"
+  | "settings"
+  // Astro(영업) 확장 — 2026-08-07 요구사항 3종을 담는 화면들
+  | "astro-ops"
+  | "astro-leads"
+  | "astro-billing"
+  // Probe(지표·데이터)
+  | "probe-metrics"
+  | "probe-quality"
+  // Castor(앱 구조·여정)
+  | "castor-map"
+  | "castor-experiments";
 
 type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 type SatelliteRole = "LEAD" | "MEMBER";
@@ -2411,6 +2433,20 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "notifications", label: "마케팅", icon: "✉", allow: (me) => me.permissions.can_marketing },
   { key: "satellite", label: "세틀라이트", icon: "▦", allow: (me) => me.permissions.can_satellite },
   { key: "settings", label: "관리자 설정", icon: "⚙", allow: (me) => me.is_superadmin },
+
+  // ── Astro 확장. 식당 관리와 같은 권한을 쓴다 — 영업이 보는 매장 정보의 다른 레이어일 뿐이다.
+  { key: "astro-ops", label: "영업 현황", icon: "◉", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-leads", label: "신규 컨택", icon: "◇", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
+
+  // ── Probe. 입금·계약 상태까지 다루므로 식당 관리와 같은 권한이다.
+  //    마케팅에게 지표를 열려면 입금 규칙을 뺀 별도 탭으로 — 여기서 조용히 권한을 넓히지 않는다.
+  { key: "probe-metrics", label: "매장 지표", icon: "▲", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
+
+  // ── Castor. 앱 구조를 바꾸는 제안을 만드는 곳이라 관리자만 본다.
+  { key: "castor-map", label: "화면 지도", icon: "◫", allow: (me) => me.is_admin || me.is_superadmin },
+  { key: "castor-experiments", label: "A/B 후보", icon: "⇄", allow: (me) => me.is_admin || me.is_superadmin },
 ];
 
 /**
@@ -2418,7 +2454,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 4개 제품으로 나뉘고, 대시보드 진입 시 이 중 하나를 고르게 한다. 기존 5개 탭은 그대로 두되
  * 각 탭을 어느 제품 산하로 볼지만 여기서 묶는다 (§0 큰 그림 / §5 코드베이스 연결점).
  */
-type Product = "papillon" | "astro" | "aether" | "probe";
+type Product = "papillon" | "astro" | "aether" | "probe" | "castor";
 
 const PRODUCTS: {
   key: Product;
@@ -2440,8 +2476,8 @@ const PRODUCTS: {
     key: "astro",
     name: "Astro",
     subtitle: "영업 툴",
-    description: "식당 관리 · 쿠폰 · 계약 현황",
-    tabs: ["restaurants"],
+    description: "매장 현황 · 신규 컨택 · 입금 · 쿠폰",
+    tabs: ["astro-ops", "restaurants", "astro-leads", "astro-billing"],
     ready: true,
   },
   {
@@ -2456,9 +2492,17 @@ const PRODUCTS: {
     key: "probe",
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
-    description: "채널/캠페인 지표 대시보드",
-    tabs: [],
-    ready: false,
+    description: "매장 지표 · 데이터 정합성 점검",
+    tabs: ["probe-metrics", "probe-quality"],
+    ready: true,
+  },
+  {
+    key: "castor",
+    name: "Castor",
+    subtitle: "앱 구조 · 여정",
+    description: "화면 지도 · 블록 배치 · A/B 후보",
+    tabs: ["castor-map", "castor-experiments"],
+    ready: true,
   },
 ];
 
@@ -2485,6 +2529,8 @@ export default function AdminHomePage() {
   const [me, setMe] = useState<AdminMe | null>(null);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  // Castor 화면 지도에서 블록 순서를 바꾼 뒤 "A/B 후보로" 를 누르면 여기에 담겨 A/B 탭으로 넘어간다
+  const [castorSeed, setCastorSeed] = useState<VariantSeed | null>(null);
 
   useEffect(() => {
     fetch("/api/dashboard/admin/me")
@@ -2526,8 +2572,8 @@ export default function AdminHomePage() {
       }
     }
 
-    const realProducts = PRODUCTS.filter(
-      (p) => p.key !== "probe" && p.tabs.some((t) => allowed.some((a) => a.key === t))
+    const realProducts = PRODUCTS.filter((p) =>
+      p.tabs.some((t) => allowed.some((a) => a.key === t))
     );
     if (realProducts.length === 1) {
       const p = realProducts[0];
@@ -2576,8 +2622,8 @@ export default function AdminHomePage() {
     );
   }
 
-  const availableProducts = PRODUCTS.filter(
-    (p) => p.key === "probe" || p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
+  const availableProducts = PRODUCTS.filter((p) =>
+    p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
   );
 
   /* ─── 제품 선택 화면 (대시보드 진입점) ─── */
@@ -2623,7 +2669,12 @@ export default function AdminHomePage() {
 
   /* ─── 제품 내부 화면 ─── */
   const productMeta = PRODUCTS.find((p) => p.key === selectedProduct)!;
-  const productTabs = TABS.filter((t) => productMeta.tabs.includes(t.key) && t.allow(me));
+  // 입금 체크·활동 기록에 "누가" 를 남기기 위한 이름. 시트가 못 남기던 값이다.
+  const actorName = me.display_name || me.username || "unknown";
+  // 사이드바 순서는 PRODUCTS 선언 순서를 따른다 — TABS 배열 순서가 아니라. (Astro 첫 칸 = 영업 현황)
+  const productTabs = productMeta.tabs
+    .map((k) => TABS.find((t) => t.key === k))
+    .filter((t): t is (typeof TABS)[number] => !!t && t.allow(me));
   const showProductPicker = availableProducts.length > 1;
 
   return (
@@ -2669,7 +2720,7 @@ export default function AdminHomePage() {
           Aether·Astro는 그 사이드바 셸 패턴을 공용화한 ProductShell로 감싼다(§0-30). */}
       {activeTab === "satellite" && <PapillonShell />}
 
-      {activeTab && activeTab !== "satellite" && (selectedProduct === "aether" || selectedProduct === "astro") && (
+      {activeTab && activeTab !== "satellite" && selectedProduct !== "papillon" && (
         <ProductShell
           navItems={productTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
           activeKey={activeTab}
@@ -2681,18 +2732,38 @@ export default function AdminHomePage() {
             </div>
           }
         >
-          {activeTab === "restaurants" && <RestaurantsTab />}
+          {/* Aether — 관리 및 운영 */}
           {activeTab === "content" && <ContentTab />}
           {activeTab === "notifications" && <MarketingTab />}
           {activeTab === "settings" && <SettingsTab />}
-        </ProductShell>
-      )}
 
-      {selectedProduct === "probe" && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
-          <p className="text-sm font-bold text-gray-700">Probe</p>
-          <p className="text-[11px] text-gray-400 mt-1">지표 · 데이터 분석 — 준비 중입니다</p>
-        </div>
+          {/* Astro — 영업 */}
+          {activeTab === "restaurants" && <RestaurantsTab />}
+          {activeTab === "astro-ops" && <AstroOverview actor={actorName} />}
+          {activeTab === "astro-leads" && <LeadPipeline actor={actorName} />}
+          {activeTab === "astro-billing" && <BillingBoard actor={actorName} />}
+
+          {/* Probe — 지표·데이터 */}
+          {activeTab === "probe-metrics" && <ProbeOverview />}
+          {activeTab === "probe-quality" && <DataQuality />}
+
+          {/* Castor — 앱 구조·여정. 지도에서 만든 배치를 A/B 탭으로 그대로 넘긴다. */}
+          {activeTab === "castor-map" && (
+            <CastorMap
+              onDraftVariant={(screen, blocks) => {
+                setCastorSeed({ screen: screen.id, blocksA: screen.blocks, blocksB: blocks });
+                setActiveTab("castor-experiments");
+              }}
+            />
+          )}
+          {activeTab === "castor-experiments" && (
+            <CastorExperiments
+              seed={castorSeed}
+              onSeedConsumed={() => setCastorSeed(null)}
+              actor={actorName}
+            />
+          )}
+        </ProductShell>
       )}
     </div>
   );

@@ -1,0 +1,78 @@
+# 백엔드 인계 — astro · probe · castor
+
+프론트는 이미 이 경로들을 호출하고 있습니다. 백엔드가 404/502 를 주면 초안 저장소로 떨어지고,
+200 을 주면 그대로 씁니다. **프론트를 고칠 필요가 없습니다** — 앱을 올리면 화면의
+`초안 데이터` 배지가 사라지는 것으로 전환을 확인합니다.
+
+## 붙이는 순서
+
+1. `astro/` `probe/` `castor/` 폴더를 `wouldulike_backend/` 루트에 복사
+
+2. `settings.py`
+   ```python
+   INSTALLED_APPS = [
+       ...
+       "astro",
+       "probe",
+       "castor",
+   ]
+   ```
+
+3. `wouldulike_backend/urls.py`
+   ```python
+   path("api/astro/",  include("astro.urls")),
+   path("api/probe/",  include("probe.urls")),
+   path("api/castor/", include("castor.urls")),
+   ```
+
+4. 마이그레이션
+   ```bash
+   python manage.py makemigrations astro probe castor
+   python manage.py migrate
+   ```
+
+5. CI 에서 Castor 파서를 쓰려면 환경변수 `CASTOR_INGEST_TOKEN` 을 넣고,
+   배포 워크플로에 한 줄:
+   ```yaml
+   - run: node scripts/castor-parse.mjs
+   - run: curl -X POST "$CASTOR_INGEST" -H "X-Castor-Token: $CASTOR_INGEST_TOKEN" -d @graph.json
+   ```
+
+## 프론트가 기대하는 응답 형태
+
+| 프론트 경로 | 백엔드 경로 | 응답 |
+|---|---|---|
+| `GET /api/astro/stores` | `GET /api/astro/stores/ops/` | `{ops: StoreOps[]}` — 프론트가 매장 목록과 합침 |
+| `GET/PATCH /api/astro/stores/[id]` | `/api/astro/stores/<id>/` | `{ops: StoreOps}` |
+| `GET/POST /api/astro/leads` | `/api/astro/leads/` | `{leads: Lead[]}` / `{lead: Lead}` |
+| `PATCH/DELETE /api/astro/leads/[id]` | `/api/astro/leads/<id>/` | `{lead: Lead}` / 204 |
+| `GET/POST /api/astro/activities` | `/api/astro/activities/` | `{activities: Activity[]}` |
+| `GET /api/probe/overview` | `/api/probe/overview/` | `{stores: StoreMetric[], totals: {...}}` |
+| `GET /api/castor/graph` | `/api/castor/graph/` | `{graph, overrides, parsed}` |
+| `POST /api/castor/graph` | `/api/castor/graph/ingest/` | `{graph_id, screens, edges}` |
+| `GET/POST/PATCH /api/castor/experiments` | `/api/castor/experiments/` | `{experiments}` / `{experiment}` |
+
+타입 정의는 `src/lib/draft/types.ts` 가 원본입니다. 모델 필드명을 그대로 맞춰 뒀습니다.
+
+## 남은 일
+
+- `probe/views.py` 의 `_summarize()` — 실제 쿠폰/스탬프 모델로 채우기 (민찬)
+  지금 프론트가 매장마다 `/api/dashboard/stats/` 를 34번 호출합니다. 한 번의 annotate 로 끝날 일입니다.
+- 정합성 점검(`/api/probe/quality`)은 아직 프론트에서 계산합니다. 크론으로 돌려 슬랙에
+  '새로 생긴 높음'만 보내려면 백엔드로 옮기고 `QualitySnapshot` 에 이력을 남겨야 합니다.
+- `astro.Lead.converted_restaurant_id` 는 지금 그냥 IntegerField 입니다.
+  실제 매장 FK 로 바꿀지는 매장 생성 흐름을 보고 정하면 됩니다.
+
+## 지울 것
+
+백엔드가 다 붙으면 프론트에서 아래를 통째로 지웁니다.
+
+```
+src/lib/draft/store.ts
+src/lib/draft/seed.ts
+src/lib/draft/previewStores.ts
+src/app/auth/preview/route.ts
+```
+
+`toolProxy.ts` 는 draftFn 인자만 빼고 남겨도 됩니다 — 상태 코드 보존 프록시라 쓸모가 있습니다.
+`types.ts` 는 계속 씁니다.
