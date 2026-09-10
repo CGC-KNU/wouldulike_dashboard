@@ -21,6 +21,7 @@ import {
   IconFileInvoice,
   IconBrandInstagram,
   IconGift,
+  IconFileDescription,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -62,6 +63,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-quality": IconAlertTriangle,
   "probe-insights": IconBrandInstagram,
   "probe-mileage": IconGift,
+  "probe-reports": IconFileDescription,
   "castor-map": IconSitemap,
   "castor-experiments": IconArrowsExchange,
   content: IconPhoto,

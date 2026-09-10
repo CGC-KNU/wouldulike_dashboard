@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireTool } from "@/lib/draft/guard";
+import { actorName, requireTool } from "@/lib/draft/guard";
 import { readDraft, writeDraft } from "@/lib/draft/store";
 
 /**
@@ -33,20 +33,21 @@ const MILEAGE_SLACK = "ops-mileage";
 
 const KEY = "probe_mileage";
 
-/** 이번 달 수·금 회차를 만든다. 9월은 1주차(9/1~9/5) 없음. 기록된 결과는 #ops-mileage 게시 기준. */
-function seedRounds(): MileageRound[] {
+/** 어느 달이든 수·금 회차를 만든다. 2026-09 은 1주차 없음 + 봇 게시 기준 결과가 박혀 있다. */
+function roundsFor(y: number, m0: number): MileageRound[] {
   const known: Record<string, Partial<MileageRound>> = {
     "2026-09-02": { result: "held", pool_count: 0, note: "응모풀 비어 보류 (1주차 미운용 정책과 별개로 봇 알림)", seats: { fixed: 0, random: 0 } },
     "2026-09-04": { result: "held", pool_count: 0, note: "응모풀 비어 보류", seats: { fixed: 1, random: 0 } },
     "2026-09-09": { result: "held", pool_count: 0, note: "응모풀 비어 보류 — 민찬 '어디서 캡쳐하면 돼?' 미해결", seats: { fixed: 1, random: 0 } },
   };
   const out: MileageRound[] = [];
-  const y = 2026, m = 8; // 2026-09
-  for (let d = 1; d <= 30; d++) {
-    const dt = new Date(y, m, d);
+  const sep = y === 2026 && m0 === 8;
+  const last = new Date(y, m0 + 1, 0).getDate();
+  for (let d = 1; d <= last; d++) {
+    const dt = new Date(y, m0, d);
     const wd = dt.getDay();
     if (wd !== 3 && wd !== 5) continue;
-    const id = `${y}-09-${String(d).padStart(2, "0")}`;
+    const id = `${y}-${String(m0 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const k = known[id] ?? {};
     out.push({
       id, date: id, weekday: wd === 3 ? "수" : "금",
@@ -54,18 +55,30 @@ function seedRounds(): MileageRound[] {
       prizes: "5,000원 1 · 10,000원 1",
       pool_count: k.pool_count ?? null,
       pool_checked_by: null, pool_checked_at: null,
-      result: k.result ?? (d <= 5 ? "skipped" : "scheduled"),
-      note: k.note ?? (d <= 5 ? "9월 1주차는 추첨 없음 (0902 확정)" : d >= 21 && d <= 27 ? "추석 주간 적립분 몰아 방출 · 상품 2배" : null),
+      result: k.result ?? (sep && d <= 5 ? "skipped" : "scheduled"),
+      note: k.note ?? (sep && d <= 5 ? "9월 1주차는 추첨 없음 (0902 확정)" : sep && d >= 21 && d <= 27 ? "추석 주간 적립분 몰아 방출 · 상품 2배" : null),
       updated_by: null, updated_at: null,
     });
   }
   return out;
 }
 
+function seedRounds(): MileageRound[] { return roundsFor(2026, 8); }
+
+/** 저장된 회차에 이번 달이 없으면 만들어 붙인다 — 10월이 돼도 화면이 비지 않는다. */
+function ensureCurrentMonth(rounds: MileageRound[]): MileageRound[] {
+  const now = new Date();
+  const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-`;
+  if (rounds.some((r) => r.id.startsWith(prefix))) return rounds;
+  const next = [...rounds, ...roundsFor(now.getFullYear(), now.getMonth())].sort((a, b) => a.id.localeCompare(b.id));
+  writeDraft(KEY, next);
+  return next;
+}
+
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const rounds = readDraft<MileageRound[]>(KEY, seedRounds);
+  const rounds = ensureCurrentMonth(readDraft<MileageRound[]>(KEY, seedRounds));
   return NextResponse.json({
     rounds,
     rules: {
@@ -93,17 +106,18 @@ export async function PATCH(req: NextRequest) {
   if (!body.id) return NextResponse.json({ detail: "id 가 필요합니다." }, { status: 400 });
   if (body.result && !["scheduled", "drawn", "held", "skipped"].includes(body.result)) return NextResponse.json({ detail: "result 값이 올바르지 않습니다." }, { status: 400 });
   if (body.pool_count !== undefined && body.pool_count !== null && (!Number.isInteger(body.pool_count) || body.pool_count < 0)) return NextResponse.json({ detail: "pool_count 는 0 이상 정수여야 합니다." }, { status: 400 });
-  const rounds = readDraft<MileageRound[]>(KEY, seedRounds);
+  const rounds = ensureCurrentMonth(readDraft<MileageRound[]>(KEY, seedRounds));
+  const who = (await actorName()) ?? body.by ?? null;
   const idx = rounds.findIndex((r) => r.id === body.id);
   if (idx === -1) return NextResponse.json({ detail: "회차를 찾을 수 없습니다." }, { status: 404 });
   const now = new Date().toISOString();
   const cur = rounds[idx];
   const next: MileageRound = {
     ...cur,
-    ...(body.pool_count !== undefined ? { pool_count: body.pool_count, pool_checked_by: body.by ?? null, pool_checked_at: now } : {}),
+    ...(body.pool_count !== undefined ? { pool_count: body.pool_count, pool_checked_by: who, pool_checked_at: now } : {}),
     ...(body.result ? { result: body.result } : {}),
     ...(body.note !== undefined ? { note: body.note } : {}),
-    updated_by: body.by ?? null,
+    updated_by: who,
     updated_at: now,
   };
   rounds[idx] = next;

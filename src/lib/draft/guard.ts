@@ -16,7 +16,20 @@ import { isPreview } from "./previewStores";
 interface Me {
   is_admin?: boolean;
   is_superadmin?: boolean;
+  display_name?: string;
+  username?: string;
   permissions?: { can_restaurants?: boolean; can_satellite?: boolean };
+}
+
+/** `/auth/preview` 가 만든 더미 토큰인가 — payload 에 `preview:true` 가 있고 서명 자리가 "preview" 다. 실제 사용자 JWT 는 이 조건을 만족하지 않는다. */
+function isPreviewToken(token: string | undefined): boolean {
+  if (!token || !token.endsWith(".preview")) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")) as { preview?: boolean };
+    return payload.preview === true;
+  } catch {
+    return false;
+  }
 }
 
 type Need = "restaurants" | "admin";
@@ -46,10 +59,9 @@ async function whoami(token: string): Promise<Me | null> {
 
 /** 통과하면 null, 막히면 그대로 돌려줄 응답. */
 export async function requireTool(need: Need): Promise<NextResponse | null> {
-  // 미리보기 모드는 백엔드가 없다는 전제라 통과시킨다 (isPreview 는 production 에서 항상 false).
-  if (isPreview()) return null;
-
   const token = (await cookies()).get("access_token")?.value;
+  // 미리보기 모드 + 미리보기 토큰일 때만 통과. 배포 플랫폼 이름은 경계가 아니다 — 실제 사용자 토큰은 미리보기 모드에서도 /me 를 거친다 (0911 리뷰 ⑤).
+  if (isPreview() && isPreviewToken(token)) return null;
   if (!token) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
 
   const me = await whoami(token);
@@ -67,4 +79,25 @@ export async function requireTool(need: Need): Promise<NextResponse | null> {
 export function hasIngestToken(req: Request): boolean {
   const expected = process.env.CASTOR_INGEST_TOKEN;
   return Boolean(expected) && req.headers.get("x-castor-token") === expected;
+}
+
+/**
+ * 서버가 찍는 "누가". 요청 본문의 `by` 를 믿지 않는다 (0911 리뷰 ①) — 감사 기록은 위조 가능하면 없는 것과 같다.
+ * 미리보기 토큰이면 "미리보기", 백엔드를 못 읽으면 null (호출부가 본문 값을 마지막 폴백으로 쓸 수 있다).
+ */
+export async function actorName(): Promise<string | null> {
+  const token = (await cookies()).get("access_token")?.value;
+  if (!token) return null;
+  if (isPreview() && isPreviewToken(token)) return "미리보기";
+  const me = await whoami(token);
+  return me ? me.display_name || me.username || null : null;
+}
+
+/** 관리자(승인권자)인가 — 계산서 승인·발행 주체 설정처럼 돈을 다루는 액션은 UI 가 아니라 여기서 막는다 (0911 리뷰 ②). */
+export async function isAdminActor(): Promise<boolean> {
+  const token = (await cookies()).get("access_token")?.value;
+  if (!token) return false;
+  if (isPreview() && isPreviewToken(token)) return true;
+  const me = await whoami(token);
+  return Boolean(me?.is_admin || me?.is_superadmin);
 }

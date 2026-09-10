@@ -386,3 +386,68 @@ export interface CastorExperiment {
   created_by: string;
   created_at: string;
 }
+
+/* ═══════════ Probe · 매장 리포트 (점주에게 보내는 공개 링크) ═══════════ */
+
+/** LINKED = 링크는 있는데 아직 안 보냄. SENT 는 사람이 "보냈음"을 체크한 것 — 발급 ≠ 발송. */
+export type ReportStatus = "DRAFT" | "APPROVED" | "LINKED" | "SENT" | "REVOKED";
+
+/** 지표 한 칸 — 값 + 코호트(우리 채널 평소 게시물). 표본이 작으면 delta 는 null 이고 화면은 막대를 안 그린다. */
+export interface ReportMetric {
+  key: string;
+  value: number;
+  median: number | null;
+  p10: number | null;
+  p90: number | null;
+  n: number;
+  window_days: number | null;
+  hidden: boolean;
+  delta_pct: number | null;
+}
+
+export interface ReportProposal {
+  rule: string; // P1..P9
+  title: string;
+  generated_text: string; // 기계가 쓴 원문 — 템플릿 개선용으로 보관
+  text: string; // 사람이 고친 본문
+  approved: boolean;
+  edited_by: string | null;
+  edited_at: string | null;
+}
+
+/**
+ * 스냅샷 — 만든 순간의 값만, 화이트리스트로. StoreOps 를 통째로 넣지 않는다(연락처·PIN·사업자번호가 공개 URL 에 실린다).
+ */
+export interface ReportSnapshot {
+  store: { name: string; campus: Campus | null };
+  post: { plan_id: number; topic: string; posted_at: string | null; permalink: string | null; format: string | null; caption: string | null; cover_url: string | null; owner_name: string | null; co_stores: number };
+  as_of: string; // ISO — "○시 기준"
+  basis: "D7" | "cumulative" | null;
+  age_days: number | null;
+  collecting: boolean;
+  metrics: ReportMetric[];
+  cohort_note: string | null; // "최근 90일 게시물 30건 기준"
+  app: { month: string; coupon_redeemed: number; stamp_earned: number; revisit: number; loyal_total: number } | null;
+}
+
+export interface StoreReport {
+  id: string;
+  token: string | null; // 40자 hex — 링크 발급 때 생긴다. 재발급하면 바뀐다.
+  restaurant_id: number;
+  plan_id: number;
+  kind: "post"; // 월간 리포트는 2차
+  status: ReportStatus;
+  title: string;
+  summary: string; // 한 줄 요약 (편집 가능)
+  interpretation: string[]; // 비교 해석 문장 (편집 가능)
+  snapshot: ReportSnapshot;
+  proposals: ReportProposal[];
+  created_by: string;
+  created_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  linked_at: string | null;
+  sent_at: string | null;
+  revoked_at: string | null;
+  views: { count: number; first_at: string | null; last_at: string | null };
+}

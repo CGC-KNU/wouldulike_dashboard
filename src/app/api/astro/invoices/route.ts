@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireTool } from "@/lib/draft/guard";
+import { actorName, requireTool } from "@/lib/draft/guard";
 import { readDraft, writeDraft } from "@/lib/draft/store";
 import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
   const existing = readDraft<TaxInvoice[]>(KEY, seedInvoices);
   const have = new Set(existing.filter((i) => i.period === period && i.status !== "CANCELED" && i.status !== "REJECTED").map((i) => i.restaurant_id));
 
+  const actor = await actorName();
   const now = new Date().toISOString();
   const [y, m] = period.split("-");
   const label = `${y}년 ${Number(m)}월`;
@@ -57,7 +58,8 @@ export async function POST(req: NextRequest) {
     const supply = Math.round(fee / 1.1);
     const tax = fee - supply;
     created.push({
-      id: `inv-${period}-${s.restaurant_id}`,
+      // 반려·취소 뒤 재청구는 같은 id 를 두 번 만들면 안 된다 — 뒤에 -2, -3 을 붙인다.
+      id: (() => { const base = `inv-${period}-${s.restaurant_id}`; let id = base; for (let k = 2; existing.some((i) => i.id === id); k++) id = `${base}-${k}`; return id; })(),
       restaurant_id: s.restaurant_id,
       name: s.name,
       title: issuer.item_template.replace("{period}", label),
@@ -68,7 +70,7 @@ export async function POST(req: NextRequest) {
       write_date: now.slice(0, 10),
       counterparty: { biz_no: o?.biz_no ?? null, ceo: o?.owner_name ?? null, email: null, phone: o?.owner_phone ?? null },
       status: "PENDING",
-      requested_by: requested_by ?? "unknown",
+      requested_by: actor ?? requested_by ?? "unknown",
       requested_at: now,
       approved_by: null, approved_at: null, issued_at: null,
       nts_no: null, bolta_key: null, url: null, fail_code: null, attempts: 0, reject_reason: null,
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
     writeDraft(KEY, [...created, ...existing]);
     await sendSlackNotification(
       "SLACK_FEEDBACK_WEBHOOK_URL",
-      `:page_facing_up: *세금계산서 품의 ${created.length}건* — ${label} 월납 · ${requested_by ?? ""}\n${created.map((c) => `· ${c.name} ${c.total.toLocaleString()}원`).join("\n")}`
+      `:page_facing_up: *세금계산서 품의 ${created.length}건* — ${label} 월납 · ${actor ?? requested_by ?? ""}\n${created.map((c) => `· ${c.name} ${c.total.toLocaleString()}원`).join("\n")}`
     );
   }
   return NextResponse.json({ ok: true, created: created.length, skipped, draft: true });

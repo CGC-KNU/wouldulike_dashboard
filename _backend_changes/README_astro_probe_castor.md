@@ -92,3 +92,5 @@ src/app/auth/preview/route.ts
 | `GET /api/probe/insights` | 발행된 기획의 topic 에 제휴 매장 이름 → `/plans/{id}/performance` | 같은 FK + `PostPerformance` 에 `non_follower_ratio`(비팔로워 노출 비중), 성장세(전 7일 대비) 추가 (아윤 지표셋) |
 | `GET/PATCH /api/probe/mileage` | 초안 저장소 `probe_mileage` (회차·응모풀·결과) | `MileageRound` 모델 + **앱 DB 응모풀 → 회차 스냅샷 자동 적재**(재민). 이게 붙어야 9/2·9/4·9/9 식 보류가 끝난다 |
 | `StoreOps.campus` | 초안 필드 (경북대·영남대·계명대) | `astro/models.py` StoreOps 에 `campus = CharField(choices=…)` — 이미 반영 |
+
+| `GET/POST /api/probe/reports`, `/[id]`, 공개 `/r/<token>` | 초안 저장소 `probe_reports` — **재배포 시 사라지므로 링크 발급을 서버가 막는다**(`DRAFT_DATA_DIR` 또는 `REPORT_STORE=persistent` 필요) | `StoreReport` 모델(id, token unique 40hex, restaurant FK, plan FK, status, title/summary/interpretation, snapshot JSON(화이트리스트), proposals JSON, created/approved/linked/sent/revoked, views) + `GET /api/probe/reports/by-token/<token>`(인증 없음, LINKED/SENT 만) + `POST …/view`. 커버는 PlanAsset preview_url 이 공개 URL 인지 확인, 아니면 랜덤 키로 S3 사본 |

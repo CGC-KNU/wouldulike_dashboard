@@ -68,8 +68,7 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
     } finally { setBusy(false); }
   }
   async function markPaid(inv: TaxInvoice) {
-    // 발행 전이면 발행 완료로 먼저 표시한다 — 월납은 홈택스에서 먼저 발행하고 입금받는 흐름이 흔하다
-    if (inv.status !== "ISSUED") { const r = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-issued", by: actor }) }); if (!r.ok) { setMsg((await r.json()).detail); return; } }
+    // 입금은 입금대로 찍는다. 발행은 세금계산서 탭에서 승인번호와 함께 — 입금 버튼이 발행을 '만들지' 않는다.
     const res = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
     if (!res.ok) setMsg((await res.json()).detail); load();
   }
@@ -119,7 +118,7 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
                       <div className="inline-flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                         {b === "none" && <Button size="sm" onClick={generate} disabled={busy} icon={<IconFileInvoice />}>청구 생성</Button>}
                         {inv && b !== "paid" && <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => markPaid(inv)}>입금 확인</Button>}
-                        {b === "paid" && <span className="text-[12px] text-emerald-700 font-semibold">완료</span>}
+                        {b === "paid" && <span className="text-[12px] text-emerald-700 font-semibold">{inv?.status === "ISSUED" ? "완료" : "입금 · 발행 필요"}</span>}
                       </div>
                     </Td>
                   </tr>

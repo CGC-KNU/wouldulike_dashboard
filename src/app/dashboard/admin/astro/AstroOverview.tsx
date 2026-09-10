@@ -199,9 +199,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
 
       <StoreDetailPanel row={open} invoice={open ? invById.get(open.restaurant_id) ?? null : null} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onGo={onGo}
         onMarkPaid={async (inv) => {
-          const call = (action: string) => fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, by: actor }) });
-          if (inv.status !== "ISSUED") await call("mark-issued");
-          await call("mark-paid");
+          await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
           load();
         }} />
       {adding && <NewStorePanel actor={actor} campus={campus === "all" ? "경북대" : campus} onClose={() => setAdding(false)} onCreated={load} />}

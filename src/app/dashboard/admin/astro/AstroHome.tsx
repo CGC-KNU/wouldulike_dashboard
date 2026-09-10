@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { IconBrandSlack, IconExternalLink } from "@tabler/icons-react";
 import { LEAD_STAGES, isPaidTier, type Activity, type Lead, type StoreRow } from "@/lib/draft/types";
 import { SALES_SHEET, TOOLS, slackUrl } from "@/lib/satellite";
-import { Button, Card, Chip, Empty, Kpi, PageHeader, Skeleton, agoLabel, daysSince, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, Empty, Kpi, PageHeader, Skeleton, agoLabel, daysSince, type ChipTone, periodLocal } from "../_shared/ui";
 
 /**
  * Astro · 홈. Pitchr 대시보드를 따랐다 — 상단 "지금 막힌 것" KPI, 파이프라인 요약(단계별 막대), 최근 기록.
@@ -19,17 +19,21 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
   const [stores, setStores] = useState<StoreRow[] | null>(null);
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [acts, setActs] = useState<Activity[] | null>(null);
+  const [invoices, setInvoices] = useState<{ restaurant_id: number; paid_at: string | null; status: string }[] | null>(null);
 
   useEffect(() => {
     const j = (u: string) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     j("/api/astro/stores").then((d) => setStores(d?.stores ?? []));
     j("/api/astro/leads").then((d) => setLeads(d?.leads ?? []));
     j("/api/astro/activities").then((d) => setActs(d?.activities ?? []));
+    j(`/api/astro/invoices?period=${periodLocal()}`).then((d) => setInvoices(d?.invoices ?? []));
   }, []);
 
   const loading = !stores || !leads;
   const paid = useMemo(() => (stores ?? []).filter((s) => s.is_affiliate && isPaidTier(s.tier) && !s.ops?.is_test), [stores]);
-  const unpaid = paid.filter((s) => s.ops?.billing !== "PAID" && s.ops?.billing !== "EXEMPT");
+  // 매장 현황·입금 현황과 같은 기준: 월납은 이번 달 계산서 입금, 일시납만 매장 상태값
+  const paidIds = new Set((invoices ?? []).filter((i) => i.paid_at && !["CANCELED", "REJECTED"].includes(i.status)).map((i) => i.restaurant_id));
+  const unpaid = paid.filter((s) => s.ops?.billing !== "EXEMPT" && (s.ops?.pay_cycle === "LUMP" ? s.ops?.billing !== "PAID" : !paidIds.has(s.restaurant_id)));
   const noReply = paid.filter((s) => s.ops?.invoice === "NO_REPLY");
   const active = (leads ?? []).filter((l) => !["재컨택", "보류", "거절"].includes(l.stage));
   const stale = active.filter((l) => l.stage !== "계약 완료" && (daysSince(l.last_touch_at) ?? 0) >= 7);

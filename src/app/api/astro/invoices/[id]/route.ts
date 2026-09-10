@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireTool } from "@/lib/draft/guard";
+import { actorName, isAdminActor, requireTool } from "@/lib/draft/guard";
 import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { emptyStoreOps, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
@@ -36,7 +36,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const b = (await req.json().catch(() => ({}))) as { action?: Action; by?: string; reason?: string; nts_no?: string; url?: string; memo?: string; supply?: number; tax?: number; title?: string };
   const inv = readDraft<TaxInvoice[]>(KEY, seedInvoices).find((i) => i.id === id);
   if (!inv) return NextResponse.json({ detail: "찾을 수 없습니다." }, { status: 404 });
-  const by = b.by ?? "unknown";
+  // "누가"는 서버가 찍는다. 본문 by 는 백엔드를 못 읽을 때의 마지막 폴백.
+  const by = (await actorName()) ?? b.by ?? "unknown";
+  // 승인·반려·발행은 승인권자(관리자)만 — 버튼을 숨기는 건 권한이 아니다.
+  if (["approve", "reject", "issue", "mark-issued"].includes(b.action ?? "") && !(await isAdminActor())) return NextResponse.json({ detail: "승인권자(관리자)만 할 수 있습니다." }, { status: 403 });
   const now = new Date().toISOString();
   const bad = (msg: string) => NextResponse.json({ detail: msg }, { status: 409 });
   let patch: Partial<TaxInvoice> = {};
@@ -76,9 +79,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       patch = { status: "CANCELED" };
       break;
     case "mark-paid":
-      if (inv.status !== "ISSUED") return bad("발행 완료 건만 입금 처리할 수 있습니다.");
+      // 월납은 발행 전에 돈이 먼저 오기도 한다. 입금은 입금대로 찍고, 계산서 상태는 건드리지 않는다 (발행 완료로 '만들지' 않는다 — 0911 리뷰).
+      if (inv.status === "CANCELED" || inv.status === "REJECTED") return bad("취소·반려된 건에는 입금을 찍을 수 없습니다.");
+      if (inv.paid_at) return bad("이미 입금 확인된 건입니다.");
       patch = { paid_at: now };
-      syncOps(inv, { billing: "PAID", billing_checked_at: now.slice(0, 10), billing_checked_by: by, invoice: "ISSUED" }, by);
+      syncOps(inv, { billing: "PAID", billing_checked_at: now.slice(0, 10), billing_checked_by: by }, by);
       break;
     case "edit":
       if (inv.status !== "PENDING" && inv.status !== "REJECTED" && inv.status !== "FAILED") return bad("품의·반려·실패 상태에서만 고칠 수 있습니다.");

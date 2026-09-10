@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedStoreOps } from "@/lib/draft/seed";
 import { STORE_OPS_EDITABLE, emptyStoreOps, type StoreOps } from "@/lib/draft/types";
-import { requireTool } from "@/lib/draft/guard";
+import { actorName, requireTool } from "@/lib/draft/guard";
 
 /** 매장 운영 필드 조회·수정. 수정자와 시각을 반드시 같이 남긴다 (시트가 못 남기던 것). */
 
@@ -33,7 +33,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   // 허용 필드만 받는다 — id·billing_checked_by 같은 걸 클라이언트가 덮어쓰면
   // "누가 확인했는지를 못 박는다"는 이 화면의 존재 이유가 우회된다.
-  const stamped: Partial<StoreOps> = { updated_at: new Date().toISOString(), updated_by: body.updated_by ?? "unknown" };
+  const who = (await actorName()) ?? body.updated_by ?? "unknown";
+  const stamped: Partial<StoreOps> = { updated_at: new Date().toISOString(), updated_by: who };
   for (const k of STORE_OPS_EDITABLE) {
     if (k in body) (stamped as Record<string, unknown>)[k] = body[k];
   }
@@ -41,7 +42,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // 입금을 "확인"으로 바꾸는 순간, 누가 언제 확인했는지를 같이 못 박는다.
   if (body.billing === "PAID" && !body.billing_checked_at) {
     stamped.billing_checked_at = new Date().toISOString().slice(0, 10);
-    stamped.billing_checked_by = body.updated_by ?? "unknown";
+    stamped.billing_checked_by = who;
   }
 
   const updated = patchDraftItem<StoreOps>(KEY, seedStoreOps, id, stamped);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconBrandInstagram, IconCopy, IconExternalLink, IconRefresh } from "@tabler/icons-react";
+import { IconBrandInstagram, IconCopy, IconExternalLink, IconFileDescription, IconRefresh } from "@tabler/icons-react";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import { Button, Card, Chip, DraftBadge, Empty, FilterPills, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Table, Td, Th, rowClickable, type ChipTone } from "../_shared/ui";
 
@@ -17,8 +17,9 @@ import { Button, Card, Chip, DraftBadge, Empty, FilterPills, Kpi, Notice, PageHe
 
 interface Insight {
   restaurant_id: number; store: string; plan_id: number; topic: string; posted_at: string | null; permalink: string | null;
-  age_days: number | null; checkpoint: "D2" | "D7" | "D14" | "done" | "waiting"; available: boolean; reason?: string;
-  metrics: { key: string; value: number; median: number | null; delta_pct: number | null }[]; report: string | null;
+  age_days: number | null; co_stores: number; checkpoint: "D2" | "D7" | "D14" | "done" | "waiting"; available: boolean; reason?: string;
+  metrics: { key: string; value: number; median: number | null; n: number; hidden: boolean; delta_pct: number | null }[]; cohort_note: string | null; report: string | null;
+  sent_report: { id: string; status: string; sent_at: string | null; views: number } | null;
 }
 interface Payload { insights: Insight[]; papillon_reachable: boolean; checked: { stores: number; plans: number }; draft?: boolean; draft_note?: string }
 
@@ -60,18 +61,18 @@ export default function StoreInsights({ onGo }: { onGo?: (tab: string) => void }
       ) : (
         <Card flush>
           <Table minWidth="52rem">
-            <thead><tr><Th>매장 · 게시물</Th><Th width="6rem">게시</Th><Th width="7rem">구간</Th><Th width="8rem" align="right">저장</Th><Th width="8rem" align="right">도달</Th><Th width="8rem" align="right">조회</Th><Th width="5rem" align="center">보고글</Th></tr></thead>
+            <thead><tr><Th>매장 · 게시물</Th><Th width="6rem">게시</Th><Th width="7rem">구간</Th><Th width="8rem" align="right">저장</Th><Th width="8rem" align="right">도달</Th><Th width="8rem" align="right">조회</Th><Th width="6rem" align="center">리포트</Th></tr></thead>
             <tbody>
               {list.map((i) => {
                 const m = (k: string) => i.metrics.find((x) => x.key === k);
-                const cell = (k: string) => { const x = m(k); return x ? <><span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span>{x.delta_pct !== null && <span className={`block text-[11px] ${x.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>{x.delta_pct >= 0 ? "+" : ""}{x.delta_pct}%</span>}</> : <span className="text-gray-300">-</span>; };
+                const cell = (k: string) => { const x = m(k); return x ? <><span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span>{x.delta_pct !== null ? <span className={`block text-[11px] ${x.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>중앙값 대비 {x.delta_pct >= 0 ? "+" : ""}{x.delta_pct}%</span> : <span className="block text-[11px] text-gray-400">{x.hidden || x.n < 5 ? `표본 ${x.n}` : ""}</span>}</> : <span className="text-gray-300">-</span>; };
                 return (
                   <tr key={`${i.plan_id}-${i.restaurant_id}`} className={rowClickable} onClick={() => setOpenKey(`${i.plan_id}-${i.restaurant_id}`)}>
-                    <Td><span className="font-semibold text-gray-900">{i.store}</span><span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{i.topic}</span></Td>
+                    <Td><span className="font-semibold text-gray-900">{i.store}</span><span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{i.topic}{i.co_stores > 1 ? ` · ${i.co_stores}곳 함께` : ""}</span></Td>
                     <Td className="text-[12px] text-gray-600">{i.posted_at ? i.posted_at.slice(5, 10).replace("-", "/") : "-"}{i.age_days !== null && <span className="block text-[11px] text-gray-400">D+{i.age_days}</span>}</Td>
                     <Td><Chip tone={CP_TONE[i.checkpoint]} dot={i.checkpoint !== "waiting" && i.checkpoint !== "done"}>{CP_LABEL[i.checkpoint]}</Chip></Td>
                     <Td align="right">{cell("saved")}</Td><Td align="right">{cell("reach")}</Td><Td align="right">{cell("views")}</Td>
-                    <Td align="center">{i.report ? <span className="text-navy font-semibold text-[12px]">준비됨</span> : <span className="text-gray-300">-</span>}</Td>
+                    <Td align="center">{i.sent_report ? <Chip tone={i.sent_report.status === "SENT" ? "green" : i.sent_report.status === "LINKED" ? "amber" : "blue"}>{i.sent_report.status === "SENT" ? `보냄 · 열람 ${i.sent_report.views}` : i.sent_report.status === "LINKED" ? "발급 · 미전송" : "검토 중"}</Chip> : i.report ? <span className="text-navy font-semibold text-[12px]">만들 수 있음</span> : <span className="text-gray-300">-</span>}</Td>
                   </tr>
                 );
               })}
@@ -81,21 +82,33 @@ export default function StoreInsights({ onGo }: { onGo?: (tab: string) => void }
       )}
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-        평균 대비 %는 Papillon 성과 API 의 코호트 중앙값 기준입니다. 보고글은 텍스트만 만들고, 카드 이미지(첨부 2장)는 Papillon 에서 내려받아 붙입니다.
+        비교는 우리 채널 평소 게시물의 <b>중앙값</b> 기준이고 표본이 5건 미만이면 비교하지 않습니다. 카톡 텍스트 대신 <b>리포트 링크</b>를 만들면 게시물 카드·비교 막대·다음 제안이 한 페이지로 나갑니다.
         {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-navy font-medium hover:underline">매장 현황에서 담당 확인 →</button>}
       </p>
 
-      {open && <InsightPanel i={open} onClose={() => setOpenKey(null)} />}
+      {open && <InsightPanel i={open} onClose={() => setOpenKey(null)} onGo={onGo} onMade={load} />}
     </>
   );
 }
 
-function InsightPanel({ i, onClose }: { i: Insight; onClose: () => void }) {
+function InsightPanel({ i, onClose, onGo, onMade }: { i: Insight; onClose: () => void; onGo?: (tab: string) => void; onMade: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [making, setMaking] = useState(false);
+  const [made, setMade] = useState<string | null>(null);
+  async function makeReport(force = false) {
+    if (making) return; setMaking(true); setMade(null);
+    try {
+      const res = await fetch("/api/probe/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: i.restaurant_id, plan_id: i.plan_id, force }) });
+      const d = await res.json();
+      if (res.status === 409 && !force) { setMade(`${d.detail} 갱신본을 만들려면 다시 누르세요.`); return; }
+      if (!res.ok) { setMade(d.detail ?? "만들지 못했습니다."); return; }
+      setMade("리포트 초안을 만들었습니다. 매장 리포트 탭에서 검토·승인하세요."); onMade();
+    } finally { setMaking(false); }
+  }
   async function copy() { if (!i.report) return; try { await navigator.clipboard.writeText(i.report); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
   return (
     <SlideOver open onClose={onClose} title={i.store} subtitle={i.topic} badge={<Chip tone={CP_TONE[i.checkpoint]}>{CP_LABEL[i.checkpoint]}</Chip>} width="lg"
-      footer={<><Button variant="primary" icon={<IconCopy />} onClick={copy} disabled={!i.report}>{copied ? "복사했습니다" : "보고글 복사"}</Button>{i.permalink && <a href={i.permalink} target="_blank" rel="noreferrer"><Button icon={<IconBrandInstagram />}>게시물 열기</Button></a>}<span className="ml-auto text-[12px] text-gray-400">담당 태그 · 매장 채팅방 전달은 사람이 합니다</span></>}>
+      footer={<>{i.sent_report ? <Button variant="primary" icon={<IconFileDescription />} onClick={() => onGo?.("probe-reports")}>매장 리포트에서 보기</Button> : <Button variant="primary" icon={<IconFileDescription />} onClick={() => makeReport(made?.includes("갱신본") ?? false)} disabled={making}>{making ? "만드는 중…" : "리포트 만들기"}</Button>}<Button icon={<IconCopy />} onClick={copy} disabled={!i.report}>{copied ? "복사했습니다" : "카톡용 텍스트"}</Button>{i.permalink && <a href={i.permalink} target="_blank" rel="noreferrer"><Button icon={<IconBrandInstagram />}>게시물</Button></a>}<span className="ml-auto text-[12px] text-gray-400">{made ?? "카톡 전송은 사람이 합니다"}</span></>}>
       <PanelSection title="지표">
         {!i.available ? <p className="text-[13px] text-gray-500">{i.reason ?? "아직 성과가 모이지 않았습니다."}</p> : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -103,15 +116,17 @@ function InsightPanel({ i, onClose }: { i: Insight; onClose: () => void }) {
               <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2">
                 <p className="text-[11px] text-gray-500">{M_LABEL[m.key] ?? m.key}</p>
                 <p className="text-[18px] font-bold tabular-nums text-gray-900 leading-tight">{m.value.toLocaleString()}</p>
-                <p className={`text-[11px] ${m.delta_pct === null ? "text-gray-400" : m.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>{m.delta_pct === null ? "비교 기준 없음" : `평균 대비 ${m.delta_pct >= 0 ? "+" : ""}${m.delta_pct}%`}</p>
+                <p className={`text-[11px] ${m.delta_pct === null ? "text-gray-400" : m.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>{m.delta_pct === null ? (m.hidden || m.n < 5 ? `표본 부족 (n=${m.n})` : "비교 기준 없음") : `중앙값 대비 ${m.delta_pct >= 0 ? "+" : ""}${m.delta_pct}% (n=${m.n})`}</p>
               </div>
             ))}
           </div>
         )}
+        {i.cohort_note && <p className="text-[12px] text-gray-500 mt-2">근거: {i.cohort_note}</p>}
+        {i.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{i.co_stores}곳을 함께 소개한 게시물 — 수치는 게시물 전체 것입니다. 보고글이 그렇게 말합니다.</p>}
       </PanelSection>
-      <PanelSection title="사장님 보고글 (초안)">
+      <PanelSection title="카톡용 텍스트 (초안)">
         {i.report ? <pre className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800 bg-gray-50 rounded-lg p-3 font-[inherit]">{i.report}</pre> : <p className="text-[13px] text-gray-500">지표가 모이면 자동으로 문장이 만들어집니다.</p>}
-        <p className="text-[12px] text-gray-500 mt-2">양식: 라라더 건(9/4 '대구 면 요리 맛집'). 금지 표현("전원 당첨" "보장" "예상 도달")은 쓰지 않습니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 카드 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
+        <p className="text-[12px] text-gray-500 mt-2">양식: 라라더 건(9/4 '대구 면 요리 맛집'). 헤드라인은 저장 → 도달 → 조회 고정, 비교는 중앙값·표본 수를 밝히고, 근거가 없으면 없다고 씁니다. 리포트 링크를 만들면 이 텍스트 대신 페이지가 나갑니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 카드 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
       </PanelSection>
     </SlideOver>
   );

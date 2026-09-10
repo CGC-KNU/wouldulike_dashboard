@@ -14,7 +14,10 @@ import { cookies } from "next/headers";
 
 type DraftHandler<T> = () => T | Promise<T>;
 
-const NOT_IMPLEMENTED = new Set([404, 405, 501, 502, 503]);
+// 502·503 은 "미구현"이 아니라 장애다 — 장애 때 조용히 초안 파일로 떨어지면 쓰기가 DB 와 파일로 갈라진다 (0911 리뷰 ④).
+const NOT_IMPLEMENTED = new Set([404, 405, 501]);
+/** 백엔드 앱이 올라간 뒤엔 `DRAFT_FALLBACK=0` 으로 폴백을 끈다. 그러면 미구현 응답도 그대로 에러로 나간다. */
+const FALLBACK_ON = process.env.DRAFT_FALLBACK !== "0";
 
 async function token(): Promise<string> {
   const store = await cookies();
@@ -56,7 +59,7 @@ export async function getOrDraft<T>(
         } catch {
           // Django 디버그 HTML — 미구현으로 간주하고 초안으로 떨어진다
         }
-      } else if (!NOT_IMPLEMENTED.has(res.status)) {
+      } else if (!FALLBACK_ON || !NOT_IMPLEMENTED.has(res.status)) {
         const text = await res.text();
         try {
           return NextResponse.json(JSON.parse(text), { status: res.status });
@@ -65,9 +68,11 @@ export async function getOrDraft<T>(
         }
       }
     } catch {
-      // 백엔드 연결 실패 — 초안으로 떨어진다
+      // 백엔드 연결 실패 — 초안으로 떨어진다 (킬스위치가 켜져 있으면 502)
+      if (!FALLBACK_ON) return NextResponse.json({ detail: "백엔드에 연결하지 못했습니다." }, { status: 502 });
     }
   }
+  if (!FALLBACK_ON) return NextResponse.json({ detail: "초안 폴백이 꺼져 있습니다 (DRAFT_FALLBACK=0)." }, { status: 501 });
   return envelope(await draftFn(), true, opts.note ?? "백엔드에 아직 이 엔드포인트가 없어 초안 데이터를 보여줍니다.");
 }
 
@@ -97,7 +102,7 @@ export async function writeOrDraft<T>(
         } catch {
           /* 미구현으로 간주 */
         }
-      } else if (!NOT_IMPLEMENTED.has(res.status)) {
+      } else if (!FALLBACK_ON || !NOT_IMPLEMENTED.has(res.status)) {
         const text = await res.text();
         try {
           return NextResponse.json(JSON.parse(text), { status: res.status });
@@ -106,9 +111,10 @@ export async function writeOrDraft<T>(
         }
       }
     } catch {
-      /* 초안으로 떨어진다 */
+      if (!FALLBACK_ON) return NextResponse.json({ detail: "백엔드에 연결하지 못했습니다." }, { status: 502 });
     }
   }
+  if (!FALLBACK_ON) return NextResponse.json({ detail: "초안 폴백이 꺼져 있습니다 (DRAFT_FALLBACK=0)." }, { status: 501 });
   return envelope(await draftFn(), true, opts.note ?? "초안 저장소에 기록했습니다. 백엔드 연결 후에는 DB로 갑니다.");
 }
 
