@@ -15,6 +15,7 @@ import { BenefitCatalogSection, BenefitGlance, StampRuleSection } from "@/compon
 import AstroOverview from "./astro/AstroOverview";
 import LeadPipeline from "./astro/LeadPipeline";
 import BillingBoard from "./astro/BillingBoard";
+import AstroDocs from "./astro/AstroDocs";
 import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
 import CastorMap from "./castor/CastorMap";
@@ -46,6 +47,7 @@ type Tab =
   | "astro-ops"
   | "astro-leads"
   | "astro-billing"
+  | "astro-docs"
   // Probe(지표·데이터)
   | "probe-home"
   | "probe-metrics"
@@ -2449,6 +2451,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "astro-ops", label: "매장 현황", icon: "◉", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-leads", label: "입점 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-docs", label: "자료실", icon: "▤", allow: (me) => me.permissions.can_restaurants },
 
   // ── Probe. 입금·계약 상태까지 다루므로 식당 관리와 같은 권한이다.
   //    마케팅에게 지표를 열려면 입금 규칙을 뺀 별도 탭으로 — 여기서 조용히 권한을 넓히지 않는다.
@@ -2491,7 +2494,7 @@ const PRODUCTS: {
     name: "Astro",
     subtitle: "영업 툴",
     description: "매장 현황 · 신규 컨택 · 입금 · 쿠폰",
-    tabs: ["astro-home", "astro-ops", "astro-leads", "astro-billing", "restaurants"],
+    tabs: ["astro-home", "astro-ops", "astro-leads", "astro-billing", "astro-docs", "restaurants"],
     ready: true,
   },
   {
@@ -2667,7 +2670,7 @@ export default function AdminHomePage() {
         {showProductPicker ? (
           <button
             onClick={backToProducts}
-            className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1"
+            className="text-[12px] font-semibold text-gray-500 hover:text-navy flex items-center gap-1 transition-colors"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -2715,7 +2718,8 @@ export default function AdminHomePage() {
           {/* Astro: 영업 */}
           {activeTab === "restaurants" && <RestaurantsTab />}
           {activeTab === "astro-home" && <AstroHome onGo={(t) => setActiveTab(t as Tab)} />}
-          {activeTab === "astro-ops" && <AstroOverview actor={actorName} />}
+          {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={(t) => setActiveTab(t as Tab)} />}
+          {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
           {activeTab === "astro-leads" && <LeadPipeline actor={actorName} />}
           {activeTab === "astro-billing" && <BillingBoard actor={actorName} />}
 

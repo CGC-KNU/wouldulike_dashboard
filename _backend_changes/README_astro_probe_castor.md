@@ -47,6 +47,10 @@
 | `GET/POST /api/astro/leads` | `/api/astro/leads/` | `{leads: Lead[]}` / `{lead: Lead}` |
 | `PATCH/DELETE /api/astro/leads/[id]` | `/api/astro/leads/<id>/` | `{lead: Lead}` / 204 |
 | `GET/POST /api/astro/activities` | `/api/astro/activities/` | `{activities: Activity[]}` |
+| `GET/POST/PATCH/DELETE /api/astro/docs` | `/api/astro/docs/` | `{docs: SalesDoc[]}` — 링크만, 파일 본체 없음 |
+| `GET/POST /api/astro/import` | (프론트에서 시트 CSV 직접 읽음) | 백엔드로 옮기면 크론 1일 1회 |
+| `GET /api/astro/export?tab=후보\|계약` | (프론트) | 시트와 같은 열 순서의 CSV |
+| `POST /api/astro/convert` | `restaurants/create/` 재사용 | 후보 → 매장 생성 + 운영 필드 이관 |
 | `GET /api/probe/overview` | `/api/probe/overview/` | `{stores: StoreMetric[], totals: {...}}` |
 | `GET /api/castor/graph` | `/api/castor/graph/` | `{graph, overrides, parsed}` |
 | `POST /api/castor/graph` | `/api/castor/graph/ingest/` | `{graph_id, screens, edges}` |

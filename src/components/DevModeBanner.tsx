@@ -15,28 +15,25 @@ export default function AdminViewBanner({ currentMode, rid }: AdminViewBannerPro
   const ownerHref = rid ? `/dashboard/owner?rid=${rid}` : "/dashboard/owner";
 
   return (
-    <div className="w-full bg-[#0A0676] text-white text-xs flex items-center justify-between px-4 py-1.5">
-      <span className="font-mono font-semibold opacity-70">관리자 모드</span>
-      <div className="flex gap-2">
+    // 얇은 회색 스트립. 뷰 전환은 iOS 세그먼트 모양 — 두꺼운 네이비 띠 두 장이 화면 위를 누르지 않게 (2026-09-10).
+    <div className="w-full bg-[#f5f5f7] text-[12px] flex items-center justify-between px-4 h-8 border-b border-black/[0.05]">
+      <span className="font-semibold text-gray-500">관리자 모드</span>
+      <div className="inline-flex h-6 p-[2px] bg-black/[0.06] rounded-[8px]">
         <Link
           href={ownerHref}
-          className={`px-2.5 py-0.5 rounded-full font-semibold transition-colors ${
-            currentMode === "owner"
-              ? "bg-white text-[#0A0676]"
-              : "bg-white/20 hover:bg-white/30 text-white"
+          className={`px-2.5 rounded-[6px] font-semibold leading-5 transition-colors ${
+            currentMode === "owner" ? "bg-white text-gray-900 shadow-[0_1px_2px_rgba(16,24,40,0.12)]" : "text-gray-500 hover:text-gray-800"
           }`}
         >
-          👤 사장님 뷰
+          사장님 뷰
         </Link>
         <Link
           href="/dashboard/admin"
-          className={`px-2.5 py-0.5 rounded-full font-semibold transition-colors ${
-            currentMode === "admin"
-              ? "bg-white text-[#0A0676]"
-              : "bg-white/20 hover:bg-white/30 text-white"
+          className={`px-2.5 rounded-[6px] font-semibold leading-5 transition-colors ${
+            currentMode === "admin" ? "bg-white text-gray-900 shadow-[0_1px_2px_rgba(16,24,40,0.12)]" : "text-gray-500 hover:text-gray-800"
           }`}
         >
-          🔧 관리자 뷰
+          관리자 뷰
         </Link>
       </div>
     </div>

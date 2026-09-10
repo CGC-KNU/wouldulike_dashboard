@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconArrowRight, IconExternalLink, IconLayoutKanban, IconPlus, IconTable, IconTableImport } from "@tabler/icons-react";
+import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport } from "@tabler/icons-react";
 import {
   ALL_LEAD_STAGES,
   INTENT_LABEL,
@@ -16,7 +16,6 @@ import {
   Button,
   Card,
   Chip,
-  DefList,
   DraftBadge,
   Empty,
   Field,
@@ -76,6 +75,9 @@ export default function LeadPipeline({ actor }: { actor: string }) {
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
   const [view, setView] = useState<"board" | "table">("board");
   const [owner, setOwner] = useState<string>("all");
+  const [district, setDistrict] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<"touch" | "grade" | "name">("grade");
   const [showSide, setShowSide] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -103,7 +105,17 @@ export default function LeadPipeline({ actor }: { actor: string }) {
   }, []);
 
   const owners = useMemo(() => [...new Set(leads.map((l) => l.owner).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ko")), [leads]);
-  const scoped = useMemo(() => leads.filter((l) => (owner === "unassigned" ? !l.owner : owner === "all" ? true : l.owner === owner)), [leads, owner]);
+  const districts = useMemo(() => [...new Set(leads.map((l) => l.district).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ko")), [leads]);
+  const scoped = useMemo(
+    () => {
+      const q = search.trim();
+      return leads
+        .filter((l) => (owner === "unassigned" ? !l.owner : owner === "all" ? true : l.owner === owner))
+        .filter((l) => district === "all" || l.district === district)
+        .filter((l) => !q || [l.name, l.owner_name, l.category, l.district, l.memo, l.next_action].some((v) => v?.includes(q)));
+    },
+    [leads, owner, district, search]
+  );
   const active = useMemo(() => scoped.filter((l) => !isSide(l.stage)), [scoped]);
   const stale = useMemo(() => active.filter(isStale), [active]);
   const byStage = useMemo(() => {
@@ -112,9 +124,16 @@ export default function LeadPipeline({ actor }: { actor: string }) {
     for (const l of scoped) m.get(l.stage)?.push(l);
     // 열 안 순서: 유료화 의향 A → 실측 등급 A → 점수 높은 순 → 이름. 46곳짜리 미컨택 열에서 "먼저 갈 곳"이 위에 오게.
     const rank = (l: Lead) => (l.intent ? "ABCD".indexOf(l.intent) : 4) * 10 + (l.grade ? "ABC".indexOf(l.grade) : 3);
-    for (const list of m.values()) list.sort((a, b) => rank(a) - rank(b) || (b.score ?? -1) - (a.score ?? -1) || a.name.localeCompare(b.name, "ko"));
+    const cmp = (a: Lead, b: Lead) =>
+      sort === "name"
+        ? a.name.localeCompare(b.name, "ko")
+        : sort === "touch"
+          ? (Date.parse(b.last_touch_at ?? "") || 0) - (Date.parse(a.last_touch_at ?? "") || 0) || a.name.localeCompare(b.name, "ko")
+          : rank(a) - rank(b) || (b.score ?? -1) - (a.score ?? -1) || a.name.localeCompare(b.name, "ko");
+    for (const list of m.values()) list.sort(cmp);
     return m;
-  }, [scoped]);
+  }, [scoped, sort]);
+  const sortedScoped = useMemo(() => [...ALL_LEAD_STAGES].flatMap((st) => byStage.get(st) ?? []), [byStage]);
   const sideCount = (LEAD_SIDE_STAGES as readonly string[]).reduce((a, s) => a + (byStage.get(s)?.length ?? 0), 0);
   const columns: LeadStage[] = showSide ? [...LEAD_STAGES, ...LEAD_SIDE_STAGES] : [...LEAD_STAGES];
   const open = leads.find((l) => l.id === openId) ?? null;
@@ -132,6 +151,16 @@ export default function LeadPipeline({ actor }: { actor: string }) {
           </>
         }
       >
+        {/* Console 캠페인 관리의 한 줄 툴바: 검색 · 정렬 · 보기 · 총 N */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="relative flex-1 min-w-[14rem] max-w-md">
+            <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장명, 대표자, 상권, 메모 검색" aria-label="후보 검색" className="pl-8" />
+          </div>
+          <FilterPills label="정렬" value={sort} onChange={setSort} options={[{ key: "grade", label: "의향·등급순" }, { key: "touch", label: "최근 접촉순" }, { key: "name", label: "이름순" }]} />
+          <Segmented label="보기" value={view} onChange={setView} options={[{ key: "board", label: "칸반", icon: <IconLayoutKanban /> }, { key: "table", label: "테이블", icon: <IconTable /> }]} />
+          <span className="text-[12px] text-gray-500 ml-auto tabular-nums">총 {scoped.length}곳</span>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <FilterPills
             label="담당자"
@@ -143,8 +172,21 @@ export default function LeadPipeline({ actor }: { actor: string }) {
               ...owners.map((o) => ({ key: o, label: o, count: leads.filter((l) => l.owner === o && !isSide(l.stage)).length })),
             ]}
           />
-          <Segmented label="보기" value={view} onChange={setView} options={[{ key: "board", label: "칸반", icon: <IconLayoutKanban /> }, { key: "table", label: "테이블", icon: <IconTable /> }]} />
         </div>
+        {districts.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-gray-400 mr-1">상권</span>
+            <FilterPills
+              label="상권"
+              value={district}
+              onChange={setDistrict}
+              options={[{ key: "all", label: "전체" }, ...districts.map((d) => ({ key: d, label: d, count: leads.filter((l) => l.district === d && !isSide(l.stage)).length }))]}
+            />
+            <a href={`/api/astro/export?tab=후보${district !== "all" ? `&district=${encodeURIComponent(district)}` : ""}`} className="ml-auto inline-flex items-center gap-1 text-[12px] font-medium text-gray-500 hover:text-navy">
+              <IconDownload size={14} aria-hidden="true" /> 시트 형식 CSV
+            </a>
+          </div>
+        )}
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
@@ -206,7 +248,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
               </tr>
             </thead>
             <tbody>
-              {(showSide ? scoped : active).map((l) => (
+              {(showSide ? sortedScoped : sortedScoped.filter((l) => !isSide(l.stage))).map((l) => (
                 <tr key={l.id} className={rowClickable} onClick={() => setOpenId(l.id)}>
                   <Td>
                     <span className="font-semibold text-gray-900">{l.name}</span>
@@ -236,7 +278,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
         </a>
       </div>
 
-      <LeadDetailPanel lead={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} />
+      <LeadDetailPanel lead={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onConverted={load} />
       {adding && <NewLeadPanel actor={actor} owners={owners} onClose={() => setAdding(false)} onCreated={load} />}
       {importing && <ImportPanel onClose={() => setImporting(false)} onDone={load} />}
     </>
@@ -273,29 +315,52 @@ function LeadCard({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
   );
 }
 
-/* ═══════════ 상세 패널 ═══════════ */
+/* ═══════════ 상세 패널 ═══════════
+   시트의 열이 전부 여기서 편집된다. 칸에서 나가면(blur) 바로 저장. 저장 버튼 없음. */
 
-function LeadDetailPanel({ lead, actor, onClose, onPatch }: { lead: Lead | null; actor: string; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void }) {
-  const [next, setNext] = useState(lead?.next_action ?? "");
-  const [due, setDue] = useState(lead?.due ?? "");
-  useEffect(() => { setNext(lead?.next_action ?? ""); setDue(lead?.due ?? ""); }, [lead?.id, lead?.next_action, lead?.due]);
+function Cell({ label, value, onCommit, placeholder, type, rows, hint }: { label: string; value: string | null; onCommit: (v: string | null) => void; placeholder?: string; type?: string; rows?: number; hint?: string }) {
+  const [v, setV] = useState(value ?? "");
+  useEffect(() => setV(value ?? ""), [value]);
+  const commit = () => { const n = v.trim(); if (n !== (value ?? "")) onCommit(n || null); };
+  return (
+    <Field label={label} hint={hint}>
+      {rows ? <Textarea rows={rows} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} placeholder={placeholder} />
+            : <Input type={type} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} placeholder={placeholder} />}
+    </Field>
+  );
+}
+
+function LeadDetailPanel({ lead, actor, onClose, onPatch, onConverted }: { lead: Lead | null; actor: string; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConverted?: () => void }) {
+  const [converting, setConverting] = useState(false);
+  const [convertMsg, setConvertMsg] = useState<string | null>(null);
+  useEffect(() => setConvertMsg(null), [lead?.id]);
   if (!lead) return null;
 
   const idx = LEAD_STAGES.indexOf(lead.stage as (typeof LEAD_STAGES)[number]);
   const side = isSide(lead.stage);
-  const commit = () => {
-    const body: Partial<Lead> = {};
-    if (next !== (lead.next_action ?? "")) body.next_action = next || null;
-    if (due !== (lead.due ?? "")) body.due = due || null;
-    if (Object.keys(body).length) onPatch(lead.id, body);
-  };
+  const set = (k: keyof Lead) => (v: string | null) => onPatch(lead.id, { [k]: v } as Partial<Lead>);
+
+  async function convert() {
+    if (converting) return;
+    setConverting(true); setConvertMsg(null);
+    try {
+      const plan = (lead!.proposed_plan ?? "").toLowerCase();
+      const tier = plan.includes("boost") ? "BOOST" : plan.includes("content") ? "CONTENT" : plan.includes("무료") || plan.includes("free") ? "FREE" : null;
+      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead!.id, tier, updated_by: actor }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setConvertMsg(d.detail ?? "등록하지 못했습니다."); return; }
+      setConvertMsg(d.created ? `매장 #${d.restaurant_id} 를 새로 만들고 이었습니다. 계약 조건은 매장 현황에서 채우세요.` : `이미 있던 매장 #${d.restaurant_id} 에 이었습니다.`);
+      onConverted?.();
+    } catch { setConvertMsg("서버에 연결하지 못했습니다."); }
+    finally { setConverting(false); }
+  }
 
   return (
     <SlideOver
       open
       onClose={onClose}
       title={lead.name}
-      subtitle={[lead.kind, lead.district, lead.category, lead.source.startsWith("sheet") ? `시트 ${lead.source.split(":")[1]} 탭` : "직접 등록"].filter(Boolean).join(" · ")}
+      subtitle={[lead.kind, lead.district, lead.category, lead.source.startsWith("sheet") ? `시트 ${lead.source.split(":")[1]} 탭에서` : "직접 등록", lead.converted_restaurant_id && `매장 #${lead.converted_restaurant_id}`].filter(Boolean).join(" · ")}
       badge={<Chip tone={STAGE_TONE[lead.stage]}>{lead.stage}</Chip>}
       width="lg"
       footer={
@@ -303,7 +368,9 @@ function LeadDetailPanel({ lead, actor, onClose, onPatch }: { lead: Lead | null;
           {!side && idx >= 0 && idx < LEAD_STAGES.length - 1 && (
             <Button variant="primary" icon={<IconArrowRight />} onClick={() => onPatch(lead.id, { stage: LEAD_STAGES[idx + 1] })}>{LEAD_STAGES[idx + 1]}(으)로</Button>
           )}
-          {!side && idx > 0 && <Button onClick={() => onPatch(lead.id, { stage: LEAD_STAGES[idx - 1] })}>되돌림</Button>}
+          {(lead.stage === "구두 합의" || lead.stage === "계약 완료") && !lead.converted_restaurant_id && (
+            <Button icon={<IconBuildingStore />} onClick={convert} disabled={converting}>{converting ? "등록하는 중…" : "제휴 매장으로 등록"}</Button>
+          )}
           <Select value={lead.stage} onChange={(e) => onPatch(lead.id, { stage: e.target.value as LeadStage })} aria-label="단계 직접 지정" className="w-32 ml-auto">
             {ALL_LEAD_STAGES.map((s) => <option key={s}>{s}</option>)}
           </Select>
@@ -311,50 +378,54 @@ function LeadDetailPanel({ lead, actor, onClose, onPatch }: { lead: Lead | null;
       }
     >
       {!side && <Stepper steps={[...LEAD_STAGES]} current={Math.max(0, idx)} />}
+      {convertMsg && <p className="text-[13px] text-navy bg-navy/5 border border-navy/20 rounded-lg px-3 py-2" role="status">{convertMsg}</p>}
 
-      <PanelSection title="담당 · 다음 액션">
+      <PanelSection title="담당 · 진행 (시트 '매장 현황' 열)">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="담당자"><Input value={lead.owner ?? ""} onChange={(e) => onPatch(lead.id, { owner: e.target.value || null })} placeholder="이름" /></Field>
+          <Cell label="담당자" value={lead.owner} onCommit={set("owner")} placeholder="이름" />
+          <Field label="구분">
+            <Select value={lead.kind ?? ""} onChange={(e) => onPatch(lead.id, { kind: (e.target.value || null) as Lead["kind"] })}>
+              <option value="">-</option><option>기존 파트너</option><option>신규</option>
+            </Select>
+          </Field>
           <Field label="유료화 의향">
             <Select value={lead.intent ?? ""} onChange={(e) => onPatch(lead.id, { intent: (e.target.value || null) as LeadIntent | null })}>
               <option value="">미정</option>
               {(["A", "B", "C", "D"] as LeadIntent[]).map((i) => <option key={i} value={i}>{i} · {INTENT_LABEL[i]}</option>)}
             </Select>
           </Field>
-          <Field label="제안 플랜"><Input value={lead.proposed_plan ?? ""} onChange={(e) => onPatch(lead.id, { proposed_plan: e.target.value || null })} placeholder="예: Boost 3만" /></Field>
-          <Field label="기한"><Input value={due} onChange={(e) => setDue(e.target.value)} onBlur={commit} placeholder="예: 9/20" /></Field>
+          <Cell label="제안 플랜" value={lead.proposed_plan} onCommit={set("proposed_plan")} placeholder="예: Boost 3만" />
+          <Cell label="컨택 일시" value={lead.contacted_at} onCommit={set("contacted_at")} placeholder="예: 8/6" />
+          <Cell label="미팅 일시" value={lead.meeting_at} onCommit={set("meeting_at")} placeholder="예: 8/6(목) 14시" />
+          <Cell label="미팅 참석자" value={lead.attendees} onCommit={set("attendees")} placeholder="예: 준영, 윤지" />
+          <Cell label="기한" value={lead.due} onCommit={set("due")} placeholder="예: 9/20" />
         </div>
         <div className="mt-3">
-          <Field label="다음 액션" hint="카드 앞면에 보입니다. 시트의 '다음 액션' 열과 같은 칸입니다.">
-            <Input value={next} onChange={(e) => setNext(e.target.value)} onBlur={commit} placeholder="예: 금요일 재방문" />
-          </Field>
-        </div>
-      </PanelSection>
-
-      <PanelSection title="미팅">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="컨택 일시"><Input value={lead.contacted_at ?? ""} onChange={(e) => onPatch(lead.id, { contacted_at: e.target.value || null })} placeholder="예: 8/6" /></Field>
-          <Field label="미팅 일시"><Input value={lead.meeting_at ?? ""} onChange={(e) => onPatch(lead.id, { meeting_at: e.target.value || null })} placeholder="예: 8/6(목) 14시" /></Field>
-        </div>
-        <div className="mt-3">
-          <Field label="미팅 참석자"><Input value={lead.attendees ?? ""} onChange={(e) => onPatch(lead.id, { attendees: e.target.value || null })} placeholder="예: 준영, 윤지" /></Field>
+          <Cell label="다음 액션" value={lead.next_action} onCommit={set("next_action")} placeholder="예: 금요일 재방문" hint="카드 앞면에 보입니다." />
         </div>
       </PanelSection>
 
       <PanelSection title="매장 정보">
-        <DefList
-          items={[
-            { label: "대표자", value: lead.owner_name },
-            { label: "대표 연락처", value: lead.contact },
-            { label: "매장 전화", value: lead.phone },
-            { label: "링크", value: lead.link ? <a href={lead.link} target="_blank" rel="noreferrer" className="text-navy underline">{lead.link.replace(/^https?:\/\//, "")}</a> : null },
-            { label: "인스타", value: lead.insta },
-            { label: "실측 등급", value: lead.grade ? `${lead.grade} · ${lead.score ?? "-"}점` : null },
-            { label: "마지막 접촉", value: agoLabel(lead.last_touch_at) },
-          ]}
-        />
-        {lead.angle && <p className="text-[13px] text-gray-800 mt-3"><span className="font-semibold">공략 포인트</span> {lead.angle}</p>}
-        {lead.memo && <p className="text-[13px] text-gray-600 mt-2 whitespace-pre-wrap">{lead.memo}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <Cell label="상권" value={lead.district} onCommit={set("district")} placeholder="북문 / 정문 / 쪽문" />
+          <Cell label="카테고리" value={lead.category} onCommit={set("category")} placeholder="한식" />
+          <Cell label="대표자" value={lead.owner_name} onCommit={set("owner_name")} />
+          <Cell label="대표 연락처" value={lead.contact} onCommit={set("contact")} type="tel" />
+          <Cell label="매장 전화" value={lead.phone} onCommit={set("phone")} type="tel" />
+          <Cell label="인스타" value={lead.insta} onCommit={set("insta")} placeholder="@handle" />
+        </div>
+        <div className="mt-3">
+          <Cell label="링크" value={lead.link} onCommit={set("link")} type="url" placeholder="네이버 플레이스" />
+          {lead.link && <a href={lead.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-navy mt-1">열기 <IconExternalLink size={12} aria-hidden="true" /></a>}
+        </div>
+      </PanelSection>
+
+      <PanelSection title="실측 · 메모">
+        {(lead.grade || lead.score !== null) && <p className="text-[12px] text-gray-500 mb-2">0909 실측 등급 <span className="font-semibold text-gray-800">{lead.grade ?? "-"}</span> · 점수 <span className="font-semibold text-gray-800">{lead.score ?? "-"}</span> · 마지막 접촉 {agoLabel(lead.last_touch_at)}</p>}
+        <div className="space-y-3">
+          <Cell label="공략 포인트" value={lead.angle} onCommit={set("angle")} rows={2} />
+          <Cell label="비고 · 사전조사" value={lead.memo} onCommit={set("memo")} rows={4} />
+        </div>
       </PanelSection>
 
       <PanelSection title="기록"><ActivityLog targetType="lead" targetId={lead.id} actor={actor} /></PanelSection>

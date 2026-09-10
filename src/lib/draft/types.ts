@@ -71,12 +71,21 @@ export interface StoreOps {
   pay_cycle: PayCycle | null;
   contract_started_on: string | null;
   contract_months: number | null;
-  /** 시트 '계약 세부사항' 에서 읽어온 혜택 요약 — 툴이 원본이 아니므로 읽기 전용. */
-  benefit_note: string | null;
+  /* ── 시트 '계약 세부사항' 열 1:1. 툴이 시트를 대체하므로 전부 편집 가능하다 (민열님 0910). ── */
+  district: string | null; // 상권 (시트 '매장 현황' C열)
+  contract_signed_on: string | null; // 계약일
+  contract_ends_on: string | null; // 전체 계약기간 끝
+  coupon_basic: string | null; // 기본 쿠폰 (상시)
+  coupon_limited: string | null; // 한정 쿠폰
+  stamp_count: string | null; // 스탬프 적립 개수 "5 / 10 / 20"
+  stamp_reward: string | null; // 스탬프 혜택
+  exclusions: string | null; // 식사권 제외 메뉴·시간대
+  extra_quote: string | null; // 별도 견적 항목
   kit_note: string | null; // 홍보물 수령 "2장/10장"
   pin: string | null;
-  sheet_owner: string | null; // 시트의 담당자
-  /** 마지막으로 시트에서 읽어온 시각. 이 값이 있으면 계약 블록은 시트 기준이다. */
+  contract_original: string | null; // 계약서 원본 보관
+  sheet_owner: string | null; // 담당자
+  /** 마지막으로 시트에서 읽어온 시각. 이후 툴에서 고친 값이 원본이다. */
   sheet_synced_at: string | null;
   /** 테스트·시드 매장 플래그. KPI 집계에서 뺀다 (ADIT 콘솔 preseed 49곳 반면교사). */
   is_test: boolean;
@@ -105,9 +114,18 @@ export function emptyStoreOps(id: number): StoreOps {
     pay_cycle: null,
     contract_started_on: null,
     contract_months: null,
-    benefit_note: null,
+    district: null,
+    contract_signed_on: null,
+    contract_ends_on: null,
+    coupon_basic: null,
+    coupon_limited: null,
+    stamp_count: null,
+    stamp_reward: null,
+    exclusions: null,
+    extra_quote: null,
     kit_note: null,
     pin: null,
+    contract_original: null,
     sheet_owner: null,
     sheet_synced_at: null,
     is_test: false,
@@ -123,7 +141,8 @@ export const STORE_OPS_EDITABLE = [
   "billing", "invoice", "quote_sent_at", "contract_returned_at",
   "owner_name", "owner_phone", "biz_no",
   "monthly_fee", "pay_cycle", "contract_started_on", "contract_months",
-  "benefit_note", "kit_note", "pin", "sheet_owner", "sheet_synced_at",
+  "district", "contract_signed_on", "contract_ends_on", "coupon_basic", "coupon_limited", "stamp_count", "stamp_reward",
+  "exclusions", "extra_quote", "kit_note", "pin", "contract_original", "sheet_owner", "sheet_synced_at",
   "is_test", "memo",
 ] as const satisfies readonly (keyof StoreOps)[];
 
@@ -197,6 +216,28 @@ export interface Activity {
   author: string;
   created_at: string;
 }
+
+/**
+ * 자료실 — 계약·영업 과정에서 바로 내려받아 쓰는 파일 (Pitchr 자료실 차용).
+ * 파일 본체는 여기 두지 않는다. 이 레포는 공개 GitHub 라 계약서를 넣으면 안 된다.
+ * 드라이브/S3 링크를 등록하고, 툴은 "무엇을 언제 쓰나"를 같이 보여준다.
+ */
+export type DocKind = "계약서" | "제안서" | "소개서" | "견적서" | "안내문" | "전단" | "포스터" | "기타";
+export const DOC_KINDS: DocKind[] = ["계약서", "제안서", "소개서", "견적서", "안내문", "전단", "포스터", "기타"];
+
+export interface SalesDoc {
+  id: string;
+  kind: DocKind;
+  title: string;
+  version: string | null; // "v6", "11P"
+  url: string | null; // 드라이브/S3. 없으면 '링크 등록 필요'
+  when: string | null; // 언제 쓰나 (영업 단계)
+  note: string | null;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export const DOC_EDITABLE = ["kind", "title", "version", "url", "when", "note"] as const satisfies readonly (keyof SalesDoc)[];
 
 /* ═══════════ Probe ═══════════ */
 

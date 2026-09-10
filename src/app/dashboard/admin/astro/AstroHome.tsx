@@ -84,6 +84,25 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         </Card>
 
         <div className="space-y-4">
+          <Card title="상권별" description="제휴 매장 · 진행 중 후보. 상권이 비어 있으면 '미지정'.">
+            {loading ? <Skeleton rows={3} cols={3} /> : (
+              <ul className="divide-y divide-gray-100">
+                {[...new Set([...(stores ?? []).filter((s) => s.is_affiliate).map((s) => s.ops?.district ?? "미지정"), ...active.map((l) => l.district ?? "미지정")])]
+                  .sort((a, b) => (a === "미지정" ? 1 : b === "미지정" ? -1 : a.localeCompare(b, "ko")))
+                  .map((d) => {
+                    const st = (stores ?? []).filter((s) => s.is_affiliate && (s.ops?.district ?? "미지정") === d);
+                    const ld = active.filter((l) => (l.district ?? "미지정") === d);
+                    return (
+                      <li key={d} className="flex items-center gap-3 py-2 text-[13px]">
+                        <span className="flex-1 font-semibold text-gray-900">{d}</span>
+                        <span className="text-gray-500">제휴 <span className="font-semibold text-gray-900 tabular-nums">{st.length}</span> (유료 {st.filter((s) => isPaidTier(s.tier)).length})</span>
+                        <span className="text-gray-500">후보 <span className="font-semibold text-gray-900 tabular-nums">{ld.length}</span></span>
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+          </Card>
           <Card title="기한이 있는 것" description="시트 '기한' 열 기준.">
             {loading ? (
               <Skeleton rows={4} cols={2} />

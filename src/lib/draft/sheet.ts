@@ -1,6 +1,6 @@
 import { SALES_SHEET } from "@/lib/satellite";
 import type { BillingState, InvoiceState, Lead, LeadIntent, LeadStage, PayCycle, StoreOps } from "./types";
-import { ALL_LEAD_STAGES, emptyStoreOps } from "./types";
+import { ALL_LEAD_STAGES, BILLING_LABEL, INTENT_LABEL, INVOICE_LABEL, emptyStoreOps } from "./types";
 
 /**
  * 팀 세일즈 시트 읽기.
@@ -168,42 +168,53 @@ export interface SheetStoreInfo {
   patch: Partial<StoreOps>;
 }
 
-/** 계약 탭 한 행을 운영 필드 패치로. 매장 매칭은 호출자가 한다. */
+function endOf(v: string | undefined): string | null {
+  const m = (v ?? "").match(/~\s*(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+function signedOf(v: string | undefined): string | null {
+  const m = (v ?? "").match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : blank(v);
+}
+
+/** 계약 탭 한 행을 운영 필드 패치로 (열 1:1). 매장 매칭은 호출자가 한다. */
 export function contractRowToOps(r: Record<string, string>, syncedAt: string): SheetStoreInfo | null {
   const name = blank(r["매장명"]);
   if (!name) return null;
   const plan = blank(r["플랜"]);
-  const benefit = [
-    blank(r["기본 쿠폰 (상시)"]) && `상시: ${r["기본 쿠폰 (상시)"]}`,
-    blank(r["한정 쿠폰"]) && `한정: ${r["한정 쿠폰"]}`,
-    blank(r["스탬프 적립 개수"]) && `스탬프 ${r["스탬프 적립 개수"]}: ${r["스탬프 혜택"] ?? ""}`,
-    blank(r["식사권 제외 메뉴·시간대"]) && `제외: ${r["식사권 제외 메뉴·시간대"]}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
   return {
     name,
     norm: normName(name),
     patch: {
+      contract_signed_on: signedOf(r["계약일"]),
       monthly_fee: plan === "무료" ? 0 : feeOf(r["월 이용료 (VAT 포함)"]),
       pay_cycle: cycleOf(r["납부 방식"]),
       contract_started_on: startOf(r["제1차 이용기간"]),
+      contract_ends_on: endOf(r["전체 계약기간"]),
       contract_months: (() => {
         const m = (r["전체 계약기간"] ?? "").match(/(\d{4})-(\d{2})-\d{2}\s*~\s*(\d{4})-(\d{2})/);
         if (!m) return null;
         return (Number(m[3]) - Number(m[1])) * 12 + (Number(m[4]) - Number(m[2])) + 1;
       })(),
       ...billingOf(r["견적서·세금계산서 발송"]),
+      coupon_basic: blank(r["기본 쿠폰 (상시)"]),
+      coupon_limited: blank(r["한정 쿠폰"]),
+      stamp_count: blank(r["스탬프 적립 개수"]),
+      stamp_reward: blank(r["스탬프 혜택"]),
+      exclusions: blank(r["식사권 제외 메뉴·시간대"]),
+      extra_quote: blank(r["별도 견적 항목"]),
       ...kitOf(r["홍보물 수령 (포스터/QR/배너)"]),
       pin: blank(r["PIN 번호"]),
+      contract_original: blank(r["계약서 원본 보관"]),
       sheet_owner: blank(r["담당자"]),
-      benefit_note: benefit || null,
+      memo: blank(r["비고"]) ?? undefined,
       sheet_synced_at: syncedAt,
     },
   };
 }
 
-/** 매장 현황 탭에서 대표자·연락처를 가져온다. */
+/** 매장 현황 탭에서 상권·대표자·연락처를 가져온다. */
 export function statusRowToOps(r: Record<string, string>): SheetStoreInfo | null {
   const name = blank(r["매장명"]);
   if (!name) return null;
@@ -211,10 +222,36 @@ export function statusRowToOps(r: Record<string, string>): SheetStoreInfo | null
     name,
     norm: normName(name),
     patch: {
+      district: blank(r["상권"]),
       owner_name: blank(r["대표자"]),
       owner_phone: blank(r["연락처"]),
     },
   };
+}
+
+/* ─── 내보내기: 시트와 같은 열 순서의 CSV ───
+   Astro 가 원본이 된 뒤에도 시트에 붙여넣거나 외부에 넘길 일이 있다. 열 순서를 시트와 똑같이 맞춰 둔다. */
+
+function csvCell(v: unknown): string {
+  const s = v === null || v === undefined ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+export function toCsv(head: string[], rows: unknown[][]): string {
+  return "\uFEFF" + [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+}
+
+export const LEAD_CSV_HEAD = ["담당자", "매장명", "전화번호", "링크", "카테고리", "상권", "대표자", "연락처", "구분", "유료화 의향", "단계", "컨택 일시", "미팅 일시", "미팅 참석자", "제안 플랜", "다음 액션", "기한", "인스타 계정", "등급", "점수", "공략 포인트", "비고"];
+
+export function leadToCsvRow(l: Lead): unknown[] {
+  return [l.owner, l.name, l.phone, l.link, l.category, l.district, l.owner_name, l.contact, l.kind, l.intent ? `${l.intent} (${INTENT_LABEL[l.intent]})` : "", l.stage, l.contacted_at, l.meeting_at, l.attendees, l.proposed_plan, l.next_action, l.due, l.insta, l.grade, l.score, l.angle, l.memo];
+}
+
+export const CONTRACT_CSV_HEAD = ["매장명", "상권", "계약일", "플랜", "월 이용료 (VAT 포함)", "납부 방식", "견적서·세금계산서 발송", "입금", "제1차 이용기간 시작", "전체 계약기간 끝", "기본 쿠폰 (상시)", "한정 쿠폰", "스탬프 적립 개수", "스탬프 혜택", "식사권 제외 메뉴·시간대", "별도 견적 항목", "홍보물 수령 (포스터/QR/배너)", "PIN 번호", "계약서 원본 보관", "담당자", "대표자", "연락처", "비고"];
+
+export function contractToCsvRow(name: string, tier: string | null, o: StoreOps): unknown[] {
+  const cycle = o.pay_cycle === "MONTHLY" ? "월납" : o.pay_cycle === "LUMP" ? "일시납" : "";
+  return [name, o.district, o.contract_signed_on, tier, o.monthly_fee, cycle, INVOICE_LABEL[o.invoice], BILLING_LABEL[o.billing], o.contract_started_on, o.contract_ends_on, o.coupon_basic, o.coupon_limited, o.stamp_count, o.stamp_reward, o.exclusions, o.extra_quote, o.kit_note, o.pin, o.contract_original, o.sheet_owner, o.owner_name, o.owner_phone, o.memo];
 }
 
 export { emptyStoreOps };

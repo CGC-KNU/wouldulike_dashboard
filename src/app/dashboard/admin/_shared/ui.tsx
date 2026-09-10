@@ -20,7 +20,7 @@ import { IconX } from "@tabler/icons-react";
 export const focusRing =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/50 focus-visible:ring-offset-1";
 
-export const surface = "bg-white border border-gray-200 rounded-xl";
+export const surface = "bg-white rounded-2xl border border-black/[0.06] shadow-[0_1px_2px_rgba(16,24,40,0.04)]";
 
 /* ═══════════ 버튼 ═══════════ */
 
@@ -28,14 +28,14 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 const VARIANT: Record<Variant, string> = {
-  primary: "bg-navy text-white hover:bg-[#0a0a8a] active:translate-y-px disabled:bg-gray-300",
-  secondary: "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 active:translate-y-px disabled:text-gray-400",
-  ghost: "bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:text-gray-300",
-  danger: "bg-white text-red-600 border border-red-200 hover:bg-red-50 active:translate-y-px",
+  primary: "bg-navy text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-[#0b0a86] disabled:bg-gray-300 disabled:shadow-none",
+  secondary: "bg-black/[0.05] text-gray-800 hover:bg-black/[0.08] disabled:text-gray-400 disabled:bg-black/[0.03]",
+  ghost: "bg-transparent text-gray-600 hover:bg-black/[0.05] hover:text-gray-900 disabled:text-gray-300",
+  danger: "bg-red-50 text-red-600 hover:bg-red-100",
 };
 const SIZE: Record<Size, string> = {
-  sm: "h-8 px-3 text-[12px] gap-1.5 rounded-lg",
-  md: "h-9 px-3.5 text-[13px] gap-2 rounded-lg",
+  sm: "h-8 px-3 text-[12px] gap-1.5 rounded-[9px]",
+  md: "h-9 px-3.5 text-[13px] gap-2 rounded-[10px]",
 };
 
 export const Button = forwardRef<
@@ -46,7 +46,7 @@ export const Button = forwardRef<
     <button
       ref={ref}
       type="button"
-      className={`inline-flex items-center justify-center whitespace-nowrap font-semibold transition-colors touch-manipulation disabled:cursor-not-allowed ${VARIANT[variant]} ${SIZE[size]} ${focusRing} ${className}`}
+      className={`inline-flex items-center justify-center whitespace-nowrap font-semibold transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:active:scale-100 touch-manipulation disabled:cursor-not-allowed disabled:active:scale-100 ${VARIANT[variant]} ${SIZE[size]} ${focusRing} ${className}`}
       {...rest}
     >
       {icon && <span className="shrink-0 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>}
@@ -58,7 +58,7 @@ export const Button = forwardRef<
 /* ═══════════ 입력 ═══════════ */
 
 const fieldBase =
-  "w-full h-9 px-3 text-[13px] text-gray-900 bg-white border border-gray-300 rounded-lg placeholder:text-gray-400 hover:border-gray-400 focus:border-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/40 disabled:bg-gray-50 disabled:text-gray-400";
+  "w-full h-9 px-3 text-[13px] text-gray-900 bg-black/[0.05] border border-transparent rounded-[10px] placeholder:text-gray-400 transition-[background-color,box-shadow] duration-150 hover:bg-black/[0.07] focus:bg-white focus:border-navy/40 focus:outline-none focus:ring-4 focus:ring-navy/10 disabled:bg-black/[0.03] disabled:text-gray-400";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className = "", ...rest },
@@ -129,18 +129,18 @@ export function Field({
 export type ChipTone = "gray" | "green" | "amber" | "red" | "blue" | "navy";
 
 const CHIP: Record<ChipTone, string> = {
-  gray: "bg-gray-100 text-gray-700 border-gray-200",
-  green: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  amber: "bg-amber-50 text-amber-800 border-amber-200",
-  red: "bg-red-50 text-red-700 border-red-200",
-  blue: "bg-blue-50 text-blue-800 border-blue-200",
-  navy: "bg-navy/5 text-navy border-navy/20",
+  gray: "bg-black/[0.05] text-gray-700",
+  green: "bg-emerald-500/10 text-emerald-800",
+  amber: "bg-amber-400/15 text-amber-800",
+  red: "bg-red-500/10 text-red-700",
+  blue: "bg-blue-500/10 text-blue-800",
+  navy: "bg-navy/[0.07] text-navy",
 };
 
 export function Chip({ children, tone = "gray", dot }: { children: ReactNode; tone?: ChipTone; dot?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border text-[12px] font-medium whitespace-nowrap ${CHIP[tone]}`}
+      className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[12px] font-medium whitespace-nowrap ${CHIP[tone]}`}
     >
       {dot && <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />}
       {children}
@@ -153,7 +153,7 @@ export function DraftBadge({ note }: { note?: string }) {
   return (
     <span
       title={note}
-      className="inline-flex items-center h-6 px-2 rounded-full border border-amber-200 bg-amber-50 text-amber-800 text-[12px] font-medium whitespace-nowrap"
+      className="inline-flex items-center h-6 px-2 rounded-full bg-amber-400/15 text-amber-800 text-[12px] font-medium whitespace-nowrap"
     >
       초안 데이터
     </span>
@@ -178,7 +178,7 @@ export function PageHeader({
     <div className="mb-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-[20px] font-bold text-gray-900 leading-tight text-balance">{title}</h1>
+          <h1 className="text-[22px] font-bold text-gray-900 leading-tight tracking-[-0.02em] text-balance">{title}</h1>
           {description && <p className="text-[13px] text-gray-500 mt-1 max-w-[60ch]">{description}</p>}
         </div>
         {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
@@ -211,8 +211,8 @@ export function FilterPills<T extends string>({
             type="button"
             onClick={() => onChange(o.key)}
             aria-pressed={on}
-            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[12px] font-semibold transition-colors touch-manipulation ${focusRing} ${
-              on ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] border text-[12px] font-semibold transition-[background-color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 touch-manipulation ${focusRing} ${
+              on ? "bg-gray-900 text-white border-gray-900" : "bg-black/[0.05] text-gray-700 border-transparent hover:bg-black/[0.08]"
             }`}
           >
             {o.label}
@@ -239,7 +239,7 @@ export function Segmented<T extends string>({
   label?: string;
 }) {
   return (
-    <div className="inline-flex h-9 p-0.5 bg-gray-100 rounded-lg" role="group" aria-label={label}>
+    <div className="inline-flex h-9 p-[3px] bg-black/[0.06] rounded-[10px]" role="group" aria-label={label}>
       {options.map((o) => {
         const on = value === o.key;
         return (
@@ -248,8 +248,8 @@ export function Segmented<T extends string>({
             type="button"
             onClick={() => onChange(o.key)}
             aria-pressed={on}
-            className={`inline-flex items-center gap-1.5 px-3 rounded-md text-[12px] font-semibold transition-colors touch-manipulation ${focusRing} ${
-              on ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
+            className={`inline-flex items-center gap-1.5 px-3 rounded-[8px] text-[12px] font-semibold transition-[background-color,color,box-shadow] duration-150 touch-manipulation ${focusRing} ${
+              on ? "bg-white text-gray-900 shadow-[0_1px_3px_rgba(16,24,40,0.12)]" : "text-gray-500 hover:text-gray-800"
             }`}
           >
             {o.icon && <span className="[&>svg]:w-4 [&>svg]:h-4">{o.icon}</span>}
@@ -288,7 +288,7 @@ export function Kpi({
   const inner = (
     <>
       <p className="text-[12px] font-medium text-gray-500 truncate">{label}</p>
-      <p className={`text-[24px] font-bold leading-tight mt-1 tabular-nums ${color}`}>
+      <p className={`text-[26px] font-bold leading-none mt-1.5 tracking-[-0.02em] tabular-nums ${color}`}>
         {value}
         {suffix && <span className="text-[13px] font-semibold text-gray-400 ml-1">{suffix}</span>}
       </p>
@@ -301,7 +301,7 @@ export function Kpi({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`${base} hover:bg-gray-50 ${focusRing} ${active ? "border-navy ring-1 ring-navy" : ""}`}
+      className={`${base} hover:bg-white hover:shadow-[0_6px_16px_-8px_rgba(5,0,114,0.18)] active:scale-[0.99] motion-reduce:active:scale-100 ${focusRing} ${active ? "ring-2 ring-navy/70 border-transparent" : ""}`}
     >
       {inner}
     </button>
@@ -329,7 +329,7 @@ export function StepTiles({
               type="button"
               onClick={() => onSelect?.(s.key)}
               aria-pressed={on}
-              className={`${surface} min-w-[9.5rem] px-3.5 py-3 text-left hover:bg-gray-50 ${focusRing} ${on ? "border-navy ring-1 ring-navy" : ""}`}
+              className={`${surface} min-w-[9.5rem] px-3.5 py-3 text-left transition-[box-shadow] hover:shadow-[0_6px_16px_-8px_rgba(5,0,114,0.18)] ${focusRing} ${on ? "ring-2 ring-navy/70 border-transparent" : ""}`}
             >
               <p className="text-[12px] font-medium text-gray-500">{s.label}</p>
               <p className={`text-[22px] font-bold leading-tight mt-0.5 tabular-nums ${alert ? "text-red-600" : s.tone === "good" ? "text-emerald-700" : "text-gray-900"}`}>
@@ -366,7 +366,7 @@ export function Card({
   return (
     <section className={`${surface} overflow-hidden ${className}`}>
       {(title || actions) && (
-        <header className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
+        <header className="px-4 py-3 border-b border-black/[0.06] flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             {title && <h2 className="text-[14px] font-semibold text-gray-900">{title}</h2>}
             {description && <p className="text-[12px] text-gray-500 mt-0.5">{description}</p>}
@@ -404,7 +404,7 @@ export function Th({
   onClick?: () => void;
   sorted?: "asc" | "desc" | null;
 }) {
-  const cls = `px-3 py-2.5 text-[12px] font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap text-${align}`;
+  const cls = `px-3 py-2.5 text-[12px] font-medium text-gray-500 border-b border-black/[0.08] whitespace-nowrap text-${align}`;
   if (!onClick) return <th scope="col" style={{ width }} className={cls}>{children}</th>;
   return (
     <th scope="col" style={{ width }} className={cls} aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"}>
@@ -430,14 +430,14 @@ export function Td({
   numeric?: boolean;
 }) {
   return (
-    <td className={`px-3 py-2.5 border-b border-gray-100 align-middle text-${align} ${numeric ? "tabular-nums" : ""} ${className}`}>
+    <td className={`px-3 py-2.5 border-b border-black/[0.05] align-middle text-${align} ${numeric ? "tabular-nums" : ""} ${className}`}>
       {children}
     </td>
   );
 }
 
 /** 행 전체가 클릭 대상이면 tr 에 이걸 준다. 키보드로도 열려야 하므로 버튼 하나를 안에 둔다. */
-export const rowClickable = "hover:bg-gray-50 cursor-pointer transition-colors";
+export const rowClickable = "hover:bg-black/[0.025] cursor-pointer transition-colors duration-100";
 
 /* ═══════════ 상태 ═══════════ */
 
@@ -530,12 +530,12 @@ export function SlideOver({
         type="button"
         aria-label="닫기"
         onClick={onClose}
-        className="absolute inset-0 bg-gray-900/30 cursor-default"
+        className="absolute inset-0 bg-gray-900/25 backdrop-blur-[2px] cursor-default animate-[scrim-in_200ms_ease-out] motion-reduce:animate-none"
       />
       <div
-        className={`relative bg-white w-full ${width === "lg" ? "md:w-[36rem]" : "md:w-[28rem]"} max-h-[92vh] md:max-h-none md:h-full flex flex-col rounded-t-2xl md:rounded-none md:border-l border-gray-200 shadow-xl`}
+        className={`relative bg-white w-full ${width === "lg" ? "md:w-[36rem]" : "md:w-[28rem]"} max-h-[92vh] md:max-h-none md:h-full flex flex-col rounded-t-2xl md:rounded-none shadow-[0_-8px_40px_-12px_rgba(16,24,40,0.25)] md:shadow-[-8px_0_40px_-12px_rgba(16,24,40,0.25)] animate-[slideover-in_220ms_cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none`}
       >
-        <header className="px-5 pt-4 pb-3 border-b border-gray-200 flex items-start gap-3">
+        <header className="px-5 pt-4 pb-3 border-b border-black/[0.06] flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-[16px] font-bold text-gray-900 truncate">{title}</h2>
@@ -546,7 +546,7 @@ export function SlideOver({
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="닫기" icon={<IconX />} />
         </header>
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-5">{children}</div>
-        {footer && <footer className="px-5 py-3 border-t border-gray-200 bg-white flex items-center gap-2">{footer}</footer>}
+        {footer && <footer className="px-5 py-3 border-t border-black/[0.06] bg-white/85 backdrop-blur flex items-center gap-2">{footer}</footer>}
       </div>
     </div>
   );
@@ -561,7 +561,7 @@ export function Stepper({ steps, current }: { steps: string[]; current: number }
         const now = i === current;
         return (
           <li key={s} className="flex-1 min-w-0">
-            <div className={`h-1.5 rounded-full ${done || now ? "bg-navy" : "bg-gray-200"} ${now ? "" : done ? "opacity-60" : ""}`} />
+            <div className={`h-1.5 rounded-full transition-colors ${done || now ? "bg-navy" : "bg-black/[0.08]"} ${now ? "" : done ? "opacity-50" : ""}`} />
             <p className={`text-[11px] mt-1 truncate ${now ? "text-navy font-semibold" : "text-gray-400"}`} aria-current={now ? "step" : undefined}>
               {s}
             </p>
@@ -575,7 +575,7 @@ export function Stepper({ steps, current }: { steps: string[]; current: number }
 /** 상세 패널 안의 "라벨 : 값" 묶음 (Console 상세의 일정/상품 블록). */
 export function DefList({ items }: { items: { label: string; value: ReactNode }[] }) {
   return (
-    <dl className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+    <dl className="divide-y divide-black/[0.05] rounded-xl bg-black/[0.03]">
       {items.map((it) => (
         <div key={it.label} className="flex items-center justify-between gap-4 px-3 py-2">
           <dt className="text-[12px] text-gray-500 shrink-0">{it.label}</dt>

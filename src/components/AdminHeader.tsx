@@ -14,10 +14,10 @@ interface Me {
 
 /** 직무별 뱃지 색. 한눈에 계열이 구분되도록 서로 다른 톤을 쓴다. */
 const DEPT_BADGE: Record<Department, string> = {
-  SUPERADMIN: "bg-white text-navy",
-  ADMIN: "bg-white/20 text-white",
-  MARKETING: "bg-gold/90 text-white",
-  SALES: "bg-emerald-400/90 text-white",
+  SUPERADMIN: "bg-navy/[0.08] text-navy",
+  ADMIN: "bg-black/[0.06] text-gray-700",
+  MARKETING: "bg-gold/15 text-amber-800",
+  SALES: "bg-emerald-500/10 text-emerald-800",
 };
 
 export default function AdminHeader() {
@@ -31,9 +31,9 @@ export default function AdminHeader() {
   }, []);
 
   return (
-    <header className="bg-[#0A0676] text-white px-4 py-3 flex items-center justify-between">
+    <header className="sticky top-0 z-40 bg-white/75 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 border-b border-black/[0.06] px-4 h-12 flex items-center justify-between">
       <div className="flex items-center gap-2 min-w-0">
-        <span className="text-base font-bold tracking-tight shrink-0">우주라이크</span>
+        <span className="text-[15px] font-bold tracking-[-0.01em] text-navy shrink-0">우주라이크</span>
         {me ? (
           <>
             <span
@@ -44,25 +44,25 @@ export default function AdminHeader() {
               {me.department_label}
             </span>
             {me.satellite_role === "LEAD" && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/15 text-white/80 shrink-0">
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-black/[0.05] text-gray-500 shrink-0">
                 세틀 리드
               </span>
             )}
           </>
         ) : (
-          <span className="text-xs bg-white/10 px-2 py-0.5 rounded-full w-14 h-5 animate-pulse" />
+          <span className="text-xs bg-black/[0.05] px-2 py-0.5 rounded-full w-14 h-5 animate-pulse" />
         )}
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
         {me && (
-          <span className="text-xs text-white/70 truncate max-w-[120px]">
+          <span className="text-xs text-gray-600 truncate max-w-[120px]">
             {me.display_name || me.username}
           </span>
         )}
         <a
           href="/api/auth/logout"
-          className="text-xs text-white/60 hover:text-white transition-colors"
+          className="text-xs text-gray-400 hover:text-gray-900 transition-colors"
         >
           로그아웃
         </a>

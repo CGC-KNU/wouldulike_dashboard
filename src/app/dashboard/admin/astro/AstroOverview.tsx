@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconSearch } from "@tabler/icons-react";
+import { IconDownload, IconSearch } from "@tabler/icons-react";
 import {
   BILLING_LABEL,
   INVOICE_LABEL,
@@ -69,12 +69,13 @@ function invoiceTone(o: StoreOps | null): ChipTone {
   return "gray";
 }
 
-export default function AstroOverview({ actor }: { actor: string }) {
+export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (tab: string) => void }) {
   const [rows, setRows] = useState<StoreRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
+  const [district, setDistrict] = useState<string>("all");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "name", dir: "asc" });
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -115,7 +116,8 @@ export default function AstroOverview({ actor }: { actor: string }) {
     [actor]
   );
 
-  const affiliate = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test), [rows]);
+  const districts = useMemo(() => [...new Set(rows.map((r) => r.ops?.district).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ko")), [rows]);
+  const affiliate = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test && (district === "all" || r.ops?.district === district)), [rows, district]);
   const paid = useMemo(() => affiliate.filter((r) => isPaidTier(r.tier)), [affiliate]);
   const stuck = useMemo(
     () => ({
@@ -159,8 +161,23 @@ export default function AstroOverview({ actor }: { actor: string }) {
       <PageHeader
         title="매장 현황"
         description="제휴 매장의 입금·계산서·운영 구분을 한 표에서 봅니다. 값은 전부 사람이 확인해서 넣는 값입니다."
-        actions={draft.on && <DraftBadge note={draft.note} />}
-      />
+        actions={
+          <>
+            {draft.on && <DraftBadge note={draft.note} />}
+            <a href={`/api/astro/export?tab=계약${district !== "all" ? `&district=${encodeURIComponent(district)}` : ""}`} className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-gray-300 bg-white text-[13px] font-semibold text-gray-800 hover:bg-gray-50">
+              <IconDownload size={16} aria-hidden="true" /> 시트 형식 CSV
+            </a>
+          </>
+        }
+      >
+        {districts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-gray-400 mr-1">상권</span>
+            <FilterPills label="상권" value={district} onChange={setDistrict} options={[{ key: "all", label: "전체" }, ...districts.map((d) => ({ key: d, label: d, count: rows.filter((r) => r.is_affiliate && r.ops?.district === d).length }))]} />
+            <span className="text-[12px] text-gray-400">상권이 비어 있는 매장 {rows.filter((r) => r.is_affiliate && !r.ops?.district).length}곳 · 매장 상세에서 적을 수 있습니다</span>
+          </div>
+        )}
+      </PageHeader>
 
       {/* 총량이 아니라 '지금 막힌 것'. 누르면 표가 그것만 남는다. */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
@@ -276,7 +293,7 @@ export default function AstroOverview({ actor }: { actor: string }) {
         같은 값을 두 곳에서 고치게 만들지 않기 위해서입니다.
       </p>
 
-      <StoreDetailPanel row={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} />
+      <StoreDetailPanel row={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onGoDocs={onGo ? () => onGo("astro-docs") : undefined} />
     </>
   );
 }

@@ -9,7 +9,7 @@
   --color-periwinkle: #6366E0;
   --color-dark-card: #182031;
   --color-gold: #E0A23C;
-  --color-background: #F4F4F9;
+  --color-background: #F5F5F7;
 }
 
 body {
@@ -22,3 +22,9 @@ body {
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ── 세틀라이트 툴 셸 모션 ──
+   패널은 이동+투명도로만 들어온다(컴포지터). 220ms · 강한 ease-out. 나갈 땐 즉시 사라진다. */
+@keyframes slideover-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@media (max-width: 767px) { @keyframes slideover-in { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } } }
+@keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }

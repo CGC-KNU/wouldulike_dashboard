@@ -17,6 +17,7 @@ import {
   IconActivity,
   IconHome,
   IconDeviceMobile,
+  IconFiles,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -44,6 +45,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   restaurants: IconBuildingStore,
   "astro-leads": IconTargetArrow,
   "astro-billing": IconCash,
+  "astro-docs": IconFiles,
   "probe-metrics": IconChartBar,
   "probe-quality": IconAlertTriangle,
   "castor-map": IconSitemap,
@@ -84,9 +86,9 @@ export default function ToolShell({
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-6 items-start">
-      <aside className="md:sticky md:top-4 bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <aside className="md:sticky md:top-4 bg-white/70 rounded-2xl border border-black/[0.05] overflow-hidden">
         {/* 제품 표시 + 런처로 돌아가기 */}
-        <div className="px-3 pt-3 pb-2 border-b border-gray-100">
+        <div className="px-3 pt-3 pb-2 border-b border-black/[0.05]">
           {onBack ? (
             <button
               type="button"
@@ -123,7 +125,7 @@ export default function ToolShell({
                     onClick={() => onSelect(n.key)}
                     aria-current={on ? "page" : undefined}
                     className={`w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg text-[13px] font-semibold whitespace-nowrap transition-colors touch-manipulation ${focusRing} ${
-                      on ? "bg-navy/8 text-navy" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      on ? "bg-navy/[0.08] text-navy" : "text-gray-600 hover:bg-black/[0.04] hover:text-gray-900"
                     }`}
                   >
                     <Icon size={18} stroke={1.75} className={on ? "text-navy" : "text-gray-400"} aria-hidden="true" />
@@ -135,7 +137,7 @@ export default function ToolShell({
           </ul>
         </nav>
 
-        <div className="hidden md:flex items-center gap-2.5 px-4 py-3 border-t border-gray-100">
+        <div className="hidden md:flex items-center gap-2.5 px-4 py-3 border-t border-black/[0.05]">
           <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 text-[12px] font-bold flex items-center justify-center shrink-0">
             {user.name.slice(0, 1)}
           </span>

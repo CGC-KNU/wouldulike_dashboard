@@ -63,6 +63,22 @@ class StoreOps(models.Model):
     contract_started_on = models.DateField(null=True, blank=True)
     contract_months = models.PositiveSmallIntegerField(null=True, blank=True)
 
+    # 시트 '계약 세부사항' 열 1:1 — 툴이 시트를 대체하므로 전부 편집 가능 (2026-09-10 민열).
+    district = models.CharField(max_length=30, blank=True)  # 상권
+    contract_signed_on = models.DateField(null=True, blank=True)  # 계약일
+    contract_ends_on = models.DateField(null=True, blank=True)  # 전체 계약기간 끝
+    coupon_basic = models.TextField(blank=True)  # 기본 쿠폰 (상시)
+    coupon_limited = models.TextField(blank=True)  # 한정 쿠폰
+    stamp_count = models.CharField(max_length=40, blank=True)  # "5 / 10 / 20"
+    stamp_reward = models.TextField(blank=True)
+    exclusions = models.TextField(blank=True)  # 식사권 제외 메뉴·시간대
+    extra_quote = models.TextField(blank=True)  # 별도 견적 항목
+    kit_note = models.CharField(max_length=40, blank=True)  # 홍보물 수령 "2장/10장"
+    pin = models.CharField(max_length=10, blank=True)
+    contract_original = models.CharField(max_length=100, blank=True)  # 계약서 원본 보관
+    sheet_owner = models.CharField(max_length=50, blank=True)  # 담당자
+    sheet_synced_at = models.DateTimeField(null=True, blank=True)
+
     # 테스트·시드 매장 플래그. KPI 집계에서 뺀다.
     # ADIT 콘솔이 파트너 79곳 중 49곳이 preseed 더미라 지표가 부풀려졌던 걸 반면교사 삼는다.
     is_test = models.BooleanField(default=False)
@@ -99,18 +115,32 @@ class Lead(models.Model):
         ("거절", "거절"),
     )
 
+    # 열은 팀 시트(매장 현황 · 신규 컨택 · 후보 실측)의 합집합. 시트를 대체하려면 열을 잃으면 안 된다.
     name = models.CharField(max_length=100)
+    kind = models.CharField(max_length=10, blank=True)  # 기존 파트너 / 신규
     district = models.CharField(max_length=50, blank=True)  # 상권
     category = models.CharField(max_length=50, blank=True)
     stage = models.CharField(max_length=12, choices=STAGE, default="미컨택")
     owner = models.CharField(max_length=50, blank=True)  # 담당자
-    contact = models.CharField(max_length=50, blank=True)
+    intent = models.CharField(max_length=1, blank=True)  # 유료화 의향 A~D
+    owner_name = models.CharField(max_length=50, blank=True)  # 대표자
+    phone = models.CharField(max_length=30, blank=True)  # 매장 전화
+    contact = models.CharField(max_length=50, blank=True)  # 대표 연락처
+    link = models.URLField(blank=True)  # 네이버 플레이스
+    insta = models.CharField(max_length=60, blank=True)
     channel = models.CharField(max_length=20, blank=True)  # 방문/전화/인스타DM/소개/폼
+    contacted_at = models.CharField(max_length=40, blank=True)  # 시트 원문 그대로 ("8/6")
+    meeting_at = models.CharField(max_length=40, blank=True)
+    attendees = models.CharField(max_length=100, blank=True)
+    proposed_plan = models.CharField(max_length=40, blank=True)  # "Boost 3만"
     next_action = models.CharField(max_length=200, blank=True)
-    next_action_on = models.DateField(null=True, blank=True)
+    due = models.CharField(max_length=40, blank=True)
     last_touch_at = models.DateTimeField(null=True, blank=True)
-    expected_plan = models.CharField(max_length=10, blank=True)
+    grade = models.CharField(max_length=1, blank=True)  # 후보 실측 등급 A/B/C
+    score = models.PositiveSmallIntegerField(null=True, blank=True)
+    angle = models.TextField(blank=True)  # 공략 포인트
     memo = models.TextField(blank=True)
+    source = models.CharField(max_length=20, default="manual")  # manual / sheet:현황 / sheet:신규 / sheet:후보
     # 계약으로 넘어가면 실제 매장 레코드와 이어 붙인다. 파이프라인은 여기서 끝나지 않는다.
     converted_restaurant_id = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -146,3 +176,24 @@ class Activity(models.Model):
     class Meta:
         db_table = "astro_activity"
         indexes = [models.Index(fields=["target_type", "target_id", "-created_at"])]
+
+
+class SalesDoc(models.Model):
+    """
+    자료실 — 계약서·제안서·견적서·안내문·전단.
+    파일 본체는 드라이브/S3 에 두고 링크만 갖는다. 공개 레포·DB 어디에도 계약서 바이너리를 넣지 않는다.
+    """
+
+    KIND = (("계약서", "계약서"), ("제안서", "제안서"), ("소개서", "소개서"), ("견적서", "견적서"), ("안내문", "안내문"), ("전단", "전단"), ("포스터", "포스터"), ("기타", "기타"))
+
+    kind = models.CharField(max_length=6, choices=KIND, default="기타")
+    title = models.CharField(max_length=120)
+    version = models.CharField(max_length=20, blank=True)
+    url = models.URLField(blank=True)
+    when = models.CharField(max_length=60, blank=True)  # 언제 쓰나 (영업 단계)
+    note = models.TextField(blank=True)
+    updated_by = models.CharField(max_length=50, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "astro_sales_doc"
