@@ -80,3 +80,15 @@ src/app/auth/preview/route.ts
 
 `toolProxy.ts` 는 draftFn 인자만 빼고 남겨도 됩니다 — 상태 코드 보존 프록시라 쓸모가 있습니다.
 `types.ts` 는 계속 씁니다.
+
+## 0911 추가 — 연계 · Probe 운영 화면
+
+프론트가 새로 부르는 경로. 지금은 전부 Next 쪽에서 기존 API 를 조합하거나 초안 저장소를 쓰므로 **백엔드 작업 없이도 동작**한다.
+아래는 "제대로 붙이려면" 필요한 것.
+
+| 프론트 경로 | 지금 | 제대로 하려면 |
+| --- | --- | --- |
+| `GET /api/astro/link?id&name` | `/api/satellite/plans/`(최근 3개월) + `/api/dashboard/stats/` 를 **매장 이름 매칭** | `Sponsorship.restaurant`, `ContentPlan.restaurant` FK 추가 → 이름 매칭 제거 |
+| `GET /api/probe/insights` | 발행된 기획의 topic 에 제휴 매장 이름 → `/plans/{id}/performance` | 같은 FK + `PostPerformance` 에 `non_follower_ratio`(비팔로워 노출 비중), 성장세(전 7일 대비) 추가 (아윤 지표셋) |
+| `GET/PATCH /api/probe/mileage` | 초안 저장소 `probe_mileage` (회차·응모풀·결과) | `MileageRound` 모델 + **앱 DB 응모풀 → 회차 스냅샷 자동 적재**(재민). 이게 붙어야 9/2·9/4·9/9 식 보류가 끝난다 |
+| `StoreOps.campus` | 초안 필드 (경북대·영남대·계명대) | `astro/models.py` StoreOps 에 `campus = CharField(choices=…)` — 이미 반영 |

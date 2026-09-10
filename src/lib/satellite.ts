@@ -17,7 +17,8 @@ export interface ToolMeta {
   users: string;
   slack: { channel: string; id?: string };
   icon: string; // /satellite/<key>.svg (선), /satellite/<key>_app.svg (앱판)
-  status: "live" | "draft" | "external";
+  /** hold = 사람이 오기 전까지 보류 (Castor: VE 영입 후 재검토, 민열님 0911) */
+  status: "live" | "draft" | "external" | "hold";
 }
 
 export const TOOLS: Record<ToolKey, ToolMeta> = {
@@ -56,10 +57,10 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     name: "Castor",
     subtitle: "앱 구조",
     description: "화면 지도(코드 자동 파싱) · 블록 배치 · A/B 후보",
-    users: "민구 · 재민 · 민열",
+    users: "VE(영입 예정) · 재민 · 민열",
     slack: { channel: "sat-castor" },
     icon: "/satellite/castor.svg",
-    status: "draft",
+    status: "hold",
   },
   aether: {
     key: "aether",

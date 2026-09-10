@@ -624,3 +624,14 @@ export function fmtDate(iso: string | null | undefined): string {
   if (Number.isNaN(t)) return iso;
   return new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric" }).format(t);
 }
+
+/** 브라우저 로컬(KST) 기준 날짜. toISOString 은 UTC 라 새벽엔 어제가 된다. */
+export function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+export function periodLocal(offsetMonths = 0): string {
+  const d = new Date();
+  const x = new Date(d.getFullYear(), d.getMonth() + offsetMonths, 1);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
+}

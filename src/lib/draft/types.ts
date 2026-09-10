@@ -53,8 +53,13 @@ export const INVOICE_LABEL: Record<InvoiceState, string> = {
  * 매장 운영 필드 — 기존 `restaurants` 테이블이 갖지 않는, Astro 가 소유하는 값들.
  * 계약 조건(플랜·쿠폰)은 이미 백엔드/시트에 있으므로 여기에 복제하지 않는다.
  */
+/** 캠퍼스 — 상권 위의 축. 팀이 경북대 마무리 → 영남대·계명대 컨택으로 나뉘어 뛴다 (0901·0906). */
+export const CAMPUSES = ["경북대", "영남대", "계명대"] as const;
+export type Campus = (typeof CAMPUSES)[number];
+
 export interface StoreOps {
   id: number; // = restaurant_id
+  campus: Campus | null;
   semester_active: boolean | null; // 학기 중 플랜 사용
   vacation_active: boolean | null; // 방학 중 플랜 사용 — 점주마다 다르다
   billing: BillingState;
@@ -98,6 +103,7 @@ export interface StoreOps {
 export function emptyStoreOps(id: number): StoreOps {
   return {
     id,
+    campus: null,
     semester_active: null,
     vacation_active: null,
     billing: "UNKNOWN",
@@ -137,7 +143,7 @@ export function emptyStoreOps(id: number): StoreOps {
 
 /** 클라이언트가 PATCH 로 바꿀 수 있는 운영 필드. 이 밖의 키(id·updated_by 등)는 서버가 버린다. */
 export const STORE_OPS_EDITABLE = [
-  "semester_active", "vacation_active", "kit_delivered",
+  "campus", "semester_active", "vacation_active", "kit_delivered",
   "billing", "invoice", "quote_sent_at", "contract_returned_at",
   "owner_name", "owner_phone", "biz_no",
   "monthly_fee", "pay_cycle", "contract_started_on", "contract_months",
@@ -147,7 +153,7 @@ export const STORE_OPS_EDITABLE = [
 ] as const satisfies readonly (keyof StoreOps)[];
 
 export const LEAD_EDITABLE = [
-  "name", "kind", "district", "category", "stage", "owner", "intent", "owner_name", "phone", "contact",
+  "name", "campus", "kind", "district", "category", "stage", "owner", "intent", "owner_name", "phone", "contact",
   "link", "insta", "channel", "contacted_at", "meeting_at", "attendees", "proposed_plan",
   "next_action", "due", "grade", "score", "angle", "memo",
 ] as const satisfies readonly (keyof Lead)[];
@@ -174,6 +180,7 @@ export const INTENT_LABEL: Record<LeadIntent, string> = { A: "가능성 높음",
 export interface Lead {
   id: string;
   name: string;
+  campus: Campus | null; // 경북대 · 영남대 · 계명대
   kind: "기존 파트너" | "신규" | null; // 시트 F열 '구분'
   district: string | null; // 상권
   category: string | null;

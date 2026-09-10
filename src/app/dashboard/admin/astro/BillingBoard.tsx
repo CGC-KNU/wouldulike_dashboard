@@ -1,202 +1,151 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconCheck, IconCopy, IconSend } from "@tabler/icons-react";
-import { BILLING_LABEL, INVOICE_LABEL, isPaidTier, type StoreOps, type StoreRow } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Skeleton, StepTiles, Table, Td, Th, PageHeader, agoLabel, type ChipTone } from "../_shared/ui";
+import { IconCheck, IconCopy, IconFileInvoice, IconPlus } from "@tabler/icons-react";
+import { TAX_STATUS_LABEL, isPaidTier, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
+import { Button, Card, Chip, DraftBadge, Empty, Notice, PageHeader, Select, Skeleton, StepTiles, Table, Td, Th, rowClickable, periodLocal, type ChipTone } from "../_shared/ui";
 
 /**
- * Astro · 입금 현황.
+ * Astro · 입금 현황 — **월별** 장부.
  *
- * 지금은 재민님이 시트에 빨간색을 칠하고(09-06), 준영님이 카톡에 "입금완료 5 / 미회신 3 / 발송예정 3"을 손으로 적는다(09-03).
- * 둘 다 **누가 언제 확인했는지가 남지 않는다.** 이 화면은 그 두 일을 한 자리로 모으고, 체크할 때마다 확인자와 시각을 박는다.
+ * 0911 정리(민열님): 매달 받으니 월별로 정리. 매장에 하나 붙은 '입금 상태'로는 9월 받았는지 10월 받았는지 모른다.
+ * 그래서 이 화면의 행은 **매장 × 월**이고, 그 실체는 세금계산서 건(TaxInvoice)이다 — 청구(품의) → 발행 → 입금이
+ * 한 줄에서 흐른다. 월 이용료가 있는 유료·월납 매장인데 그 달 청구가 없으면 "청구 안 됨"으로 먼저 보인다.
  *
- * 상단 단계 타일은 Console 정산 관리에서 가져왔다. 왼쪽이 우리 일, 오른쪽으로 갈수록 끝난 일이다.
- * 수금(입금)과 세금계산서를 별개 상태로 둔 것도 Console 차용 — 섞으면 "계산서는 나갔는데 돈은 안 들어온" 칸이 사라진다.
+ * 매장 현황의 '이번 달 입금' 열도 같은 데이터를 본다. 두 화면이 다른 숫자를 말하지 않는다.
  */
 
-type Bucket = "ours" | "theirs" | "issued" | "done";
+const won = (n: number) => `${n.toLocaleString()}원`;
+const thisPeriod = () => periodLocal();
+const label = (p: string) => `${p.slice(0, 4)}년 ${Number(p.slice(5))}월`;
 
-const BUCKET_LABEL: Record<Bucket, string> = {
-  ours: "계산서 미발송",
-  theirs: "회신 대기",
-  issued: "발행됐지만 미입금",
-  done: "입금 확인",
-};
+type Row = { store: StoreRow; inv: TaxInvoice | null; bucket: "none" | "pending" | "issued" | "paid" | "skip" };
 
-export default function BillingBoard({ actor }: { actor: string }) {
-  const [rows, setRows] = useState<StoreRow[]>([]);
+export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (tab: string) => void }) {
+  const [stores, setStores] = useState<StoreRow[]>([]);
+  const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
-  const [bucket, setBucket] = useState<Bucket | null>("ours");
+  const [period, setPeriod] = useState(thisPeriod());
+  const [bucket, setBucket] = useState<Row["bucket"] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch("/api/astro/stores")
-      .then((r) => r.json())
-      .then((d) => {
-        setRows(d.stores ?? []);
-        setDraft({ on: Boolean(d.draft), note: d.draft_note });
-      })
-      .catch(() => setRows([]))
+    Promise.all([fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({})), fetch("/api/astro/invoices").then((r) => r.json()).catch(() => ({}))])
+      .then(([s, i]) => { setStores(s.stores ?? []); setDraft({ on: Boolean(s.draft), note: s.draft_note }); setInvoices(i.invoices ?? []); })
       .finally(() => setLoading(false));
   }, []);
   useEffect(load, [load]);
 
-  const patch = useCallback(
-    async (id: number, body: Partial<StoreOps>) => {
-      try {
-        const res = await fetch(`/api/astro/stores/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...body, updated_by: actor }),
-        });
-        if (res.ok) {
-          const d = await res.json();
-          setRows((prev) => prev.map((r) => (r.restaurant_id === id ? { ...r, ops: d.ops } : r)));
-        }
-      } catch {
-        /* 화면은 안 바꿨으므로 되돌릴 것도 없다 */
-      }
-    },
-    [actor]
-  );
+  const paid = useMemo(() => stores.filter((s) => s.is_affiliate && isPaidTier(s.tier) && !s.ops?.is_test), [stores]);
+  const rows: Row[] = useMemo(() => paid.map((store) => {
+    const inv = invoices.find((i) => i.restaurant_id === store.restaurant_id && i.period === period && !["CANCELED", "REJECTED"].includes(i.status)) ?? null;
+    const fee = store.ops?.monthly_fee ?? null;
+    const bucket: Row["bucket"] = !fee || store.ops?.pay_cycle === "LUMP" ? "skip" : !inv ? "none" : inv.paid_at ? "paid" : inv.status === "ISSUED" ? "issued" : "pending";
+    return { store, inv, bucket };
+  }).sort((a, b) => ["none", "pending", "issued", "paid", "skip"].indexOf(a.bucket) - ["none", "pending", "issued", "paid", "skip"].indexOf(b.bucket) || a.store.name.localeCompare(b.store.name, "ko")), [paid, invoices, period]);
+  const counts = useMemo(() => ({ none: rows.filter((r) => r.bucket === "none").length, pending: rows.filter((r) => r.bucket === "pending").length, issued: rows.filter((r) => r.bucket === "issued").length, paid: rows.filter((r) => r.bucket === "paid").length, skip: rows.filter((r) => r.bucket === "skip").length }), [rows]);
+  const sums = useMemo(() => ({ expected: rows.filter((r) => r.bucket !== "skip").reduce((a, r) => a + (r.inv?.total ?? r.store.ops?.monthly_fee ?? 0), 0), paid: rows.filter((r) => r.bucket === "paid").reduce((a, r) => a + (r.inv?.total ?? 0), 0) }), [rows]);
+  const periods = useMemo(() => { const set = new Set([thisPeriod(), ...invoices.map((i) => i.period)]); const d = new Date(); for (let k = 1; k <= 2; k++) set.add(periodLocal(-k)); return [...set].sort().reverse(); }, [invoices]);
+  const visible = bucket ? rows.filter((r) => r.bucket === bucket) : rows.filter((r) => r.bucket !== "skip");
 
-  const paid = useMemo(() => rows.filter((r) => r.is_affiliate && isPaidTier(r.tier) && !r.ops?.is_test), [rows]);
+  /** 최근 6개월 — 청구 대비 입금. 막대는 장식이 아니라 '어느 달이 비었나'를 본다. */
+  const history = useMemo(() => {
+    const d = new Date(); const out: { p: string; billed: number; paid: number }[] = [];
+    for (let k = 5; k >= 0; k--) { const p = periodLocal(-k); const inv = invoices.filter((i) => i.period === p && !["CANCELED", "REJECTED"].includes(i.status)); out.push({ p, billed: inv.reduce((a, i) => a + i.total, 0), paid: inv.filter((i) => i.paid_at).reduce((a, i) => a + i.total, 0) }); }
+    return out;
+  }, [invoices]);
 
-  /** 버킷은 서로 배타적이고 합이 유료 매장 수와 같다. 어디에도 안 잡히는 매장이 생기면 조용히 사라지기 때문이다. */
-  const buckets = useMemo(() => {
-    const done = paid.filter((r) => r.ops?.billing === "PAID" || r.ops?.billing === "EXEMPT");
-    const rest = paid.filter((r) => !done.includes(r));
-    const ours = rest.filter((r) => (r.ops?.invoice ?? "NONE") === "NONE");
-    const theirs = rest.filter((r) => r.ops?.invoice === "SENT" || r.ops?.invoice === "NO_REPLY");
-    const issued = rest.filter((r) => !ours.includes(r) && !theirs.includes(r));
-    return { ours, theirs, issued, done } as Record<Bucket, StoreRow[]>;
-  }, [paid]);
-
-  const report = useMemo(() => {
-    const names = (list: StoreRow[]) => (list.length ? list.map((r) => r.name).join(", ") : "없음");
-    const today = new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric" }).format(new Date());
-    const lines = [
-      `[입금 현황 ${today}] 유료 ${paid.length}곳`,
-      `입금 확인 ${buckets.done.length}: ${names(buckets.done)}`,
-      `계산서 발송·회신 대기 ${buckets.theirs.length}: ${names(buckets.theirs)}`,
-      `계산서 미발송 ${buckets.ours.length}: ${names(buckets.ours)}`,
-    ];
-    if (buckets.issued.length) lines.push(`발행됐지만 미입금 ${buckets.issued.length}: ${names(buckets.issued)}`);
-    return lines.join("\n");
-  }, [buckets, paid.length]);
-
-  async function copyReport() {
+  async function generate() {
+    if (busy) return; setBusy(true); setMsg(null);
     try {
-      await navigator.clipboard.writeText(report);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* 아래 미리보기에서 직접 복사하면 된다 */
-    }
+      const res = await fetch("/api/astro/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, requested_by: actor }) });
+      const d = await res.json(); if (!res.ok) { setMsg(d.detail); return; }
+      setMsg(`${label(period)} 청구 ${d.created}건 생성${d.skipped?.length ? ` · 건너뜀 ${d.skipped.join(", ")}` : ""}`); load();
+    } finally { setBusy(false); }
+  }
+  async function markPaid(inv: TaxInvoice) {
+    // 발행 전이면 발행 완료로 먼저 표시한다 — 월납은 홈택스에서 먼저 발행하고 입금받는 흐름이 흔하다
+    if (inv.status !== "ISSUED") { const r = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-issued", by: actor }) }); if (!r.ok) { setMsg((await r.json()).detail); return; } }
+    const res = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
+    if (!res.ok) setMsg((await res.json()).detail); load();
+  }
+  async function copyReport() {
+    const names = (b: Row["bucket"]) => rows.filter((r) => r.bucket === b).map((r) => r.store.name).join(", ") || "없음";
+    const text = [`[${label(period)} 입금 현황] 유료 ${paid.length}곳 · 입금 ${won(sums.paid)} / 청구 ${won(sums.expected)}`, `입금 확인 ${counts.paid}: ${names("paid")}`, `발행·입금 대기 ${counts.issued}: ${names("issued")}`, `품의·승인 중 ${counts.pending}: ${names("pending")}`, `청구 안 됨 ${counts.none}: ${names("none")}`].join("\n");
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ }
   }
 
-  const list = bucket ? buckets[bucket] : paid;
+  const TONE: Record<Row["bucket"], ChipTone> = { none: "red", pending: "amber", issued: "blue", paid: "green", skip: "gray" };
+  const LABEL: Record<Row["bucket"], string> = { none: "청구 안 됨", pending: "품의 · 승인", issued: "발행 · 입금 대기", paid: "입금 확인", skip: "해당 없음" };
 
   return (
     <>
-      <PageHeader
-        title="입금 현황"
-        description="유료 매장의 세금계산서와 입금을 단계별로 봅니다. 왼쪽이 우리가 잡고 있는 일입니다."
-        actions={
-          <>
-            {draft.on && <DraftBadge note={draft.note} />}
-            <Button icon={<IconCopy />} onClick={copyReport} aria-live="polite">
-              {copied ? "복사했습니다" : "보고 문구 복사"}
-            </Button>
-          </>
-        }
-      />
+      <PageHeader title="입금 현황" description="매장 × 월. 청구가 나갔는지, 발행됐는지, 돈이 들어왔는지가 한 줄입니다."
+        actions={<>{draft.on && <DraftBadge note={draft.note} />}<Button icon={<IconCopy />} onClick={copyReport} aria-live="polite">{copied ? "복사했습니다" : "보고 문구 복사"}</Button><Button variant="primary" icon={<IconPlus />} onClick={generate} disabled={busy || counts.none === 0}>{busy ? "생성 중…" : `${Number(period.slice(5))}월 청구 생성 (${counts.none})`}</Button></>}>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-40"><Select value={period} onChange={(e) => { setPeriod(e.target.value); setBucket(null); }} aria-label="월">{periods.map((p) => <option key={p} value={p}>{label(p)}</option>)}</Select></div>
+          <span className="text-[13px] text-gray-600">입금 <b className="text-gray-900 tabular-nums">{won(sums.paid)}</b> / 청구 예정 <b className="text-gray-900 tabular-nums">{won(sums.expected)}</b></span>
+        </div>
+      </PageHeader>
+
+      {msg && <div className="mb-4"><Notice tone="blue" title={msg} /></div>}
 
       <div className="mb-5">
-        <StepTiles
-          active={bucket}
-          onSelect={(k) => setBucket(bucket === k ? null : (k as Bucket))}
-          steps={[
-            { key: "ours", label: "계산서 미발송", count: buckets.ours.length, hint: "우리가 보내야 함", tone: "alert" },
-            { key: "theirs", label: "회신 대기", count: buckets.theirs.length, hint: "보냈고 답 기다림" },
-            { key: "issued", label: "발행됐지만 미입금", count: buckets.issued.length, hint: "다시 연락할 차례", tone: "alert" },
-            { key: "done", label: "입금 확인", count: buckets.done.length, hint: "끝난 곳", tone: "good" },
-          ]}
-        />
+        <StepTiles active={bucket} onSelect={(k) => setBucket(bucket === k ? null : (k as Row["bucket"]))} steps={[
+          { key: "none", label: "청구 안 됨", count: counts.none, hint: "우리가 만들어야 함", tone: counts.none ? "alert" : "plain" },
+          { key: "pending", label: "품의 · 승인", count: counts.pending, hint: "발행 전" },
+          { key: "issued", label: "발행 · 입금 대기", count: counts.issued, hint: "점주가 보낼 차례" },
+          { key: "paid", label: "입금 확인", count: counts.paid, hint: won(sums.paid), tone: "good" },
+        ]} />
       </div>
 
-      <Card flush title={bucket ? `${BUCKET_LABEL[bucket]} ${list.length}곳` : `유료 매장 ${paid.length}곳`}>
-        {loading ? (
-          <Skeleton rows={6} cols={5} />
-        ) : paid.length === 0 ? (
-          <Empty title="유료 매장이 없습니다" detail="플랜이 BOOST·CONTENT 인 제휴 매장만 잡힙니다. 식당 관리에서 플랜을 먼저 지정하세요." />
-        ) : list.length === 0 ? (
-          <Empty title="이 단계는 비어 있습니다" detail="위 다른 단계를 눌러 보세요." />
-        ) : (
-          <Table minWidth="44rem">
-            <thead>
-              <tr>
-                <Th>매장</Th>
-                <Th width="7rem">입금</Th>
-                <Th width="7rem">계산서</Th>
-                <Th width="9rem">확인</Th>
-                <Th width="16rem" align="right">처리</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((r) => {
-                const o = r.ops;
-                const bTone: ChipTone = o?.billing === "PAID" ? "green" : o?.billing === "PENDING" ? "red" : "gray";
-                const iTone: ChipTone = o?.invoice === "ISSUED" ? "green" : o?.invoice === "NO_REPLY" ? "red" : o?.invoice === "SENT" ? "amber" : "gray";
-                return (
-                  <tr key={r.restaurant_id}>
-                    <Td>
-                      <span className="font-semibold text-gray-900">{r.name}</span>
-                      <span className="block text-[11px] text-gray-400">{r.tier}{o?.biz_no ? ` · ${o.biz_no}` : ""}</span>
-                    </Td>
-                    <Td><Chip tone={bTone}>{BILLING_LABEL[o?.billing ?? "UNKNOWN"]}</Chip></Td>
-                    <Td><Chip tone={iTone}>{INVOICE_LABEL[o?.invoice ?? "NONE"]}</Chip></Td>
-                    <Td className="text-[12px] text-gray-500">
-                      {o?.billing_checked_at ? `${o.billing_checked_at} · ${o.billing_checked_by ?? ""}` : agoLabel(o?.updated_at)}
-                    </Td>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] gap-4 items-start">
+        <Card flush title={`${label(period)} · ${visible.length}곳`} description={counts.skip ? `일시납·이용료 미입력 ${counts.skip}곳은 뺐습니다.` : undefined}>
+          {loading ? <Skeleton rows={6} cols={5} /> : paid.length === 0 ? <Empty title="유료 매장이 없습니다" detail="식당 관리에서 플랜을 먼저 지정하세요." /> : visible.length === 0 ? <Empty title="이 칸은 비었습니다" /> : (
+            <Table minWidth="38rem">
+              <thead><tr><Th>매장</Th><Th width="6.5rem" align="right">금액</Th><Th width="8.5rem">상태</Th><Th width="5rem">입금일</Th><Th width="7.5rem" align="right">처리</Th></tr></thead>
+              <tbody>
+                {visible.map(({ store, inv, bucket: b }) => (
+                  <tr key={store.restaurant_id} className={inv ? rowClickable : ""} onClick={() => inv && onGo?.("astro-tax")}>
+                    <Td><span className="font-semibold text-gray-900 whitespace-nowrap">{store.name}</span><span className="block text-[11px] text-gray-400 whitespace-nowrap">{store.tier}{store.ops?.pay_cycle === "MONTHLY" ? " · 월납" : ""}{store.ops?.district ? ` · ${store.ops.district}` : ""}</span></Td>
+                    <Td align="right" numeric className="font-semibold text-gray-900">{won(inv?.total ?? store.ops?.monthly_fee ?? 0)}</Td>
+                    <Td><Chip tone={TONE[b]} dot={b === "none"}>{LABEL[b]}</Chip>{inv && <span className="block text-[11px] text-gray-400 mt-0.5">{TAX_STATUS_LABEL[inv.status]}{inv.nts_no ? ` · ${inv.nts_no}` : ""}</span>}</Td>
+                    <Td className="text-[12px] text-gray-600">{inv?.paid_at ? inv.paid_at.slice(5, 10).replace("-", "/") : "-"}</Td>
                     <Td align="right">
-                      <div className="inline-flex gap-1.5">
-                        {(o?.invoice ?? "NONE") === "NONE" && (
-                          <Button size="sm" icon={<IconSend />} onClick={() => patch(r.restaurant_id, { invoice: "SENT" })}>
-                            계산서 발송함
-                          </Button>
-                        )}
-                        {o?.invoice === "SENT" && (
-                          <Button size="sm" onClick={() => patch(r.restaurant_id, { invoice: "NO_REPLY" })}>
-                            회신 없음
-                          </Button>
-                        )}
-                        {o?.billing !== "PAID" && o?.billing !== "EXEMPT" && (
-                          <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => patch(r.restaurant_id, { billing: "PAID", invoice: "ISSUED" })}>
-                            입금 확인
-                          </Button>
-                        )}
-                        {o?.billing === "PAID" && !o.kit_delivered && (
-                          <Button size="sm" onClick={() => patch(r.restaurant_id, { kit_delivered: true })}>
-                            비치물 전달함
-                          </Button>
-                        )}
+                      <div className="inline-flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {b === "none" && <Button size="sm" onClick={generate} disabled={busy} icon={<IconFileInvoice />}>청구 생성</Button>}
+                        {inv && b !== "paid" && <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => markPaid(inv)}>입금 확인</Button>}
+                        {b === "paid" && <span className="text-[12px] text-emerald-700 font-semibold">완료</span>}
                       </div>
                     </Td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
 
-      <Card title="보고 문구" description="카톡·슬랙에 손으로 쓰던 그 문장입니다. 위 버튼으로 복사해서 그대로 올리세요." className="mt-4">
-        <pre className="text-[13px] text-gray-700 whitespace-pre-wrap leading-relaxed font-sans">{report}</pre>
-      </Card>
+        <Card title="최근 6개월" description="청구 대비 입금. 비어 있는 달이 보이면 그 달을 고르세요.">
+          <ol className="space-y-2.5">
+            {history.map((h) => {
+              const pct = h.billed ? Math.round((h.paid / h.billed) * 100) : 0;
+              return (
+                <li key={h.p}>
+                  <button type="button" onClick={() => { setPeriod(h.p); setBucket(null); }} className={`w-full text-left rounded-lg px-2 py-1.5 hover:bg-navy/[0.04] ${period === h.p ? "bg-navy/[0.06]" : ""}`}>
+                    <div className="flex items-center justify-between text-[12px]"><span className={`font-semibold ${period === h.p ? "text-navy" : "text-gray-700"}`}>{label(h.p)}</span><span className="text-gray-500 tabular-nums">{h.billed ? `${won(h.paid)} / ${won(h.billed)}` : "청구 없음"}</span></div>
+                    <div className="h-1.5 mt-1.5 rounded-full bg-black/[0.06] overflow-hidden"><div className={`h-full rounded-full ${pct >= 100 ? "bg-emerald-500" : "bg-navy/70"}`} style={{ width: `${Math.min(100, pct)}%` }} /></div>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+          <p className="text-[12px] text-gray-500 mt-3">세금계산서 탭과 같은 데이터입니다. 발행·승인번호는 거기서 다룹니다.</p>
+        </Card>
+      </div>
     </>
   );
 }

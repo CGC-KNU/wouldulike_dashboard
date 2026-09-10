@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconCheck, IconExternalLink, IconFiles } from "@tabler/icons-react";
+import { IconCheck, IconExternalLink, IconFiles, IconCash } from "@tabler/icons-react";
 import {
   BILLING_LABEL,
   INVOICE_LABEL,
@@ -10,11 +10,15 @@ import {
   type BillingState,
   type InvoiceState,
   type PayCycle,
+  type Campus,
   type StoreOps,
   type StoreRow,
+  type TaxInvoice,
+  CAMPUSES,
+  TAX_STATUS_LABEL,
 } from "@/lib/draft/types";
 import { SALES_SHEET } from "@/lib/satellite";
-import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel } from "../_shared/ui";
+import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
 
 /**
@@ -54,7 +58,7 @@ function Cell({ label, value, onCommit, placeholder, hint, type, rows }: { label
   );
 }
 
-export default function StoreDetailPanel({ row, actor, onClose, onPatch, onGoDocs }: { row: StoreRow | null; actor: string; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void; onGoDocs?: () => void }) {
+export default function StoreDetailPanel({ row, invoice = null, actor, onClose, onPatch, onGo, onMarkPaid }: { row: StoreRow | null; invoice?: TaxInvoice | null; actor: string; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void; onGo?: (tab: string) => void; onMarkPaid?: (inv: TaxInvoice) => Promise<void> }) {
   if (!row) return null;
   const o: StoreOps = { ...emptyStoreOps(row.restaurant_id), ...(row.ops ?? {}) };
   const id = row.restaurant_id;
@@ -77,14 +81,16 @@ export default function StoreDetailPanel({ row, actor, onClose, onPatch, onGoDoc
       open
       onClose={onClose}
       title={row.name}
-      subtitle={[`매장 ID ${id}`, o.district, o.sheet_owner && `담당 ${o.sheet_owner}`].filter(Boolean).join(" · ")}
+      subtitle={[o.campus ?? "경북대", o.district, `매장 ID ${id}`, o.sheet_owner && `담당 ${o.sheet_owner}`].filter(Boolean).join(" · ")}
       badge={row.tier ? <Chip tone={row.tier === "BOOST" ? "amber" : row.tier === "CONTENT" ? "navy" : "gray"}>{row.tier}</Chip> : <Chip tone="gray">플랜 미지정</Chip>}
       width="lg"
       footer={
         <>
-          {o.billing !== "PAID" && paid && <Button variant="primary" icon={<IconCheck />} onClick={() => onPatch(id, { billing: "PAID", invoice: "ISSUED" })}>입금 확인 처리</Button>}
+          {/* 월납 + 이번 달 청구가 있으면 계산서 건에 입금을 찍는다 — 매장 현황·입금 현황·런처가 전부 그 건을 본다 */}
+          {paid && invoice && !invoice.paid_at && onMarkPaid && <Button variant="primary" icon={<IconCheck />} onClick={() => onMarkPaid(invoice)}>{invoice.period.slice(5).replace(/^0/, "")}월 입금 확인</Button>}
+          {paid && (!invoice || o.pay_cycle === "LUMP") && o.billing !== "PAID" && <Button variant="primary" icon={<IconCheck />} onClick={() => onPatch(id, { billing: "PAID", invoice: "ISSUED" })}>{o.pay_cycle === "LUMP" ? "일시납 입금 확인" : "입금 확인 처리"}</Button>}
           {!o.kit_delivered && <Button onClick={() => onPatch(id, { kit_delivered: true })}>비치물 전달 완료</Button>}
-          {onGoDocs && <Button variant="ghost" icon={<IconFiles />} onClick={onGoDocs}>자료실</Button>}
+          {onGo && <Button variant="ghost" icon={<IconFiles />} onClick={() => onGo("astro-docs")}>자료실</Button>}
           <span className="ml-auto text-[12px] text-gray-400">{o.updated_at ? `${agoLabel(o.updated_at)}${o.updated_by ? ` · ${o.updated_by}` : ""}` : "아직 기록 없음"}</span>
         </>
       }
@@ -101,6 +107,13 @@ export default function StoreDetailPanel({ row, actor, onClose, onPatch, onGoDoc
               ))}
             </div>
             {o.billing_checked_at && <p className="text-[12px] text-gray-500 mt-1.5">{o.billing_checked_at} 에 {o.billing_checked_by ?? "누군가"} 확인</p>}
+            {paid && o.pay_cycle !== "LUMP" && (
+              <p className="text-[12px] text-gray-600 mt-1.5 flex items-center gap-1.5">
+                <IconCash size={13} className="text-gray-400" aria-hidden="true" />
+                이번 달 청구: {invoice ? <>{TAX_STATUS_LABEL[invoice.status]}{invoice.paid_at ? ` · 입금 ${invoice.paid_at.slice(5, 10).replace("-", "/")}` : ""} · {invoice.total.toLocaleString()}원</> : <span className="text-red-600 font-semibold">아직 청구 안 됨</span>}
+                {onGo && <button type="button" onClick={() => onGo("astro-billing")} className="text-navy font-medium hover:underline">월별 보기</button>}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-[12px] font-semibold text-gray-700 mb-1.5">세금계산서</p>
@@ -161,6 +174,7 @@ export default function StoreDetailPanel({ row, actor, onClose, onPatch, onGoDoc
 
       <PanelSection title="매장 정보 (시트 '매장 현황')">
         <div className="grid grid-cols-2 gap-3">
+          <Field label="캠퍼스"><Select value={o.campus ?? "경북대"} onChange={(e) => onPatch(id, { campus: e.target.value as Campus })}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
           <Cell label="상권" value={o.district} onCommit={set("district")} placeholder="북문 / 정문 / 쪽문" />
           <Cell label="대표자" value={o.owner_name} onCommit={set("owner_name")} />
           <Cell label="연락처" value={o.owner_phone} onCommit={set("owner_phone")} type="tel" />
@@ -178,7 +192,64 @@ export default function StoreDetailPanel({ row, actor, onClose, onPatch, onGoDoc
         </p>
       </PanelSection>
 
+      <PanelSection title="다른 툴에서 본 이 매장">
+        <LinkBlock id={id} name={row.name} onGo={onGo} />
+      </PanelSection>
+
       <PanelSection title="기록"><ActivityLog targetType="store" targetId={String(id)} actor={actor} /></PanelSection>
     </SlideOver>
+  );
+}
+
+/* ═══════════ Papillon · Probe 연결 블록 ═══════════ */
+
+interface LinkPayload {
+  papillon: { reachable: boolean; sponsorships: { id: number; shoot_datetime: string; status: string; status_label: string; shoot_owner_name: string | null }[]; plans: { id: number; topic: string; scheduled_date: string; status: string; media_type: string; pipeline_stage_label: string; owner_name: string }[] };
+  probe: { reachable: boolean; stats: { coupon_redeemed_this_month: number; stamp_earned_this_month: number; revisit_this_month: number; loyal_total: number } | null };
+}
+
+/**
+ * 같은 매장을 Papillon(협찬 촬영 · 콘텐츠 기획)과 Probe(이번 달 앱 지표)가 어떻게 보는지.
+ * 영업이 점주에게 "이번 주 촬영 있어요 / 저번 게시물 저장 309회였어요" 를 여기서 바로 꺼낸다.
+ * 못 읽으면 '못 읽음'이지 '없음'이 아니다.
+ */
+function LinkBlock({ id, name, onGo }: { id: number; name: string; onGo?: (tab: string) => void }) {
+  const [d, setD] = useState<LinkPayload | null | undefined>(undefined);
+  useEffect(() => {
+    setD(undefined);
+    fetch(`/api/astro/link?id=${id}&name=${encodeURIComponent(name)}`).then((r) => (r.ok ? r.json() : null)).then(setD).catch(() => setD(null));
+  }, [id, name]);
+  if (d === undefined) return <Skeleton rows={3} cols={2} />;
+  if (d === null) return <p className="text-[12px] text-gray-500">연결 정보를 읽지 못했습니다.</p>;
+  const fmt = (iso: string) => { const x = new Date(iso); return `${x.getMonth() + 1}/${x.getDate()}`; };
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="rounded-lg border border-gray-200 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[12px] font-semibold text-gray-800 inline-flex items-center gap-1.5"><img src="/satellite/papillon_app.svg" alt="" width={16} height={16} className="w-4 h-4 rounded" aria-hidden="true" />Papillon</span>
+          {onGo && <button type="button" onClick={() => onGo("satellite")} className="text-[12px] text-navy font-medium hover:underline">열기</button>}
+        </div>
+        {!d.papillon.reachable ? <p className="text-[12px] text-gray-500">기획 목록을 못 읽었습니다.</p> : d.papillon.sponsorships.length + d.papillon.plans.length === 0 ? <p className="text-[12px] text-gray-500">최근 3개월 협찬·기획에 이 매장 이름이 없습니다.</p> : (
+          <ul className="space-y-1.5 text-[12px]">
+            {d.papillon.sponsorships.slice(0, 3).map((s) => <li key={`s${s.id}`} className="flex items-center justify-between gap-2"><span className="text-gray-700 truncate">촬영 {fmt(s.shoot_datetime)}{s.shoot_owner_name ? ` · ${s.shoot_owner_name}` : ""}</span><Chip tone={s.status === "completed" ? "green" : "amber"}>{s.status_label}</Chip></li>)}
+            {d.papillon.plans.slice(0, 3).map((p) => <li key={`p${p.id}`} className="flex items-center justify-between gap-2"><span className="text-gray-700 truncate">{p.scheduled_date.slice(5).replace("-", "/")} {p.topic}</span><Chip tone={p.status === "published" ? "navy" : "gray"}>{p.pipeline_stage_label}</Chip></li>)}
+          </ul>
+        )}
+      </div>
+      <div className="rounded-lg border border-gray-200 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[12px] font-semibold text-gray-800 inline-flex items-center gap-1.5"><img src="/satellite/probe_app.svg" alt="" width={16} height={16} className="w-4 h-4 rounded" aria-hidden="true" />Probe · 이번 달</span>
+          {onGo && <button type="button" onClick={() => onGo("probe-insights")} className="text-[12px] text-navy font-medium hover:underline">홍보 인사이트</button>}
+        </div>
+        {!d.probe.reachable || !d.probe.stats ? <p className="text-[12px] text-gray-500">지표를 못 읽었습니다 (0 이 아니라 모름).</p> : (
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+            <dt className="text-gray-500">쿠폰 사용</dt><dd className="text-right font-semibold tabular-nums text-gray-900">{d.probe.stats.coupon_redeemed_this_month}</dd>
+            <dt className="text-gray-500">스탬프 적립</dt><dd className="text-right font-semibold tabular-nums text-gray-900">{d.probe.stats.stamp_earned_this_month}</dd>
+            <dt className="text-gray-500">재방문</dt><dd className="text-right font-semibold tabular-nums text-gray-900">{d.probe.stats.revisit_this_month}</dd>
+            <dt className="text-gray-500">단골 누적</dt><dd className="text-right font-semibold tabular-nums text-gray-900">{d.probe.stats.loyal_total}</dd>
+          </dl>
+        )}
+      </div>
+    </div>
   );
 }

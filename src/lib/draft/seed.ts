@@ -20,6 +20,7 @@ function ops(
 ): StoreOps {
   return {
     id,
+    campus: null,
     semester_active: null,
     vacation_active: null,
     billing: "UNKNOWN",

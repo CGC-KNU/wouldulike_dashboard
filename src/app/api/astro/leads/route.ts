@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
   const pick = (k: keyof Lead) => (body[k] as string | undefined) || null;
   const created = appendDraftItem<Lead>(KEY, seedLeads, {
     name: body.name.trim(),
+    campus: (body.campus as Lead["campus"]) ?? "경북대",
     kind: (body.kind as Lead["kind"]) ?? null,
     district: pick("district"),
     category: pick("category"),

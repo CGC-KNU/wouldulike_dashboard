@@ -19,6 +19,8 @@ import AstroDocs from "./astro/AstroDocs";
 import TaxInvoices from "./astro/TaxInvoices";
 import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
+import StoreInsights from "./probe/StoreInsights";
+import MileageOps from "./probe/MileageOps";
 import CastorMap from "./castor/CastorMap";
 import CastorExperiments, { type VariantSeed } from "./castor/CastorExperiments";
 
@@ -55,6 +57,8 @@ type Tab =
   | "probe-metrics"
   | "probe-app"
   | "probe-quality"
+  | "probe-insights"
+  | "probe-mileage"
   // Castor(앱 구조·여정)
   | "castor-home"
   | "castor-map"
@@ -2462,6 +2466,8 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "probe-metrics", label: "매장 지표", icon: "▲", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-app", label: "앱 지표", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-insights", label: "홍보 인사이트", icon: "◎", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-mileage", label: "마일리지 추첨", icon: "◍", allow: (me) => me.permissions.can_restaurants },
 
   // ── Castor. 앱 구조를 바꾸는 제안을 만드는 곳이라 관리자만 본다.
   { key: "castor-home", label: "홈", icon: "⌂", allow: (me) => me.is_admin || me.is_superadmin },
@@ -2512,8 +2518,8 @@ const PRODUCTS: {
     key: "probe",
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
-    description: "매장 지표 · 앱 지표 · 데이터 정합성 점검",
-    tabs: ["probe-home", "probe-metrics", "probe-app", "probe-quality"],
+    description: "홍보 인사이트 · 마일리지 추첨 · 매장·앱 지표 · 정합성",
+    tabs: ["probe-home", "probe-insights", "probe-mileage", "probe-metrics", "probe-app", "probe-quality"],
     ready: true,
   },
   {
@@ -2616,6 +2622,13 @@ export default function AdminHomePage() {
     setActiveTab(null);
   }
 
+  /** 다른 제품의 탭으로도 뛴다 — 매장 상세의 'Papillon 열기', 정합성의 '고치러 가기' 등. */
+  function go(tab: string) {
+    const owner = PRODUCTS.find((p) => p.tabs.includes(tab as Tab));
+    if (owner) setSelectedProduct(owner.key);
+    setActiveTab(tab as Tab);
+  }
+
   if (!me) {
     return (
       <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
@@ -2669,7 +2682,7 @@ export default function AdminHomePage() {
 
   return (
     <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-3 px-1">
+      {selectedProduct === "papillon" && <div className="flex items-center justify-between mb-3 px-1">
         {showProductPicker ? (
           <button
             onClick={backToProducts}
@@ -2696,9 +2709,7 @@ export default function AdminHomePage() {
             </span>
           )}
         </span>
-      </div>
-
-      {selectedProduct !== "papillon" && <div className="mb-3" />}
+      </div>}
 
       {/* 탭 컨텐츠 — Papillon(마케팅 툴)은 자체 셸(PapillonShell)을 그대로 쓰고,
           나머지(Astro·Probe·Castor·Aether)는 애딧 Pitchr 문법의 ToolShell 로 감싼다. */}
@@ -2712,6 +2723,12 @@ export default function AdminHomePage() {
           onSelect={(key) => setActiveTab(key as Tab)}
           onBack={showProductPicker ? backToProducts : undefined}
           user={{ name: me.display_name || me.username, role: me.department_label }}
+          dock={showProductPicker ? {
+            tools: availableProducts.filter((p) => p.ready).map((p) => ({ key: p.key, name: p.name })),
+            active: selectedProduct,
+            onSwitch: (key) => selectProduct(key as Product),
+            onHome: backToProducts,
+          } : undefined}
         >
           {/* Aether: 관리 및 운영 */}
           {activeTab === "content" && <ContentTab />}
@@ -2721,24 +2738,20 @@ export default function AdminHomePage() {
           {/* Astro: 영업 */}
           {activeTab === "restaurants" && <RestaurantsTab />}
           {activeTab === "astro-home" && <AstroHome onGo={(t) => setActiveTab(t as Tab)} />}
-          {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={(t) => setActiveTab(t as Tab)} />}
+          {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={go} />}
           {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
           {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} />}
           {activeTab === "astro-leads" && <LeadPipeline actor={actorName} />}
-          {activeTab === "astro-billing" && <BillingBoard actor={actorName} />}
+          {activeTab === "astro-billing" && <BillingBoard actor={actorName} onGo={go} />}
 
           {/* Probe: 지표·데이터. 정합성 점검의 '고치러 가기'는 다른 제품의 탭으로도 뛴다. */}
-          {activeTab === "probe-home" && <ProbeHome onGo={(t) => setActiveTab(t as Tab)} />}
+          {activeTab === "probe-home" && <ProbeHome onGo={go} />}
+          {activeTab === "probe-insights" && <StoreInsights onGo={go} />}
+          {activeTab === "probe-mileage" && <MileageOps actor={actorName} />}
           {activeTab === "probe-metrics" && <ProbeOverview />}
           {activeTab === "probe-app" && <AppMetrics />}
           {activeTab === "probe-quality" && (
-            <DataQuality
-              onGo={(tab) => {
-                const owner = PRODUCTS.find((p) => p.tabs.includes(tab as Tab));
-                if (owner) setSelectedProduct(owner.key);
-                setActiveTab(tab as Tab);
-              }}
-            />
+            <DataQuality onGo={go} />
           )}
 
           {/* Castor: 앱 구조·여정. 지도에서 만든 배치를 A/B 탭으로 그대로 넘긴다. */}

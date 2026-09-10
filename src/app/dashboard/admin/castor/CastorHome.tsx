@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { IconBrandSlack } from "@tabler/icons-react";
 import type { CastorExperiment, CastorGraph } from "@/lib/draft/types";
 import { TOOLS, slackUrl } from "@/lib/satellite";
-import { Button, Card, Chip, Kpi, PageHeader, Skeleton, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, Kpi, Notice, PageHeader, Skeleton, type ChipTone } from "../_shared/ui";
 
 /** Castor · 홈. 지도가 있는지, 실험이 몇 개 도는지, 파서를 언제 돌렸는지. */
 
@@ -32,6 +32,13 @@ export default function CastorHome({ onGo }: { onGo: (tab: string) => void }) {
         description="코드에서 뽑은 화면 지도와, 그 위에서 만든 A/B 후보. 앱을 바꾸기 전에 여기서 바꿔 봅니다."
         actions={<a href={slackUrl(castor)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{castor.slack.channel}</Button></a>}
       />
+
+      {/* 0911 민열님: Castor 는 Visual Engineer 영입 후 고려. 화면은 남겨두되 앞에 붙이지 않는다. */}
+      <div className="mb-4">
+        <Notice tone="amber" title="보류 — Visual Engineer 합류 후 다시 봅니다">
+          화면 지도 파서와 A/B 후보 틀은 그대로 둡니다. 실험 설계·화면 구성은 VE 가 맡을 영역이라, 그 전엔 여기서 결정을 내리지 않습니다.
+        </Notice>
+      </div>
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="화면" value={loading ? "-" : graph?.screens.length ?? 0} hint={graph?.source.commit ? `커밋 ${graph.source.commit}` : "아직 파싱 전"} onClick={() => onGo("castor-map")} />

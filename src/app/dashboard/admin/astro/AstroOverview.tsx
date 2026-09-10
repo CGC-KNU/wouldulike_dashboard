@@ -1,50 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconDownload, IconSearch } from "@tabler/icons-react";
-import {
-  BILLING_LABEL,
-  INVOICE_LABEL,
-  emptyStoreOps,
-  isPaidTier,
-  type StoreOps,
-  type StoreRow,
-} from "@/lib/draft/types";
-import {
-  Card,
-  Chip,
-  DraftBadge,
-  Empty,
-  FilterPills,
-  Input,
-  Kpi,
-  PageHeader,
-  Skeleton,
-  Table,
-  Td,
-  Th,
-  agoLabel,
-  rowClickable,
-  type ChipTone,
-} from "../_shared/ui";
+import { IconDownload, IconPlus, IconSearch } from "@tabler/icons-react";
+import { CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, type Campus, type StoreOps, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
+import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, Segmented, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
 import StoreDetailPanel from "./StoreDetailPanel";
 
 /**
  * Astro · 매장 현황.
  *
- * 2026-08-07 주준영님이 올린 영업툴 요구 3가지가 그대로 이 표의 열이다:
- *   ① 학기 중점 매장 vs 방학에도 활성화하고 싶은 매장 구분
- *   ② 매장별 입금 상태를 수동 체크하되 한눈에 보이는 대시보드
- *   ③ 매장별 콘텐츠 정리 (Papillon 연동이 필요해 P2. 열 자리만 잡아둔다)
+ * 0911 정리(민열님): 후보와 같은 축 — **캠퍼스 → 상권**. 사람별 구분 없음. 매장(식당)도 여기서 바로 추가.
+ * '입금' 열은 매장에 하나 붙은 상태값이 아니라 **이번 달 청구(세금계산서 건)** 를 본다.
+ * 입금 현황 화면과 같은 데이터라 두 화면이 다른 말을 하지 않는다. 일시납 매장만 예전 방식(매장 상태값)으로 본다.
  *
- * 설계 원칙 하나 — 자동 판정하지 않는다. 학기/방학도 입금도 사람이 확인해서 넣고 툴은 보여준다(2026-08-12 합의).
- * 표는 Pitchr 리드 목록, 상세는 Console 캠페인 상세(슬라이드 패널)를 따랐다.
+ * 설계 원칙은 그대로 — 자동 판정하지 않는다. 학기/방학도 입금도 사람이 확인해서 넣는다(2026-08-12 합의).
  */
 
-type Filter = "all" | "paid" | "unpaid" | "invoice" | "kit" | "season";
+type Filter = "all" | "paid" | "unpaid" | "kit" | "season";
 type SortKey = "name" | "tier" | "billing" | "updated";
 
 const PLAN_TONE: Record<string, ChipTone> = { BOOST: "amber", CONTENT: "navy", FREE: "gray" };
+const thisPeriod = () => periodLocal();
 
 function season(o: StoreOps | null): { text: string; tone: ChipTone } {
   if (!o || (o.semester_active === null && o.vacation_active === null)) return { text: "미정", tone: "amber" };
@@ -54,173 +30,134 @@ function season(o: StoreOps | null): { text: string; tone: ChipTone } {
   return { text: "둘 다 쉼", tone: "gray" };
 }
 
-function billingTone(o: StoreOps | null): ChipTone {
-  if (!o) return "gray";
-  if (o.billing === "PAID") return "green";
-  if (o.billing === "PENDING") return "red";
-  if (o.billing === "EXEMPT") return "gray";
-  return "gray";
+/** 이번 달 입금 상태 — 월납은 이번 달 계산서 건, 일시납은 매장 상태값. */
+type Pay = { key: "paid" | "issued" | "pending" | "none" | "lump_paid" | "lump_open" | "exempt" | "free"; label: string; tone: ChipTone; stuck: boolean };
+function payOf(r: StoreRow, inv: TaxInvoice | undefined): Pay {
+  if (!isPaidTier(r.tier)) return { key: "free", label: "무료", tone: "gray", stuck: false };
+  const o = r.ops;
+  if (o?.billing === "EXEMPT") return { key: "exempt", label: "면제", tone: "gray", stuck: false };
+  if (o?.pay_cycle === "LUMP") return o.billing === "PAID" ? { key: "lump_paid", label: "일시납 완료", tone: "green", stuck: false } : { key: "lump_open", label: "일시납 대기", tone: "red", stuck: true };
+  if (!inv) return { key: "none", label: "청구 안 됨", tone: "red", stuck: true };
+  if (inv.paid_at) return { key: "paid", label: "입금 확인", tone: "green", stuck: false };
+  if (inv.status === "ISSUED") return { key: "issued", label: "발행 · 대기", tone: "blue", stuck: true };
+  return { key: "pending", label: TAX_STATUS_LABEL[inv.status], tone: "amber", stuck: true };
 }
-function invoiceTone(o: StoreOps | null): ChipTone {
-  if (!o) return "gray";
-  if (o.invoice === "ISSUED") return "green";
-  if (o.invoice === "NO_REPLY") return "red";
-  if (o.invoice === "SENT") return "amber";
-  return "gray";
-}
+const campusOf = (r: StoreRow): Campus => r.ops?.campus ?? "경북대";
 
 export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (tab: string) => void }) {
   const [rows, setRows] = useState<StoreRow[]>([]);
+  const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
+  const [campus, setCampus] = useState<Campus | "all">("경북대");
+  const [district, setDistrict] = useState<string>("all");
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
-  const [district, setDistrict] = useState<string>("all");
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "name", dir: "asc" });
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "billing", dir: "asc" });
   const [openId, setOpenId] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const period = thisPeriod();
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch("/api/astro/stores")
-      .then((r) => r.json())
-      .then((d) => {
-        setRows(d.stores ?? []);
-        setDraft({ on: Boolean(d.draft), note: d.draft_note });
-      })
-      .catch(() => setRows([]))
+    Promise.all([
+      fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({})),
+      fetch(`/api/astro/invoices?period=${period}`).then((r) => r.json()).catch(() => ({})),
+    ]).then(([s, i]) => { setRows(s.stores ?? []); setDraft({ on: Boolean(s.draft), note: s.draft_note }); setInvoices(i.invoices ?? []); })
       .finally(() => setLoading(false));
-  }, []);
+  }, [period]);
   useEffect(load, [load]);
 
   /** 낙관적 갱신. 실패하면 화면을 바꾸기 전으로 되돌린다. */
-  const patch = useCallback(
-    async (id: number, body: Partial<StoreOps>) => {
-      let snapshot: StoreRow[] = [];
-      setRows((prev) => {
-        snapshot = prev;
-        return prev.map((r) => (r.restaurant_id === id ? { ...r, ops: { ...(r.ops ?? emptyStoreOps(id)), ...body } } : r));
-      });
-      try {
-        const res = await fetch(`/api/astro/stores/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...body, updated_by: actor }),
-        });
-        if (!res.ok) return setRows(snapshot);
-        const d = await res.json();
-        setRows((prev) => prev.map((r) => (r.restaurant_id === id ? { ...r, ops: d.ops } : r)));
-      } catch {
-        setRows(snapshot);
-      }
-    },
-    [actor]
-  );
+  const patch = useCallback(async (id: number, body: Partial<StoreOps>) => {
+    let snapshot: StoreRow[] = [];
+    setRows((prev) => { snapshot = prev; return prev.map((r) => (r.restaurant_id === id ? { ...r, ops: { ...(r.ops ?? emptyStoreOps(id)), ...body } } : r)); });
+    try {
+      const res = await fetch(`/api/astro/stores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, updated_by: actor }) });
+      if (!res.ok) return setRows(snapshot);
+      const d = await res.json();
+      setRows((prev) => prev.map((r) => (r.restaurant_id === id ? { ...r, ops: d.ops } : r)));
+    } catch { setRows(snapshot); }
+  }, [actor]);
 
-  const districts = useMemo(() => [...new Set(rows.map((r) => r.ops?.district).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ko")), [rows]);
-  const affiliate = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test && (district === "all" || r.ops?.district === district)), [rows, district]);
+  const invById = useMemo(() => new Map(invoices.filter((i) => !["CANCELED", "REJECTED"].includes(i.status)).map((i) => [i.restaurant_id, i])), [invoices]);
+  const pay = useCallback((r: StoreRow) => payOf(r, invById.get(r.restaurant_id)), [invById]);
+
+  const affiliateAll = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test), [rows]);
+  const countIn = (c: Campus) => affiliateAll.filter((r) => campusOf(r) === c).length;
+  const inCampus = useMemo(() => affiliateAll.filter((r) => campus === "all" || campusOf(r) === campus), [affiliateAll, campus]);
+  const districts = useMemo(() => [...new Set(inCampus.map((r) => r.ops?.district).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ko")), [inCampus]);
+  useEffect(() => { if (district !== "all" && !districts.includes(district)) setDistrict("all"); }, [districts, district]);
+  const affiliate = useMemo(() => inCampus.filter((r) => district === "all" || r.ops?.district === district), [inCampus, district]);
   const paid = useMemo(() => affiliate.filter((r) => isPaidTier(r.tier)), [affiliate]);
-  const stuck = useMemo(
-    () => ({
-      unpaid: paid.filter((r) => r.ops?.billing !== "PAID" && r.ops?.billing !== "EXEMPT"),
-      invoice: paid.filter((r) => r.ops?.invoice === "NO_REPLY"),
-      kit: paid.filter((r) => r.ops?.billing === "PAID" && !r.ops?.kit_delivered),
-      season: paid.filter((r) => !r.ops || (r.ops.semester_active === null && r.ops.vacation_active === null)),
-    }),
-    [paid]
-  );
+  const stuck = useMemo(() => ({
+    unpaid: paid.filter((r) => pay(r).stuck),
+    kit: paid.filter((r) => !r.ops?.kit_delivered),
+    season: paid.filter((r) => !r.ops || (r.ops.semester_active === null && r.ops.vacation_active === null)),
+  }), [paid, pay]);
 
   const visible = useMemo(() => {
-    let list: StoreRow[] =
-      filter === "all" ? affiliate : filter === "paid" ? paid : stuck[filter];
+    let list: StoreRow[] = filter === "all" ? affiliate : filter === "paid" ? paid : stuck[filter];
     const q = search.trim();
     if (q) list = list.filter((r) => r.name.includes(q) || String(r.restaurant_id) === q);
     const dir = sort.dir === "asc" ? 1 : -1;
     const tierRank = (t: string | null) => (t === "CONTENT" ? 3 : t === "BOOST" ? 2 : t === "FREE" ? 1 : 0);
-    const billRank = (o: StoreOps | null) => (o?.billing === "PAID" ? 3 : o?.billing === "PENDING" ? 1 : o?.billing === "EXEMPT" ? 2 : 0);
+    const payRank = (r: StoreRow) => { const k = pay(r).key; return k === "none" || k === "lump_open" ? 0 : k === "pending" ? 1 : k === "issued" ? 2 : k === "paid" || k === "lump_paid" ? 3 : 4; };
     return [...list].sort((a, b) => {
       switch (sort.key) {
-        case "tier":
-          return (tierRank(a.tier) - tierRank(b.tier)) * dir || a.name.localeCompare(b.name, "ko");
-        case "billing":
-          return (billRank(a.ops) - billRank(b.ops)) * dir || a.name.localeCompare(b.name, "ko");
-        case "updated":
-          return ((Date.parse(a.ops?.updated_at ?? "") || 0) - (Date.parse(b.ops?.updated_at ?? "") || 0)) * dir;
-        default:
-          return a.name.localeCompare(b.name, "ko") * dir;
+        case "tier": return (tierRank(a.tier) - tierRank(b.tier)) * dir || a.name.localeCompare(b.name, "ko");
+        case "billing": return (payRank(a) - payRank(b)) * dir || a.name.localeCompare(b.name, "ko");
+        case "updated": return ((Date.parse(a.ops?.updated_at ?? "") || 0) - (Date.parse(b.ops?.updated_at ?? "") || 0)) * dir;
+        default: return a.name.localeCompare(b.name, "ko") * dir;
       }
     });
-  }, [affiliate, paid, stuck, filter, search, sort]);
+  }, [affiliate, paid, stuck, filter, search, sort, pay]);
 
-  const toggleSort = (key: SortKey) =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
-
+  const toggleSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" || key === "billing" ? "asc" : "desc" }));
   const open = rows.find((r) => r.restaurant_id === openId) ?? null;
+  const monthLabel = `${Number(period.slice(5))}월`;
 
   return (
     <>
       <PageHeader
         title="매장 현황"
-        description="제휴 매장의 입금·계산서·운영 구분을 한 표에서 봅니다. 값은 전부 사람이 확인해서 넣는 값입니다."
+        description="캠퍼스별 제휴 매장. 입금 열은 이번 달 청구 기준이고, 나머지는 사람이 확인해서 넣는 값입니다."
         actions={
           <>
             {draft.on && <DraftBadge note={draft.note} />}
-            <a href={`/api/astro/export?tab=계약${district !== "all" ? `&district=${encodeURIComponent(district)}` : ""}`} className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-gray-300 bg-white text-[13px] font-semibold text-gray-800 hover:bg-gray-50">
-              <IconDownload size={16} aria-hidden="true" /> 시트 형식 CSV
-            </a>
+            <a href={`/api/astro/export?tab=계약${district !== "all" ? `&district=${encodeURIComponent(district)}` : ""}`} className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-gray-300 bg-white text-[13px] font-semibold text-gray-800 hover:bg-gray-50"><IconDownload size={16} aria-hidden="true" /> 시트 형식 CSV</a>
+            <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button>
           </>
         }
       >
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...CAMPUSES.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}` })), { key: "all", label: "전체" }]} />
+          <div className="relative flex-1 min-w-[10rem] max-w-xs ml-auto">
+            <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장명 또는 ID" aria-label="매장 검색" className="pl-8" />
+          </div>
+        </div>
         {districts.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
             <span className="text-[12px] text-gray-400 mr-1">상권</span>
-            <FilterPills label="상권" value={district} onChange={setDistrict} options={[{ key: "all", label: "전체" }, ...districts.map((d) => ({ key: d, label: d, count: rows.filter((r) => r.is_affiliate && r.ops?.district === d).length }))]} />
-            <span className="text-[12px] text-gray-400">상권이 비어 있는 매장 {rows.filter((r) => r.is_affiliate && !r.ops?.district).length}곳 · 매장 상세에서 적을 수 있습니다</span>
+            <FilterPills label="상권" value={district} onChange={setDistrict} options={[{ key: "all", label: "전체" }, ...districts.map((d) => ({ key: d, label: d, count: inCampus.filter((r) => r.ops?.district === d).length }))]} />
+            {inCampus.some((r) => !r.ops?.district) && <span className="text-[12px] text-gray-400">상권이 빈 매장 {inCampus.filter((r) => !r.ops?.district).length}곳 · 매장 상세에서 적을 수 있습니다</span>}
           </div>
         )}
       </PageHeader>
 
       {/* 총량이 아니라 '지금 막힌 것'. 누르면 표가 그것만 남는다. */}
-      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="제휴 매장" value={loading ? "-" : affiliate.length} hint={`유료 ${paid.length}곳`} onClick={() => setFilter("all")} active={filter === "all"} />
-        <Kpi label="입금 미확인" value={loading ? "-" : stuck.unpaid.length} tone="alert" hint="유료 매장 중" onClick={() => setFilter("unpaid")} active={filter === "unpaid"} />
-        <Kpi label="계산서 미회신" value={loading ? "-" : stuck.invoice.length} tone="alert" hint="보냈는데 답이 없음" onClick={() => setFilter("invoice")} active={filter === "invoice"} />
-        <Kpi label="비치물 미전달" value={loading ? "-" : stuck.kit.length} hint="입금은 끝난 곳" onClick={() => setFilter("kit")} active={filter === "kit"} />
+        <Kpi label={`${monthLabel} 입금 미확인`} value={loading ? "-" : stuck.unpaid.length} tone="alert" hint="청구 안 됨 · 발행 후 대기 포함" onClick={() => setFilter("unpaid")} active={filter === "unpaid"} />
+        <Kpi label="비치물 미전달" value={loading ? "-" : stuck.kit.length} hint="유료 매장 중" onClick={() => setFilter("kit")} active={filter === "kit"} />
         <Kpi label="학기/방학 미정" value={loading ? "-" : stuck.season.length} hint="방학 전 점주 확인 필요" onClick={() => setFilter("season")} active={filter === "season"} />
       </div>
 
-      <Card
-        flush
-        title={`매장 ${visible.length}곳`}
-        actions={
-          <>
-            <FilterPills
-              label="매장 범위"
-              value={filter === "paid" ? "paid" : filter === "all" ? "all" : "stuck"}
-              onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))}
-              options={[
-                { key: "all", label: "전체", count: affiliate.length },
-                { key: "paid", label: "유료", count: paid.length },
-                { key: "stuck", label: "막힘", count: stuck.unpaid.length },
-              ]}
-            />
-            <div className="relative">
-              <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장명 또는 ID" aria-label="매장 검색" className="pl-8 w-44" />
-            </div>
-          </>
-        }
-      >
-        {loading ? (
-          <Skeleton rows={8} cols={6} />
-        ) : visible.length === 0 ? (
-          <Empty
-            title={filter === "all" ? "매장을 불러오지 못했습니다" : "이 조건에 해당하는 매장이 없습니다"}
-            detail={
-              filter === "all"
-                ? "매장 목록은 실데이터(/api/dashboard/restaurants)에서 옵니다. 백엔드 연결을 확인하세요."
-                : "막힌 곳이 없다는 뜻입니다. 다른 지표를 눌러 보세요."
-            }
-          />
+      <Card flush title={`매장 ${visible.length}곳`}
+        actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }]} />}>
+        {loading ? <Skeleton rows={8} cols={6} /> : visible.length === 0 ? (
+          <Empty title={affiliateAll.length === 0 ? "매장을 불러오지 못했습니다" : "이 조건에 해당하는 매장이 없습니다"} detail={affiliateAll.length === 0 ? "매장 목록은 실데이터(/api/dashboard/restaurants)에서 옵니다. 백엔드 연결을 확인하세요." : campus !== "all" && countIn(campus) === 0 ? `${campus} 매장은 아직 없습니다. 입점 후보에서 계약이 되면 여기로 옵니다.` : "막힌 곳이 없다는 뜻입니다. 다른 지표를 눌러 보세요."} action={campus !== "all" && countIn(campus) === 0 ? <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button> : undefined} />
         ) : (
           <Table minWidth="52rem">
             <thead>
@@ -228,57 +165,24 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                 <Th onClick={() => toggleSort("name")} sorted={sort.key === "name" ? sort.dir : null}>매장</Th>
                 <Th width="6rem" onClick={() => toggleSort("tier")} sorted={sort.key === "tier" ? sort.dir : null}>플랜</Th>
                 <Th width="7rem">운영 구분</Th>
-                <Th width="7rem" onClick={() => toggleSort("billing")} sorted={sort.key === "billing" ? sort.dir : null}>입금</Th>
-                <Th width="7rem">계산서</Th>
+                <Th width="8rem" onClick={() => toggleSort("billing")} sorted={sort.key === "billing" ? sort.dir : null}>{monthLabel} 입금</Th>
                 <Th width="5rem" align="center">비치물</Th>
                 <Th width="7rem" align="right" onClick={() => toggleSort("updated")} sorted={sort.key === "updated" ? sort.dir : null}>마지막 기록</Th>
               </tr>
             </thead>
             <tbody>
               {visible.map((r) => {
-                const o = r.ops;
-                const s = season(o);
+                const o = r.ops; const s = season(o); const p = pay(r);
                 return (
-                  <tr
-                    key={r.restaurant_id}
-                    className={rowClickable}
-                    onClick={() => setOpenId(r.restaurant_id)}
-                  >
+                  <tr key={r.restaurant_id} className={rowClickable} onClick={() => setOpenId(r.restaurant_id)}>
                     <Td>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenId(r.restaurant_id);
-                        }}
-                        className="text-left font-semibold text-gray-900 hover:text-navy focus-visible:outline-none focus-visible:underline"
-                      >
-                        {r.name}
-                      </button>
-                      <span className="block text-[11px] text-gray-400">ID {r.restaurant_id}</span>
+                      <span className="font-semibold text-gray-900">{r.name}</span>
+                      <span className="block text-[11px] text-gray-400">{[o?.district, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
                     </Td>
                     <Td>{r.tier ? <Chip tone={PLAN_TONE[r.tier] ?? "gray"}>{r.tier}</Chip> : <span className="text-gray-400">미지정</span>}</Td>
-                    <Td>
-                      {/* 무료·미지정 매장은 학기/방학을 정할 이유가 없다. 노란 '미정' 34개는 소음이다. */}
-                      {isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}
-                    </Td>
-                    <Td>
-                      {isPaidTier(r.tier) ? (
-                        <Chip tone={billingTone(o)} dot={o?.billing === "PENDING"}>{BILLING_LABEL[o?.billing ?? "UNKNOWN"]}</Chip>
-                      ) : (
-                        <span className="text-gray-400">무료</span>
-                      )}
-                    </Td>
-                    <Td>
-                      {isPaidTier(r.tier) ? (
-                        <Chip tone={invoiceTone(o)} dot={o?.invoice === "NO_REPLY"}>{INVOICE_LABEL[o?.invoice ?? "NONE"]}</Chip>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </Td>
-                    <Td align="center">
-                      {o?.kit_delivered ? <span className="text-emerald-700 font-semibold">전달</span> : <span className="text-gray-300">-</span>}
-                    </Td>
+                    <Td>{isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
+                    <Td>{p.key === "free" ? <span className="text-gray-400">무료</span> : <Chip tone={p.tone} dot={p.stuck}>{p.label}</Chip>}</Td>
+                    <Td align="center">{o?.kit_delivered ? <span className="text-emerald-700 font-semibold">전달</span> : <span className="text-gray-300">-</span>}</Td>
                     <Td align="right" className="text-gray-500 text-[12px]">{agoLabel(o?.updated_at)}</Td>
                   </tr>
                 );
@@ -289,11 +193,59 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
       </Card>
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-        플랜·사진·쿠폰은 <span className="font-semibold text-gray-700">식당 관리</span>가 원본입니다. 여기서는 영업이 손으로 확인하는 값만 다룹니다.
-        같은 값을 두 곳에서 고치게 만들지 않기 위해서입니다.
+        플랜·사진·쿠폰은 <span className="font-semibold text-gray-700">식당 관리</span>가 원본입니다. 여기서는 영업이 손으로 확인하는 값과 이번 달 청구를 다룹니다.
+        {onGo && <button type="button" onClick={() => onGo("astro-billing")} className="ml-1 text-navy font-medium hover:underline">월별 입금 현황 →</button>}
       </p>
 
-      <StoreDetailPanel row={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onGoDocs={onGo ? () => onGo("astro-docs") : undefined} />
+      <StoreDetailPanel row={open} invoice={open ? invById.get(open.restaurant_id) ?? null : null} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onGo={onGo}
+        onMarkPaid={async (inv) => {
+          const call = (action: string) => fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, by: actor }) });
+          if (inv.status !== "ISSUED") await call("mark-issued");
+          await call("mark-paid");
+          load();
+        }} />
+      {adding && <NewStorePanel actor={actor} campus={campus === "all" ? "경북대" : campus} onClose={() => setAdding(false)} onCreated={load} />}
     </>
+  );
+}
+
+/* ═══════════ 매장 추가 — 식당 관리와 같은 생성 경로 ═══════════ */
+
+function NewStorePanel({ actor, campus, onClose, onCreated }: { actor: string; campus: Campus; onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState({ name: "", campus, district: "", category: "", phone: "", url: "", address: "", tier: "FREE", memo: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function submit() {
+    if (!form.name.trim() || saving) return;
+    setSaving(true); setError(null);
+    try {
+      // 1) 매장 본체는 백엔드 원본(식당 관리와 같은 경로)
+      const res = await fetch("/api/dashboard/admin/restaurants/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: form.name.trim(), address: form.address, phone_number: form.phone, category: form.category, url: form.url, main_menu: "", description: "", s3_image_urls: [], tier: form.tier || null }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(res.status === 502 || res.status === 501 ? "미리보기 모드라 매장을 만들 수 없습니다. 백엔드에 붙으면 식당 관리와 같은 경로로 생성됩니다." : d.detail ?? d.message ?? "매장을 만들지 못했습니다."); return; }
+      const id = d.restaurant_id ?? d.id;
+      // 2) 캠퍼스·상권·메모는 Astro 운영 필드
+      if (id) await fetch(`/api/astro/stores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campus: form.campus, district: form.district || null, memo: form.memo || null, updated_by: actor }) });
+      onCreated(); onClose();
+    } catch { setError("서버에 연결하지 못했습니다."); } finally { setSaving(false); }
+  }
+
+  return (
+    <SlideOver open onClose={onClose} title="매장 추가" subtitle="식당 관리와 같은 경로로 만들어집니다. 사진·쿠폰은 식당 관리에서 이어서 등록하세요."
+      footer={<><Button variant="primary" onClick={submit} disabled={!form.name.trim() || saving}>{saving ? "만드는 중…" : "매장 만들기"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
+      <Field label="매장명" required><Input value={form.name} onChange={set("name")} placeholder="예: 라라더" autoFocus /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="캠퍼스"><Select value={form.campus} onChange={set("campus")}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
+        <Field label="상권"><Input value={form.district} onChange={set("district")} placeholder="예: 북문" /></Field>
+        <Field label="플랜"><Select value={form.tier} onChange={set("tier")}><option value="FREE">FREE</option><option value="BOOST">BOOST</option><option value="CONTENT">CONTENT</option></Select></Field>
+        <Field label="카테고리"><Input value={form.category} onChange={set("category")} placeholder="예: 한식" /></Field>
+        <Field label="매장 전화"><Input value={form.phone} onChange={set("phone")} type="tel" inputMode="tel" /></Field>
+        <Field label="링크"><Input value={form.url} onChange={set("url")} type="url" inputMode="url" placeholder="네이버 플레이스" /></Field>
+      </div>
+      <Field label="주소"><Input value={form.address} onChange={set("address")} /></Field>
+      <Field label="메모"><Textarea rows={3} value={form.memo} onChange={set("memo")} placeholder="계약 특이사항 · 점주 요청" /></Field>
+    </SlideOver>
   );
 }

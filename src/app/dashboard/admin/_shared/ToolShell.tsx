@@ -19,6 +19,8 @@ import {
   IconDeviceMobile,
   IconFiles,
   IconFileInvoice,
+  IconBrandInstagram,
+  IconGift,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -37,6 +39,14 @@ export interface ToolNavItem {
   label: string;
 }
 
+/** 하단 도크 — 앱의 탭바처럼 툴을 바꾼다 (민열님 0911: "하단에서 우주라이크 앱처럼 툴을 고를 수 있으면"). */
+export interface ToolDock {
+  tools: { key: string; name: string }[];
+  active: string;
+  onSwitch: (key: string) => void;
+  onHome: () => void;
+}
+
 const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "astro-home": IconHome,
   "probe-home": IconHome,
@@ -50,6 +60,8 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "astro-tax": IconFileInvoice,
   "probe-metrics": IconChartBar,
   "probe-quality": IconAlertTriangle,
+  "probe-insights": IconBrandInstagram,
+  "probe-mileage": IconGift,
   "castor-map": IconSitemap,
   "castor-experiments": IconArrowsExchange,
   content: IconPhoto,
@@ -76,6 +88,7 @@ export default function ToolShell({
   onSelect,
   onBack,
   user,
+  dock,
   children,
 }: {
   product: { key?: string; name: string; subtitle: string };
@@ -84,10 +97,11 @@ export default function ToolShell({
   onSelect: (key: string) => void;
   onBack?: () => void;
   user: { name: string; role: string };
+  dock?: ToolDock;
   children: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-6 items-start">
+    <div className={`grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-6 items-start ${dock ? "pb-24" : ""}`}>
       <aside className="md:sticky md:top-16 bg-white/70 backdrop-blur-xl rounded-[18px] border border-white/60 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_16px_40px_-28px_rgba(5,0,114,0.35)] overflow-hidden">
         {/* 제품 표시 + 런처로 돌아가기 */}
         <div className="px-3 pt-3 pb-2 border-b border-black/[0.05]">
@@ -151,6 +165,39 @@ export default function ToolShell({
       </aside>
 
       <main className="min-w-0 mt-4 md:mt-0">{children}</main>
+
+      {dock && <Dock {...dock} />}
     </div>
+  );
+}
+
+/**
+ * 하단 도크. 유리 알약 하나에 앱 아이콘이 나란히. 활성 툴은 아이콘 아래 점.
+ * 아이콘은 앱판(네이비 면) 그대로라 런처와 같은 얼굴이다. 누르면 그 툴의 첫 화면.
+ */
+function Dock({ tools, active, onSwitch, onHome }: ToolDock) {
+  return (
+    <nav aria-label="툴 바꾸기" className="fixed left-0 right-0 bottom-4 z-30 flex justify-center px-4 pointer-events-none">
+      <ul className="pointer-events-auto inline-flex items-end gap-1 px-2 py-1.5 rounded-[22px] bg-white/70 backdrop-blur-2xl saturate-150 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.06),0_24px_48px_-24px_rgba(5,0,114,0.5)]">
+        <li>
+          <button type="button" onClick={onHome} aria-label="런처" className={`group flex flex-col items-center w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
+            <span className="w-10 h-10 rounded-[12px] bg-white border border-black/[0.06] flex items-center justify-center text-navy shadow-sm"><IconLayoutGrid size={18} stroke={2} aria-hidden="true" /></span>
+            <span className="text-[10px] font-semibold text-gray-500 mt-1">전체</span>
+          </button>
+        </li>
+        <li aria-hidden="true" className="w-px h-8 bg-black/[0.08] mx-1 mb-3" />
+        {tools.map((t) => {
+          const on = t.key === active;
+          return (
+            <li key={t.key}>
+              <button type="button" onClick={() => onSwitch(t.key)} aria-current={on ? "page" : undefined} aria-label={`${t.name}${on ? " (현재)" : ""}`} className={`group flex flex-col items-center w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
+                <img src={`/satellite/${t.key}_app.svg`} alt="" width={40} height={40} className={`w-10 h-10 rounded-[12px] ${on ? "shadow-[0_8px_18px_-8px_rgba(5,0,114,0.7)] ring-2 ring-navy/20" : "opacity-80 group-hover:opacity-100"}`} aria-hidden="true" />
+                <span className={`text-[10px] font-semibold mt-1 ${on ? "text-navy" : "text-gray-500"}`}>{t.name}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }

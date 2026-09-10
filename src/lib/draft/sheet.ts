@@ -1,5 +1,5 @@
 import { SALES_SHEET } from "@/lib/satellite";
-import type { BillingState, InvoiceState, Lead, LeadIntent, LeadStage, PayCycle, StoreOps } from "./types";
+import type { BillingState, Campus, InvoiceState, Lead, LeadIntent, LeadStage, PayCycle, StoreOps } from "./types";
 import { ALL_LEAD_STAGES, BILLING_LABEL, INTENT_LABEL, INVOICE_LABEL, emptyStoreOps } from "./types";
 
 /**
@@ -90,6 +90,15 @@ function intentOf(v: string | undefined): LeadIntent | null {
 
 /* ─── 후보/컨택 → Lead ─── */
 
+/** 시트 탭·매장명·상권으로 캠퍼스를 추정한다. 후보 실측 탭은 영남대 조사분(0909)이다. 틀리면 카드에서 고친다. */
+export function campusOf(source: Lead["source"] | "store", name: string, district: string | null): Campus {
+  const t = `${name} ${district ?? ""}`;
+  if (/계명대|계대|성서/.test(t)) return "계명대";
+  if (/영남대|영대|경산/.test(t)) return "영남대";
+  if (source === "sheet:후보") return "영남대";
+  return "경북대";
+}
+
 export function rowToLead(r: Record<string, string>, source: Lead["source"], now: string): Lead | null {
   const name = blank(r["매장명"]);
   if (!name || name.startsWith("──") || name.startsWith("■")) return null;
@@ -97,6 +106,7 @@ export function rowToLead(r: Record<string, string>, source: Lead["source"], now
   return {
     id: `sheet-${source.split(":")[1]}-${normName(name)}`,
     name,
+    campus: campusOf(source, name, blank(r["상권"])),
     kind: (blank(r["구분"]) as Lead["kind"]) ?? null,
     district: blank(r["상권"]),
     category: blank(r["카테고리"]),
@@ -222,6 +232,7 @@ export function statusRowToOps(r: Record<string, string>): SheetStoreInfo | null
     name,
     norm: normName(name),
     patch: {
+      campus: campusOf("store", name, blank(r["상권"])),
       district: blank(r["상권"]),
       owner_name: blank(r["대표자"]),
       owner_phone: blank(r["연락처"]),
@@ -241,10 +252,10 @@ export function toCsv(head: string[], rows: unknown[][]): string {
   return "\uFEFF" + [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
 }
 
-export const LEAD_CSV_HEAD = ["담당자", "매장명", "전화번호", "링크", "카테고리", "상권", "대표자", "연락처", "구분", "유료화 의향", "단계", "컨택 일시", "미팅 일시", "미팅 참석자", "제안 플랜", "다음 액션", "기한", "인스타 계정", "등급", "점수", "공략 포인트", "비고"];
+export const LEAD_CSV_HEAD = ["캠퍼스", "담당자", "매장명", "전화번호", "링크", "카테고리", "상권", "대표자", "연락처", "구분", "유료화 의향", "단계", "컨택 일시", "미팅 일시", "미팅 참석자", "제안 플랜", "다음 액션", "기한", "인스타 계정", "등급", "점수", "공략 포인트", "비고"];
 
 export function leadToCsvRow(l: Lead): unknown[] {
-  return [l.owner, l.name, l.phone, l.link, l.category, l.district, l.owner_name, l.contact, l.kind, l.intent ? `${l.intent} (${INTENT_LABEL[l.intent]})` : "", l.stage, l.contacted_at, l.meeting_at, l.attendees, l.proposed_plan, l.next_action, l.due, l.insta, l.grade, l.score, l.angle, l.memo];
+  return [l.campus, l.owner, l.name, l.phone, l.link, l.category, l.district, l.owner_name, l.contact, l.kind, l.intent ? `${l.intent} (${INTENT_LABEL[l.intent]})` : "", l.stage, l.contacted_at, l.meeting_at, l.attendees, l.proposed_plan, l.next_action, l.due, l.insta, l.grade, l.score, l.angle, l.memo];
 }
 
 export const CONTRACT_CSV_HEAD = ["매장명", "상권", "계약일", "플랜", "월 이용료 (VAT 포함)", "납부 방식", "견적서·세금계산서 발송", "입금", "제1차 이용기간 시작", "전체 계약기간 끝", "기본 쿠폰 (상시)", "한정 쿠폰", "스탬프 적립 개수", "스탬프 혜택", "식사권 제외 메뉴·시간대", "별도 견적 항목", "홍보물 수령 (포스터/QR/배너)", "PIN 번호", "계약서 원본 보관", "담당자", "대표자", "연락처", "비고"];

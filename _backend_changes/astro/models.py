@@ -64,6 +64,8 @@ class StoreOps(models.Model):
     contract_months = models.PositiveSmallIntegerField(null=True, blank=True)
 
     # 시트 '계약 세부사항' 열 1:1 — 툴이 시트를 대체하므로 전부 편집 가능 (2026-09-10 민열).
+    CAMPUS = [("경북대", "경북대"), ("영남대", "영남대"), ("계명대", "계명대")]
+    campus = models.CharField(max_length=10, choices=CAMPUS, default="경북대")  # 캠퍼스 (0911 1차 축)
     district = models.CharField(max_length=30, blank=True)  # 상권
     contract_signed_on = models.DateField(null=True, blank=True)  # 계약일
     contract_ends_on = models.DateField(null=True, blank=True)  # 전체 계약기간 끝
@@ -118,6 +120,7 @@ class Lead(models.Model):
     # 열은 팀 시트(매장 현황 · 신규 컨택 · 후보 실측)의 합집합. 시트를 대체하려면 열을 잃으면 안 된다.
     name = models.CharField(max_length=100)
     kind = models.CharField(max_length=10, blank=True)  # 기존 파트너 / 신규
+    campus = models.CharField(max_length=10, default="경북대")  # 캠퍼스
     district = models.CharField(max_length=50, blank=True)  # 상권
     category = models.CharField(max_length=50, blank=True)
     stage = models.CharField(max_length=12, choices=STAGE, default="미컨택")

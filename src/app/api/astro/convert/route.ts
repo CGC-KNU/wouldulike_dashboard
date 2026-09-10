@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
   const base: StoreOps = { ...emptyStoreOps(store.restaurant_id), ...(idx === -1 ? {} : list[idx]) };
   const next: StoreOps = {
     ...base,
+    campus: base.campus ?? lead.campus,
     district: base.district ?? lead.district,
     owner_name: base.owner_name ?? lead.owner_name,
     owner_phone: base.owner_phone ?? lead.contact ?? lead.phone,
