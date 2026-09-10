@@ -17,6 +17,7 @@ interface RestaurantInfo {
   category: string;
   s3_image_urls: string[];
   pin: string | null;
+  promotion_text: string;
 }
 
 interface Category {
@@ -84,6 +85,7 @@ const FIELD_META: {
   { key: "main_menu",    label: "대표 메뉴",            placeholder: "예: 돼지국밥, 수육"                                         },
   { key: "url",          label: "웹사이트 / 지도 링크", placeholder: "https://naver.me/..."                                      },
   { key: "description",  label: "식당 소개",            placeholder: "손님들에게 보여줄 식당 소개를 작성해주세요.", multiline: true },
+  { key: "promotion_text", label: "프로모션 문구",       placeholder: "예: 오늘 하루 전 메뉴 10% 할인! (식당 상세 화면 식당명 아래 표시됩니다)", multiline: true },
 ];
 
 function useRid() {
@@ -498,7 +500,7 @@ export default function RestaurantPage() {
       .then((data) => {
         setInfo({ ...data, s3_image_urls: data.s3_image_urls ?? [] });
         originalRef.current = data;
-        setDraft({ phone_number: data.phone_number, main_menu: data.main_menu, url: data.url, description: data.description, address: data.address, category: data.category });
+        setDraft({ phone_number: data.phone_number, main_menu: data.main_menu, url: data.url, description: data.description, address: data.address, category: data.category, promotion_text: data.promotion_text });
       })
       .catch(() => setError("식당 정보를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
@@ -518,7 +520,8 @@ export default function RestaurantPage() {
      draft.url          !== originalRef.current.url          ||
      draft.description  !== originalRef.current.description  ||
      draft.address      !== originalRef.current.address      ||
-     draft.category     !== originalRef.current.category);
+     draft.category     !== originalRef.current.category     ||
+     draft.promotion_text !== originalRef.current.promotion_text);
 
   const handleSave = async () => {
     if (!isDirty) return;
@@ -527,7 +530,7 @@ export default function RestaurantPage() {
       const res = await fetch(`/api/dashboard/restaurant${rq}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone_number: draft.phone_number, main_menu: draft.main_menu, url: draft.url, description: draft.description, address: draft.address, category: draft.category }),
+        body: JSON.stringify({ phone_number: draft.phone_number, main_menu: draft.main_menu, url: draft.url, description: draft.description, address: draft.address, category: draft.category, promotion_text: draft.promotion_text }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.detail || "저장에 실패했습니다."); return; }
