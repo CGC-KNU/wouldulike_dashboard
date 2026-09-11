@@ -20,6 +20,7 @@ import {
 import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton, periodLocal } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
+import CampusPicker from "./CampusPicker";
 
 /**
  * 매장 한 장 — 오른쪽 슬라이드 패널.
@@ -58,7 +59,7 @@ function Cell({ label, value, onCommit, placeholder, hint, type, rows }: { label
   );
 }
 
-export default function StoreDetailPanel({ row, invoice = null, actor, onClose, onPatch, onGo, onMarkPaid }: { row: StoreRow | null; invoice?: TaxInvoice | null; actor: string; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void; onGo?: (tab: string) => void; onMarkPaid?: (inv: TaxInvoice) => Promise<void> }) {
+export default function StoreDetailPanel({ row, invoice = null, actor, campusOptions = [...CAMPUSES], onClose, onPatch, onGo, onMarkPaid }: { row: StoreRow | null; invoice?: TaxInvoice | null; actor: string; campusOptions?: string[]; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void; onGo?: (tab: string) => void; onMarkPaid?: (inv: TaxInvoice) => Promise<void> }) {
   if (!row) return null;
   const o: StoreOps = { ...emptyStoreOps(row.restaurant_id), ...(row.ops ?? {}) };
   const id = row.restaurant_id;
@@ -179,7 +180,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, onClose, 
 
       <PanelSection title="매장 정보 (시트 '매장 현황')">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="캠퍼스"><Select value={o.campus ?? "경북대"} onChange={(e) => onPatch(id, { campus: e.target.value as Campus })}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
+          <Field label="캠퍼스"><CampusPicker value={o.campus ?? "경북대"} options={campusOptions} onChange={(v) => onPatch(id, { campus: v as Campus })} /></Field>
           <Cell label="지도 링크 (네이버 · 카카오)" value={o.map_url} onCommit={set("map_url")} type="url" placeholder="https://naver.me/…" hint={o.map_name ? `지도 표기: ${o.map_name}` : "지도상 공식 상호를 기준으로 부릅니다"} />
           <Cell label="대표자" value={o.owner_name} onCommit={set("owner_name")} />
           <Cell label="연락처" value={o.owner_phone} onCommit={set("owner_phone")} type="tel" />

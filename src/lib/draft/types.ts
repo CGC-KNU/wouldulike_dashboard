@@ -54,8 +54,9 @@ export const INVOICE_LABEL: Record<InvoiceState, string> = {
  * 계약 조건(플랜·쿠폰)은 이미 백엔드/시트에 있으므로 여기에 복제하지 않는다.
  */
 /** 캠퍼스 — 상권 위의 축. 팀이 경북대 마무리 → 영남대·계명대 컨택으로 나뉘어 뛴다 (0901·0906). */
+/** 기본 캠퍼스. **열린 목록**이다 — 새 대학에 들어가면 화면에서 바로 추가한다 (민열님 0911). */
 export const CAMPUSES = ["경북대", "영남대", "계명대"] as const;
-export type Campus = (typeof CAMPUSES)[number];
+export type Campus = string;
 
 export interface StoreOps {
   id: number; // = restaurant_id
@@ -219,7 +220,7 @@ export interface Lead {
   converted_restaurant_id: number | null;
 }
 
-export type ActivityKind = "메모" | "전화" | "카톡" | "미팅" | "방문";
+export type ActivityKind = "메모" | "전화" | "문자" | "카톡" | "미팅" | "방문";
 
 /** 활동 기록 — Pitchr 리드 상세의 "상시 노출 활동 기록기"를 그대로 가져온 것. */
 export interface Activity {

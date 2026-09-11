@@ -7,6 +7,7 @@ import Launcher from "./_shared/Launcher";
 import CommandPalette from "./_shared/CommandPalette";
 import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
 import AstroHome from "./astro/AstroHome";
+import CalendarPage from "./astro/CalendarPage";
 import ProbeHome from "./probe/ProbeHome";
 import AppMetrics from "./probe/AppMetrics";
 import CastorHome from "./castor/CastorHome";
@@ -50,6 +51,7 @@ type Tab =
   | "settings"
   // Astro(영업) 확장 — 2026-08-07 요구사항 3종을 담는 화면들
   | "astro-home"
+  | "astro-calendar"
   | "astro-ops"
   | "astro-leads"
   | "astro-billing"
@@ -2458,6 +2460,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
 
   // ── Astro 확장. 식당 관리와 같은 권한을 쓴다 — 영업이 보는 매장 정보의 다른 레이어일 뿐이다.
   { key: "astro-home", label: "홈", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-calendar", label: "일정", icon: "▦", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-ops", label: "파트너 매장", icon: "◉", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-leads", label: "파트너 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
@@ -2508,7 +2511,7 @@ const PRODUCTS: {
     name: "Astro",
     subtitle: "영업 툴",
     description: "파트너 매장 · 파트너 후보 · 입금 · 계산서",
-    tabs: ["astro-home", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs", "restaurants"],
+    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs", "restaurants"],
     ready: true,
   },
   {
@@ -2760,6 +2763,7 @@ export default function AdminHomePage() {
           {/* Astro: 영업 */}
           {activeTab === "restaurants" && <RestaurantsTab />}
           {activeTab === "astro-home" && <AstroHome onGo={go} />}
+          {activeTab === "astro-calendar" && <CalendarPage actor={actorName} onGo={go} />}
           {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={go} />}
           {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
           {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} />}

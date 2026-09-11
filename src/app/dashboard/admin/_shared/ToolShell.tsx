@@ -23,6 +23,7 @@ import {
   IconGift,
   IconFileDescription,
   IconMessageChatbot,
+  IconCalendarMonth,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -56,6 +57,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-home": IconHome,
   "castor-home": IconHome,
   "probe-app": IconDeviceMobile,
+  "astro-calendar": IconCalendarMonth,
   "astro-ops": IconActivity,
   restaurants: IconBuildingStore,
   "astro-leads": IconTargetArrow,

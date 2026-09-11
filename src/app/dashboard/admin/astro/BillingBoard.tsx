@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconCheck, IconCopy, IconFileInvoice, IconPlus } from "@tabler/icons-react";
+import { IconCheck, IconCopy, IconFileInvoice, IconMessage2, IconPlus } from "@tabler/icons-react";
 import { TAX_STATUS_LABEL, isPaidTier, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Notice, PageHeader, Select, Skeleton, StepTiles, Table, Td, Th, rowClickable, periodLocal, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Empty, Notice, PageHeader, Select, Skeleton, StepTiles, Table, Td, Th, focusRing, rowClickable, periodLocal, type ChipTone } from "../_shared/ui";
+import MessageComposer from "./MessageComposer";
+import type { MsgContext } from "@/lib/draft/message";
 
 /**
  * Astro · 입금 현황 — **월별** 장부.
@@ -31,6 +33,8 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // 문자 팔로업 — 청구·미납·입금 감사 (민열님 0911)
+  const [sms, setSms] = useState<{ ctx: MsgContext; overdue: boolean } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -119,6 +123,11 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
                         {b === "none" && <Button size="sm" onClick={generate} disabled={busy} icon={<IconFileInvoice />}>청구 생성</Button>}
                         {inv && b !== "paid" && <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => markPaid(inv)}>입금 확인</Button>}
                         {b === "paid" && <span className="text-[12px] text-emerald-700 font-semibold">{inv?.status === "ISSUED" ? "완료" : "입금 · 발행 필요"}</span>}
+                        <button type="button" aria-label={`${store.name} 문자 보내기`} title="문자 보내기"
+                          onClick={() => setSms({ ctx: { name: store.name, targetType: "store", targetId: String(store.restaurant_id), owner: store.ops?.owner_name, phone: store.ops?.owner_phone, fee: inv?.total ?? store.ops?.monthly_fee ?? null, period, sender: actor }, overdue: b !== "paid" && b !== "none" })}
+                          className={`w-8 h-8 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
+                          <IconMessage2 size={16} aria-hidden="true" />
+                        </button>
                       </div>
                     </Td>
                   </tr>
@@ -145,6 +154,8 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
           <p className="text-[12px] text-gray-500 mt-3">세금계산서 탭과 같은 데이터입니다. 발행·승인번호는 거기서 다룹니다.</p>
         </Card>
       </div>
+
+      {sms && <MessageComposer open ctx={sms.ctx} event={{ kind: "payment", overdue: sms.overdue }} onClose={() => setSms(null)} onSent={load} />}
     </>
   );
 }

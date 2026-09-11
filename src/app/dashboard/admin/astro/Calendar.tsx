@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconMessage2, IconSearch } from "@tabler/icons-react";
 import type { Lead, StoreRow } from "@/lib/draft/types";
 import { isPaidTier } from "@/lib/draft/types";
-import { focusRing, todayLocal } from "../_shared/ui";
+import type { MsgContext } from "@/lib/draft/message";
+import { Input, focusRing, todayLocal } from "../_shared/ui";
+import MessageComposer from "./MessageComposer";
 
 /**
  * 영업 일정 — 미팅 · 기한 · 계약 시작 · 입금 예정을 한 달에 놓는다 (민열님 0911).
@@ -17,7 +19,11 @@ import { focusRing, todayLocal } from "../_shared/ui";
  */
 
 export type CalKind = "meeting" | "due" | "contract" | "payment";
-export type CalEvent = { date: string; kind: CalKind; label: string; sub?: string; onClick?: () => void };
+export type CalEvent = {
+  date: string; kind: CalKind; label: string; sub?: string; onClick?: () => void;
+  /** 문자 보내기에 필요한 값. 입금·미팅·계약 시작 항목에만 붙는다. */
+  msg?: MsgContext;
+};
 
 const KIND: Record<CalKind, { label: string; dot: string; chip: string; bar: string }> = {
   meeting: { label: "미팅", dot: "bg-navy", chip: "bg-navy/[0.07] text-navy", bar: "border-l-navy" },
@@ -42,26 +48,39 @@ export function buildEvents(stores: StoreRow[], leads: Lead[], ym: string, onSto
   const out: CalEvent[] = [];
   for (const l of leads) {
     if (["재컨택", "보류", "거절", "계약 완료"].includes(l.stage)) continue;
-    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, sub: l.meeting_at ?? undefined, onClick: () => onLead(l.id) });
-    const du = parseLoose(l.due, y); if (du) out.push({ date: du, kind: "due", label: l.name, sub: l.next_action ?? undefined, onClick: () => onLead(l.id) });
+    const msg: MsgContext = { name: l.name, targetType: "lead", targetId: l.id, owner: l.owner_name, phone: l.contact ?? l.phone, meetingAt: l.meeting_at, nextAction: l.next_action };
+    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, sub: l.meeting_at ?? undefined, onClick: () => onLead(l.id), msg });
+    const du = parseLoose(l.due, y); if (du) out.push({ date: du, kind: "due", label: l.name, sub: l.next_action ?? undefined, onClick: () => onLead(l.id), msg });
   }
   for (const s of stores) {
     if (!s.is_affiliate || s.ops?.is_test) continue;
     const start = parseLoose(s.ops?.contract_started_on, y);
-    if (start) out.push({ date: start, kind: "contract", label: s.name, sub: "파트너 계약 시작", onClick: () => onStore(s.restaurant_id) });
+    const base: MsgContext = { name: s.name, targetType: "store", targetId: String(s.restaurant_id), owner: s.ops?.owner_name, phone: s.ops?.owner_phone, fee: s.ops?.monthly_fee, period: ym };
+    if (start) out.push({ date: start, kind: "contract", label: s.name, sub: "파트너 계약 시작", onClick: () => onStore(s.restaurant_id), msg: base });
     if (isPaidTier(s.tier) && s.ops?.pay_cycle !== "LUMP" && s.ops?.billing !== "EXEMPT") {
       const billingStart = s.ops?.billing_start_period ?? (start ? start.slice(0, 7) : null);
       if (billingStart && ym < billingStart) continue;
       const day = start ? Number(start.slice(8, 10)) : 1;
       const last = new Date(y, m, 0).getDate();
-      out.push({ date: `${ym}-${String(Math.min(day, last)).padStart(2, "0")}`, kind: "payment", label: s.name, sub: s.ops?.monthly_fee ? `${s.ops.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: () => onStore(s.restaurant_id) });
+      const d = `${ym}-${String(Math.min(day, last)).padStart(2, "0")}`;
+      out.push({ date: d, kind: "payment", label: s.name, sub: s.ops?.monthly_fee ? `${s.ops.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: () => onStore(s.restaurant_id), msg: { ...base, dateLabel: `${Number(d.slice(5, 7))}/${Number(d.slice(8))}` } });
     }
   }
   return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
 }
 
-export default function Calendar({ events, ym, onMonth }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void }) {
+export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogged }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void; actor?: string; onLogged?: () => void }) {
   const [y, m] = ym.split("-").map(Number);
+  // 필터 — 종류(미팅/기한/계약 시작/입금 예정)와 식당 이름 (민열님 0911)
+  const [kinds, setKinds] = useState<CalKind[]>([...ORDER]);
+  const [q, setQ] = useState("");
+  const [msg, setMsg] = useState<{ ctx: MsgContext; ev: { kind: CalKind; past: boolean; tomorrow: boolean } } | null>(null);
+  const events = useMemo(() => {
+    const s = q.trim();
+    return allEvents.filter((e) => kinds.includes(e.kind) && (!s || e.label.includes(s)));
+  }, [allEvents, kinds, q]);
+  const names = useMemo(() => [...new Set(allEvents.map((e) => e.label))].sort((a, b) => a.localeCompare(b, "ko")), [allEvents]);
+  const toggle = (k: CalKind) => setKinds((cur) => (cur.includes(k) ? (cur.length === 1 ? cur : cur.filter((x) => x !== k)) : [...cur, k]));
   const days = new Date(y, m, 0).getDate();
   const lead = new Date(y, m - 1, 1).getDay();
   const today = todayLocal();
@@ -93,6 +112,25 @@ export default function Calendar({ events, ym, onMonth }: { events: CalEvent[]; 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_17rem] gap-4">
       <div>
+        {/* 필터 — 종류는 칩으로 켜고 끄고, 식당은 이름으로 (같은 이름의 미팅·입금을 한 번에 본다) */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+          {ORDER.map((k) => {
+            const on = kinds.includes(k);
+            const n = allEvents.filter((e) => e.kind === k).length;
+            return (
+              <button key={k} type="button" onClick={() => toggle(k)} aria-pressed={on}
+                className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] font-semibold border transition-colors ${focusRing} ${on ? "bg-white border-black/[0.1] text-gray-800" : "bg-transparent border-black/[0.06] text-gray-400"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${on ? KIND[k].dot : "bg-gray-300"}`} />{KIND[k].label}<span className="tabular-nums text-gray-400">{n}</span>
+              </button>
+            );
+          })}
+          <div className="relative ml-auto w-44">
+            <IconSearch size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} list="cal-names" placeholder="식당 이름" aria-label="식당으로 거르기" className="pl-7 h-8 text-[12px]" />
+            <datalist id="cal-names">{names.map((n) => <option key={n} value={n} />)}</datalist>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2 mb-2.5">
           <button type="button" onClick={() => shift(-1)} aria-label="이전 달" className={`w-8 h-8 rounded-lg hover:bg-black/[0.04] flex items-center justify-center text-gray-600 ${focusRing}`}><IconChevronLeft size={16} aria-hidden="true" /></button>
           <span className="text-[14px] font-bold text-gray-900 tracking-[-0.01em] tabular-nums">{y}년 {m}월</span>
@@ -150,11 +188,18 @@ export default function Calendar({ events, ym, onMonth }: { events: CalEvent[]; 
                 <p className="flex items-baseline gap-1.5 mb-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[g.kind].dot}`} /><span className="text-[11px] font-semibold text-gray-600">{KIND[g.kind].label}</span><span className="text-[11px] text-gray-400 tabular-nums">{g.items.length}</span></p>
                 <ul className={`border-l-2 ${KIND[g.kind].bar} pl-2 space-y-0.5`}>
                   {g.items.map((e, i) => (
-                    <li key={i}>
-                      <button type="button" onClick={e.onClick} className={`w-full text-left py-1 px-1 rounded hover:bg-black/[0.03] ${focusRing}`}>
+                    <li key={i} className="flex items-center gap-1">
+                      <button type="button" onClick={e.onClick} className={`flex-1 min-w-0 text-left py-1 px-1 rounded hover:bg-black/[0.03] ${focusRing}`}>
                         <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
                         {e.sub && <span className="block text-[11px] text-gray-500 truncate">{e.sub}</span>}
                       </button>
+                      {e.msg && (e.kind === "payment" || e.kind === "meeting" || e.kind === "contract") && (
+                        <button type="button" aria-label={`${e.label} 문자 보내기`} title="문자 보내기"
+                          onClick={() => setMsg({ ctx: { ...e.msg!, sender: actor }, ev: { kind: e.kind, past: e.date < today, tomorrow: isTomorrow(e.date, today) } })}
+                          className={`shrink-0 w-7 h-7 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
+                          <IconMessage2 size={15} aria-hidden="true" />
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -163,6 +208,17 @@ export default function Calendar({ events, ym, onMonth }: { events: CalEvent[]; 
           </div>
         )}
       </div>
+
+      {msg && (
+        <MessageComposer open ctx={msg.ctx} event={{ kind: msg.ev.kind === "due" ? "due" : msg.ev.kind, past: msg.ev.past, tomorrow: msg.ev.tomorrow, overdue: msg.ev.kind === "payment" && msg.ev.past }}
+          onClose={() => setMsg(null)} onSent={onLogged} />
+      )}
     </div>
   );
+}
+
+function isTomorrow(date: string, today: string): boolean {
+  const t = new Date(`${today}T00:00:00`);
+  t.setDate(t.getDate() + 1);
+  return date === `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 }

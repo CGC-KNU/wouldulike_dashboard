@@ -1,6 +1,5 @@
 "use client";
 
-import Calendar, { buildEvents } from "./Calendar";
 import { useEffect, useMemo, useState } from "react";
 import { IconBrandSlack, IconExternalLink } from "@tabler/icons-react";
 import { LEAD_STAGES, isPaidTier, type Activity, type Lead, type StoreRow } from "@/lib/draft/types";
@@ -20,7 +19,6 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
   const [stores, setStores] = useState<StoreRow[] | null>(null);
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [acts, setActs] = useState<Activity[] | null>(null);
-  const [ym, setYm] = useState(periodLocal());
   const [invoices, setInvoices] = useState<{ restaurant_id: number; paid_at: string | null; status: string }[] | null>(null);
 
   useEffect(() => {
@@ -68,10 +66,6 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         <Kpi label="진행 중 후보" value={loading ? "-" : active.length} hint={`유료 매장 ${paid.length}곳`} onClick={() => onGo("astro-leads")} />
       </div>
 
-      {/* 일정 — 홈에서 제일 먼저 보이게 (민열님 0911 "캘린더 잘 안 보임"). 같은 날 여러 건은 종류별로 묶어 글자로 쓴다. */}
-      <Card title="일정" description="미팅·기한은 후보에서, 계약 시작·입금 예정은 파트너 매장에서 옵니다. 입금 예정일은 계약 시작일의 '일'을 매달 반복하고, 청구 시작 월 전에는 뜨지 않습니다." className="mb-5">
-        {loading ? <Skeleton rows={5} cols={7} /> : <Calendar ym={ym} onMonth={setYm} events={buildEvents(stores ?? [], leads ?? [], ym, (id) => onGo(`astro-ops?open=${id}`), (id) => onGo(`astro-leads?open=${id}`))} />}
-      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
         <Card title="파이프라인" description="단계별 후보 수. 왼쪽이 두꺼우면 연락이 밀린 것이고, 오른쪽이 두꺼우면 계약이 몰린 것입니다." actions={<Button size="sm" variant="ghost" onClick={() => onGo("astro-leads")}>보드로</Button>}>
@@ -112,7 +106,7 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
               </ul>
             )}
           </Card>
-          <Card title="기한이 있는 것" description="시트 '기한' 열 기준.">
+          <Card title="기한이 있는 것" description="시트 '기한' 열 기준. 달력으로 보려면 왼쪽 '일정' 탭." actions={<Button size="sm" variant="ghost" onClick={() => onGo("astro-calendar")}>일정</Button>}>
             {loading ? (
               <Skeleton rows={4} cols={2} />
             ) : due.length === 0 ? (

@@ -6,6 +6,7 @@ import { ALL_LEAD_STAGES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES,
 import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, PanelSection, Segmented, Select, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, daysSince, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
+import CampusPicker, { allCampuses } from "./CampusPicker";
 
 /**
  * Astro · 입점 후보.
@@ -72,6 +73,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
     } catch { setLeads(snapshot); }
   }, []);
 
+  const campuses = useMemo(() => allCampuses(leads.map((l) => l.campus)), [leads]);
   const countIn = (c: Campus) => leads.filter((l) => campusOf(l) === c && !isSide(l.stage)).length;
   const inCampus = useMemo(() => leads.filter((l) => campus === "all" || campusOf(l) === campus), [leads, campus]);
   const scoped = useMemo(() => {
@@ -103,7 +105,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
       >
         {/* 1차 축: 캠퍼스. 사람별 분리는 없다. */}
         <div className="flex flex-wrap items-center gap-3">
-          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...CAMPUSES.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}` })), { key: "all", label: "전체" }]} />
+          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}` })), { key: "all", label: "전체" }]} />
           <Segmented<"board" | "table"> label="보기" value={view} onChange={setView} options={[{ key: "board", label: "칸반", icon: <IconLayoutKanban /> }, { key: "table", label: "테이블", icon: <IconTable /> }]} />
           <div className="relative flex-1 min-w-[12rem] max-w-xs ml-auto">
             <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
@@ -172,8 +174,8 @@ export default function LeadPipeline({ actor }: { actor: string }) {
         </div>
       </div>
 
-      <LeadDetailPanel lead={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onConverted={load} />
-      {adding && <NewLeadPanel actor={actor} campus={campus === "all" ? "경북대" : campus} onClose={() => setAdding(false)} onCreated={load} />}
+      <LeadDetailPanel lead={open} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onConverted={load} />
+      {adding && <NewLeadPanel actor={actor} campus={campus === "all" ? (campuses[0] ?? "경북대") : campus} campusOptions={campuses} onClose={() => setAdding(false)} onCreated={load} />}
       {importing && <ImportPanel onClose={() => setImporting(false)} onDone={load} />}
     </>
   );
@@ -216,7 +218,7 @@ function Cell({ label, value, onCommit, placeholder, type, rows, hint }: { label
   );
 }
 
-function LeadDetailPanel({ lead, actor, onClose, onPatch, onConverted }: { lead: Lead | null; actor: string; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConverted?: () => void }) {
+function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConverted }: { lead: Lead | null; actor: string; campusOptions: string[]; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConverted?: () => void }) {
   const [converting, setConverting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => setMsg(null), [lead?.id]);
@@ -256,7 +258,7 @@ function LeadDetailPanel({ lead, actor, onClose, onPatch, onConverted }: { lead:
 
       <PanelSection title="진행">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="캠퍼스"><Select value={campusOf(lead)} onChange={(e) => onPatch(lead.id, { campus: e.target.value as Campus })}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
+          <Field label="캠퍼스"><CampusPicker value={campusOf(lead)} options={campusOptions} onChange={(v) => onPatch(lead.id, { campus: v })} /></Field>
           <Field label="유료화 의향"><Select value={lead.intent ?? ""} onChange={(e) => onPatch(lead.id, { intent: (e.target.value || null) as LeadIntent | null })}><option value="">미정</option>{(["A", "B", "C", "D"] as LeadIntent[]).map((i) => <option key={i} value={i}>{i} · {INTENT_LABEL[i]}</option>)}</Select></Field>
           <Cell label="제안 플랜" value={lead.proposed_plan} onCommit={set("proposed_plan")} placeholder="예: Boost 3만" />
           <Cell label="담당" value={lead.owner} onCommit={set("owner")} placeholder="이름 (참고용)" />
@@ -297,7 +299,7 @@ function LeadDetailPanel({ lead, actor, onClose, onPatch, onConverted }: { lead:
 
 /* ═══════════ 등록 ═══════════ */
 
-function NewLeadPanel({ actor, campus, onClose, onCreated }: { actor: string; campus: Campus; onClose: () => void; onCreated: () => void }) {
+function NewLeadPanel({ actor, campus, campusOptions, onClose, onCreated }: { actor: string; campus: Campus; campusOptions: string[]; onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState({ name: "", campus, kind: "신규", category: "", owner: actor, intent: "", phone: "", link: "", proposed_plan: "", next_action: "", due: "", memo: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -315,7 +317,7 @@ function NewLeadPanel({ actor, campus, onClose, onCreated }: { actor: string; ca
       footer={<><Button variant="primary" onClick={submit} disabled={!form.name.trim() || saving}>{saving ? "추가하는 중…" : "후보 추가"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
       <Field label="매장명" required><Input value={form.name} onChange={set("name")} placeholder="예: 경대북문 ○○식당" autoFocus /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="캠퍼스"><Select value={form.campus} onChange={set("campus")}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
+        <Field label="캠퍼스"><CampusPicker value={form.campus} options={campusOptions} onChange={(v) => setForm((f) => ({ ...f, campus: v }))} /></Field>
         <Field label="구분"><Select value={form.kind} onChange={set("kind")}><option>신규</option><option>기존 파트너</option></Select></Field>
         <Field label="카테고리"><Input value={form.category} onChange={set("category")} placeholder="예: 한식" /></Field>
         <Field label="유료화 의향"><Select value={form.intent} onChange={set("intent")}><option value="">미정</option>{(["A", "B", "C", "D"] as LeadIntent[]).map((i) => <option key={i} value={i}>{i} · {INTENT_LABEL[i]}</option>)}</Select></Field>

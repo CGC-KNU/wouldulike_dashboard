@@ -5,6 +5,7 @@ import { IconDownload, IconPlus, IconSearch } from "@tabler/icons-react";
 import { CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, type Campus, type StoreOps, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, Segmented, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
 import StoreDetailPanel from "./StoreDetailPanel";
+import CampusPicker, { allCampuses } from "./CampusPicker";
 
 /**
  * Astro · 매장 현황.
@@ -85,6 +86,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   const pay = useCallback((r: StoreRow) => payOf(r, invById.get(r.restaurant_id)), [invById]);
 
   const affiliateAll = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test), [rows]);
+  const campuses = useMemo(() => allCampuses(affiliateAll.map((r) => r.ops?.campus)), [affiliateAll]);
   const countIn = (c: Campus) => affiliateAll.filter((r) => campusOf(r) === c).length;
   const inCampus = useMemo(() => affiliateAll.filter((r) => campus === "all" || campusOf(r) === campus), [affiliateAll, campus]);
   // 상권 구분은 뺐다(민열님 0911) — 캠퍼스 하나로 충분하다
@@ -131,7 +133,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
         }
       >
         <div className="flex flex-wrap items-center gap-3">
-          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...CAMPUSES.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}` })), { key: "all", label: "전체" }]} />
+          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}` })), { key: "all", label: "전체" }]} />
           <div className="relative flex-1 min-w-[10rem] max-w-xs ml-auto">
             <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장명 또는 ID" aria-label="매장 검색" className="pl-8" />
@@ -190,19 +192,19 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
         {onGo && <button type="button" onClick={() => onGo("astro-billing")} className="ml-1 text-navy font-medium hover:underline">월별 입금 현황 →</button>}
       </p>
 
-      <StoreDetailPanel row={open} invoice={open ? invById.get(open.restaurant_id) ?? null : null} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onGo={onGo}
+      <StoreDetailPanel row={open} invoice={open ? invById.get(open.restaurant_id) ?? null : null} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onGo={onGo}
         onMarkPaid={async (inv) => {
           await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
           load();
         }} />
-      {adding && <NewStorePanel actor={actor} campus={campus === "all" ? "경북대" : campus} onClose={() => setAdding(false)} onCreated={load} />}
+      {adding && <NewStorePanel actor={actor} campus={campus === "all" ? (campuses[0] ?? "경북대") : campus} campusOptions={campuses} onClose={() => setAdding(false)} onCreated={load} />}
     </>
   );
 }
 
 /* ═══════════ 매장 추가 — 식당 관리와 같은 생성 경로 ═══════════ */
 
-function NewStorePanel({ actor, campus, onClose, onCreated }: { actor: string; campus: Campus; onClose: () => void; onCreated: () => void }) {
+function NewStorePanel({ actor, campus, campusOptions, onClose, onCreated }: { actor: string; campus: Campus; campusOptions: string[]; onClose: () => void; onCreated: () => void }) {
   const thisP = periodLocal(), nextP = periodLocal(1);
   const [form, setForm] = useState({ name: "", campus, category: "", phone: "", url: "", map_url: "", map_name: "", address: "", tier: "FREE", memo: "", billing_start: thisP });
   const [lookup, setLookup] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
@@ -246,7 +248,7 @@ function NewStorePanel({ actor, campus, onClose, onCreated }: { actor: string; c
       </Field>
       <Field label="매장명" required hint={form.map_name ? `지도 표기: ${form.map_name}` : undefined}><Input value={form.name} onChange={set("name")} placeholder="예: 라라더" /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="캠퍼스"><Select value={form.campus} onChange={set("campus")}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
+        <Field label="캠퍼스"><CampusPicker value={form.campus} options={campusOptions} onChange={(v) => setForm((f) => ({ ...f, campus: v }))} /></Field>
         <Field label="플랜"><Select value={form.tier} onChange={set("tier")}><option value="FREE">FREE</option><option value="BOOST">BOOST</option><option value="CONTENT">CONTENT</option></Select></Field>
         <Field label="청구 시작" hint="월 중간에 들어오면 이번 달부터 받을지 다음 달부터 받을지"><Select value={form.billing_start} onChange={set("billing_start")}><option value={thisP}>이번 달부터 ({Number(thisP.slice(5))}월)</option><option value={nextP}>다음 달부터 ({Number(nextP.slice(5))}월)</option></Select></Field>
         <Field label="카테고리"><Input value={form.category} onChange={set("category")} placeholder="예: 한식" /></Field>
