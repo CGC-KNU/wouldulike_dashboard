@@ -68,6 +68,11 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         <Kpi label="진행 중 후보" value={loading ? "-" : active.length} hint={`유료 매장 ${paid.length}곳`} onClick={() => onGo("astro-leads")} />
       </div>
 
+      {/* 일정 — 홈에서 제일 먼저 보이게 (민열님 0911 "캘린더 잘 안 보임"). 같은 날 여러 건은 종류별로 묶어 글자로 쓴다. */}
+      <Card title="일정" description="미팅·기한은 후보에서, 계약 시작·입금 예정은 파트너 매장에서 옵니다. 입금 예정일은 계약 시작일의 '일'을 매달 반복하고, 청구 시작 월 전에는 뜨지 않습니다." className="mb-5">
+        {loading ? <Skeleton rows={5} cols={7} /> : <Calendar ym={ym} onMonth={setYm} events={buildEvents(stores ?? [], leads ?? [], ym, (id) => onGo(`astro-ops?open=${id}`), (id) => onGo(`astro-leads?open=${id}`))} />}
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
         <Card title="파이프라인" description="단계별 후보 수. 왼쪽이 두꺼우면 연락이 밀린 것이고, 오른쪽이 두꺼우면 계약이 몰린 것입니다." actions={<Button size="sm" variant="ghost" onClick={() => onGo("astro-leads")}>보드로</Button>}>
           {loading ? (
@@ -146,10 +151,6 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         </div>
       </div>
 
-      {/* 캘린더 — 미팅 · 기한 · 계약 시작 · 입금 예정. 매장별 계약 시작일과 청구 시작 월을 여기서 한눈에 (민열님 0911). */}
-      <Card title="일정" description="미팅·기한은 후보 카드에서, 계약 시작·입금 예정은 파트너 매장 상세에서 옵니다. 입금 예정일은 계약 시작일의 '일'을 매달 반복합니다." className="mt-4">
-        {loading ? <Skeleton rows={5} cols={7} /> : <Calendar ym={ym} onMonth={setYm} events={buildEvents(stores ?? [], leads ?? [], ym, (id) => onGo(`astro-ops?open=${id}`), (id) => onGo(`astro-leads?open=${id}`))} />}
-      </Card>
     </>
   );
 }

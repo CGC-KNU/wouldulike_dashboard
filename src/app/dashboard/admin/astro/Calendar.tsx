@@ -1,26 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import type { Lead, StoreRow } from "@/lib/draft/types";
 import { isPaidTier } from "@/lib/draft/types";
 import { focusRing, todayLocal } from "../_shared/ui";
 
 /**
- * 영업 홈 캘린더 — 미팅 · 기한 · 계약 시작 · 입금 예정을 한 달에 놓는다 (민열님 0911).
+ * 영업 일정 — 미팅 · 기한 · 계약 시작 · 입금 예정을 한 달에 놓는다 (민열님 0911).
  *
- * 입금 예정일은 계약 시작일의 '일'을 매달 반복한다(대부분 1일). 청구 시작 월(`billing_start_period`) 전에는 찍지 않는다.
- * 시트 날짜는 "8/6(목) 14시" 같은 자유 서식이라 느슨하게 읽는다 — 못 읽으면 조용히 빠진다(지어내지 않는다).
+ * 실제 데이터는 한 날짜에 몰린다 — 대부분 9월 1일 계약 시작 + 월납. 그래서 점을 40개 찍는 대신
+ * **종류별로 묶어 글자로** 보여준다("입금 예정 12곳"). 하루에 한 건이면 매장 이름을 그대로 쓴다.
+ *
+ * 입금 예정일은 계약 시작일의 '일'을 매달 반복한다(대부분 1일). 청구 시작 월 전에는 찍지 않는다.
+ * 시트 날짜는 "8/6(목) 14시" 같은 자유 서식이라 느슨하게 읽고, 못 읽으면 조용히 빠진다(지어내지 않는다).
  */
 
-export type CalEvent = { date: string; kind: "meeting" | "due" | "contract" | "payment"; label: string; sub?: string; onClick?: () => void };
+export type CalKind = "meeting" | "due" | "contract" | "payment";
+export type CalEvent = { date: string; kind: CalKind; label: string; sub?: string; onClick?: () => void };
 
-const KIND: Record<CalEvent["kind"], { label: string; dot: string; chip: string }> = {
-  meeting: { label: "미팅", dot: "bg-navy", chip: "bg-navy/10 text-navy" },
-  due: { label: "기한", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-800" },
-  contract: { label: "계약 시작", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-800" },
-  payment: { label: "입금 예정", dot: "bg-periwinkle", chip: "bg-periwinkle/15 text-navy" },
+const KIND: Record<CalKind, { label: string; dot: string; chip: string; bar: string }> = {
+  meeting: { label: "미팅", dot: "bg-navy", chip: "bg-navy/[0.07] text-navy", bar: "border-l-navy" },
+  due: { label: "기한", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-800", bar: "border-l-amber-500" },
+  contract: { label: "계약 시작", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-800", bar: "border-l-emerald-500" },
+  payment: { label: "입금 예정", dot: "bg-periwinkle", chip: "bg-periwinkle/15 text-navy", bar: "border-l-periwinkle" },
 };
+const ORDER: CalKind[] = ["meeting", "due", "contract", "payment"];
 
 /** "2026-09-04" · "9/4" · "9월 4일" · "8/6(목) 14시" → YYYY-MM-DD (연도 없으면 기준 연도). */
 export function parseLoose(s: string | null | undefined, year: number): string | null {
@@ -44,7 +49,6 @@ export function buildEvents(stores: StoreRow[], leads: Lead[], ym: string, onSto
     if (!s.is_affiliate || s.ops?.is_test) continue;
     const start = parseLoose(s.ops?.contract_started_on, y);
     if (start) out.push({ date: start, kind: "contract", label: s.name, sub: "파트너 계약 시작", onClick: () => onStore(s.restaurant_id) });
-    // 월납 유료 매장 — 계약 시작일의 '일'을 매달, 청구 시작 월부터
     if (isPaidTier(s.tier) && s.ops?.pay_cycle !== "LUMP" && s.ops?.billing !== "EXEMPT") {
       const billingStart = s.ops?.billing_start_period ?? (start ? start.slice(0, 7) : null);
       if (billingStart && ym < billingStart) continue;
@@ -53,60 +57,110 @@ export function buildEvents(stores: StoreRow[], leads: Lead[], ym: string, onSto
       out.push({ date: `${ym}-${String(Math.min(day, last)).padStart(2, "0")}`, kind: "payment", label: s.name, sub: s.ops?.monthly_fee ? `${s.ops.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: () => onStore(s.restaurant_id) });
     }
   }
-  return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date));
+  return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
 }
 
 export default function Calendar({ events, ym, onMonth }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void }) {
-  const [sel, setSel] = useState<string | null>(null);
   const [y, m] = ym.split("-").map(Number);
-  const first = new Date(y, m - 1, 1);
   const days = new Date(y, m, 0).getDate();
-  const lead = first.getDay();
+  const lead = new Date(y, m - 1, 1).getDay();
   const today = todayLocal();
-  const byDay = useMemo(() => { const map = new Map<string, CalEvent[]>(); for (const e of events) { if (!map.has(e.date)) map.set(e.date, []); map.get(e.date)!.push(e); } return map; }, [events]);
-  const shift = (k: number) => { const d = new Date(y, m - 1 + k, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); setSel(null); };
-  const list = sel ? byDay.get(sel) ?? [] : events.filter((e) => e.date >= today).slice(0, 8);
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, CalEvent[]>();
+    for (const e of events) { if (!map.has(e.date)) map.set(e.date, []); map.get(e.date)!.push(e); }
+    return map;
+  }, [events]);
+
+  /** 하루에 여러 건이면 종류별로 묶는다 — 점 40개보다 "입금 예정 12곳" 한 줄이 읽힌다. */
+  const groupsOf = (list: CalEvent[]) =>
+    ORDER.map((k) => ({ kind: k, items: list.filter((e) => e.kind === k) })).filter((g) => g.items.length > 0);
+
+  // 오늘 → 없으면 오늘 이후 첫 날 → 없으면 이 달 마지막 일정일
+  const firstDayWith = useMemo(() => {
+    const keys = [...byDay.keys()].sort();
+    return keys.find((d) => d >= today) ?? keys[keys.length - 1] ?? null;
+  }, [byDay, today]);
+  const [sel, setSel] = useState<string | null>(null);
+  useEffect(() => setSel(null), [ym]);
+  const shown = sel ?? firstDayWith;
+  const shownList = shown ? byDay.get(shown) ?? [] : [];
+
+  const shift = (k: number) => { const d = new Date(y, m - 1 + k, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
+  const goToday = () => { const t = todayLocal(); onMonth(t.slice(0, 7)); setSel(t); };
+  const total = events.length;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-4">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_17rem] gap-4">
       <div>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 mb-2.5">
           <button type="button" onClick={() => shift(-1)} aria-label="이전 달" className={`w-8 h-8 rounded-lg hover:bg-black/[0.04] flex items-center justify-center text-gray-600 ${focusRing}`}><IconChevronLeft size={16} aria-hidden="true" /></button>
-          <span className="text-[13px] font-semibold text-gray-900">{y}년 {m}월</span>
+          <span className="text-[14px] font-bold text-gray-900 tracking-[-0.01em] tabular-nums">{y}년 {m}월</span>
           <button type="button" onClick={() => shift(1)} aria-label="다음 달" className={`w-8 h-8 rounded-lg hover:bg-black/[0.04] flex items-center justify-center text-gray-600 ${focusRing}`}><IconChevronRight size={16} aria-hidden="true" /></button>
+          <span className="text-[12px] text-gray-400">{total ? `${total}건` : "일정 없음"}</span>
+          <button type="button" onClick={goToday} className={`ml-auto text-[12px] font-semibold text-navy hover:underline rounded ${focusRing}`}>오늘</button>
         </div>
-        <div className="grid grid-cols-7 text-center text-[11px] text-gray-400 mb-1">{["일", "월", "화", "수", "목", "금", "토"].map((d) => <span key={d}>{d}</span>)}</div>
+
+        <div className="grid grid-cols-7 text-center text-[11px] text-gray-400 mb-1">
+          {["일", "월", "화", "수", "목", "금", "토"].map((d, i) => <span key={d} className={i === 0 ? "text-red-400" : ""}>{d}</span>)}
+        </div>
         <div className="grid grid-cols-7 gap-1">
           {Array.from({ length: lead }).map((_, i) => <span key={`e${i}`} />)}
           {Array.from({ length: days }).map((_, i) => {
             const d = `${ym}-${String(i + 1).padStart(2, "0")}`;
-            const ev = byDay.get(d) ?? [];
-            const on = sel === d;
+            const list = byDay.get(d) ?? [];
+            const gs = groupsOf(list);
+            const on = shown === d;
+            const isToday = d === today;
             return (
-              <button key={d} type="button" onClick={() => setSel(on ? null : d)} aria-label={`${m}월 ${i + 1}일${ev.length ? ` · ${ev.length}건` : ""}`} aria-pressed={on}
-                className={`h-12 rounded-lg border text-left px-1.5 pt-1 transition-colors ${focusRing} ${on ? "border-navy bg-navy/[0.06]" : d === today ? "border-navy/40 bg-white" : "border-black/[0.05] bg-white hover:bg-navy/[0.03]"}`}>
-                <span className={`text-[11px] tabular-nums ${d === today ? "font-bold text-navy" : "text-gray-700"}`}>{i + 1}</span>
-                <span className="flex gap-0.5 mt-1 flex-wrap">{ev.slice(0, 4).map((e, k) => <span key={k} className={`w-1.5 h-1.5 rounded-full ${KIND[e.kind].dot}`} />)}{ev.length > 4 && <span className="text-[9px] text-gray-400 leading-none">+{ev.length - 4}</span>}</span>
+              <button key={d} type="button" onClick={() => setSel(on ? null : d)} aria-pressed={on}
+                aria-label={`${m}월 ${i + 1}일${list.length ? ` · ${gs.map((g) => `${KIND[g.kind].label} ${g.items.length}`).join(", ")}` : " · 일정 없음"}`}
+                className={`min-h-[74px] rounded-xl border text-left px-1.5 pt-1.5 pb-1 transition-colors ${focusRing} ${on ? "border-navy/60 bg-navy/[0.05] ring-1 ring-navy/20" : list.length ? "border-black/[0.06] bg-white hover:bg-navy/[0.03]" : "border-black/[0.04] bg-white/60"}`}>
+                <span className={`inline-flex items-center justify-center text-[11px] tabular-nums leading-none ${isToday ? "w-[18px] h-[18px] rounded-full bg-navy text-white font-bold" : list.length ? "text-gray-800 font-semibold" : "text-gray-400"}`}>{i + 1}</span>
+                <span className="block mt-1 space-y-[3px]">
+                  {gs.slice(0, 2).map((g) => (
+                    <span key={g.kind} className={`block text-[10px] leading-[14px] px-1 rounded truncate ${KIND[g.kind].chip}`}>
+                      {g.items.length === 1 ? g.items[0].label : `${KIND[g.kind].label} ${g.items.length}`}
+                    </span>
+                  ))}
+                  {gs.length > 2 && <span className="block text-[10px] leading-[14px] px-1 text-gray-400">+{gs.length - 2}종</span>}
+                </span>
               </button>
             );
           })}
         </div>
-        <div className="flex flex-wrap gap-3 mt-2 text-[11px] text-gray-500">{(Object.keys(KIND) as CalEvent["kind"][]).map((k) => <span key={k} className="inline-flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[k].dot}`} />{KIND[k].label}</span>)}</div>
+
+        <div className="flex flex-wrap gap-3 mt-2.5 text-[11px] text-gray-500">
+          {ORDER.map((k) => <span key={k} className="inline-flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[k].dot}`} />{KIND[k].label}</span>)}
+        </div>
       </div>
-      <div>
-        <p className="text-[12px] font-semibold text-gray-700 mb-2">{sel ? `${Number(sel.slice(5, 7))}월 ${Number(sel.slice(8))}일` : "다가오는 일정"}</p>
-        {list.length === 0 ? <p className="text-[13px] text-gray-500">{sel ? "이 날은 비어 있습니다." : "이번 달 남은 일정이 없습니다."}</p> : (
-          <ul className="divide-y divide-gray-100">
-            {list.map((e, i) => (
-              <li key={i}>
-                <button type="button" onClick={e.onClick} className={`w-full flex items-center gap-2.5 py-2 text-left rounded-md ${focusRing}`}>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${KIND[e.kind].chip}`}>{KIND[e.kind].label}</span>
-                  <span className="flex-1 min-w-0"><span className="block text-[13px] font-semibold text-gray-900 truncate">{e.label}</span>{e.sub && <span className="block text-[11px] text-gray-500 truncate">{e.sub}</span>}</span>
-                  <span className="text-[12px] text-gray-500 tabular-nums">{Number(e.date.slice(5, 7))}/{Number(e.date.slice(8))}</span>
-                </button>
-              </li>
+
+      <div className="xl:border-l xl:border-black/[0.06] xl:pl-4">
+        <p className="text-[12px] font-semibold text-gray-700 mb-2">
+          {shown ? `${Number(shown.slice(5, 7))}월 ${Number(shown.slice(8))}일` : "일정"}
+          {shown === today && <span className="ml-1.5 text-[11px] font-medium text-navy">오늘</span>}
+          {shown && shown !== today && <span className="ml-1.5 text-[11px] font-medium text-gray-400">{shown > today ? "예정" : "지남"}</span>}
+        </p>
+        {shownList.length === 0 ? (
+          <p className="text-[13px] text-gray-500">{total === 0 ? "이 달에 잡힌 일정이 없습니다. 후보의 미팅 일시·기한, 매장의 계약 시작일을 적으면 여기에 뜹니다." : "이 날은 비어 있습니다."}</p>
+        ) : (
+          <div className="space-y-3 max-h-[22rem] overflow-y-auto pr-1">
+            {groupsOf(shownList).map((g) => (
+              <div key={g.kind}>
+                <p className="flex items-baseline gap-1.5 mb-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[g.kind].dot}`} /><span className="text-[11px] font-semibold text-gray-600">{KIND[g.kind].label}</span><span className="text-[11px] text-gray-400 tabular-nums">{g.items.length}</span></p>
+                <ul className={`border-l-2 ${KIND[g.kind].bar} pl-2 space-y-0.5`}>
+                  {g.items.map((e, i) => (
+                    <li key={i}>
+                      <button type="button" onClick={e.onClick} className={`w-full text-left py-1 px-1 rounded hover:bg-black/[0.03] ${focusRing}`}>
+                        <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
+                        {e.sub && <span className="block text-[11px] text-gray-500 truncate">{e.sub}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
