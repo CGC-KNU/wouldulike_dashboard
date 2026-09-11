@@ -18,9 +18,10 @@ export async function GET(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   const tab = req.nextUrl.searchParams.get("tab") ?? "후보";
-  // 빈 양식 — 머리글만. 엑셀에서 한글이 깨지지 않게 BOM.
+  // 빈 양식 — 머리글 + 예시 한 줄. 채워서 '양식 업로드'로 되돌려 넣는다.
   if (tab === "양식") {
-    return new NextResponse(`\uFEFF${toCsv(LEAD_CSV_HEAD, [["경북대", "준영", "예시식당 (이 줄은 지우세요)", "053-000-0000", "", "한식", "북문", "", "", "신규", "B", "미컨택", "", "", "", "", "", "", "", "", "", ""]])}`, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="astro_leads_template.csv"` } });
+    // toCsv 가 이미 BOM 을 붙인다(엑셀 한글). 예시 줄 하나로 형식만 보여준다.
+    return new NextResponse(toCsv(LEAD_CSV_HEAD, [["경북대", "준영", "예시식당 (이 줄은 지우세요)", "053-000-0000", "", "한식", "", "", "", "신규", "B", "미컨택", "", "", "", "", "", "", "", "", "", "", ""]]), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="astro_leads_template.csv"` } });
   }
   const district = req.nextUrl.searchParams.get("district");
   const today = new Date().toISOString().slice(0, 10);
