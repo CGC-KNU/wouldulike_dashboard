@@ -132,18 +132,23 @@ export function seedDocs(): SalesDoc[] {
   ];
 }
 
-/** 발행 주체 — 개인사업자 코끼리. 사업자번호는 09-02 카톡에서 팀이 공유한 값이다. 볼타 키·인증서는 아직 없다. */
+/**
+ * 발행 주체 — 개인사업자 코끼리. 볼타 키·인증서는 아직 없다.
+ *
+ * **사업자번호·대표자명은 소스에 넣지 않는다** (이 레포는 공개다). 화면에서 한 번 입력하면 초안 저장소에 남고,
+ * 운영에서는 백엔드 `Issuer` 레코드가 갖는다. 로컬에서 채워 보려면 `ASTRO_ISSUER_BIZ_NO` 를 쓴다.
+ */
 export function seedIssuer(): IssuerSettings {
   return {
     name: "코끼리 (우주라이크)",
-    biz_no: "",
-    ceo: "노재민",
+    biz_no: process.env.ASTRO_ISSUER_BIZ_NO ?? "",
+    ceo: process.env.ASTRO_ISSUER_CEO ?? "",
     address: "",
     email: "",
     bolta_customer_key: null,
     cert_expires_at: null,
     item_template: "우주라이크 파트너 플랜 {period}분",
-    approver: "노재민",
+    approver: process.env.ASTRO_ISSUER_CEO ?? "",
     slack_channel: "ops-partner",
     updated_at: null,
   };
