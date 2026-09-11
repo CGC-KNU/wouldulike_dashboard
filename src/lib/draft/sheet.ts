@@ -1,3 +1,4 @@
+import { CAMPUSES } from "./types";
 import { SALES_SHEET } from "@/lib/satellite";
 import type { BillingState, Campus, InvoiceState, Lead, LeadIntent, LeadStage, PayCycle, StoreOps } from "./types";
 import { ALL_LEAD_STAGES, BILLING_LABEL, INTENT_LABEL, INVOICE_LABEL, emptyStoreOps } from "./types";
@@ -15,7 +16,7 @@ import { ALL_LEAD_STAGES, BILLING_LABEL, INTENT_LABEL, INVOICE_LABEL, emptyStore
 
 /* ─── CSV ─── */
 
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -46,6 +47,22 @@ function parseCsv(text: string): string[][] {
     rows.push(row);
   }
   return rows;
+}
+
+/**
+ * 붙여넣기·업로드용 — 구글시트에서 복사하면 탭 구분, CSV 양식이면 쉼표. 첫 줄이 머리글이면 그대로 쓰고,
+ * 머리글이 없으면(첫 셀에 '매장명'이 없으면) 양식(LEAD_CSV_HEAD) 순서로 본다.
+ */
+export function parseTable(text: string): Record<string, string>[] {
+  const t = text.replace(/^\uFEFF/, "").trim();
+  if (!t) return [];
+  const firstLine = t.split(/\r?\n/)[0];
+  const tabbed = (firstLine.match(/\t/g)?.length ?? 0) >= (firstLine.match(/,/g)?.length ?? 0);
+  const rows = tabbed ? t.split(/\r?\n/).map((l) => l.split("\t").map((c) => c.trim())) : parseCsv(t);
+  if (!rows.length) return [];
+  const hasHead = rows[0].some((h) => /매장명|상호/.test(h));
+  const head = hasHead ? rows[0].map((h) => h.trim().replace(/^상호$/, "매장명")) : LEAD_CSV_HEAD;
+  return (hasHead ? rows.slice(1) : rows).filter((r) => r.some((c) => c && c.trim())).map((r) => Object.fromEntries(head.map((h, i) => [h, (r[i] ?? "").trim()])));
 }
 
 export async function fetchTab(gid: number): Promise<Record<string, string>[] | null> {
@@ -106,7 +123,7 @@ export function rowToLead(r: Record<string, string>, source: Lead["source"], now
   return {
     id: `sheet-${source.split(":")[1]}-${normName(name)}`,
     name,
-    campus: campusOf(source, name, blank(r["상권"])),
+    campus: (CAMPUSES as readonly string[]).includes(r["캠퍼스"] ?? "") ? (r["캠퍼스"] as Campus) : campusOf(source, name, blank(r["상권"])),
     kind: (blank(r["구분"]) as Lead["kind"]) ?? null,
     district: blank(r["상권"]),
     category: blank(r["카테고리"]),

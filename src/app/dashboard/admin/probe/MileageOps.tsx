@@ -23,6 +23,8 @@ export default function MileageOps({ actor }: { actor: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
+  useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
   const load = useCallback(() => { setLoading(true); fetch("/api/probe/mileage").then((r) => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false)); }, []);
   useEffect(load, [load]);

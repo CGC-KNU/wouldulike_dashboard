@@ -21,6 +21,8 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   const [note, setNote] = useState<string | undefined>();
   const [filter, setFilter] = useState<"todo" | "sent" | "all">("todo");
   const [openId, setOpenId] = useState<string | null>(null);
+  // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
+  useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
   const load = useCallback(() => { fetch("/api/probe/reports").then((r) => r.json()).then((d) => { setList(d.reports ?? []); setNote(d.draft_note); }).catch(() => setList([])); }, []);
   useEffect(load, [load]);

@@ -4,11 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import PapillonShell from "./satellite/PapillonShell";
 import ToolShell from "./_shared/ToolShell";
 import Launcher from "./_shared/Launcher";
+import CommandPalette from "./_shared/CommandPalette";
+import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
 import AstroHome from "./astro/AstroHome";
 import ProbeHome from "./probe/ProbeHome";
 import AppMetrics from "./probe/AppMetrics";
 import CastorHome from "./castor/CastorHome";
-import type { ToolKey } from "@/lib/satellite";
+import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
 import ContentTab from "./ContentTab";
 import ImageUploader from "@/components/ImageUploader";
 import { BenefitCatalogSection, BenefitGlance, StampRuleSection } from "@/components/CouponCatalog";
@@ -2456,8 +2458,8 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
 
   // ── Astro 확장. 식당 관리와 같은 권한을 쓴다 — 영업이 보는 매장 정보의 다른 레이어일 뿐이다.
   { key: "astro-home", label: "홈", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
-  { key: "astro-ops", label: "매장 현황", icon: "◉", allow: (me) => me.permissions.can_restaurants },
-  { key: "astro-leads", label: "입점 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-ops", label: "파트너 매장", icon: "◉", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-leads", label: "파트너 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-tax", label: "세금계산서", icon: "▥", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-docs", label: "자료실", icon: "▤", allow: (me) => me.permissions.can_restaurants },
@@ -2505,7 +2507,7 @@ const PRODUCTS: {
     key: "astro",
     name: "Astro",
     subtitle: "영업 툴",
-    description: "매장 현황 · 신규 컨택 · 입금 · 쿠폰",
+    description: "파트너 매장 · 파트너 후보 · 입금 · 계산서",
     tabs: ["astro-home", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs", "restaurants"],
     ready: true,
   },
@@ -2558,6 +2560,8 @@ export default function AdminHomePage() {
   const [me, setMe] = useState<AdminMe | null>(null);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  // 전체 현황 — 런처 카드·사이드바 배지가 같은 숫자를 본다
+  const satStatus = useSatelliteStatus(Boolean(me));
   // Castor 화면 지도에서 블록 순서를 바꾼 뒤 "A/B 후보로" 를 누르면 여기에 담겨 A/B 탭으로 넘어간다
   const [castorSeed, setCastorSeed] = useState<VariantSeed | null>(null);
 
@@ -2626,9 +2630,16 @@ export default function AdminHomePage() {
   }
 
   /** 다른 제품의 탭으로도 뛴다 — 매장 상세의 'Papillon 열기', 정합성의 '고치러 가기' 등. */
-  function go(tab: string) {
+  function go(target: string) {
+    // "astro-ops?open=256" 처럼 항목까지 지정할 수 있다 — 캘린더·알림에서 바로 연다
+    const [tab, query] = target.split("?");
     const owner = PRODUCTS.find((p) => p.tabs.includes(tab as Tab));
     if (owner) setSelectedProduct(owner.key);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    url.searchParams.delete("open");
+    if (query) for (const [k, v] of new URLSearchParams(query)) url.searchParams.set(k, v);
+    window.history.replaceState(null, "", url.toString());
     setActiveTab(tab as Tab);
   }
 
@@ -2665,11 +2676,16 @@ export default function AdminHomePage() {
   /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
   if (!selectedProduct) {
     return (
-      <Launcher
-        available={availableProducts.filter((p) => p.ready).map((p) => p.key as ToolKey)}
-        userName={me.display_name || me.username}
-        onSelect={(key) => selectProduct(key as Product)}
-      />
+      <>
+        <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
+        <Launcher
+          available={availableProducts.filter((p) => p.ready).map((p) => p.key as ToolKey)}
+          userName={me.display_name || me.username}
+          onSelect={(key) => selectProduct(key as Product)}
+          status={satStatus}
+          onGo={go}
+        />
+      </>
     );
   }
 
@@ -2685,6 +2701,7 @@ export default function AdminHomePage() {
 
   return (
     <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
+      <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
       {selectedProduct === "papillon" && <div className="flex items-center justify-between mb-3 px-1">
         {showProductPicker ? (
           <button
@@ -2726,11 +2743,13 @@ export default function AdminHomePage() {
           onSelect={(key) => setActiveTab(key as Tab)}
           onBack={showProductPicker ? backToProducts : undefined}
           user={{ name: me.display_name || me.username, role: me.department_label }}
+          badges={navBadges(satStatus)}
           dock={showProductPicker ? {
             tools: availableProducts.filter((p) => p.ready).map((p) => ({ key: p.key, name: p.name })),
             active: selectedProduct,
             onSwitch: (key) => selectProduct(key as Product),
             onHome: backToProducts,
+            libra: { channelUrl: slackUrl(TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra), channel: (TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra).slack.channel, context: `${productMeta.name} · ${productTabs.find((t) => t.key === activeTab)?.label ?? ""}` },
           } : undefined}
         >
           {/* Aether: 관리 및 운영 */}
@@ -2740,7 +2759,7 @@ export default function AdminHomePage() {
 
           {/* Astro: 영업 */}
           {activeTab === "restaurants" && <RestaurantsTab />}
-          {activeTab === "astro-home" && <AstroHome onGo={(t) => setActiveTab(t as Tab)} />}
+          {activeTab === "astro-home" && <AstroHome onGo={go} />}
           {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={go} />}
           {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
           {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} />}

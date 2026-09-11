@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   IconAlertTriangle,
   IconArrowsExchange,
@@ -22,6 +22,7 @@ import {
   IconBrandInstagram,
   IconGift,
   IconFileDescription,
+  IconMessageChatbot,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -46,6 +47,8 @@ export interface ToolDock {
   active: string;
   onSwitch: (key: string) => void;
   onHome: () => void;
+  /** "리브라랑 대화하기" — 이 툴의 슬랙 채널을 열고 `@Libra [화면]` 을 클립보드에 넣는다 (민열님 0911). */
+  libra?: { channelUrl: string; channel: string; context: string };
 }
 
 const NAV_ICON: Record<string, typeof IconBuildingStore> = {
@@ -91,6 +94,7 @@ export default function ToolShell({
   onBack,
   user,
   dock,
+  badges = {},
   children,
 }: {
   product: { key?: string; name: string; subtitle: string };
@@ -100,6 +104,8 @@ export default function ToolShell({
   onBack?: () => void;
   user: { name: string; role: string };
   dock?: ToolDock;
+  /** 사이드바 배지 — "지금 막힌 것" 수. 애딧 콘솔의 "캠페인 관리 39 · 정산 관리 3" 차용. */
+  badges?: Record<string, number>;
   children: ReactNode;
 }) {
   return (
@@ -148,6 +154,7 @@ export default function ToolShell({
                   >
                     <Icon size={18} stroke={1.75} className={on ? "text-white/90" : "text-gray-400"} aria-hidden="true" />
                     {n.label}
+                    {badges[n.key] ? <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center ${on ? "bg-white/20 text-white" : "bg-red-50 text-red-600"}`} aria-label={`${badges[n.key]}건`}>{badges[n.key]}</span> : null}
                   </button>
                 </li>
               );
@@ -177,7 +184,14 @@ export default function ToolShell({
  * 하단 도크. 유리 알약 하나에 앱 아이콘이 나란히. 활성 툴은 아이콘 아래 점.
  * 아이콘은 앱판(네이비 면) 그대로라 런처와 같은 얼굴이다. 누르면 그 툴의 첫 화면.
  */
-function Dock({ tools, active, onSwitch, onHome }: ToolDock) {
+function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
+  const [copied, setCopied] = useState(false);
+  async function talk() {
+    if (!libra) return;
+    // 슬랙 링크는 본문을 미리 채우지 못한다. 대신 태그+맥락을 복사해 두고 채널을 연다 — 붙여넣고 질문만 쓰면 된다.
+    try { await navigator.clipboard.writeText(`@Libra [${libra.context}] `); setCopied(true); setTimeout(() => setCopied(false), 2400); } catch { /* 무시 */ }
+    window.open(libra.channelUrl, "_blank", "noreferrer");
+  }
   return (
     <nav aria-label="툴 바꾸기" className="fixed left-0 right-0 bottom-4 z-30 flex justify-center px-4 pointer-events-none">
       <ul className="pointer-events-auto inline-flex items-end gap-1 px-2 py-1.5 rounded-[22px] bg-white/70 backdrop-blur-2xl saturate-150 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.06),0_24px_48px_-24px_rgba(5,0,114,0.5)]">
@@ -199,6 +213,18 @@ function Dock({ tools, active, onSwitch, onHome }: ToolDock) {
             </li>
           );
         })}
+        {libra && (
+          <>
+            <li aria-hidden="true" className="w-px h-8 bg-black/[0.08] mx-1 mb-3" />
+            <li className="relative">
+              <button type="button" onClick={talk} aria-label={`리브라랑 대화하기 — #${libra.channel} 에서 @Libra 태그`} className={`group flex flex-col items-center w-[72px] py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
+                <span className="w-10 h-10 rounded-[12px] bg-[linear-gradient(135deg,#6366E0,#050072)] text-white flex items-center justify-center shadow-[0_8px_18px_-8px_rgba(5,0,114,0.7)]"><IconMessageChatbot size={19} stroke={1.9} aria-hidden="true" /></span>
+                <span className="text-[10px] font-semibold text-navy mt-1 whitespace-nowrap">리브라랑 대화</span>
+              </button>
+              {copied && <span role="status" className="absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white bg-gray-900/90 rounded-lg px-2.5 py-1.5 shadow-lg">@Libra 태그 복사됨 · #{libra.channel} 에 붙여넣고 질문하세요</span>}
+            </li>
+          </>
+        )}
       </ul>
     </nav>
   );

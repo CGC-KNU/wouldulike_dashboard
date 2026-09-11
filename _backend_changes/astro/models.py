@@ -59,6 +59,9 @@ class StoreOps(models.Model):
     owner_phone = models.CharField(max_length=30, blank=True)
     biz_no = models.CharField(max_length=20, blank=True)
     monthly_fee = models.PositiveIntegerField(null=True, blank=True)
+    billing_start_period = models.CharField(max_length=7, blank=True)  # "YYYY-MM" 청구 시작 월 (0911)
+    map_url = models.URLField(blank=True)   # 네이버지도/카카오맵 링크 (0911)
+    map_name = models.CharField(max_length=80, blank=True)  # 지도상 공식 상호
     pay_cycle = models.CharField(max_length=10, choices=PAY_CYCLE, blank=True)
     contract_started_on = models.DateField(null=True, blank=True)
     contract_months = models.PositiveSmallIntegerField(null=True, blank=True)

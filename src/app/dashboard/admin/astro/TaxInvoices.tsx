@@ -33,6 +33,8 @@ export default function TaxInvoices({ actor, isAdmin }: { actor: string; isAdmin
   const [status, setStatus] = useState<"all" | TaxInvoiceStatus | "open">("open");
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
+  useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
   const [settings, setSettings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);

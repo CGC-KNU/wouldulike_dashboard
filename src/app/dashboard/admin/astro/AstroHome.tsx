@@ -1,5 +1,6 @@
 "use client";
 
+import Calendar, { buildEvents } from "./Calendar";
 import { useEffect, useMemo, useState } from "react";
 import { IconBrandSlack, IconExternalLink } from "@tabler/icons-react";
 import { LEAD_STAGES, isPaidTier, type Activity, type Lead, type StoreRow } from "@/lib/draft/types";
@@ -19,6 +20,7 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
   const [stores, setStores] = useState<StoreRow[] | null>(null);
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [acts, setActs] = useState<Activity[] | null>(null);
+  const [ym, setYm] = useState(periodLocal());
   const [invoices, setInvoices] = useState<{ restaurant_id: number; paid_at: string | null; status: string }[] | null>(null);
 
   useEffect(() => {
@@ -71,7 +73,7 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
           {loading ? (
             <Skeleton rows={7} cols={2} />
           ) : active.length === 0 ? (
-            <Empty title="아직 후보가 없습니다" detail="입점 후보 화면에서 '시트에서 불러오기'를 누르면 팀 시트의 후보가 들어옵니다." action={<Button variant="primary" onClick={() => onGo("astro-leads")}>입점 후보로</Button>} />
+            <Empty title="아직 후보가 없습니다" detail="파트너 후보 화면에서 '시트에서 불러오기'를 누르면 팀 시트의 후보가 들어옵니다." action={<Button variant="primary" onClick={() => onGo("astro-leads")}>파트너 후보로</Button>} />
           ) : (
             <ol className="space-y-2">
               {byStage.map((b) => (
@@ -88,22 +90,20 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         </Card>
 
         <div className="space-y-4">
-          <Card title="상권별" description="제휴 매장 · 진행 중 후보. 상권이 비어 있으면 '미지정'.">
+          <Card title="캠퍼스별" description="파트너 매장 · 진행 중 후보.">
             {loading ? <Skeleton rows={3} cols={3} /> : (
               <ul className="divide-y divide-gray-100">
-                {[...new Set([...(stores ?? []).filter((s) => s.is_affiliate).map((s) => s.ops?.district ?? "미지정"), ...active.map((l) => l.district ?? "미지정")])]
-                  .sort((a, b) => (a === "미지정" ? 1 : b === "미지정" ? -1 : a.localeCompare(b, "ko")))
-                  .map((d) => {
-                    const st = (stores ?? []).filter((s) => s.is_affiliate && (s.ops?.district ?? "미지정") === d);
-                    const ld = active.filter((l) => (l.district ?? "미지정") === d);
-                    return (
-                      <li key={d} className="flex items-center gap-3 py-2 text-[13px]">
-                        <span className="flex-1 font-semibold text-gray-900">{d}</span>
-                        <span className="text-gray-500">제휴 <span className="font-semibold text-gray-900 tabular-nums">{st.length}</span> (유료 {st.filter((s) => isPaidTier(s.tier)).length})</span>
-                        <span className="text-gray-500">후보 <span className="font-semibold text-gray-900 tabular-nums">{ld.length}</span></span>
-                      </li>
-                    );
-                  })}
+                {(["경북대", "영남대", "계명대"] as const).map((c) => {
+                  const st = (stores ?? []).filter((s) => s.is_affiliate && (s.ops?.campus ?? "경북대") === c);
+                  const ld = active.filter((l) => (l.campus ?? "경북대") === c);
+                  return (
+                    <li key={c} className="flex items-center gap-3 py-2 text-[13px]">
+                      <span className="flex-1 font-semibold text-gray-900">{c}</span>
+                      <span className="text-gray-500">파트너 <span className="font-semibold text-gray-900 tabular-nums">{st.length}</span> (유료 {st.filter((s) => isPaidTier(s.tier)).length})</span>
+                      <span className="text-gray-500">후보 <span className="font-semibold text-gray-900 tabular-nums">{ld.length}</span></span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>
@@ -145,6 +145,11 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
           </Card>
         </div>
       </div>
+
+      {/* 캘린더 — 미팅 · 기한 · 계약 시작 · 입금 예정. 매장별 계약 시작일과 청구 시작 월을 여기서 한눈에 (민열님 0911). */}
+      <Card title="일정" description="미팅·기한은 후보 카드에서, 계약 시작·입금 예정은 파트너 매장 상세에서 옵니다. 입금 예정일은 계약 시작일의 '일'을 매달 반복합니다." className="mt-4">
+        {loading ? <Skeleton rows={5} cols={7} /> : <Calendar ym={ym} onMonth={setYm} events={buildEvents(stores ?? [], leads ?? [], ym, (id) => onGo(`astro-ops?open=${id}`), (id) => onGo(`astro-leads?open=${id}`))} />}
+      </Card>
     </>
   );
 }

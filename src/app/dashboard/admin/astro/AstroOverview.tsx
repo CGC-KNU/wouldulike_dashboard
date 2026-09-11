@@ -50,11 +50,12 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
   const [campus, setCampus] = useState<Campus | "all">("경북대");
-  const [district, setDistrict] = useState<string>("all");
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "billing", dir: "asc" });
   const [openId, setOpenId] = useState<number | null>(null);
+  // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
+  useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(Number(o)); } catch { /* 무시 */ } }, []);
   const [adding, setAdding] = useState(false);
   const period = thisPeriod();
 
@@ -86,9 +87,8 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   const affiliateAll = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test), [rows]);
   const countIn = (c: Campus) => affiliateAll.filter((r) => campusOf(r) === c).length;
   const inCampus = useMemo(() => affiliateAll.filter((r) => campus === "all" || campusOf(r) === campus), [affiliateAll, campus]);
-  const districts = useMemo(() => [...new Set(inCampus.map((r) => r.ops?.district).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ko")), [inCampus]);
-  useEffect(() => { if (district !== "all" && !districts.includes(district)) setDistrict("all"); }, [districts, district]);
-  const affiliate = useMemo(() => inCampus.filter((r) => district === "all" || r.ops?.district === district), [inCampus, district]);
+  // 상권 구분은 뺐다(민열님 0911) — 캠퍼스 하나로 충분하다
+  const affiliate = inCampus;
   const paid = useMemo(() => affiliate.filter((r) => isPaidTier(r.tier)), [affiliate]);
   const stuck = useMemo(() => ({
     unpaid: paid.filter((r) => pay(r).stuck),
@@ -120,12 +120,12 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   return (
     <>
       <PageHeader
-        title="매장 현황"
-        description="캠퍼스별 제휴 매장. 입금 열은 이번 달 청구 기준이고, 나머지는 사람이 확인해서 넣는 값입니다."
+        title="파트너 매장"
+        description="캠퍼스별 파트너 매장. 입금 열은 이번 달 청구 기준이고, 나머지는 사람이 확인해서 넣는 값입니다."
         actions={
           <>
             {draft.on && <DraftBadge note={draft.note} />}
-            <a href={`/api/astro/export?tab=계약${district !== "all" ? `&district=${encodeURIComponent(district)}` : ""}`} className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-gray-300 bg-white text-[13px] font-semibold text-gray-800 hover:bg-gray-50"><IconDownload size={16} aria-hidden="true" /> 시트 형식 CSV</a>
+            <a href="/api/astro/export?tab=계약" className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-gray-300 bg-white text-[13px] font-semibold text-gray-800 hover:bg-gray-50"><IconDownload size={16} aria-hidden="true" /> 시트 형식 CSV</a>
             <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button>
           </>
         }
@@ -137,18 +137,11 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장명 또는 ID" aria-label="매장 검색" className="pl-8" />
           </div>
         </div>
-        {districts.length > 0 && (
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <span className="text-[12px] text-gray-400 mr-1">상권</span>
-            <FilterPills label="상권" value={district} onChange={setDistrict} options={[{ key: "all", label: "전체" }, ...districts.map((d) => ({ key: d, label: d, count: inCampus.filter((r) => r.ops?.district === d).length }))]} />
-            {inCampus.some((r) => !r.ops?.district) && <span className="text-[12px] text-gray-400">상권이 빈 매장 {inCampus.filter((r) => !r.ops?.district).length}곳 · 매장 상세에서 적을 수 있습니다</span>}
-          </div>
-        )}
       </PageHeader>
 
       {/* 총량이 아니라 '지금 막힌 것'. 누르면 표가 그것만 남는다. */}
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
-        <Kpi label="제휴 매장" value={loading ? "-" : affiliate.length} hint={`유료 ${paid.length}곳`} onClick={() => setFilter("all")} active={filter === "all"} />
+        <Kpi label="파트너 매장" value={loading ? "-" : affiliate.length} hint={`유료 ${paid.length}곳`} onClick={() => setFilter("all")} active={filter === "all"} />
         <Kpi label={`${monthLabel} 입금 미확인`} value={loading ? "-" : stuck.unpaid.length} tone="alert" hint="청구 안 됨 · 발행 후 대기 포함" onClick={() => setFilter("unpaid")} active={filter === "unpaid"} />
         <Kpi label="비치물 미전달" value={loading ? "-" : stuck.kit.length} hint="유료 매장 중" onClick={() => setFilter("kit")} active={filter === "kit"} />
         <Kpi label="학기/방학 미정" value={loading ? "-" : stuck.season.length} hint="방학 전 점주 확인 필요" onClick={() => setFilter("season")} active={filter === "season"} />
@@ -157,7 +150,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
       <Card flush title={`매장 ${visible.length}곳`}
         actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }]} />}>
         {loading ? <Skeleton rows={8} cols={6} /> : visible.length === 0 ? (
-          <Empty title={affiliateAll.length === 0 ? "매장을 불러오지 못했습니다" : "이 조건에 해당하는 매장이 없습니다"} detail={affiliateAll.length === 0 ? "매장 목록은 실데이터(/api/dashboard/restaurants)에서 옵니다. 백엔드 연결을 확인하세요." : campus !== "all" && countIn(campus) === 0 ? `${campus} 매장은 아직 없습니다. 입점 후보에서 계약이 되면 여기로 옵니다.` : "막힌 곳이 없다는 뜻입니다. 다른 지표를 눌러 보세요."} action={campus !== "all" && countIn(campus) === 0 ? <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button> : undefined} />
+          <Empty title={affiliateAll.length === 0 ? "매장을 불러오지 못했습니다" : "이 조건에 해당하는 매장이 없습니다"} detail={affiliateAll.length === 0 ? "매장 목록은 실데이터(/api/dashboard/restaurants)에서 옵니다. 백엔드 연결을 확인하세요." : campus !== "all" && countIn(campus) === 0 ? `${campus} 매장은 아직 없습니다. 파트너 후보에서 계약이 되면 여기로 옵니다.` : "막힌 곳이 없다는 뜻입니다. 다른 지표를 눌러 보세요."} action={campus !== "all" && countIn(campus) === 0 ? <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button> : undefined} />
         ) : (
           <Table minWidth="52rem">
             <thead>
@@ -177,7 +170,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                   <tr key={r.restaurant_id} className={rowClickable} onClick={() => setOpenId(r.restaurant_id)}>
                     <Td>
                       <span className="font-semibold text-gray-900">{r.name}</span>
-                      <span className="block text-[11px] text-gray-400">{[o?.district, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
+                      <span className="block text-[11px] text-gray-400">{[o?.map_name && o.map_name !== r.name ? `지도: ${o.map_name}` : null, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
                     </Td>
                     <Td>{r.tier ? <Chip tone={PLAN_TONE[r.tier] ?? "gray"}>{r.tier}</Chip> : <span className="text-gray-400">미지정</span>}</Td>
                     <Td>{isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
@@ -210,7 +203,21 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
 /* ═══════════ 매장 추가 — 식당 관리와 같은 생성 경로 ═══════════ */
 
 function NewStorePanel({ actor, campus, onClose, onCreated }: { actor: string; campus: Campus; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: "", campus, district: "", category: "", phone: "", url: "", address: "", tier: "FREE", memo: "" });
+  const thisP = periodLocal(), nextP = periodLocal(1);
+  const [form, setForm] = useState({ name: "", campus, category: "", phone: "", url: "", map_url: "", map_name: "", address: "", tier: "FREE", memo: "", billing_start: thisP });
+  const [lookup, setLookup] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
+  /** 지도 링크에서 공식 상호를 읽어 매장명에 넣는다 — 팀원과 툴이 같은 이름을 쓴다. */
+  async function fromMap() {
+    if (!form.map_url.trim() || lookup.busy) return;
+    setLookup({ busy: true, msg: null });
+    try {
+      const res = await fetch(`/api/astro/place?url=${encodeURIComponent(form.map_url.trim())}`);
+      const d = await res.json();
+      if (!res.ok || !d.name) { setLookup({ busy: false, msg: d.detail ?? "지도에서 이름을 못 읽었습니다. 직접 적어 주세요." }); return; }
+      setForm((f) => ({ ...f, name: d.name, map_name: d.name, address: f.address || d.address || "" }));
+      setLookup({ busy: false, msg: `${d.provider} 표기 "${d.name}" 를 매장명으로 넣었습니다.` });
+    } catch { setLookup({ busy: false, msg: "지도 페이지를 읽지 못했습니다." }); }
+  }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -225,7 +232,7 @@ function NewStorePanel({ actor, campus, onClose, onCreated }: { actor: string; c
       if (!res.ok) { setError(res.status === 502 || res.status === 501 ? "미리보기 모드라 매장을 만들 수 없습니다. 백엔드에 붙으면 식당 관리와 같은 경로로 생성됩니다." : d.detail ?? d.message ?? "매장을 만들지 못했습니다."); return; }
       const id = d.restaurant_id ?? d.id;
       // 2) 캠퍼스·상권·메모는 Astro 운영 필드
-      if (id) await fetch(`/api/astro/stores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campus: form.campus, district: form.district || null, memo: form.memo || null, updated_by: actor }) });
+      if (id) await fetch(`/api/astro/stores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campus: form.campus, map_url: form.map_url || null, map_name: form.map_name || null, billing_start_period: form.billing_start, memo: form.memo || null, updated_by: actor }) });
       onCreated(); onClose();
     } catch { setError("서버에 연결하지 못했습니다."); } finally { setSaving(false); }
   }
@@ -233,11 +240,15 @@ function NewStorePanel({ actor, campus, onClose, onCreated }: { actor: string; c
   return (
     <SlideOver open onClose={onClose} title="매장 추가" subtitle="식당 관리와 같은 경로로 만들어집니다. 사진·쿠폰은 식당 관리에서 이어서 등록하세요."
       footer={<><Button variant="primary" onClick={submit} disabled={!form.name.trim() || saving}>{saving ? "만드는 중…" : "매장 만들기"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
-      <Field label="매장명" required><Input value={form.name} onChange={set("name")} placeholder="예: 라라더" autoFocus /></Field>
+      <Field label="지도 링크 (네이버지도 · 카카오맵)" hint="지도상 공식 상호를 매장명으로 씁니다. 팀원이 부르는 이름과 툴 이름이 갈리지 않게.">
+        <div className="flex gap-2"><Input value={form.map_url} onChange={set("map_url")} type="url" inputMode="url" placeholder="https://naver.me/… 또는 https://place.map.kakao.com/…" autoFocus /><Button onClick={fromMap} disabled={!form.map_url.trim() || lookup.busy}>{lookup.busy ? "읽는 중…" : "이름 가져오기"}</Button></div>
+        {lookup.msg && <p className="text-[12px] text-gray-600 mt-1">{lookup.msg}</p>}
+      </Field>
+      <Field label="매장명" required hint={form.map_name ? `지도 표기: ${form.map_name}` : undefined}><Input value={form.name} onChange={set("name")} placeholder="예: 라라더" /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="캠퍼스"><Select value={form.campus} onChange={set("campus")}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
-        <Field label="상권"><Input value={form.district} onChange={set("district")} placeholder="예: 북문" /></Field>
         <Field label="플랜"><Select value={form.tier} onChange={set("tier")}><option value="FREE">FREE</option><option value="BOOST">BOOST</option><option value="CONTENT">CONTENT</option></Select></Field>
+        <Field label="청구 시작" hint="월 중간에 들어오면 이번 달부터 받을지 다음 달부터 받을지"><Select value={form.billing_start} onChange={set("billing_start")}><option value={thisP}>이번 달부터 ({Number(thisP.slice(5))}월)</option><option value={nextP}>다음 달부터 ({Number(nextP.slice(5))}월)</option></Select></Field>
         <Field label="카테고리"><Input value={form.category} onChange={set("category")} placeholder="예: 한식" /></Field>
         <Field label="매장 전화"><Input value={form.phone} onChange={set("phone")} type="tel" inputMode="tel" /></Field>
         <Field label="링크"><Input value={form.url} onChange={set("url")} type="url" inputMode="url" placeholder="네이버 플레이스" /></Field>

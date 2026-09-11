@@ -76,6 +76,11 @@ export interface StoreOps {
   pay_cycle: PayCycle | null;
   contract_started_on: string | null;
   contract_months: number | null;
+  /** 청구를 시작하는 달 "YYYY-MM". 월 중간에 들어온 매장은 이번 달/다음 달 중 고른다 (민열님 0911). null 이면 계약 시작월. */
+  billing_start_period: string | null;
+  /** 네이버지도/카카오맵 링크와 지도상 공식 상호 — 팀원과 툴이 같은 이름을 쓴다 (민열님 0911). */
+  map_url: string | null;
+  map_name: string | null;
   /* ── 시트 '계약 세부사항' 열 1:1. 툴이 시트를 대체하므로 전부 편집 가능하다 (민열님 0910). ── */
   district: string | null; // 상권 (시트 '매장 현황' C열)
   contract_signed_on: string | null; // 계약일
@@ -120,6 +125,9 @@ export function emptyStoreOps(id: number): StoreOps {
     pay_cycle: null,
     contract_started_on: null,
     contract_months: null,
+    billing_start_period: null,
+    map_url: null,
+    map_name: null,
     district: null,
     contract_signed_on: null,
     contract_ends_on: null,
@@ -146,7 +154,7 @@ export const STORE_OPS_EDITABLE = [
   "campus", "semester_active", "vacation_active", "kit_delivered",
   "billing", "invoice", "quote_sent_at", "contract_returned_at",
   "owner_name", "owner_phone", "biz_no",
-  "monthly_fee", "pay_cycle", "contract_started_on", "contract_months",
+  "monthly_fee", "pay_cycle", "contract_started_on", "contract_months", "billing_start_period", "map_url", "map_name",
   "district", "contract_signed_on", "contract_ends_on", "coupon_basic", "coupon_limited", "stamp_count", "stamp_reward",
   "exclusions", "extra_quote", "kit_note", "pin", "contract_original", "sheet_owner", "sheet_synced_at",
   "is_test", "memo",
@@ -206,7 +214,7 @@ export interface Lead {
   score: number | null;
   angle: string | null; // 공략 포인트
   memo: string | null;
-  source: "manual" | "sheet:현황" | "sheet:신규" | "sheet:후보";
+  source: "manual" | "sheet:현황" | "sheet:신규" | "sheet:후보" | "paste";
   created_at: string;
   converted_restaurant_id: number | null;
 }

@@ -44,11 +44,12 @@ export default function LeadPipeline({ actor }: { actor: string }) {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
   const [campus, setCampus] = useState<Campus | "all">("경북대");
-  const [district, setDistrict] = useState<string>("all");
   const [view, setView] = useState<"board" | "table">("board");
   const [search, setSearch] = useState("");
   const [showSide, setShowSide] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
+  useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
 
@@ -73,11 +74,10 @@ export default function LeadPipeline({ actor }: { actor: string }) {
 
   const countIn = (c: Campus) => leads.filter((l) => campusOf(l) === c && !isSide(l.stage)).length;
   const inCampus = useMemo(() => leads.filter((l) => campus === "all" || campusOf(l) === campus), [leads, campus]);
-  const districts = useMemo(() => [...new Set(inCampus.map((l) => l.district).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ko")), [inCampus]);
   const scoped = useMemo(() => {
     const q = search.trim();
-    return inCampus.filter((l) => district === "all" || l.district === district).filter((l) => !q || [l.name, l.owner_name, l.category, l.district, l.memo, l.next_action, l.owner].some((v) => v?.includes(q)));
-  }, [inCampus, district, search]);
+    return inCampus.filter((l) => !q || [l.name, l.owner_name, l.category, l.memo, l.next_action, l.owner].some((v) => v?.includes(q)));
+  }, [inCampus, search]);
   const active = useMemo(() => scoped.filter((l) => !isSide(l.stage)), [scoped]);
   const stale = useMemo(() => active.filter(isStale), [active]);
   const meetings = active.filter((l) => l.stage === "미팅 조율" || l.stage === "미팅 예정");
@@ -87,18 +87,16 @@ export default function LeadPipeline({ actor }: { actor: string }) {
   const open = leads.find((l) => l.id === openId) ?? null;
   const groups = GROUPS.filter((g) => g.key !== "side" || showSide);
 
-  // 상권이 바뀌면(캠퍼스 전환) 상권 필터를 푼다. 없는 상권으로 남아 빈 화면이 되지 않게.
-  useEffect(() => { if (district !== "all" && !districts.includes(district)) setDistrict("all"); }, [districts, district]);
 
   return (
     <>
       <PageHeader
-        title="입점 후보"
+        title="파트너 후보"
         description="캠퍼스별로 봅니다. 단계 이름은 팀 시트와 같고, 칸반은 네 묶음으로 접었습니다."
         actions={
           <>
             {draft.on && <DraftBadge note={draft.note} />}
-            <Button icon={<IconTableImport />} onClick={() => setImporting(true)}>시트에서 불러오기</Button>
+            <Button icon={<IconTableImport />} onClick={() => setImporting(true)}>불러오기</Button>
             <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>후보 추가</Button>
           </>
         }
@@ -112,12 +110,6 @@ export default function LeadPipeline({ actor }: { actor: string }) {
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장, 대표자, 담당, 메모" aria-label="후보 검색" className="pl-8" />
           </div>
         </div>
-        {districts.length > 1 && (
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <span className="text-[12px] text-gray-400 mr-1">상권</span>
-            <FilterPills label="상권" value={district} onChange={setDistrict} options={[{ key: "all", label: "전체" }, ...districts.map((d) => ({ key: d, label: d, count: inCampus.filter((l) => l.district === d && !isSide(l.stage)).length }))]} />
-          </div>
-        )}
       </PageHeader>
 
       <div className="sat-stagger grid grid-cols-3 gap-2.5 mb-5">
@@ -155,7 +147,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
             <tbody>
               {(showSide ? sorted : sorted.filter((l) => !isSide(l.stage))).map((l) => (
                 <tr key={l.id} className={rowClickable} onClick={() => setOpenId(l.id)}>
-                  <Td><span className="font-semibold text-gray-900">{l.name}</span><span className="block text-[11px] text-gray-400">{[l.district, l.category].filter(Boolean).join(" · ")}</span></Td>
+                  <Td><span className="font-semibold text-gray-900">{l.name}</span><span className="block text-[11px] text-gray-400">{l.category ?? ""}</span></Td>
                   <Td><Chip tone={STAGE_TONE[l.stage]}>{l.stage}</Chip></Td>
                   <Td>{l.intent ? <Chip tone={INTENT_TONE[l.intent]}>{l.intent}</Chip> : <span className="text-gray-300">-</span>}</Td>
                   <Td>{l.proposed_plan ?? <span className="text-gray-300">-</span>}</Td>
@@ -175,7 +167,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
           재컨택 · 보류 · 거절도 보기 ({scoped.filter((l) => isSide(l.stage)).length})
         </label>
         <div className="flex items-center gap-4">
-          <a href={`/api/astro/export?tab=후보${district !== "all" ? `&district=${encodeURIComponent(district)}` : ""}`} className="inline-flex items-center gap-1 text-[12px] text-gray-500 hover:text-navy"><IconDownload size={13} aria-hidden="true" /> 시트 형식 CSV</a>
+          <a href="/api/astro/export?tab=후보" className="inline-flex items-center gap-1 text-[12px] text-gray-500 hover:text-navy"><IconDownload size={13} aria-hidden="true" /> 시트 형식 CSV</a>
           <a href={SALES_SHEET.url(SALES_SHEET.tabs.현황)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-gray-500 hover:text-navy">원본 시트 <IconExternalLink size={12} aria-hidden="true" /></a>
         </div>
       </div>
@@ -200,7 +192,6 @@ function LeadCard({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-[12px] text-gray-500">
         {lead.intent && <span className={`font-semibold ${lead.intent === "A" ? "text-emerald-700" : lead.intent === "D" ? "text-red-600" : "text-gray-700"}`}>의향 {lead.intent}</span>}
         {lead.grade && <span>실측 {lead.grade}{lead.score !== null ? ` ${lead.score}` : ""}</span>}
-        {lead.district && <span>{lead.district}</span>}
         {lead.proposed_plan && <span>{lead.proposed_plan}</span>}
       </div>
       {lead.next_action && <p className="mt-1.5 text-[12px] text-navy font-medium line-clamp-1"><IconArrowRight size={12} className="inline -mt-0.5 mr-0.5" aria-hidden="true" />{lead.next_action}{lead.due && <span className="text-gray-400 font-normal"> · {lead.due}</span>}</p>}
@@ -251,7 +242,7 @@ function LeadDetailPanel({ lead, actor, onClose, onPatch, onConverted }: { lead:
 
   return (
     <SlideOver open onClose={onClose} title={lead.name}
-      subtitle={[campusOf(lead), lead.district, lead.category, lead.kind, lead.source.startsWith("sheet") ? `시트 ${lead.source.split(":")[1]} 탭` : "직접 등록", lead.converted_restaurant_id && `매장 #${lead.converted_restaurant_id}`].filter(Boolean).join(" · ")}
+      subtitle={[campusOf(lead), lead.category, lead.kind, lead.source.startsWith("sheet") ? `시트 ${lead.source.split(":")[1]} 탭` : "직접 등록", lead.converted_restaurant_id && `매장 #${lead.converted_restaurant_id}`].filter(Boolean).join(" · ")}
       badge={<Chip tone={STAGE_TONE[lead.stage]}>{lead.stage}</Chip>} width="lg"
       footer={
         <>
@@ -266,7 +257,6 @@ function LeadDetailPanel({ lead, actor, onClose, onPatch, onConverted }: { lead:
       <PanelSection title="진행">
         <div className="grid grid-cols-2 gap-3">
           <Field label="캠퍼스"><Select value={campusOf(lead)} onChange={(e) => onPatch(lead.id, { campus: e.target.value as Campus })}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
-          <Cell label="상권" value={lead.district} onCommit={set("district")} placeholder="북문 / 정문" />
           <Field label="유료화 의향"><Select value={lead.intent ?? ""} onChange={(e) => onPatch(lead.id, { intent: (e.target.value || null) as LeadIntent | null })}><option value="">미정</option>{(["A", "B", "C", "D"] as LeadIntent[]).map((i) => <option key={i} value={i}>{i} · {INTENT_LABEL[i]}</option>)}</Select></Field>
           <Cell label="제안 플랜" value={lead.proposed_plan} onCommit={set("proposed_plan")} placeholder="예: Boost 3만" />
           <Cell label="담당" value={lead.owner} onCommit={set("owner")} placeholder="이름 (참고용)" />
@@ -308,7 +298,7 @@ function LeadDetailPanel({ lead, actor, onClose, onPatch, onConverted }: { lead:
 /* ═══════════ 등록 ═══════════ */
 
 function NewLeadPanel({ actor, campus, onClose, onCreated }: { actor: string; campus: Campus; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: "", campus, kind: "신규", district: "", category: "", owner: actor, intent: "", phone: "", link: "", proposed_plan: "", next_action: "", due: "", memo: "" });
+  const [form, setForm] = useState({ name: "", campus, kind: "신규", category: "", owner: actor, intent: "", phone: "", link: "", proposed_plan: "", next_action: "", due: "", memo: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -321,12 +311,11 @@ function NewLeadPanel({ actor, campus, onClose, onCreated }: { actor: string; ca
     } catch { setError("서버에 연결하지 못했습니다."); } finally { setSaving(false); }
   }
   return (
-    <SlideOver open onClose={onClose} title="입점 후보 추가" subtitle="매장명만 있어도 됩니다."
+    <SlideOver open onClose={onClose} title="파트너 후보 추가" subtitle="매장명만 있어도 됩니다."
       footer={<><Button variant="primary" onClick={submit} disabled={!form.name.trim() || saving}>{saving ? "추가하는 중…" : "후보 추가"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
       <Field label="매장명" required><Input value={form.name} onChange={set("name")} placeholder="예: 경대북문 ○○식당" autoFocus /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="캠퍼스"><Select value={form.campus} onChange={set("campus")}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
-        <Field label="상권"><Input value={form.district} onChange={set("district")} placeholder="예: 북문" /></Field>
         <Field label="구분"><Select value={form.kind} onChange={set("kind")}><option>신규</option><option>기존 파트너</option></Select></Field>
         <Field label="카테고리"><Input value={form.category} onChange={set("category")} placeholder="예: 한식" /></Field>
         <Field label="유료화 의향"><Select value={form.intent} onChange={set("intent")}><option value="">미정</option>{(["A", "B", "C", "D"] as LeadIntent[]).map((i) => <option key={i} value={i}>{i} · {INTENT_LABEL[i]}</option>)}</Select></Field>
@@ -351,7 +340,15 @@ const TAB_DESC: Record<Tab, string> = {
   계약: "계약 세부사항 탭 (39곳). 플랜·월 이용료·납부·계산서·혜택·홍보물·PIN → 매장 운영 필드.",
 };
 
+/**
+ * 가져오기 세 갈래 (민열님 0911): ① 팀 시트 링크를 직접 읽기 ② 시트에서 복사해 붙여넣기 ③ 고정 양식(CSV) 내려받아 채운 뒤 업로드.
+ * ②③은 같은 파서(`parseTable`)를 탄다 — 첫 줄이 머리글이면 그대로, 없으면 양식 열 순서로 본다. 미리 세어 보고(dry) 확정한다.
+ */
 function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [mode, setMode] = useState<"sheet" | "paste" | "file">("sheet");
+  const [text, setText] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [dry, setDry] = useState<{ rows: number; created: number; updated: number; skipped: number; columns: string[]; sample: string[] } | null>(null);
   const [tab, setTab] = useState<Tab>("신규");
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -373,12 +370,68 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
     } catch (e) { setError((e as Error).message ?? "불러오지 못했습니다."); } finally { setBusy(false); }
   }
   const n = (k: string) => (preview?.[k] as number | undefined) ?? 0;
+
+  // 붙여넣기·업로드: 서버에 미리 세어 보게 한 뒤(dry) 확정한다
+  useEffect(() => {
+    if (mode === "sheet" || !text.trim()) { setDry(null); return; }
+    const id = setTimeout(() => {
+      fetch("/api/astro/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, dry: true }) })
+        .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail); setDry(d); setError(null); })
+        .catch((e) => { setDry(null); setError(e.message); });
+    }, 300);
+    return () => clearTimeout(id);
+  }, [mode, text]);
+  async function runText() {
+    if (busy || !text.trim()) return;
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch("/api/astro/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const d = await res.json(); if (!res.ok) throw new Error(d.detail);
+      setResult(`${d.created}곳 추가, ${d.updated}곳 갱신${d.skipped ? `, ${d.skipped}행 건너뜀(매장명 없음)` : ""}.`); onDone();
+    } catch (e) { setError((e as Error).message ?? "불러오지 못했습니다."); } finally { setBusy(false); }
+  }
+  function onFile(f: File | null) {
+    if (!f) return;
+    setFileName(f.name);
+    f.text().then((t) => setText(t));
+  }
+  const textMode = mode !== "sheet";
   return (
-    <SlideOver open onClose={onClose} title="시트에서 불러오기" subtitle="팀 세일즈 시트를 직접 읽습니다. 시트는 건드리지 않습니다." width="lg"
-      footer={<><Button variant="primary" onClick={run} disabled={!preview || busy}>{busy ? "불러오는 중…" : `${tab} 탭 불러오기`}</Button><Button variant="ghost" onClick={onClose}>{result ? "닫기" : "취소"}</Button>{result && <span className="text-[12px] text-emerald-700 ml-auto" aria-live="polite">{result}</span>}</>}>
+    <SlideOver open onClose={onClose} title="후보 불러오기" subtitle="시트 링크를 읽거나, 복사해 붙여넣거나, 양식을 채워 올립니다. 시트는 건드리지 않습니다." width="lg"
+      footer={<>{textMode ? <Button variant="primary" onClick={runText} disabled={!dry || busy}>{busy ? "불러오는 중…" : dry ? `${dry.created + dry.updated}곳 불러오기` : "불러오기"}</Button> : <Button variant="primary" onClick={run} disabled={!preview || busy}>{busy ? "불러오는 중…" : `${tab} 탭 불러오기`}</Button>}<Button variant="ghost" onClick={onClose}>{result ? "닫기" : "취소"}</Button>{result && <span className="text-[12px] text-emerald-700 ml-auto" aria-live="polite">{result}</span>}</>}>
+      <Segmented<"sheet" | "paste" | "file"> label="방법" value={mode} onChange={(m) => { setMode(m); setResult(null); setError(null); }} options={[{ key: "sheet", label: "팀 시트 링크" }, { key: "paste", label: "붙여넣기" }, { key: "file", label: "양식 업로드" }]} />
+      {mode === "paste" && (
+        <>
+          <p className="text-[13px] text-gray-600">구글시트에서 머리글 줄부터 드래그해 복사(⌘C)한 뒤 여기에 붙여넣으세요. 머리글이 없으면 <a href="/api/astro/export?tab=양식" className="text-navy font-medium">양식</a> 열 순서로 읽습니다.</p>
+          <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={"캠퍼스\t담당자\t매장명\t전화번호\t…\n경북대\t준영\t○○식당\t053-…"} className="font-mono text-[12px]" />
+        </>
+      )}
+      {mode === "file" && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <a href="/api/astro/export?tab=양식" className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-gray-300 bg-white text-[13px] font-semibold text-gray-800 hover:bg-gray-50"><IconDownload size={15} aria-hidden="true" /> 빈 양식 내려받기 (CSV)</a>
+            <label className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-navy text-white text-[13px] font-semibold cursor-pointer hover:bg-navy/90"><IconTableImport size={15} aria-hidden="true" /> 채운 양식 올리기<input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" className="sr-only" onChange={(e) => onFile(e.target.files?.[0] ?? null)} /></label>
+            {fileName && <span className="text-[12px] text-gray-500">{fileName}</span>}
+          </div>
+          <p className="text-[12px] text-gray-500">양식 머리글은 팀 시트 열과 같습니다(캠퍼스 · 담당자 · 매장명 · … · 비고). 엑셀에서 열어 채우고 CSV 로 저장하면 됩니다. 예시 줄은 지우세요.</p>
+        </>
+      )}
+      {textMode && error && <div className="bg-red-50 rounded-lg px-3 py-2 text-[13px] text-red-700" role="alert">{error}</div>}
+      {textMode && dry && (
+        <>
+          <div className="grid grid-cols-3 gap-2.5">
+            <Kpi label="읽은 행" value={dry.rows} hint={dry.skipped ? `매장명 없는 ${dry.skipped}행 제외` : undefined} />
+            <Kpi label="새로 추가" value={dry.created} tone="good" />
+            <Kpi label="이미 있음 · 갱신" value={dry.updated} hint="빈 칸만 채움" />
+          </div>
+          <p className="text-[12px] text-gray-500">읽은 열: {dry.columns.join(" · ")}</p>
+          {dry.sample.length > 0 && <p className="text-[12px] text-gray-600">새로 들어올 매장: {dry.sample.join(", ")}{dry.created > dry.sample.length ? " …" : ""}</p>}
+        </>
+      )}
+      {mode === "sheet" && <>
       <FilterPills label="탭" value={tab} onChange={setTab} options={(["신규", "후보", "현황", "계약"] as Tab[]).map((t) => ({ key: t, label: t }))} />
       <p className="text-[13px] text-gray-600">{TAB_DESC[tab]}</p>
-      {error ? <div className="bg-red-50 rounded-lg px-3 py-2 text-[13px] text-red-700" role="alert">{error}</div> : !preview ? <Skeleton rows={3} cols={2} /> : (
+      {mode !== "sheet" ? null : error ? <div className="bg-red-50 rounded-lg px-3 py-2 text-[13px] text-red-700" role="alert">{error}</div> : !preview ? <Skeleton rows={3} cols={2} /> : (
         <div className="grid grid-cols-3 gap-2.5">
           <Kpi label="시트 행" value={n("rows")} />
           {tab === "계약" || tab === "현황" ? <><Kpi label="매장 매칭" value={n("matched")} tone="good" /><Kpi label="못 찾음" value={(preview.unmatched as string[] | undefined)?.length ?? 0} tone="alert" /></> : <><Kpi label="새로 추가" value={n("new")} tone="good" /><Kpi label="이미 있음 · 갱신" value={n("update")} hint="빈 칸만 채움" /></>}
@@ -388,6 +441,7 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
         <PanelSection title="이름이 안 맞는 매장"><ul className="flex flex-wrap gap-1.5">{(preview.unmatched as string[]).map((nme) => <li key={nme} className="text-[12px] bg-black/[0.04] rounded-lg px-2 py-1">{nme}</li>)}</ul></PanelSection>
       )}
       <a href={(preview?.sheet_url as string | undefined) ?? SALES_SHEET.url(0)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-navy font-medium">시트에서 이 탭 열기 <IconExternalLink size={12} aria-hidden="true" /></a>
+      </>}
     </SlideOver>
   );
 }

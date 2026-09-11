@@ -42,12 +42,14 @@ export default function AdminHeader() {
         <span role="img" aria-label="우주라이크" className="block h-[17px] w-[97px] bg-navy" style={{ WebkitMaskImage: "url(/brand/wordmark.png)", maskImage: "url(/brand/wordmark.png)", WebkitMaskSize: "contain", maskSize: "contain", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "left center", maskPosition: "left center" }} />
         <span className="hidden sm:inline text-[11px] font-semibold text-gray-400 tracking-wide border-l border-black/[0.08] pl-3">Satellite</span>
       </a>
+      <span className="hidden md:inline text-[12px] text-gray-400 tabular-nums" suppressHydrationWarning>{new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</span>
 
       <div className="flex items-center gap-2 shrink-0">
         {me ? (
           <>
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${DEPT_BADGE[me.department] ?? DEPT_BADGE.ADMIN}`}>{me.department_label}</span>
             {me.satellite_role === "LEAD" && <span className="hidden sm:inline text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-black/[0.05] text-gray-500">세틀 리드</span>}
+            <kbd className="hidden md:inline text-[10px] text-gray-400 border border-black/[0.08] rounded px-1.5 py-0.5 mr-1" title="메뉴 검색">⌘K</kbd>
             <span className="inline-flex items-center gap-2 pl-1.5 pr-1 py-1 rounded-full bg-black/[0.04]">
               <span className="w-6 h-6 rounded-full bg-[linear-gradient(135deg,#6366E0,#050072)] text-white text-[11px] font-bold flex items-center justify-center">{(me.display_name || me.username).slice(0, 1)}</span>
               <span className="text-[12px] font-semibold text-gray-800 truncate max-w-[110px]">{me.display_name || me.username}</span>

@@ -53,6 +53,9 @@ export async function POST(req: NextRequest) {
     const fee = o?.monthly_fee ?? null;
     if (!fee || fee <= 0) { skipped.push(`${s.name} (월 이용료 없음)`); continue; }
     if (o?.pay_cycle === "LUMP") { skipped.push(`${s.name} (일시납)`); continue; }
+    // 청구 시작 월 전이면 만들지 않는다 — 월 중간 합류 매장은 이번 달/다음 달을 고르게 했다
+    const start = o?.billing_start_period ?? (o?.contract_started_on ? o.contract_started_on.slice(0, 7) : null);
+    if (start && period < start) { skipped.push(`${s.name} (${Number(start.slice(5))}월부터)`); continue; }
     if (have.has(s.restaurant_id)) continue;
     // 월 이용료는 VAT 포함(시트 열 이름). 공급가 = 합계 / 1.1, 세액 = 나머지.
     const supply = Math.round(fee / 1.1);

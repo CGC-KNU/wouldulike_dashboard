@@ -4,7 +4,7 @@ import { readDraft, writeDraft } from "@/lib/draft/store";
 import { seedLeads, seedStoreOps } from "@/lib/draft/seed";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
-import { contractRowToOps, fetchTab, normName, rowToLead, statusRowToOps } from "@/lib/draft/sheet";
+import { contractRowToOps, fetchTab, normName, parseTable, rowToLead, statusRowToOps } from "@/lib/draft/sheet";
 import { SALES_SHEET } from "@/lib/satellite";
 import { emptyStoreOps, type BackendRestaurant, type Lead, type StoreOps } from "@/lib/draft/types";
 
@@ -72,7 +72,38 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const { tab } = (await req.json().catch(() => ({}))) as { tab?: string };
+  const body = (await req.json().catch(() => ({}))) as { tab?: string; text?: string; dry?: boolean };
+
+  // 붙여넣기 · 양식 업로드 — 시트 링크 없이 표를 그대로 받는다 (민열님 0911: "시트 붙여넣거나 고정 양식 업로드").
+  if (typeof body.text === "string") {
+    const parsed = parseTable(body.text);
+    if (!parsed.length) return NextResponse.json({ detail: "읽을 수 있는 행이 없습니다. 첫 줄이 머리글(매장명 …)인지 확인하세요." }, { status: 400 });
+    const now = new Date().toISOString();
+    const incoming = parsed.map((r) => rowToLead(r, "paste", now)).filter(Boolean) as Lead[];
+    const skipped = parsed.length - incoming.length;
+    const stores = await restaurants();
+    const byNorm = new Map(stores.map((st) => [normName(st.name), st]));
+    const list = [...readDraft<Lead[]>("astro_leads", seedLeads)];
+    let created = 0, updated = 0;
+    const names: string[] = [];
+    for (const l of incoming) {
+      const key = normName(l.name);
+      const idx = list.findIndex((x) => normName(x.name) === key);
+      if (idx === -1) { created += 1; names.push(l.name); if (!body.dry) list.unshift({ ...l, converted_restaurant_id: byNorm.get(key)?.restaurant_id ?? null }); }
+      else {
+        updated += 1;
+        if (!body.dry) {
+          const merged: Lead = { ...list[idx] };
+          for (const [k, v] of Object.entries(l)) { if (k === "id" || k === "created_at" || k === "last_touch_at" || k === "source") continue; if (v === null || v === undefined || v === "") continue; (merged as unknown as Record<string, unknown>)[k] = v; }
+          list[idx] = merged;
+        }
+      }
+    }
+    if (!body.dry) writeDraft("astro_leads", list);
+    return NextResponse.json({ ok: true, tab: "붙여넣기", rows: parsed.length, created, updated, skipped, columns: Object.keys(parsed[0]), sample: names.slice(0, 8), dry: Boolean(body.dry) });
+  }
+
+  const { tab } = body;
   if (!isTab(tab ?? null)) return NextResponse.json({ detail: "tab 이 필요합니다." }, { status: 400 });
 
   const rows = await fetchTab(SALES_SHEET.tabs[tab as Tab]);

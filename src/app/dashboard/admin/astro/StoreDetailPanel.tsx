@@ -18,7 +18,7 @@ import {
   TAX_STATUS_LABEL,
 } from "@/lib/draft/types";
 import { SALES_SHEET } from "@/lib/satellite";
-import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton } from "../_shared/ui";
+import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton, periodLocal } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
 
 /**
@@ -81,7 +81,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, onClose, 
       open
       onClose={onClose}
       title={row.name}
-      subtitle={[o.campus ?? "경북대", o.district, `매장 ID ${id}`, o.sheet_owner && `담당 ${o.sheet_owner}`].filter(Boolean).join(" · ")}
+      subtitle={[o.campus ?? "경북대", o.map_name && o.map_name !== row.name ? `지도 표기 ${o.map_name}` : null, `매장 ID ${id}`, o.sheet_owner && `담당 ${o.sheet_owner}`].filter(Boolean).join(" · ")}
       badge={row.tier ? <Chip tone={row.tier === "BOOST" ? "amber" : row.tier === "CONTENT" ? "navy" : "gray"}>{row.tier}</Chip> : <Chip tone="gray">플랜 미지정</Chip>}
       width="lg"
       footer={
@@ -131,6 +131,11 @@ export default function StoreDetailPanel({ row, invoice = null, actor, onClose, 
           <Cell label="계약일" value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
           <Field label="플랜" hint="식당 관리에서 바꿉니다"><Input value={row.tier ?? "미지정"} disabled /></Field>
           <Cell label="월 이용료 (VAT 포함)" value={o.monthly_fee} onCommit={(v) => onPatch(id, { monthly_fee: v === null ? null : Number(v.replace(/[^\d]/g, "")) || 0 })} placeholder="33000" type="number" />
+          <Field label="청구 시작 월" hint="월 중간 합류면 이번 달/다음 달 중 선택. 비우면 계약 시작월">
+            <Select value={o.billing_start_period ?? ""} onChange={(e) => onPatch(id, { billing_start_period: e.target.value || null })}>
+              <option value="">계약 시작월 따름</option>{[0, 1, 2].map((k) => { const p = periodLocal(k); return <option key={p} value={p}>{p.replace("-", "년 ")}월부터</option>; })}{o.billing_start_period && ![0, 1, 2].map(periodLocal).includes(o.billing_start_period) && <option value={o.billing_start_period}>{o.billing_start_period}부터</option>}
+            </Select>
+          </Field>
           <Field label="납부 방식">
             <Select value={o.pay_cycle ?? ""} onChange={(e) => onPatch(id, { pay_cycle: (e.target.value || null) as PayCycle | null })}>
               <option value="">-</option><option value="MONTHLY">월납</option><option value="LUMP">일시납</option>
@@ -175,7 +180,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, onClose, 
       <PanelSection title="매장 정보 (시트 '매장 현황')">
         <div className="grid grid-cols-2 gap-3">
           <Field label="캠퍼스"><Select value={o.campus ?? "경북대"} onChange={(e) => onPatch(id, { campus: e.target.value as Campus })}>{CAMPUSES.map((c) => <option key={c}>{c}</option>)}</Select></Field>
-          <Cell label="상권" value={o.district} onCommit={set("district")} placeholder="북문 / 정문 / 쪽문" />
+          <Cell label="지도 링크 (네이버 · 카카오)" value={o.map_url} onCommit={set("map_url")} type="url" placeholder="https://naver.me/…" hint={o.map_name ? `지도 표기: ${o.map_name}` : "지도상 공식 상호를 기준으로 부릅니다"} />
           <Cell label="대표자" value={o.owner_name} onCommit={set("owner_name")} />
           <Cell label="연락처" value={o.owner_phone} onCommit={set("owner_phone")} type="tel" />
           <Cell label="사업자등록번호" value={o.biz_no} onCommit={set("biz_no")} placeholder="세금계산서용" />
