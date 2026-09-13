@@ -335,11 +335,12 @@ function NewLeadPanel({ actor, campus, campusOptions, onClose, onCreated }: { ac
 
 /* ═══════════ 시트에서 불러오기 ═══════════ */
 
-type Tab = "현황" | "신규" | "후보" | "계약";
+type Tab = "현황" | "신규" | "후보" | "후보계명" | "계약";
 const TAB_DESC: Record<Tab, string> = {
   현황: "매장 현황 탭 (33곳, 경북대). 대표자·연락처·상권은 매장 운영 필드에도 들어갑니다.",
   신규: "신규 컨택 탭 (24곳, 경북대). 담당자·단계·미팅 일시.",
   후보: "후보 실측 탭 (61곳, 영남대 0909). 등급·점수·공략 포인트. 캠퍼스는 영남대로 들어갑니다.",
+  후보계명: "후보 실측 탭 — 계명대 (36곳, 0913). 등급·점수·공략 포인트. 캠퍼스는 계명대로 들어갑니다.",
   계약: "계약 세부사항 탭 (39곳). 플랜·월 이용료·납부·계산서·혜택·홍보물·PIN → 매장 운영 필드.",
 };
 
@@ -432,7 +433,7 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
         </>
       )}
       {mode === "sheet" && <>
-      <FilterPills label="탭" value={tab} onChange={setTab} options={(["신규", "후보", "현황", "계약"] as Tab[]).map((t) => ({ key: t, label: t }))} />
+      <FilterPills label="탭" value={tab} onChange={setTab} options={(["신규", "후보", "후보계명", "현황", "계약"] as Tab[]).map((t) => ({ key: t, label: t === "후보" ? "후보 (영남대)" : t === "후보계명" ? "후보 (계명대)" : t }))} />
       <p className="text-[13px] text-gray-600">{TAB_DESC[tab]}</p>
       {mode !== "sheet" ? null : error ? <div className="bg-red-50 rounded-lg px-3 py-2 text-[13px] text-red-700" role="alert">{error}</div> : !preview ? <Skeleton rows={3} cols={2} /> : (
         <div className="grid grid-cols-3 gap-2.5">

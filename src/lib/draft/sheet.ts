@@ -112,6 +112,7 @@ export function campusOf(source: Lead["source"] | "store", name: string, distric
   const t = `${name} ${district ?? ""}`;
   if (/계명대|계대|성서/.test(t)) return "계명대";
   if (/영남대|영대|경산/.test(t)) return "영남대";
+  if (source === "sheet:후보계명") return "계명대";
   if (source === "sheet:후보") return "영남대";
   return "경북대";
 }

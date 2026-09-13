@@ -19,13 +19,17 @@ import { notifyAstro } from "@/lib/slack";
 const KEY = "astro_leads";
 const VALID_STAGE = new Set<string>([...LEAD_STAGES, "거절"]);
 
-/** 팀 시트 '신규' + '후보' → 후보 목록. 같은 매장은 뒤 탭(후보 실측)이 이긴다. */
+/** 팀 시트 '신규' + '후보(영남대)' + '후보계명(계명대)' → 후보 목록. 같은 매장은 뒤 탭이 이긴다. */
 async function sheetLeads(): Promise<{ leads: Lead[]; error: boolean }> {
   const now = new Date().toISOString();
-  const [nw, cand] = await Promise.all([fetchTab(SALES_SHEET.tabs.신규), fetchTab(SALES_SHEET.tabs.후보)]);
-  if (nw === null && cand === null) return { leads: [], error: true };
+  const [nw, cand, kmu] = await Promise.all([
+    fetchTab(SALES_SHEET.tabs.신규),
+    fetchTab(SALES_SHEET.tabs.후보),
+    fetchTab(SALES_SHEET.tabs.후보계명),
+  ]);
+  if (nw === null && cand === null && kmu === null) return { leads: [], error: true };
   const byName = new Map<string, Lead>();
-  for (const [rows, src] of [[nw ?? [], "sheet:신규"], [cand ?? [], "sheet:후보"]] as const) {
+  for (const [rows, src] of [[nw ?? [], "sheet:신규"], [cand ?? [], "sheet:후보"], [kmu ?? [], "sheet:후보계명"]] as const) {
     for (const r of rows) {
       const lead = rowToLead(r, src as Lead["source"], now);
       if (lead) byName.set(normName(lead.name), lead);
