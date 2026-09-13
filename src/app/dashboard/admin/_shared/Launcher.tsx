@@ -145,15 +145,18 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
       )}
 
       {/* Libra — 고르는 툴이 아니라 전체를 받치는 층. 그래서 카드가 아니라 스트립이다. */}
-      <section aria-label="Libra" className="mt-6 rounded-[22px] border border-white/70 bg-[linear-gradient(135deg,rgba(5,0,114,0.05),rgba(99,102,224,0.08))] backdrop-blur px-5 py-4 flex flex-wrap items-center gap-4">
-        <img src="/satellite/libra_app.svg" alt="" width={44} height={44} className="w-11 h-11 rounded-[14px] shadow-[0_8px_20px_-12px_rgba(5,0,114,0.6)]" aria-hidden="true" />
+      <section aria-label="Libra" className="mt-6 rounded-[22px] border border-libra/30 bg-[linear-gradient(135deg,rgba(43,190,155,0.10),rgba(127,233,203,0.16))] backdrop-blur px-5 py-4 flex flex-wrap items-center gap-4">
+        <span aria-hidden="true" className="w-11 h-11 rounded-[14px] shrink-0 bg-[linear-gradient(135deg,#7FE9CB,#2BBE9B)] shadow-[0_8px_20px_-12px_rgba(18,131,106,0.8)] flex items-center justify-center">
+          {/* 앱판 아이콘은 네이비 면이라 그대로 쓰면 민트가 가려진다 — 선 버전을 마스크로 삼아 흰 저울만 얹는다 */}
+          <span className="block w-7 h-7 bg-white" style={{ WebkitMaskImage: "url(/satellite/libra.svg)", maskImage: "url(/satellite/libra.svg)", WebkitMaskSize: "contain", maskSize: "contain", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center" }} />
+        </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-bold text-gray-900 tracking-[-0.01em]">{libra.name} <span className="text-[12px] font-medium text-gray-500 ml-1">모든 툴을 슬랙에서 보조합니다</span></p>
+          <p className="text-[14px] font-bold text-libra-deep tracking-[-0.01em]">{libra.name} <span className="text-[12px] font-medium text-gray-500 ml-1">모든 툴을 슬랙에서 보조합니다</span></p>
           <p className="text-[12px] text-gray-500 mt-0.5">
-            <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">?현황</code> <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">?매장</code> <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">@Libra</code> · 아침 브리핑 · 추첨 D-1 알림 · 리포트 시점 태그
+            <code className="bg-white/80 px-1.5 py-0.5 rounded text-[11px] text-libra-deep font-semibold">?현황</code> <code className="bg-white/80 px-1.5 py-0.5 rounded text-[11px] text-libra-deep font-semibold">?매장</code> <code className="bg-white/80 px-1.5 py-0.5 rounded text-[11px] text-libra-deep font-semibold">@Libra</code> · 아침 브리핑 · 추첨 D-1 알림 · 리포트 시점 태그
           </p>
         </div>
-        <a href={slackUrl(libra)} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white text-[13px] font-semibold text-navy border border-navy/10 hover:border-navy/30 shadow-sm ${focusRing}`}>
+        <a href={slackUrl(libra)} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white text-[13px] font-semibold text-libra-deep border border-libra/30 hover:border-libra shadow-sm ${focusRing}`}>
           <IconBrandSlack size={15} aria-hidden="true" /> #{libra.slack.channel}
         </a>
         <span className="hidden md:inline-flex items-center gap-1 text-[12px] text-gray-400"><IconMessageChatbot size={14} aria-hidden="true" /> 웹 화면 없음</span>

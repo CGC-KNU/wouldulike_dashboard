@@ -7,6 +7,7 @@ import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, PanelSection, Segmented, Select, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, daysSince, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
 import CampusPicker, { allCampuses } from "./CampusPicker";
+import CampusMark from "./CampusMark";
 
 /**
  * Astro · 입점 후보.
@@ -105,7 +106,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
       >
         {/* 1차 축: 캠퍼스. 사람별 분리는 없다. */}
         <div className="flex flex-wrap items-center gap-3">
-          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}` })), { key: "all", label: "전체" }]} />
+          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}`, icon: <CampusMark campus={c} size={15} /> })), { key: "all", label: "전체" }]} />
           <Segmented<"board" | "table"> label="보기" value={view} onChange={setView} options={[{ key: "board", label: "칸반", icon: <IconLayoutKanban /> }, { key: "table", label: "테이블", icon: <IconTable /> }]} />
           <div className="relative flex-1 min-w-[12rem] max-w-xs ml-auto">
             <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
@@ -135,7 +136,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
                   <span className="text-[13px] font-bold text-gray-700 tabular-nums">{list.length}</span>
                 </header>
                 <div className="space-y-2">
-                  {list.map((l) => <LeadCard key={l.id} lead={l} onOpen={() => setOpenId(l.id)} />)}
+                  {list.map((l) => <LeadCard key={l.id} lead={l} onOpen={() => setOpenId(l.id)} showCampus={campus === "all"} />)}
                   {list.length === 0 && <div className="border border-dashed border-black/[0.08] rounded-xl py-8 text-center text-[12px] text-gray-400">비어 있음</div>}
                 </div>
               </section>
@@ -149,7 +150,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
             <tbody>
               {(showSide ? sorted : sorted.filter((l) => !isSide(l.stage))).map((l) => (
                 <tr key={l.id} className={rowClickable} onClick={() => setOpenId(l.id)}>
-                  <Td><span className="font-semibold text-gray-900">{l.name}</span><span className="block text-[11px] text-gray-400">{l.category ?? ""}</span></Td>
+                  <Td><span className="font-semibold text-gray-900 inline-flex items-center gap-1.5">{campus === "all" && <CampusMark campus={campusOf(l)} size={15} />}{l.name}</span><span className="block text-[11px] text-gray-400">{l.category ?? ""}</span></Td>
                   <Td><Chip tone={STAGE_TONE[l.stage]}>{l.stage}</Chip></Td>
                   <Td>{l.intent ? <Chip tone={INTENT_TONE[l.intent]}>{l.intent}</Chip> : <span className="text-gray-300">-</span>}</Td>
                   <Td>{l.proposed_plan ?? <span className="text-gray-300">-</span>}</Td>
@@ -183,12 +184,12 @@ export default function LeadPipeline({ actor }: { actor: string }) {
 
 /* ═══════════ 카드 — 한 줄에 필요한 것만 ═══════════ */
 
-function LeadCard({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
+function LeadCard({ lead, onOpen, showCampus }: { lead: Lead; onOpen: () => void; showCampus?: boolean }) {
   const stale = isStale(lead);
   return (
     <button type="button" onClick={onOpen} className={`w-full text-left bg-white rounded-xl border p-3 transition-[border-color,box-shadow] hover:border-navy/30 hover:shadow-[0_8px_20px_-14px_rgba(5,0,114,0.35)] ${focusRing} ${stale ? "border-red-200" : "border-black/[0.06]"}`}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[13px] font-semibold text-gray-900 leading-snug">{lead.name}</p>
+        <p className="text-[13px] font-semibold text-gray-900 leading-snug inline-flex items-center gap-1.5">{showCampus && <CampusMark campus={campusOf(lead)} size={14} />}{lead.name}</p>
         <Chip tone={STAGE_TONE[lead.stage]}>{lead.stage}</Chip>
       </div>
       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-[12px] text-gray-500">

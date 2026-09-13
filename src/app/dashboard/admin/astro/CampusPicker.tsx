@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CAMPUSES } from "@/lib/draft/types";
 import { Input, Select, focusRing } from "../_shared/ui";
+import CampusMark from "./CampusMark";
 
 /**
  * 캠퍼스 고르기 — 기본 3곳(경북대·영남대·계명대) + **지금 데이터에 있는 것** + 직접 추가.
@@ -32,10 +33,13 @@ export default function CampusPicker({ value, options, onChange, id }: { value: 
     );
   }
   return (
-    <Select id={id} value={value ?? ""} onChange={(e) => { if (e.target.value === "__new") { setAdding(true); return; } onChange(e.target.value); }}>
+    <span className="flex items-center gap-2">
+      {value && <CampusMark campus={value} size={18} />}
+      <Select id={id} value={value ?? ""} onChange={(e) => { if (e.target.value === "__new") { setAdding(true); return; } onChange(e.target.value); }}>
       {!value && <option value="">선택</option>}
       {list.map((c) => <option key={c} value={c}>{c}</option>)}
       <option value="__new">+ 캠퍼스 추가…</option>
-    </Select>
+      </Select>
+    </span>
   );
 }

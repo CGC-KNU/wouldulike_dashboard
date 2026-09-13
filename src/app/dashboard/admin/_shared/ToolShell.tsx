@@ -2,27 +2,28 @@
 
 import { useState, type ReactNode } from "react";
 import {
+  IconActivity,
   IconAlertTriangle,
   IconArrowsExchange,
   IconBuildingStore,
+  IconCalendarMonth,
   IconCash,
   IconChartBar,
   IconChevronLeft,
+  IconDeviceMobile,
+  IconFileDescription,
+  IconFileInvoice,
+  IconFiles,
+  IconFolder,
+  IconGift,
+  IconHome,
   IconLayoutGrid,
   IconMail,
+  IconMessageChatbot,
   IconPhoto,
   IconSettings,
   IconSitemap,
   IconTargetArrow,
-  IconActivity,
-  IconHome,
-  IconDeviceMobile,
-  IconFiles,
-  IconFileInvoice,
-  IconGift,
-  IconFileDescription,
-  IconMessageChatbot,
-  IconCalendarMonth,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -184,6 +185,9 @@ export default function ToolShell({
  * 하단 도크. 유리 알약 하나에 앱 아이콘이 나란히. 활성 툴은 아이콘 아래 점.
  * 아이콘은 앱판(네이비 면) 그대로라 런처와 같은 얼굴이다. 누르면 그 툴의 첫 화면.
  */
+/** 앱 아이콘(/satellite/<key>_app.svg)이 있는 툴. 그 밖의 제품은 도크에서 기호로 그린다. */
+const SATELLITE_KEYS = new Set(["papillon", "astro", "aether", "probe", "castor", "libra"]);
+
 function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
   const [copied, setCopied] = useState(false);
   async function talk() {
@@ -207,7 +211,12 @@ function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
           return (
             <li key={t.key}>
               <button type="button" onClick={() => onSwitch(t.key)} aria-current={on ? "page" : undefined} aria-label={`${t.name}${on ? " (현재)" : ""}`} className={`group flex flex-col items-center w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
-                <img src={`/satellite/${t.key}_app.svg`} alt="" width={40} height={40} className={`w-10 h-10 rounded-[12px] ${on ? "shadow-[0_8px_18px_-8px_rgba(5,0,114,0.7)] ring-2 ring-navy/20" : "opacity-80 group-hover:opacity-100"}`} aria-hidden="true" />
+                {/* 세틀라이트 툴은 앱 아이콘, 그 밖의 제품(Drive 등)은 아이콘 파일이 없어 기호로 */}
+                {SATELLITE_KEYS.has(t.key) ? (
+                  <img src={`/satellite/${t.key}_app.svg`} alt="" width={40} height={40} className={`w-10 h-10 rounded-[12px] ${on ? "shadow-[0_8px_18px_-8px_rgba(5,0,114,0.7)] ring-2 ring-navy/20" : "opacity-80 group-hover:opacity-100"}`} aria-hidden="true" />
+                ) : (
+                  <span className={`w-10 h-10 rounded-[12px] bg-navy text-white flex items-center justify-center ${on ? "shadow-[0_8px_18px_-8px_rgba(5,0,114,0.7)] ring-2 ring-navy/20" : "opacity-80 group-hover:opacity-100"}`} aria-hidden="true"><IconFolder size={19} stroke={1.9} /></span>
+                )}
                 <span className={`text-[10px] font-semibold mt-1 ${on ? "text-navy" : "text-gray-500"}`}>{t.name}</span>
               </button>
             </li>
@@ -218,10 +227,10 @@ function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
             <li aria-hidden="true" className="w-px h-8 bg-black/[0.08] mx-1 mb-3" />
             <li className="relative">
               <button type="button" onClick={talk} aria-label={`리브라랑 대화하기 — #${libra.channel} 에서 @Libra 태그`} className={`group flex flex-col items-center w-[72px] py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
-                <span className="w-10 h-10 rounded-[12px] bg-[linear-gradient(135deg,#6366E0,#050072)] text-white flex items-center justify-center shadow-[0_8px_18px_-8px_rgba(5,0,114,0.7)]"><IconMessageChatbot size={19} stroke={1.9} aria-hidden="true" /></span>
-                <span className="text-[10px] font-semibold text-navy mt-1 whitespace-nowrap">리브라랑 대화</span>
+                <span className="w-10 h-10 rounded-[12px] bg-[linear-gradient(135deg,#7FE9CB,#2BBE9B)] text-white flex items-center justify-center shadow-[0_8px_18px_-8px_rgba(18,131,106,0.75)]"><IconMessageChatbot size={19} stroke={1.9} aria-hidden="true" /></span>
+                <span className="text-[10px] font-semibold text-libra-deep mt-1 whitespace-nowrap">리브라랑 대화</span>
               </button>
-              {copied && <span role="status" className="absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white bg-gray-900/90 rounded-lg px-2.5 py-1.5 shadow-lg">@Libra 태그 복사됨 · #{libra.channel} 에 붙여넣고 질문하세요</span>}
+              {copied && <span role="status" className="absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-white bg-libra-deep rounded-lg px-2.5 py-1.5 shadow-lg">@Libra 태그 복사됨 · #{libra.channel} 에 붙여넣고 질문하세요</span>}
             </li>
           </>
         )}
