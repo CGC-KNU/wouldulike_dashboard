@@ -119,16 +119,46 @@ export async function writeOrDraft<T>(
 }
 
 /** 화면에서 restaurants 등 이미 있는 엔드포인트를 서버사이드로 당겨올 때 쓰는 단순 GET. */
+/**
+ * 짧은 캐시 — 같은 요청이 몇 초 안에 여러 번 올 때만 아낀다 (민열님 0913: "불러오는 게 느리다").
+ *
+ * 매장 목록(`/api/dashboard/restaurants/`) 은 파트너 매장·후보·입금·리포트·런처가 **전부** 부른다.
+ * 화면을 옮길 때마다 백엔드를 다시 치면 그만큼 기다린다. 그래서 **6초**만 들고 있는다 —
+ * 사람이 값을 바꾸고 새로고침하는 간격(초 단위)보다 짧아 낡은 값을 보여줄 일이 거의 없다.
+ * 토큰을 키에 넣어 사람이 다르면 절대 섞이지 않게 한다. 서버 프로세스 메모리라 배포하면 사라진다.
+ */
+const TTL_MS = 6_000;
+const cache = new Map<string, { at: number; data: unknown }>();
+
+function cacheKey(path: string, search: string | undefined, tok: string) {
+  // 토큰 전체를 키에 담지 않는다 — 뒤 12자면 사람 구분에 충분하다
+  return `${tok.slice(-12)}|${path}|${search ?? ""}`;
+}
+
 export async function fetchBackendJson<T>(path: string, search?: string): Promise<T | null> {
   if (!process.env.NEXT_PUBLIC_API_URL) return null;
+  const tok = await token();
+  const key = cacheKey(path, search, tok);
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.data as T;
+
   try {
     const res = await fetch(backend(path, search), {
-      headers: { Authorization: `Bearer ${await token()}` },
+      headers: { Authorization: `Bearer ${tok}` },
       cache: "no-store",
     });
     if (!res.ok) return null;
-    return (await res.json()) as T;
+    const data = (await res.json()) as T;
+    cache.set(key, { at: Date.now(), data });
+    // 캐시가 무한정 늘지 않게 — 오래된 것부터 버린다
+    if (cache.size > 64) for (const [k, v] of cache) if (Date.now() - v.at > TTL_MS) cache.delete(k);
+    return data;
   } catch {
     return null;
   }
+}
+
+/** 쓰기 직후처럼 캐시가 방해되는 자리에서 비운다. */
+export function clearBackendCache(): void {
+  cache.clear();
 }

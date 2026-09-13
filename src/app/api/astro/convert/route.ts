@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedLeads, seedStoreOps } from "@/lib/draft/seed";
-import { fetchBackendJson } from "@/lib/draft/toolProxy";
+import { clearBackendCache, fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { normName } from "@/lib/draft/sheet";
 import { emptyStoreOps, type BackendRestaurant, type Lead, type StoreOps } from "@/lib/draft/types";
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     if (!id) return NextResponse.json({ detail: "매장 ID 를 받지 못했습니다." }, { status: 502 });
     store = { restaurant_id: id, name: lead.name, tier: tier ?? null, is_affiliate: true };
     created = true;
+    clearBackendCache(); // 방금 만든 매장이 목록에 바로 보이게
   }
 
   // 2) 후보의 정보를 매장 운영 필드로
