@@ -7,6 +7,7 @@ import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { normName } from "@/lib/draft/sheet";
 import { emptyStoreOps, type BackendRestaurant, type Lead, type StoreOps } from "@/lib/draft/types";
 import { proxyBody } from "@/lib/apiProxy";
+import { notifyAstro } from "@/lib/slack";
 
 /**
  * 입점 후보 → 제휴 매장.
@@ -86,5 +87,8 @@ export async function POST(req: NextRequest) {
     last_touch_at: now,
   });
 
+  await notifyAstro(
+    `:tada: *파트너 전환* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${tier ? ` · ${tier}` : ""} ${created ? "(매장 새로 만듦)" : "(기존 매장에 연결)"} · ${updated_by ?? "unknown"}`
+  );
   return NextResponse.json({ ok: true, created, restaurant_id: store.restaurant_id, lead: lead2, draft: true });
 }

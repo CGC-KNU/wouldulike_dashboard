@@ -3,7 +3,7 @@ import { actorName, isAdminActor, requireTool } from "@/lib/draft/guard";
 import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { emptyStoreOps, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
-import { sendSlackNotification } from "@/lib/slack";
+import { notifyAstro } from "@/lib/slack";
 
 /**
  * 계산서 한 건의 상태 전이. 세발의 approve / cancel / sync / 재시도 를 하나의 action 으로 받는다.
@@ -99,6 +99,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   const updated = patchDraftItem<TaxInvoice>(KEY, seedInvoices, id, patch);
-  if (slack) await sendSlackNotification("SLACK_FEEDBACK_WEBHOOK_URL", slack);
+  if (slack) await notifyAstro(slack);
   return NextResponse.json({ invoice: updated, draft: true });
 }

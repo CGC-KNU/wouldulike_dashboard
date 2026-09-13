@@ -5,7 +5,7 @@ import { LEAD_STAGES, type Lead, type LeadStage } from "@/lib/draft/types";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchTab, normName, rowToLead } from "@/lib/draft/sheet";
 import { SALES_SHEET } from "@/lib/satellite";
-import { sendSlackNotification } from "@/lib/slack";
+import { notifyAstro } from "@/lib/slack";
 
 /**
  * 파트너 후보(신규 컨택) 목록·등록.
@@ -98,10 +98,7 @@ export async function POST(req: NextRequest) {
     converted_restaurant_id: null,
   });
 
-  await sendSlackNotification(
-    "SLACK_FEEDBACK_WEBHOOK_URL",
-    `:round_pushpin: *신규 컨택 등록* — ${created.name}${created.owner ? ` (담당 ${created.owner})` : ""}`
-  );
+  await notifyAstro(`:round_pushpin: *파트너 후보 등록* — ${created.name}${created.campus ? ` · ${created.campus}` : ""}${created.owner ? ` · 담당 ${created.owner}` : ""}`);
 
   return NextResponse.json({ lead: created, draft: true }, { status: 201 });
 }
