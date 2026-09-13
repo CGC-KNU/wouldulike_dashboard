@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import PapillonShell from "./satellite/PapillonShell";
 import ProductShell from "./ProductShell";
-import ToolShell from "./_shared/ToolShell";
+import ToolShell, { Dock } from "./_shared/ToolShell";
 import AstroHome from "./astro/AstroHome";
 import CalendarPage from "./astro/CalendarPage";
 import ProbeHome from "./probe/ProbeHome";
@@ -2767,6 +2767,22 @@ export default function AdminHomePage() {
           ProductShell을 그대로 쓴다(둘 다 무변경). Astro·Probe·Castor는 새 ToolShell로 감싼다 —
           Aether·Papillon과는 별개 셸이라 서로 영향을 주지 않는다. */}
       {activeTab === "satellite" && <PapillonShell />}
+
+      {/* 0913 민열님: 파피용·에테르에서도 하단 도크가 떠야 한다. 셸(화면 생김새)은 그대로 두고
+          떠 있는 도크만 따로 얹는다 — ToolShell 을 쓰는 Astro·Probe·Castor 는 셸 안에서 이미 그린다. */}
+      {showProductPicker && (selectedProduct === "papillon" || selectedProduct === "aether") && (
+        <Dock
+          tools={availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => ({ key: p.key, name: p.name }))}
+          active={selectedProduct}
+          onSwitch={(key) => selectProduct(key as Product)}
+          onHome={backToProducts}
+          libra={{
+            channelUrl: slackUrl(TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra),
+            channel: (TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra).slack.channel,
+            context: `${productMeta.name} · ${productTabs.find((t) => t.key === activeTab)?.label ?? ""}`,
+          }}
+        />
+      )}
 
       {activeTab && activeTab !== "satellite" && selectedProduct === "aether" && (
         <ProductShell
