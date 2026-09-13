@@ -25,6 +25,26 @@ function stageIndex(when: string | null): number {
   return i === -1 ? 50 : i;
 }
 
+/**
+ * 자료를 **쓰는 때** 로 묶는다 (민열님 0913: 번잡하다).
+ * 종류(계약서·제안서…)로 묶으면 "지금 뭘 들고 나가지"에 답하지 못한다. 영업 흐름이 곧 목차다.
+ */
+const GROUPS = [
+  { key: "visit", label: "첫 방문 · 컨택", hint: "문 앞에서 건네는 것" },
+  { key: "meeting", label: "미팅", hint: "앉아서 보여 주는 것" },
+  { key: "contract", label: "합의 · 계약", hint: "서명 받는 것" },
+  { key: "after", label: "계약 후 · 운영", hint: "입금·비치물·보고" },
+] as const;
+type GroupKey = (typeof GROUPS)[number]["key"];
+
+function groupOf(d: SalesDoc): GroupKey {
+  const w = d.when ?? "";
+  if (d.kind === "전단" || w.includes("미컨택") || w.includes("첫 방문")) return "visit";
+  if (d.kind === "제안서" || d.kind === "소개서" || w.includes("미팅")) return "meeting";
+  if (d.kind === "계약서" || d.kind === "견적서" || w.includes("합의") || w.includes("계약 완료")) return "contract";
+  return "after";
+}
+
 export default function AstroDocs({ actor }: { actor: string }) {
   const [docs, setDocs] = useState<SalesDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,10 +61,15 @@ export default function AstroDocs({ actor }: { actor: string }) {
   }, []);
   useEffect(load, [load]);
 
+  const [onlyReady, setOnlyReady] = useState(false);
   const list = useMemo(
-    () => docs.filter((d) => kind === "all" || d.kind === kind).sort((a, b) => stageIndex(a.when) - stageIndex(b.when) || a.title.localeCompare(b.title, "ko")),
-    [docs, kind]
+    () => docs
+      .filter((d) => kind === "all" || d.kind === kind)
+      .filter((d) => !onlyReady || d.url)
+      .sort((a, b) => stageIndex(a.when) - stageIndex(b.when) || a.title.localeCompare(b.title, "ko")),
+    [docs, kind, onlyReady]
   );
+  const grouped = useMemo(() => GROUPS.map((g) => ({ ...g, items: list.filter((d) => groupOf(d) === g.key) })).filter((g) => g.items.length), [list]);
   const missing = docs.filter((d) => !d.url).length;
 
   async function remove(d: SalesDoc) {
@@ -71,6 +96,11 @@ export default function AstroDocs({ actor }: { actor: string }) {
           onChange={setKind}
           options={[{ key: "all" as const, label: "전체", count: docs.length }, ...DOC_KINDS.map((k) => ({ key: k, label: k, count: docs.filter((d) => d.kind === k).length })).filter((o) => o.count)]}
         />
+        {/* 링크 없는 항목이 섞여 보이면 고르기 어렵다 — 필요할 때만 숨긴다 */}
+        <button type="button" onClick={() => setOnlyReady((v) => !v)} aria-pressed={onlyReady}
+          className={`ml-2 inline-flex items-center h-7 px-2.5 rounded-full text-[12px] font-semibold border ${focusRing} ${onlyReady ? "bg-navy text-white border-navy" : "bg-white text-gray-600 border-black/[0.1]"}`}>
+          바로 쓸 수 있는 것만
+        </button>
       </PageHeader>
 
       {missing > 0 && !loading && (
@@ -85,8 +115,16 @@ export default function AstroDocs({ actor }: { actor: string }) {
         ) : list.length === 0 ? (
           <Empty title="자료가 없습니다" detail="오른쪽 위 '자료 추가'로 링크를 등록하세요." />
         ) : (
-          <ul className="divide-y divide-gray-100">
-            {list.map((d) => (
+          <div className="divide-y divide-gray-100">
+            {grouped.map((g) => (
+              <section key={g.key}>
+                <p className="px-4 pt-3 pb-1 flex items-baseline gap-2">
+                  <span className="text-[12px] font-bold text-navy">{g.label}</span>
+                  <span className="text-[11px] text-gray-400">{g.hint}</span>
+                  <span className="text-[11px] text-gray-400 tabular-nums ml-auto">{g.items.length}</span>
+                </p>
+                <ul className="divide-y divide-gray-100">
+            {g.items.map((d) => (
               <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <Chip tone={KIND_TONE[d.kind]}>{d.kind}</Chip>
                 <div className="flex-1 min-w-[14rem]">
@@ -114,7 +152,10 @@ export default function AstroDocs({ actor }: { actor: string }) {
                 </div>
               </li>
             ))}
-          </ul>
+                </ul>
+              </section>
+            ))}
+          </div>
         )}
       </Card>
 

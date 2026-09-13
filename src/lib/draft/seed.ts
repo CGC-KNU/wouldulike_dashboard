@@ -121,7 +121,11 @@ export function seedDocs(): SalesDoc[] {
     { id: "doc-contract-v6", kind: "계약서", title: "파트너매장 계약서 26-2 (정본)", version: "v6", url: local("계약서_26_2.pdf"), when: "구두 합의 → 계약 완료", note: "최소 1개월 체험 · 마일리지 추첨형 제8~10조 · 월납. 원본 인도 5만 조항은 v6에서 삭제", updated_at: t, updated_by: "seed" },
     { id: "doc-contract-simple", kind: "계약서", title: "파트너매장 계약서 26-2 (간소화)", version: "0901", url: local("계약서_26_2_간소화.pdf"), when: "구두 합의", note: "매장 안내용. 참조 오류 0901 수정본", updated_at: t, updated_by: "seed" },
     { id: "doc-benefit-form", kind: "계약서", title: "부속서식 · 혜택 등록서", version: "26-2", url: local("부속서식_혜택등록서.pdf"), when: "계약 완료 (혜택 확정)", note: "기본/한정 쿠폰 · 스탬프 혜택을 여기 적어 받는다. 이 값이 계약 세부사항 열로 들어간다", updated_at: t, updated_by: "seed" },
-    { id: "doc-proposal-11p", kind: "제안서", title: "파트너 제안서 11P", version: "0811", url: local("제안서_11P.pdf"), when: "미팅 예정 → 미팅", note: "7/29 12P 는 구본. 랜딩(wouldulike-partner.netlify.app)과 같은 내용", updated_at: t, updated_by: "seed" },
+    // 0913: 6P 가 현행 정본이다. 11P 는 랜딩 전용으로 남긴다.
+    { id: "doc-proposal-6p-kbu", kind: "제안서", title: "파트너 제안서 6P · 경북대", version: "0912", url: local("제안서_6P_경북대.pdf"), when: "미팅 예정 → 미팅", note: "현행 정본. Boost 월 30,000원(부가세 포함 33,000원) 추천", updated_at: t, updated_by: "seed" },
+    { id: "doc-proposal-6p-ynu", kind: "제안서", title: "파트너 제안서 6P · 영남대", version: "0912", url: local("제안서_6P_영남대.pdf"), when: "미팅 예정 → 미팅", note: "Boost 월 45,000원(부가세 포함 49,500원). 신규 상권 문구", updated_at: t, updated_by: "seed" },
+    { id: "doc-proposal-6p-kmu", kind: "제안서", title: "파트너 제안서 6P · 계명대", version: "0912", url: local("제안서_6P_계명대.pdf"), when: "미팅 예정 → 미팅", note: "Boost 월 45,000원(부가세 포함 49,500원). 신규 상권 문구", updated_at: t, updated_by: "seed" },
+    { id: "doc-proposal-11p", kind: "제안서", title: "파트너 제안서 11P (구본)", version: "0811", url: local("제안서_11P.pdf"), when: "미팅 예정 → 미팅", note: "랜딩(wouldulike-partner.netlify.app) 전용. 미팅에는 6P 를 쓴다", updated_at: t, updated_by: "seed" },
     { id: "doc-proposal-new", kind: "제안서", title: "신규 매장 제안서", version: "26-2", url: local("신규매장_제안서.pdf"), when: "컨택 → 미팅 조율", note: "첫 방문 뒤 카톡으로 보내는 요약본", updated_at: t, updated_by: "seed" },
     { id: "doc-quote-boost", kind: "견적서", title: "공용 견적서 · Boost", version: "0901", url: local("견적서_공용_Boost.pdf"), when: "구두 합의", note: "월납/일시납 병기. 매장별 견적서는 0830_매장별_견적서 스크립트로 재생성", updated_at: t, updated_by: "seed" },
     { id: "doc-quote-form", kind: "견적서", title: "견적서 양식 (편집용)", version: "26-2", url: local("견적서_양식_26_2.docx"), when: "구두 합의", note: "docx. 매장명·금액만 바꿔 쓴다", updated_at: t, updated_by: "seed" },
@@ -129,6 +133,8 @@ export function seedDocs(): SalesDoc[] {
     { id: "doc-flyer", kind: "전단", title: "방문 영업 전단", version: "0812", url: local("방문영업_전단.pdf"), when: "미컨택 → 컨택 (첫 방문)", note: "가격 없음. 북극성 톤", updated_at: t, updated_by: "seed" },
     { id: "doc-team-intro", kind: "소개서", title: "팀 소개서 (대외용)", version: "0818", url: null, when: "미팅", note: "드라이브 링크 등록 필요. 실명판은 별도", updated_at: t, updated_by: "seed" },
     { id: "doc-poster-benefit", kind: "포스터", title: "혜택 정리 포스터 · QR 스티커", version: "0906", url: null, when: "입금 확인 → 비치물 전달", note: "매장별 혜택 %가 다르니 출력 전 확인 (라라더 오기재 사례). 링크 등록 필요", updated_at: t, updated_by: "seed" },
+    { id: "doc-mileage-guide", kind: "안내문", title: "마일리지 추첨 안내 (점주용)", version: "0906", url: null, when: "계약 완료", note: "계약서 제8~10조를 점주 말로. 금지 표현('전원 당첨' 등) 주의. 링크 등록 필요", updated_at: t, updated_by: "seed" },
+    { id: "doc-report-sample", kind: "기타", title: "매장 성과 보고 예시 (라라더 0906)", version: "0906", url: null, when: "계약 완료", note: "Probe 매장 리포트가 이 문장 구조를 따른다. 링크 등록 필요", updated_at: t, updated_by: "seed" },
   ];
 }
 
