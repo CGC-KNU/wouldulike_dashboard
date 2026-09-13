@@ -2515,8 +2515,9 @@ const PRODUCTS: {
     name: "Astro",
     subtitle: "영업 툴",
     description: "파트너 매장 · 파트너 후보 · 입금 · 계산서",
-    /* 0913 민열님: Astro 에서 '식당 관리'(재민님 화면)는 빼고 간다 — 파트너 매장이 그 자리를 대신한다 */
-    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs"],
+    /* 0913 민열님: '식당 관리'(재민님 화면)는 자료실 아래에 그대로 둔다 — 여기 쌓인 식당 데이터가
+       앞으로 파트너 매장의 기준 풀이 된다. 파트너 매장은 이 풀에 운영 정보를 덧붙이는 화면이다. */
+    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs", "restaurants"],
     ready: true,
   },
   {
