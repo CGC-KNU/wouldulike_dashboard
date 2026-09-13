@@ -22,7 +22,6 @@ import AstroDocs from "./astro/AstroDocs";
 import TaxInvoices from "./astro/TaxInvoices";
 import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
-import StoreInsights from "./probe/StoreInsights";
 import MileageOps from "./probe/MileageOps";
 import Reports from "./probe/Reports";
 import CastorMap from "./castor/CastorMap";
@@ -62,7 +61,6 @@ type Tab =
   | "probe-metrics"
   | "probe-app"
   | "probe-quality"
-  | "probe-insights"
   | "probe-reports"
   | "probe-mileage"
   // Castor(앱 구조·여정)
@@ -2473,7 +2471,6 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "probe-metrics", label: "매장 지표", icon: "▲", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-app", label: "앱 지표", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
-  { key: "probe-insights", label: "홍보 인사이트", icon: "◎", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-reports", label: "매장 리포트", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-mileage", label: "마일리지 추첨", icon: "◍", allow: (me) => me.permissions.can_restaurants },
 
@@ -2526,8 +2523,8 @@ const PRODUCTS: {
     key: "probe",
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
-    description: "홍보 인사이트 · 마일리지 추첨 · 매장·앱 지표 · 정합성",
-    tabs: ["probe-home", "probe-insights", "probe-reports", "probe-mileage", "probe-metrics", "probe-app", "probe-quality"],
+    description: "매장 리포트 · 마일리지 추첨 · 매장·앱 지표 · 정합성",
+    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-metrics", "probe-app", "probe-quality"],
     ready: true,
   },
   {
@@ -2597,7 +2594,9 @@ export default function AdminHomePage() {
   useEffect(() => {
     if (!me || selectedProduct) return;
     const allowed = TABS.filter((t) => t.allow(me));
-    const wanted = new URL(window.location.href).searchParams.get("tab") as Tab | null;
+    const rawTab = new URL(window.location.href).searchParams.get("tab");
+    // 0913: 홍보 인사이트가 매장 리포트로 합쳐졌다 — 옛 링크(슬랙 알림 등)는 그대로 살려 둔다
+    const wanted = (rawTab === "probe-insights" ? "probe-reports" : rawTab) as Tab | null;
 
     if (wanted && allowed.some((t) => t.key === wanted)) {
       const owner = PRODUCTS.find((p) => p.tabs.includes(wanted));
@@ -2772,7 +2771,6 @@ export default function AdminHomePage() {
 
           {/* Probe: 지표·데이터. 정합성 점검의 '고치러 가기'는 다른 제품의 탭으로도 뛴다. */}
           {activeTab === "probe-home" && <ProbeHome onGo={go} />}
-          {activeTab === "probe-insights" && <StoreInsights onGo={go} />}
           {activeTab === "probe-reports" && <Reports onGo={go} />}
           {activeTab === "probe-mileage" && <MileageOps actor={actorName} />}
           {activeTab === "probe-metrics" && <ProbeOverview />}

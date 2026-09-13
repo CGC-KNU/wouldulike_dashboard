@@ -129,7 +129,7 @@ export default function Launcher({ available, userName, onSelect, status, onGo }
         <div className="min-w-0 flex-1">
           <p className="text-[14px] font-bold text-gray-900 tracking-[-0.01em]">{libra.name} <span className="text-[12px] font-medium text-gray-500 ml-1">모든 툴을 슬랙에서 보조합니다</span></p>
           <p className="text-[12px] text-gray-500 mt-0.5">
-            <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">?현황</code> <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">?매장</code> <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">@Libra</code> · 아침 브리핑 · 추첨 D-1 알림 · 홍보 인사이트 태그
+            <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">?현황</code> <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">?매장</code> <code className="bg-white/70 px-1.5 py-0.5 rounded text-[11px] text-navy">@Libra</code> · 아침 브리핑 · 추첨 D-1 알림 · 리포트 시점 태그
           </p>
         </div>
         <a href={slackUrl(libra)} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white text-[13px] font-semibold text-navy border border-navy/10 hover:border-navy/30 shadow-sm ${focusRing}`}>

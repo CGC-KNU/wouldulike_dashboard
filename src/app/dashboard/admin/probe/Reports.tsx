@@ -1,62 +1,146 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconCheck, IconCopy, IconExternalLink, IconLink, IconRefresh, IconTrash } from "@tabler/icons-react";
+import { IconBrandInstagram, IconCheck, IconCopy, IconExternalLink, IconFileDescription, IconLink, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { METRIC_LABEL, checkText, reportAllText } from "@/lib/draft/report";
-import type { ReportStatus, StoreReport } from "@/lib/draft/types";
+import { TOOLS, slackUrl } from "@/lib/satellite";
+import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, rowClickable, type ChipTone } from "../_shared/ui";
 
 /**
- * Probe · 매장 리포트 — 점주에게 보내는 공개 링크의 편집실.
+ * Probe · 매장 리포트 — 게시물이 들어오는 곳부터 점주에게 링크가 나가는 곳까지 한 화면.
  *
- * 만들기(홍보 인사이트에서) → 여기서 검토·문구 수정 → 승인(금지 표현·지어낸 숫자 검사, 걸리면 차단) → 링크 발급 → 카톡은 사람 → 열람 표시.
+ * 민열님 0913: "마케팅(Papillon)팀이 올린 제휴 매장 카드뉴스를 전달받아(연동), 시기와 상관없이(D+7 · D+14 는 목표)
+ * 원할 때 애딧 리포트처럼 보고서를 만들 수 있으면. 홍보 인사이트와 매장 리포트가 따로 있을 필요가 없다."
+ *
+ * 위: **Papillon 에서 온 게시물** — 발행 게시물 중 제휴 매장 이름이 들어간 것(이름 매칭). 행마다 "만들기".
+ * 아래: **리포트** — 만든 것의 편집실. 검토·문구 수정 → 승인(금지 표현·지어낸 숫자 검사) → 링크 발급 → 카톡은 사람 → 열람.
  * 스냅샷 숫자는 읽기 전용. 문구를 고치면 승인은 무효가 되고 다시 승인해야 한다.
  */
 
+interface Post {
+  restaurant_id: number; store: string; plan_id: number; topic: string; posted_at: string | null; permalink: string | null;
+  age_days: number | null; co_stores: number; checkpoint: "D2" | "D7" | "D14" | "done" | "waiting"; targets: { d7: boolean; d14: boolean }; due: boolean;
+  available: boolean; reason?: string; metrics: ReportMetric[]; cohort_note: string | null; report: string | null;
+  sent_report: { id: string; status: string; sent_at: string | null; views: number } | null;
+}
+interface PostsPayload { insights: Post[]; papillon_reachable: boolean; checked: { stores: number; plans: number }; draft?: boolean; draft_note?: string }
+
 const S_LABEL: Record<ReportStatus, string> = { DRAFT: "초안", APPROVED: "승인됨", LINKED: "링크 발급 · 미전송", SENT: "보냄", REVOKED: "회수됨" };
 const S_TONE: Record<ReportStatus, ChipTone> = { DRAFT: "gray", APPROVED: "blue", LINKED: "amber", SENT: "green", REVOKED: "red" };
+const M_LABEL: Record<string, string> = { saved: "저장", reach: "도달", views: "조회", shares: "공유", likes: "좋아요", comments: "댓글", profile_visits: "프로필 방문", follows: "팔로우" };
+const postKey = (p: Pick<Post, "plan_id" | "restaurant_id">) => `${p.plan_id}-${p.restaurant_id}`;
 
 export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
+  // ── 위: Papillon 에서 온 게시물
+  const [posts, setPosts] = useState<PostsPayload | null>(null);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [pf, setPf] = useState<"due" | "none" | "all">("due");
+  const [openPost, setOpenPost] = useState<string | null>(null);
+  // ── 아래: 리포트
   const [list, setList] = useState<StoreReport[] | null>(null);
   const [note, setNote] = useState<string | undefined>();
   const [filter, setFilter] = useState<"todo" | "sent" | "all">("todo");
   const [openId, setOpenId] = useState<string | null>(null);
-  // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
+  // 딥링크 `?open=<id>` — 슬랙 알림·런처 최근 목록에서 바로 이 리포트를 연다
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
-  const load = useCallback(() => { fetch("/api/probe/reports").then((r) => r.json()).then((d) => { setList(d.reports ?? []); setNote(d.draft_note); }).catch(() => setList([])); }, []);
+  const loadPosts = useCallback(() => { setPostsLoading(true); fetch("/api/probe/insights").then((r) => r.json()).then(setPosts).catch(() => setPosts(null)).finally(() => setPostsLoading(false)); }, []);
+  const loadList = useCallback(() => { fetch("/api/probe/reports").then((r) => r.json()).then((d) => { setList(d.reports ?? []); setNote(d.draft_note); }).catch(() => setList([])); }, []);
+  const load = useCallback(() => { loadPosts(); loadList(); }, [loadPosts, loadList]);
   useEffect(load, [load]);
+
+  const allPosts = posts?.insights ?? [];
+  const visiblePosts = useMemo(() => allPosts.filter((p) => pf === "all" || (pf === "due" ? p.due : !p.sent_report)), [allPosts, pf]);
+  const dueCount = allPosts.filter((p) => p.due).length;
+  const noneCount = allPosts.filter((p) => !p.sent_report).length;
+  const openP = allPosts.find((p) => postKey(p) === openPost) ?? null;
 
   const visible = useMemo(() => (list ?? []).filter((r) => filter === "all" || (filter === "todo" ? r.status === "DRAFT" || r.status === "APPROVED" || r.status === "LINKED" : r.status === "SENT")), [list, filter]);
   const counts = useMemo(() => ({ draft: (list ?? []).filter((r) => r.status === "DRAFT").length, approved: (list ?? []).filter((r) => r.status === "APPROVED").length, linked: (list ?? []).filter((r) => r.status === "LINKED").length, sent: (list ?? []).filter((r) => r.status === "SENT").length, viewed: (list ?? []).filter((r) => r.status === "SENT" && r.views.count > 0).length }), [list]);
   const open = (list ?? []).find((r) => r.id === openId) ?? null;
 
+  /** 리포트 만들기 — 시기와 상관없이. 이미 살아 있는 리포트가 있으면(409) 갱신본 여부를 되묻는다. */
+  const [making, setMaking] = useState<string | null>(null);
+  const [askForce, setAskForce] = useState<string | null>(null);
+  async function make(p: Post, force = false) {
+    if (making) return; setMaking(postKey(p));
+    try {
+      const res = await fetch("/api/probe/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: p.restaurant_id, plan_id: p.plan_id, force }) });
+      const d = await res.json();
+      if (res.status === 409 && !force) { setAskForce(postKey(p)); return; }
+      if (!res.ok) { setAskForce(null); alert(d.detail ?? "만들지 못했습니다."); return; }
+      setAskForce(null); setOpenPost(null); load(); setOpenId(d.report?.id ?? null);
+    } finally { setMaking(null); }
+  }
+
+  const dueLabel = (p: Post) => {
+    if (p.age_days === null) return "-";
+    return p.targets.d14 ? "D+14 지남" : p.targets.d7 ? "D+7 지남" : `D+7 까지 ${7 - p.age_days}일`;
+  };
+
   return (
     <>
-      <PageHeader title="매장 리포트" description="점주에게 카톡으로 보내는 링크. 스냅샷 숫자는 고정, 문구는 사람이 다듬고, 승인해야 링크가 나옵니다."
-        actions={<>{note && <DraftBadge note={note} />}<Button icon={<IconRefresh />} onClick={load}>다시 읽기</Button>{onGo && <Button variant="primary" onClick={() => onGo("probe-insights")}>홍보 인사이트에서 만들기</Button>}</>}>
-        <FilterPills label="상태" value={filter} onChange={setFilter} options={[{ key: "todo", label: "검토 · 승인 · 미전송", count: counts.draft + counts.approved + counts.linked }, { key: "sent", label: "보낸 것", count: counts.sent }, { key: "all", label: "전체", count: list?.length }]} />
-      </PageHeader>
+      <PageHeader title="매장 리포트" description="Papillon 이 올린 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 시기와 상관없이 리포트를 만들 수 있고(D+7 · D+14 권장), 승인해야 링크가 나옵니다. 카톡 전송은 사람이 합니다."
+        actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button>#{TOOLS.probe.slack.channel}</Button></a><Button variant="primary" icon={<IconRefresh />} onClick={load} disabled={postsLoading}>다시 읽기</Button></>} />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
-        <Kpi label="검토 대기" value={list ? counts.draft : "-"} tone="alert" hint="문구 확인 · 제안 승인" />
+        <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+7 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
+        <Kpi label="검토 대기" value={list ? counts.draft + counts.approved : "-"} tone="alert" hint="문구 확인 · 제안 승인 · 링크 발급" onClick={() => setFilter("todo")} active={filter === "todo"} />
         <Kpi label="발급했는데 안 보냄" value={list ? counts.linked : "-"} tone="alert" hint="링크 복사 후 '보냈음' 체크" />
-        <Kpi label="보낸 링크" value={list ? counts.sent : "-"} hint={`승인만 된 것 ${counts.approved}`} />
-        <Kpi label="열람됨" value={list ? counts.viewed : "-"} tone="good" hint="점주가 한 번이라도 연 링크" />
+        <Kpi label="보낸 링크" value={list ? counts.sent : "-"} tone="good" hint={`열람됨 ${counts.viewed}`} onClick={() => setFilter("sent")} active={filter === "sent"} />
       </div>
 
-      {!list ? <Card flush><Skeleton rows={5} cols={5} /></Card> : visible.length === 0 ? (
-        <Card><Empty title={filter === "todo" ? "검토할 리포트가 없습니다" : "리포트가 없습니다"} detail="홍보 인사이트에서 게시물을 골라 '리포트 만들기'를 누르면 여기로 옵니다." action={onGo ? <Button variant="primary" onClick={() => onGo("probe-insights")}>홍보 인사이트</Button> : undefined} /></Card>
-      ) : (
-        <Card flush>
+      {posts && !posts.papillon_reachable && <div className="mb-4"><Notice tone="red" title="Papillon 기획 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>홍보한 적 없음이 아닙니다.</strong> 백엔드 연결을 확인하세요.</Notice></div>}
+
+      <Card flush title="Papillon 에서 온 게시물" description={`발행 게시물의 주제에 제휴 매장 이름이 들어간 것. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}
+        actions={<FilterPills label="" value={pf} onChange={setPf} options={[{ key: "due", label: "만들 때", count: dueCount }, { key: "none", label: "리포트 없음", count: noneCount }, { key: "all", label: "전체", count: allPosts.length }]} />} className="mb-4">
+        {postsLoading ? <Skeleton rows={4} cols={6} /> : visiblePosts.length === 0 ? (
+          <Empty title={pf === "due" ? "지금 만들 때가 된 게시물이 없습니다" : "해당하는 게시물이 없습니다"} detail="Papillon 기획의 주제(topic)에 제휴 매장 이름이 들어가면 발행 즉시 여기 잡힙니다. '전체'에서 시기와 상관없이 만들 수 있습니다." />
+        ) : (
+          <Table minWidth="56rem">
+            <thead><tr><Th>매장 · 게시물</Th><Th width="6rem">게시</Th><Th width="7rem">권장 시점</Th><Th width="7rem" align="right">저장</Th><Th width="7rem" align="right">도달</Th><Th width="7rem" align="right">조회</Th><Th width="9rem" align="center">리포트</Th></tr></thead>
+            <tbody>
+              {visiblePosts.map((p) => {
+                const m = (k: string) => p.metrics.find((x) => x.key === k);
+                const cell = (k: string) => { const x = m(k); return x ? <><span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span>{x.delta_pct !== null ? <span className={`block text-[11px] ${x.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>평소 대비 {x.delta_pct >= 0 ? "+" : ""}{x.delta_pct}%</span> : <span className="block text-[11px] text-gray-400">{x.hidden || x.n < 5 ? `표본 ${x.n}` : ""}</span>}</> : <span className="text-gray-300">-</span>; };
+                const k = postKey(p);
+                return (
+                  <tr key={k} className={rowClickable} onClick={() => setOpenPost(k)}>
+                    <Td><span className="font-semibold text-gray-900">{p.store}</span><span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{p.topic}{p.co_stores > 1 ? ` · ${p.co_stores}곳 함께` : ""}</span></Td>
+                    <Td className="text-[12px] text-gray-600">{p.posted_at ? p.posted_at.slice(5, 10).replace("-", "/") : "-"}{p.age_days !== null && <span className="block text-[11px] text-gray-400">D+{p.age_days}</span>}</Td>
+                    <Td><Chip tone={p.due ? "amber" : p.targets.d7 ? "gray" : "blue"} dot={p.due}>{dueLabel(p)}</Chip></Td>
+                    <Td align="right">{cell("saved")}</Td><Td align="right">{cell("reach")}</Td><Td align="right">{cell("views")}</Td>
+                    <Td align="center"><span onClick={(e) => e.stopPropagation()} className="inline-flex">
+                      {p.sent_report ? (
+                        <button type="button" onClick={() => setOpenId(p.sent_report!.id)} className="inline-flex"><Chip tone={p.sent_report.status === "SENT" ? "green" : p.sent_report.status === "LINKED" ? "amber" : "blue"}>{p.sent_report.status === "SENT" ? `보냄 · 열람 ${p.sent_report.views}` : p.sent_report.status === "LINKED" ? "발급 · 미전송" : "검토 중"}</Chip></button>
+                      ) : askForce === k ? (
+                        <Button size="sm" variant="primary" onClick={() => make(p, true)} disabled={making === k}>갱신본 만들기</Button>
+                      ) : (
+                        <Button size="sm" variant={p.due ? "primary" : "secondary"} icon={<IconFileDescription />} onClick={() => make(p)} disabled={!p.available || making === k}>{making === k ? "만드는 중…" : "만들기"}</Button>
+                      )}
+                    </span></Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
+      </Card>
+
+      <Card flush title="리포트" description="스냅샷 숫자는 고정, 문구는 사람이 다듬고, 승인해야 링크가 나옵니다."
+        actions={<FilterPills label="" value={filter} onChange={setFilter} options={[{ key: "todo", label: "검토 · 승인 · 미전송", count: counts.draft + counts.approved + counts.linked }, { key: "sent", label: "보낸 것", count: counts.sent }, { key: "all", label: "전체", count: list?.length }]} />}>
+        {!list ? <Skeleton rows={4} cols={6} /> : visible.length === 0 ? (
+          <Empty title={filter === "todo" ? "검토할 리포트가 없습니다" : "리포트가 없습니다"} detail="위 게시물 목록에서 '만들기'를 누르면 여기로 옵니다." />
+        ) : (
           <Table minWidth="48rem">
-            <thead><tr><Th>매장 · 게시물</Th><Th width="7rem">상태</Th><Th width="6rem" align="right">저장</Th><Th width="6rem" align="right">도달</Th><Th width="5rem" align="center">제안</Th><Th width="5rem" align="right">열람</Th><Th width="7rem" align="right">만든 때</Th></tr></thead>
+            <thead><tr><Th>매장 · 게시물</Th><Th width="8rem">상태</Th><Th width="6rem" align="right">저장</Th><Th width="6rem" align="right">도달</Th><Th width="5rem" align="center">제안</Th><Th width="5rem" align="right">열람</Th><Th width="7rem" align="right">만든 때</Th></tr></thead>
             <tbody>
               {visible.map((r) => {
                 const m = (k: string) => r.snapshot.metrics.find((x) => x.key === k);
                 return (
                   <tr key={r.id} className={rowClickable} onClick={() => setOpenId(r.id)}>
-                    <Td><span className="font-semibold text-gray-900">{r.snapshot.store.name}</span><span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{r.snapshot.post.topic}</span></Td>
+                    <Td><span className="font-semibold text-gray-900">{r.snapshot.store.name}</span><span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{r.snapshot.post.topic}{r.snapshot.age_days !== null ? ` · D+${r.snapshot.age_days} 시점` : ""}</span></Td>
                     <Td><Chip tone={S_TONE[r.status]} dot={r.status === "DRAFT"}>{S_LABEL[r.status]}</Chip></Td>
                     <Td align="right" numeric>{m("saved")?.value.toLocaleString() ?? <span className="text-gray-300">—</span>}</Td>
                     <Td align="right" numeric>{m("reach")?.value.toLocaleString() ?? <span className="text-gray-300">—</span>}</Td>
@@ -68,13 +152,55 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
               })}
             </tbody>
           </Table>
-        </Card>
-      )}
+        )}
+      </Card>
 
-      <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.</p>
+      <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
+        비교는 우리 채널 평소 게시물의 <b>가운데 값</b> 기준이고 표본이 5건 미만이면 비교하지 않습니다. 링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
+        {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-navy font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
+      </p>
 
+      {openP && <PostPanel p={openP} onClose={() => setOpenPost(null)} onMake={(force) => make(openP, force)} making={making === postKey(openP)} askForce={askForce === postKey(openP)} onOpenReport={(id) => { setOpenPost(null); setOpenId(id); }} />}
       {open && <ReportEditor r={open} onClose={() => setOpenId(null)} onChanged={load} />}
     </>
+  );
+}
+
+/** 게시물 상세 — 지표 · 카톡용 텍스트(링크 대신 문자로 보낼 때) · 만들기 */
+function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: Post; onClose: () => void; onMake: (force: boolean) => void; making: boolean; askForce: boolean; onOpenReport: (id: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() { if (!p.report) return; try { await navigator.clipboard.writeText(p.report); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
+  const cp = p.age_days === null ? "게시일 모름" : p.targets.d14 ? `D+${p.age_days} · 2주 총정리 시점` : p.targets.d7 ? `D+${p.age_days} · 1주 시점` : `D+${p.age_days} · 초기 반응`;
+  return (
+    <SlideOver open onClose={onClose} title={p.store} subtitle={p.topic} badge={<Chip tone={p.due ? "amber" : "gray"}>{cp}</Chip>} width="lg"
+      footer={<>
+        {p.sent_report ? <Button variant="primary" icon={<IconFileDescription />} onClick={() => onOpenReport(p.sent_report!.id)}>리포트 열기</Button>
+          : askForce ? <Button variant="primary" icon={<IconFileDescription />} onClick={() => onMake(true)} disabled={making}>갱신본 만들기</Button>
+          : <Button variant="primary" icon={<IconFileDescription />} onClick={() => onMake(false)} disabled={making || !p.available}>{making ? "만드는 중…" : "리포트 만들기"}</Button>}
+        <Button icon={<IconCopy />} onClick={copy} disabled={!p.report}>{copied ? "복사했습니다" : "카톡용 텍스트"}</Button>
+        {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer"><Button icon={<IconBrandInstagram />}>게시물</Button></a>}
+        <span className="ml-auto text-[12px] text-gray-400">{askForce ? "이미 살아 있는 리포트가 있습니다. 지금 값으로 갱신본을 만듭니다." : p.available ? "지금 값으로 스냅샷을 굳힙니다" : p.reason ?? "아직 수치가 없습니다"}</span>
+      </>}>
+      <PanelSection title="지표 (지금 값)">
+        {!p.available ? <p className="text-[13px] text-gray-500">{p.reason ?? "아직 성과가 모이지 않았습니다."}</p> : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {p.metrics.map((m) => (
+              <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2">
+                <p className="text-[11px] text-gray-500">{M_LABEL[m.key] ?? m.key}</p>
+                <p className="text-[18px] font-bold tabular-nums text-gray-900 leading-tight">{m.value.toLocaleString()}</p>
+                <p className={`text-[11px] ${m.delta_pct === null ? "text-gray-400" : m.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>{m.delta_pct === null ? (m.hidden || m.n < 5 ? `표본 부족 (n=${m.n})` : "비교 기준 없음") : `평소 대비 ${m.delta_pct >= 0 ? "+" : ""}${m.delta_pct}% (n=${m.n})`}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {p.cohort_note && <p className="text-[12px] text-gray-500 mt-2">근거: {p.cohort_note}</p>}
+        {p.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{p.co_stores}곳을 함께 소개한 게시물 — 수치는 게시물 전체 것입니다. 리포트가 그렇게 말합니다.</p>}
+      </PanelSection>
+      <PanelSection title="카톡용 텍스트 (링크 대신 글로 보낼 때)">
+        {p.report ? <pre className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800 bg-gray-50 rounded-lg p-3 font-[inherit]">{p.report}</pre> : <p className="text-[13px] text-gray-500">지표가 모이면 자동으로 문장이 만들어집니다.</p>}
+        <p className="text-[12px] text-gray-500 mt-2">헤드라인은 저장 → 도달 → 조회 고정, 비교는 가운데 값·표본 수를 밝히고, 근거가 없으면 없다고 씁니다. 리포트를 만들면 이 텍스트 대신 게시물 카드 · 비교 막대 · 다음 제안이 한 페이지로 나갑니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
+      </PanelSection>
+    </SlideOver>
   );
 }
 

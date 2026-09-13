@@ -52,7 +52,7 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
           out.reports = { draft: rs.filter((r) => r.status === "DRAFT" || r.status === "APPROVED").length, linked: rs.filter((r) => r.status === "LINKED").length, sent: rs.filter((r) => r.status === "SENT").length, viewed: rs.filter((r) => r.status === "SENT" && r.views.count > 0).length };
         }
         if (quality?.counts || ins?.insights || mil?.rounds) {
-          out.probe = { high: quality?.counts?.high ?? 0, due: ((ins?.insights ?? []) as { checkpoint: string }[]).filter((i) => ["D2", "D7", "D14"].includes(i.checkpoint)).length, held: ((mil?.rounds ?? []) as { result: string }[]).filter((r) => r.result === "held").length };
+          out.probe = { high: quality?.counts?.high ?? 0, due: ((ins?.insights ?? []) as { due?: boolean }[]).filter((i) => i.due).length, held: ((mil?.rounds ?? []) as { result: string }[]).filter((r) => r.result === "held").length };
         }
         if (acts?.activities) out.activities = (acts.activities as { id: string; body: string; kind: string; author: string; created_at: string }[]).slice(0, 6).map((a) => ({ id: a.id, body: a.body, kind: a.kind, author: a.author, at: a.created_at }));
         setSt(out);
@@ -69,8 +69,7 @@ export function navBadges(st: SatelliteStatus | null): Record<string, number> {
   if (st.leads?.stale) b["astro-leads"] = st.leads.stale;
   if (st.billing?.unpaid) b["astro-billing"] = st.billing.unpaid;
   if (st.billing?.pendingApprove) b["astro-tax"] = st.billing.pendingApprove;
-  if (st.reports) { const n = st.reports.draft + st.reports.linked; if (n) b["probe-reports"] = n; }
-  if (st.probe?.due) b["probe-insights"] = st.probe.due;
+  { const n = (st.reports ? st.reports.draft + st.reports.linked : 0) + (st.probe?.due ?? 0); if (n) b["probe-reports"] = n; }
   if (st.probe?.held) b["probe-mileage"] = st.probe.held;
   if (st.probe?.high) b["probe-quality"] = st.probe.high;
   return b;

@@ -245,7 +245,7 @@ function LinkBlock({ id, name, onGo }: { id: number; name: string; onGo?: (tab: 
       <div className="rounded-lg border border-gray-200 p-3">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[12px] font-semibold text-gray-800 inline-flex items-center gap-1.5"><img src="/satellite/probe_app.svg" alt="" width={16} height={16} className="w-4 h-4 rounded" aria-hidden="true" />Probe · 이번 달</span>
-          {onGo && <button type="button" onClick={() => onGo("probe-insights")} className="text-[12px] text-navy font-medium hover:underline">홍보 인사이트</button>}
+          {onGo && <button type="button" onClick={() => onGo("probe-reports")} className="text-[12px] text-navy font-medium hover:underline">매장 리포트</button>}
         </div>
         {!d.probe.reachable || !d.probe.stats ? <p className="text-[12px] text-gray-500">지표를 못 읽었습니다 (0 이 아니라 모름).</p> : (
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">

@@ -10,10 +10,11 @@ import type { BackendRestaurant, ReportMetric, StoreReport } from "@/lib/draft/t
 import type { PostPerformance } from "@/app/dashboard/admin/satellite/types";
 
 /**
- * Probe · 제휴매장 홍보 인사이트.
+ * Probe · 매장 리포트의 "Papillon 에서 온 게시물" 목록.
  *
- * 민열님 0906(#random, 민찬 cc): 인스타에 홍보물이 올라갈 때마다 (1) 제휴 매장이 들어 있는지 보고 (2) 들어 있으면
- * 그때부터 D+2·D+7·D+14 로 추적하고 (3) 주기마다 세일즈 담당을 태그해 사장님께 보낼 보고글을 만든다.
+ * 민열님 0906(#random, 민찬 cc) + 0913: 마케팅(Papillon)이 올린 게시물에 제휴 매장이 들어 있으면 자동으로 여기 잡히고,
+ * **시기와 상관없이** 원할 때 리포트를 만든다. D+7 · D+14 는 권장 시점(목표)이지 게이트가 아니다.
+ * (0913: 홍보 인사이트 화면과 매장 리포트 화면을 하나로 합쳤다 — 화면은 `probe/Reports.tsx`.)
  *
  * 0911 토론 반영: 중앙값을 "평균"이라 부르지 않고, 표본(n<5·hidden)이 작으면 비교하지 않고, 근거가 없으면 그 자리를
  * 다른 주장으로 메우지 않는다. 헤드라인은 저장→도달→조회 고정. 여러 매장이 함께 나온 게시물은 문장이 그렇다고 말한다.
@@ -30,6 +31,10 @@ export interface StoreInsight {
   age_days: number | null;
   co_stores: number;
   checkpoint: "D2" | "D7" | "D14" | "done" | "waiting";
+  /** 권장 시점 도달 여부 — 게이트가 아니라 표시용 */
+  targets: { d7: boolean; d14: boolean };
+  /** 리포트 만들 때: 수치가 있고 D+7 을 지났는데 살아 있는 리포트가 없음 */
+  due: boolean;
   available: boolean;
   reason?: string;
   metrics: ReportMetric[];
@@ -93,6 +98,8 @@ export async function GET() {
     return {
       restaurant_id: r.restaurant_id, store: r.name, plan_id: plan.id, topic: plan.topic,
       posted_at: snapshot.post.posted_at, permalink: snapshot.post.permalink, age_days: age, co_stores: snapshot.post.co_stores, checkpoint: cp,
+      targets: { d7: age !== null && age >= 7, d14: age !== null && age >= 14 },
+      due: Boolean(p?.available) && age !== null && age >= 7 && !sent,
       available: Boolean(p?.available), reason: p?.reason, metrics, cohort_note: snapshot.cohort_note,
       report: p?.available ? buildReportText(snapshot, cp) : null,
       sent_report: sent && { id: sent.id, status: sent.status, sent_at: sent.sent_at, views: sent.views.count },
