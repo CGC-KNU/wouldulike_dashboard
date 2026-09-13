@@ -112,7 +112,7 @@ export default function ToolShell({
   return (
     <div className={`grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-6 items-start ${dock ? "pb-24" : ""}`}>
       <aside className="md:sticky md:top-16 bg-white/70 backdrop-blur-xl rounded-[18px] border border-white/60 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_16px_40px_-28px_rgba(5,0,114,0.35)] overflow-hidden">
-        {/* 제품 표시 + 런처로 돌아가기 */}
+        {/* 제품 표시 + 메인(런처)으로 돌아가기 */}
         <div className="px-3 pt-3 pb-2 border-b border-black/[0.05]">
           {onBack ? (
             <button
@@ -125,7 +125,9 @@ export default function ToolShell({
                 <span className="block text-[14px] font-bold text-gray-900 leading-tight tracking-[-0.01em]">{product.name}</span>
                 <span className="block text-[11px] text-gray-500 leading-tight">{product.subtitle}</span>
               </span>
-              <IconChevronLeft size={16} className="ml-auto text-gray-400 shrink-0" aria-hidden="true" />
+              <span className="ml-auto inline-flex items-center gap-0.5 text-[11px] font-semibold text-gray-400 shrink-0">
+                <IconChevronLeft size={14} aria-hidden="true" />메인
+              </span>
             </button>
           ) : (
             <div className="flex items-center gap-2 px-2 py-1.5">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import PapillonShell from "./satellite/PapillonShell";
 import ProductShell from "./ProductShell";
 import ToolShell, { Dock } from "./_shared/ToolShell";
@@ -2607,8 +2607,12 @@ export default function AdminHomePage() {
   // 권한이 정해지면 기본 제품/탭 결정 — ?tab= 이 있으면 그쪽을 우선하고,
   // 그 탭을 산하로 둔 제품으로 바로 들어간다. 접근 가능한 실제 제품(Probe 제외)이
   // 하나뿐이면 선택 화면 없이 바로 그 제품으로 들어간다 (예: 마케팅팀 → Papillon).
+  const bootstrapped = useRef(false);
   useEffect(() => {
     if (!me || selectedProduct) return;
+    // 처음 들어올 때만 주소로 자동 입장한다. 사용자가 런처로 나온 뒤에는 다시 끌고 들어가지 않는다.
+    if (bootstrapped.current) return;
+    bootstrapped.current = true;
     const allowed = TABS.filter((t) => t.allow(me));
     const rawTab = new URL(window.location.href).searchParams.get("tab");
     // 0913: 홍보 인사이트가 매장 리포트로 합쳐졌다 — 옛 링크(슬랙 알림 등)는 그대로 살려 둔다
@@ -2634,15 +2638,30 @@ export default function AdminHomePage() {
     // 여러 제품이 가능하면 아무것도 정하지 않고 선택 화면을 보여준다
   }, [me, selectedProduct]);
 
+  /** 주소창의 ?tab / ?open 을 화면 상태와 맞춘다. 안 맞추면 새로고침·뒤로가기가 엉뚱한 데로 간다. */
+  function syncUrl(tab: string | null) {
+    try {
+      const url = new URL(window.location.href);
+      if (tab) url.searchParams.set("tab", tab);
+      else url.searchParams.delete("tab");
+      url.searchParams.delete("open"); // 딥링크는 한 번 쓰고 버린다
+      window.history.replaceState(null, "", url.toString());
+    } catch { /* file:// 등 */ }
+  }
+
   function selectProduct(key: Product) {
     if (!me) return;
     const meta = PRODUCTS.find((p) => p.key === key)!;
     const allowed = TABS.filter((t) => t.allow(me));
+    const first = meta.tabs.find((t) => allowed.some((a) => a.key === t)) ?? null;
     setSelectedProduct(key);
-    setActiveTab(meta.tabs.find((t) => allowed.some((a) => a.key === t)) ?? null);
+    setActiveTab(first);
+    syncUrl(first);           // 도크로 툴을 바꾸면 주소도 같이 바뀐다
   }
 
+  /** 런처로 나가기. **주소의 ?tab 을 반드시 지운다** — 안 지우면 아래 효과가 곧바로 그 툴로 다시 들어간다(0914 버그). */
   function backToProducts() {
+    syncUrl(null);
     setSelectedProduct(null);
     setActiveTab(null);
   }
@@ -2735,7 +2754,7 @@ export default function AdminHomePage() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            제품 선택
+            메인으로
           </button>
         ) : (
           <div>
@@ -2788,7 +2807,7 @@ export default function AdminHomePage() {
         <ProductShell
           navItems={productTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
           activeKey={activeTab}
-          onSelect={(key) => setActiveTab(key as Tab)}
+          onSelect={(key) => { setActiveTab(key as Tab); syncUrl(key); }}
           footer={
             <div>
               <p className="text-xs font-bold text-white">{me.display_name || me.username}</p>
@@ -2809,7 +2828,7 @@ export default function AdminHomePage() {
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
           navItems={productTabs.map((t) => ({ key: t.key, label: t.label }))}
           activeKey={activeTab}
-          onSelect={(key) => setActiveTab(key as Tab)}
+          onSelect={(key) => { setActiveTab(key as Tab); syncUrl(key); }}
           onBack={showProductPicker ? backToProducts : undefined}
           badges={navBadges(satStatus)}
           user={{ name: me.display_name || me.username, role: me.department_label }}
