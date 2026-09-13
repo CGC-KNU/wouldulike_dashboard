@@ -60,7 +60,7 @@ export default function AdminHeader() {
       <div className="ml-auto flex items-center gap-2 shrink-0">
         {/* 뷰 전환 — 애딧의 '광고주 전환 / 파트너 전환' 자리. 지금 어느 눈으로 보고 있는지가 늘 보인다. */}
         <div className="inline-flex items-center p-[3px] rounded-full bg-white/10" role="group" aria-label="보기 전환">
-          <a href="/dashboard/owner" className="px-2.5 py-1 rounded-full text-[12px] font-semibold text-white/70 hover:text-white transition-colors">사장님</a>
+          <a href="/dashboard/owner" className="px-2.5 py-1 rounded-full text-[12px] font-semibold text-white/70 hover:text-white transition-colors">파트너</a>
           <span aria-current="page" className="px-2.5 py-1 rounded-full text-[12px] font-bold bg-white text-navy shadow-sm">관리자</span>
         </div>
 
