@@ -36,12 +36,13 @@ jobs:
           [ -z "$SLACK_BOT_TOKEN" ] && { echo "토큰 없음 — 건너뜀"; exit 0; }
           KST=$(TZ=Asia/Seoul date "+%Y-%m-%d %H:%M:%S KST")
           SHORT_SHA=$(echo "$SHA" | cut -c1-7)
-          TEXT="🚨 *빌드 실패: 세틀라이트*
-• 브랜치: $REF
-• commit: <https://github.com/$REPO/commit/$SHA|$SHORT_SHA>
-• 올린 사람: $ACTOR
-• time: $KST
-• 로그: $RUN_URL"
+          TEXT=$(printf '%s\n' \
+            "🚨 *빌드 실패: 세틀라이트*" \
+            "• 브랜치: $REF" \
+            "• commit: <https://github.com/$REPO/commit/$SHA|$SHORT_SHA>" \
+            "• 올린 사람: $ACTOR" \
+            "• time: $KST" \
+            "• 로그: $RUN_URL")
           curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H "Content-Type: application/json; charset=utf-8" \
