@@ -46,6 +46,9 @@ function payOf(r: StoreRow, inv: TaxInvoice | undefined): Pay {
 }
 const campusOf = (r: StoreRow): Campus => r.ops?.campus ?? "경북대";
 
+/** 탭을 오갈 때 흰 화면을 안 보이게 하는 마지막 값. 새로고침하면 비워진다. */
+const cachedStores: { rows: StoreRow[]; invoices: TaxInvoice[] } = { rows: [], invoices: [] };
+
 export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (tab: string) => void }) {
   const [rows, setRows] = useState<StoreRow[]>([]);
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
@@ -61,13 +64,25 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   const [adding, setAdding] = useState(false);
   const period = thisPeriod();
 
+  /**
+   * 표를 먼저 그린다 — 매장이 오면 바로, 계산서는 오는 대로 입금 열만 채운다 (민열님 0913: 불러오는 게 느리다).
+   * 둘을 같이 기다리면 둘 중 느린 쪽만큼 흰 화면을 본다. 화면을 옮겼다 돌아오면 **직전 값을 먼저 보여주고**
+   * 뒤에서 새로 읽는다(stale-while-revalidate) — 같은 탭을 오가는 게 이 툴에서 제일 잦은 동작이다.
+   */
   const load = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({})),
-      fetch(`/api/astro/invoices?period=${period}`).then((r) => r.json()).catch(() => ({})),
-    ]).then(([s, i]) => { setRows(s.stores ?? []); setDraft({ on: Boolean(s.draft), note: s.draft_note }); setInvoices(i.invoices ?? []); })
+    if (cachedStores.rows.length) { setRows(cachedStores.rows); setInvoices(cachedStores.invoices); setLoading(false); }
+    else setLoading(true);
+
+    fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({}))
+      .then((s) => {
+        const next = s.stores ?? [];
+        setRows(next); cachedStores.rows = next;
+        setDraft({ on: Boolean(s.draft), note: s.draft_note });
+      })
       .finally(() => setLoading(false));
+
+    fetch(`/api/astro/invoices?period=${period}`).then((r) => r.json()).catch(() => ({}))
+      .then((i) => { const next = i.invoices ?? []; setInvoices(next); cachedStores.invoices = next; });
   }, [period]);
   useEffect(load, [load]);
 
