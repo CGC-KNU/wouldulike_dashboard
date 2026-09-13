@@ -28,6 +28,7 @@ jobs:
           REF: ${{ github.event.deployment.ref }}
           ACTOR: ${{ github.event.deployment.creator.login }}
           REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$SLACK_BOT_TOKEN" ]; then
             echo "SLACK_BOT_TOKEN 이 없어 건너뜁니다. 저장소 Secrets 에 봇 토큰을 넣으세요."
@@ -50,6 +51,27 @@ jobs:
           esac
 
           KST=$(TZ=Asia/Seoul date "+%Y-%m-%d %H:%M:%S KST")
+
+          # 무엇이 바뀐 배포인지 — 커밋 제목과 손댄 자리. 애딧 알림처럼 "이번에 뭐가 나갔나"가 보이게 (민열님 0913).
+          COMMIT_JSON=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/commits/$SHA" || echo '{}')
+          SUBJECT=$(echo "$COMMIT_JSON" | jq -r '.commit.message // "" | split("\n")[0]' | cut -c1-120)
+          FILE_COUNT=$(echo "$COMMIT_JSON" | jq -r '.files // [] | length')
+          # 파일 경로를 사람 말로 — 화면 단위로 묶는다
+          AREAS=$(echo "$COMMIT_JSON" | jq -r '
+            [ (.files // [])[].filename
+              | if test("dashboard/admin/astro") then "Astro"
+                elif test("dashboard/admin/probe") then "Probe"
+                elif test("dashboard/admin/castor") then "Castor"
+                elif test("dashboard/admin/satellite|PapillonShell") then "Papillon"
+                elif test("^src/app/r/|probe/reports|draft/report") then "매장 리포트"
+                elif test("^src/app/api/") then "API"
+                elif test("dashboard/admin/_shared|components/") then "공용 화면"
+                elif test("^src/lib/") then "공용 로직"
+                elif test("^\\.github/") then "워크플로"
+                elif test("^public/") then "이미지·아이콘"
+                else "기타" end ]
+            | group_by(.) | map("\(.[0]) \(length)") | join(" · ")')
           SHORT_SHA=$(echo "$SHA" | cut -c1-7)
           COMMIT_URL="https://github.com/$REPO/commit/$SHA"
           LINK="${TARGET_URL:-$LOG_URL}"
@@ -58,10 +80,12 @@ jobs:
           LINE2="• commit: <$COMMIT_URL|$SHORT_SHA>${REF:+ ($REF)}"
           LINE3="• time: $KST"
           LINE4="• 올린 사람: ${ACTOR:-unknown}"
+          if [ -n "$SUBJECT" ]; then LINE_WHAT="• 바뀐 것: $SUBJECT"; else LINE_WHAT=""; fi
+          if [ "$FILE_COUNT" != "0" ] && [ -n "$AREAS" ] && [ "$AREAS" != "null" ]; then LINE_AREA="• 손댄 곳: $AREAS (파일 $FILE_COUNT)"; else LINE_AREA=""; fi
           if [ -n "$LINK" ]; then LINE5="• 열기: $LINK"; else LINE5=""; fi
           # 운영 실패는 채널에 알림이 울리게 한다
           if [ "$STATE" != "success" ] && [ "$ENV_LABEL" = "운영" ]; then LINE1="<!here> $LINE1"; fi
-          TEXT=$(printf '%s\n' "$LINE1" "$LINE2" "$LINE3" "$LINE4" ${LINE5:+"$LINE5"})
+          TEXT=$(printf '%s\n' "$LINE1" "$LINE2" ${LINE_WHAT:+"$LINE_WHAT"} ${LINE_AREA:+"$LINE_AREA"} "$LINE3" "$LINE4" ${LINE5:+"$LINE5"})
 
           RESPONSE=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
