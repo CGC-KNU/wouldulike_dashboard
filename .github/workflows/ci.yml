@@ -1,0 +1,48 @@
+# 빌드 점검 — 깨진 코드가 배포로 가기 전에 먼저 잡는다.
+# 실패하면 #code-119 로 알린다 (민열님 0913: "배포 실패나 툴 관련 문제는 code-119").
+name: 빌드 점검
+
+on:
+  push:
+    branches: [main, astro, probe]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: 타입 검사
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: 빌드
+        run: npm run build
+
+      - name: 실패하면 슬랙에 (#code-119)
+        if: failure()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$SLACK_BOT_TOKEN" ] && { echo "토큰 없음 — 건너뜀"; exit 0; }
+          KST=$(TZ=Asia/Seoul date "+%Y-%m-%d %H:%M:%S KST")
+          SHORT_SHA=$(echo "$SHA" | cut -c1-7)
+          TEXT="🚨 *빌드 실패: 세틀라이트*
+• 브랜치: $REF
+• commit: <https://github.com/$REPO/commit/$SHA|$SHORT_SHA>
+• 올린 사람: $ACTOR
+• time: $KST
+• 로그: $RUN_URL"
+          curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$(jq -n --arg c "C0BPSQGMLUU" --arg t "$TEXT" '{channel:$c, text:$t, unfurl_links:false}')" | jq -r '"slack ok=\(.ok) error=\(.error // "-")"'
