@@ -13,7 +13,7 @@ const config: Config = {
         periwinkle: "#6366E0",
         "dark-card": "#182031",
         gold: "#E0A23C",
-        background: "#F5F5F7",
+        background: "#F4F4F9",
       },
       fontFamily: {
         sans: ["Pretendard", "system-ui", "sans-serif"],
