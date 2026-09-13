@@ -13,23 +13,25 @@ import { Button, Field, Input, PanelSection, SlideOver, Textarea, focusRing } fr
  * 보낸 뒤 '기록 남기기'를 누르면 그 매장·후보의 활동 기록에 남아 다음 사람이 안다(팔로업의 핵심).
  */
 
-export default function MessageComposer({ ctx, event, open, onClose, onSent }: {
+export default function MessageComposer({ ctx, event, open, onClose, onSent, initialKind}: {
   ctx: MsgContext;
   /** 캘린더·입금 현황에서 무엇을 눌렀는지 — 기본 문안을 고르는 데만 쓴다. */
   event?: { kind: "payment" | "meeting" | "contract" | "due"; overdue?: boolean; tomorrow?: boolean; past?: boolean };
+  /** 처음 고를 문안을 직접 지정 (계약 완료 발송 세트처럼 자리가 정해진 곳). */
+  initialKind?: MsgKind;
   open: boolean;
   onClose: () => void;
   onSent?: () => void;
 }) {
   const list = useMemo(() => templates(ctx), [ctx]);
-  const [kind, setKind] = useState<MsgKind>(() => (event ? defaultKind(event.kind, event) : "payment_notice"));
+  const [kind, setKind] = useState<MsgKind>(() => initialKind ?? (event ? defaultKind(event.kind, event) : "payment_notice"));
   const [body, setBody] = useState("");
   const [phone, setPhone] = useState(ctx.phone ?? "");
   const [copied, setCopied] = useState(false);
   const [logged, setLogged] = useState(false);
 
   useEffect(() => { setBody(list.find((t) => t.kind === kind)?.text ?? ""); }, [kind, list]);
-  useEffect(() => { if (open) { setKind(event ? defaultKind(event.kind, event) : "payment_notice"); setPhone(ctx.phone ?? ""); setCopied(false); setLogged(false); } }, [open, ctx.phone, event]);
+  useEffect(() => { if (open) { setKind(initialKind ?? (event ? defaultKind(event.kind, event) : "payment_notice")); setPhone(ctx.phone ?? ""); setCopied(false); setLogged(false); } }, [open, ctx.phone, event, initialKind]);
 
   const bytes = byteLen(body);
   const digits = phone.replace(/[^\d]/g, "");
@@ -92,7 +94,7 @@ export default function MessageComposer({ ctx, event, open, onClose, onSent }: {
       <PanelSection title="문안 (고쳐서 보내세요)">
         <Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} className="text-[13px] leading-relaxed" />
         <p className="text-[12px] text-gray-500 mt-2">
-          금액·월·날짜는 이 매장의 실제 값만 들어갑니다. <strong>계좌번호·사업자번호는 넣지 않습니다</strong> — 문자는 남고 돌아다닙니다.
+          금액·월·날짜는 이 매장의 실제 값만 들어갑니다. <strong>사업자번호는 넣지 않습니다. 입금 계좌는 계약 완료 안내에만 들어가고, 값은 세금계산서 설정에서 옵니다</strong> — 문자는 남고 돌아다닙니다.
           {bytes > 90 && <> 90바이트가 넘어 <strong>LMS</strong>로 나갑니다(요금이 다를 수 있습니다).</>}
         </p>
       </PanelSection>

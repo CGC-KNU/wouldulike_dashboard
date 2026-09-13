@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconCheck, IconExternalLink, IconFiles, IconCash } from "@tabler/icons-react";
+import { IconCheck, IconExternalLink, IconFiles, IconCash, IconMessage2 } from "@tabler/icons-react";
 import {
   BILLING_LABEL,
   INVOICE_LABEL,
@@ -22,6 +22,8 @@ import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, T
 import ActivityLog from "./ActivityLog";
 import CampusPicker from "./CampusPicker";
 import StoreAppSection from "./StoreAppSection";
+import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
+import MessageComposer from "./MessageComposer";
 
 /**
  * 매장 한 장 — 오른쪽 슬라이드 패널.
@@ -66,6 +68,17 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
   const id = row.restaurant_id;
   const paid = isPaidTier(row.tier);
   const set = (k: keyof StoreOps) => (v: string | null) => onPatch(id, { [k]: v } as Partial<StoreOps>);
+  const [onboarding, setOnboarding] = useState(false);
+  // 계약 완료 문안에 들어갈 입금 계좌 — 세금계산서 설정에 적힌 값만 쓴다(코드에 박지 않는다)
+  const [bank, setBank] = useState<{ line: string | null; holder: string | null }>({ line: null, holder: null });
+  useEffect(() => {
+    if (!onboarding || bank.line) return;
+    fetch("/api/astro/invoices/settings").then((r) => (r.ok ? r.json() : null)).then((d) => {
+      const i = d?.issuer ?? d;
+      const line = [i?.bank_name, i?.bank_account].filter(Boolean).join(" ") || null;
+      setBank({ line, holder: i?.bank_holder || null });
+    }).catch(() => { /* 값이 없으면 문안에서 그 줄이 빠진다 */ });
+  }, [onboarding, bank.line]);
 
   const Tri = ({ label, value, onChange }: { label: string; value: boolean | null; onChange: (v: boolean | null) => void }) => (
     <div className="flex items-center justify-between gap-3 py-2">
@@ -179,6 +192,20 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         </div>
       </PanelSection>
 
+      {/* 계약이 끝난 매장에는 '보낼 것'이 정해져 있다 — 문안 + 안내문·견적서 (민열님 0914). */}
+      {(o.contract_started_on || o.contract_signed_on) && (
+        <PanelSection title="계약 완료 · 보낼 것">
+          <p className="text-[12px] text-gray-600 mb-2">
+            운영 시작 전 점주 확인용입니다. 혜택·플랜·이용료는 아래 칸에 적힌 값이 그대로 문안에 들어가고, 빈 칸은 문장이 빠집니다.
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+            <Button size="sm" variant="primary" icon={<IconMessage2 />} onClick={() => setOnboarding(true)}>안내 문자 문안</Button>
+            {onGo && <Button size="sm" variant="ghost" icon={<IconCash />} onClick={() => onGo("astro-tax")}>세금계산서</Button>}
+          </div>
+          <DocQuickLinks ids={DOC_SETS.onboarding} label="같이 보낼 자료" />
+        </PanelSection>
+      )}
+
       {/* 0913: 식당 관리에서 하던 일을 여기로. 이 블록만 백엔드 매장 레코드에 저장된다. */}
       <PanelSection title="식당 관리 (앱에 보이는 정보)">
         <StoreAppSection id={id} tier={row.tier} isAffiliate={row.is_affiliate !== false} onChanged={() => onPatch(id, {})} />
@@ -209,6 +236,22 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       </PanelSection>
 
       <PanelSection title="기록"><ActivityLog targetType="store" targetId={String(id)} actor={actor} /></PanelSection>
+
+      {onboarding && (
+        <MessageComposer
+          open
+          initialKind="onboarding"
+          ctx={{
+            name: row.name, targetType: "store", targetId: String(id),
+            owner: o.owner_name, phone: o.owner_phone, fee: o.monthly_fee, period: periodLocal(), sender: actor,
+            plan: row.tier, couponBasic: o.coupon_basic, couponLimited: o.coupon_limited,
+            stampCount: o.stamp_count, stampReward: o.stamp_reward,
+            semester: "26-2학기",
+            bank: bank.line, bankHolder: bank.holder,
+          }}
+          onClose={() => setOnboarding(false)}
+        />
+      )}
     </SlideOver>
   );
 }

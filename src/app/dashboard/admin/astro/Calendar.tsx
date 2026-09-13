@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconChevronLeft, IconChevronRight, IconMessage2, IconSearch } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconFileDownload, IconMessage2, IconSearch } from "@tabler/icons-react";
 import type { Lead, StoreRow } from "@/lib/draft/types";
 import { isPaidTier } from "@/lib/draft/types";
 import type { MsgContext } from "@/lib/draft/message";
 import { Input, focusRing, todayLocal } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
+import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 
 /**
  * 영업 일정 — 미팅 · 기한 · 계약 시작 · 입금 예정을 한 달에 놓는다 (민열님 0911).
@@ -112,6 +113,8 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
   /** 한 종류가 이만큼 넘으면 접는다. 9/1 처럼 계약 시작이 27건 몰리는 날을 위한 것. */
   const FOLD = 6;
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  /** 미팅 항목에서 '자료'를 누르면 그 줄 아래에 계약서·혜택 등록서 내려받기가 열린다 (민열님 0914). */
+  const [docsFor, setDocsFor] = useState<string | null>(null);
   useEffect(() => setExpanded({}), [ym]);
 
   const shift = (k: number) => { const d = new Date(y, m - 1 + k, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
@@ -221,6 +224,14 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                         <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
                         {e.sub && <span className="block text-[11px] text-gray-500 truncate">{e.sub}</span>}
                       </button>
+                      {e.kind === "meeting" && (
+                        <button type="button" aria-label={`${e.label} 미팅 자료`} title="계약서 · 혜택 등록서"
+                          aria-pressed={docsFor === `${shown}:${g.kind}:${i}`}
+                          onClick={() => setDocsFor(docsFor === `${shown}:${g.kind}:${i}` ? null : `${shown}:${g.kind}:${i}`)}
+                          className={`shrink-0 w-7 h-7 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
+                          <IconFileDownload size={15} aria-hidden="true" />
+                        </button>
+                      )}
                       {e.msg && (e.kind === "payment" || e.kind === "meeting" || e.kind === "contract") && (
                         <button type="button" aria-label={`${e.label} 문자 보내기`} title="문자 보내기"
                           onClick={() => setMsg({ ctx: { ...e.msg!, sender: actor }, ev: { kind: e.kind, past: e.date < today, tomorrow: isTomorrow(e.date, today) } })}
@@ -231,6 +242,12 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                     </li>
                   ))}
                 </ul>
+                {/* 열어 둔 미팅 자료 */}
+                {g.kind === "meeting" && docsFor?.startsWith(`${shown}:meeting:`) && (
+                  <div className="mt-1.5 ml-2 rounded-lg bg-black/[0.03] p-2">
+                    <DocQuickLinks ids={DOC_SETS.meeting} label="미팅에 들고 갈 것" />
+                  </div>
+                )}
                 {g.items.length > FOLD && (
                   <button type="button" onClick={() => setExpanded((x) => ({ ...x, [`${shown}:${g.kind}`]: !x[`${shown}:${g.kind}`] }))}
                     className={`mt-1 ml-2 text-[11px] font-semibold text-navy hover:underline rounded ${focusRing}`}>

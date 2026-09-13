@@ -253,6 +253,8 @@ export interface SalesDoc {
   updated_by: string | null;
 }
 
+export const ISSUER_EDITABLE = ["name", "biz_no", "ceo", "address", "email", "bank_name", "bank_account", "bank_holder", "bolta_customer_key", "cert_expires_at", "item_template", "approver", "slack_channel"] as const satisfies readonly (keyof IssuerSettings)[];
+
 export const DOC_EDITABLE = ["kind", "title", "version", "url", "when", "note"] as const satisfies readonly (keyof SalesDoc)[];
 
 /**
@@ -301,6 +303,10 @@ export interface IssuerSettings {
   ceo: string;
   address: string;
   email: string;
+  /** 입금 계좌 — 계약 완료 안내 문자에 들어간다. 코드에 박지 않고 여기서만 관리한다(0914). */
+  bank_name: string;
+  bank_account: string;
+  bank_holder: string;
   bolta_customer_key: string | null;
   cert_expires_at: string | null; // 공동인증서 만료
   item_template: string; // "우주라이크 파트너 플랜 {period}분"
