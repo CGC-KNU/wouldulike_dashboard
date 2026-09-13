@@ -82,7 +82,7 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
           <h1 className="text-[34px] md:text-[40px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.1] mt-1 text-balance">
             {greet}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{userName}</span>님.
           </h1>
-          <p className="text-[15px] text-gray-500 mt-2">오늘 볼 도구를 고르세요. 숫자는 지금 막힌 일입니다.</p>
+          <p className="text-[15px] text-gray-500 mt-2">오늘 볼 도구를 고르세요. 카드의 숫자는 <span className="text-gray-700 font-medium">지금 막힌 일</span>입니다.</p>
         </div>
       </header>
 
@@ -105,23 +105,23 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
                   <span className={`text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
                 </div>
                 <div className="mt-5">
-                  <p className="text-[19px] font-bold text-gray-900 tracking-[-0.01em] leading-tight">{t.name}</p>
-                  <p className="text-[13px] text-gray-500 mt-0.5">{t.subtitle}</p>
+                  <p className="text-[20px] font-bold text-gray-900 tracking-[-0.015em] leading-tight">{t.name}</p>
+                  <p className="text-[12.5px] font-medium text-gray-500 mt-1">{t.subtitle}</p>
                 </div>
-                <p className="text-[12px] text-gray-400 mt-2 leading-relaxed line-clamp-2">{t.description}</p>
+                <p className="text-[12.5px] text-gray-400 mt-2.5 leading-[1.55] line-clamp-2">{t.description}</p>
 
                 {/* 살아있는 숫자. 없으면 줄 자체가 없다. */}
                 {t.key === "astro" && p && "stuck" in p && (
-                  <div className="mt-4 flex gap-4"><Stat label="이달 입금 미확인" value={p.stuck} alert /><Stat label="진행 후보" value={p.leads} /><Stat label="멈춤" value={p.stale} alert /></div>
+                  <div className="mt-4 pt-3.5 border-t border-black/[0.06] flex gap-5"><Stat label="이달 입금 미확인" value={p.stuck} alert /><Stat label="진행 후보" value={p.leads} /><Stat label="멈춤" value={p.stale} alert /></div>
                 )}
                 {t.key === "probe" && p && "high" in p && (
-                  <div className="mt-4 flex gap-4"><Stat label="보고할 차례" value={p.due} alert /><Stat label="추첨 보류" value={p.held} alert /><Stat label="정합성 높음" value={p.high} alert /></div>
+                  <div className="mt-4 pt-3.5 border-t border-black/[0.06] flex gap-5"><Stat label="리포트 만들 때" value={p.due} alert /><Stat label="추첨 보류" value={p.held} alert /><Stat label="정합성 높음" value={p.high} alert /></div>
                 )}
                 {t.key === "castor" && p && "screens" in p && (
-                  <div className="mt-4 flex gap-4"><Stat label="화면" value={p.screens} /><Stat label="실험" value={p.experiments} /></div>
+                  <div className="mt-4 pt-3.5 border-t border-black/[0.06] flex gap-5"><Stat label="화면" value={p.screens} /><Stat label="실험" value={p.experiments} /></div>
                 )}
 
-                <span className="mt-auto pt-4 self-end inline-flex items-center gap-0.5 text-[12px] font-semibold text-navy opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+                <span className="mt-auto pt-4 self-end inline-flex items-center gap-0.5 text-[12px] font-semibold text-navy opacity-35 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-200">
                   열기 <IconArrowUpRight size={14} aria-hidden="true" />
                 </span>
               </button>
@@ -192,8 +192,9 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
 function Stat({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
   return (
     <span className="flex flex-col min-w-0">
-      <span className={`text-[20px] font-bold tracking-[-0.01em] tabular-nums leading-none ${alert && value > 0 ? "text-red-600" : "text-gray-900"}`}>{value}</span>
-      <span className="text-[11px] text-gray-400 mt-1 truncate">{label}</span>
+      {/* 0 은 조용하게. 눈이 '지금 막힌 것'에만 가도록 (0914 정리) */}
+      <span className={`text-[21px] font-bold tracking-[-0.02em] tabular-nums leading-none ${value === 0 ? "text-gray-300" : alert ? "text-red-600" : "text-gray-900"}`}>{value}</span>
+      <span className="text-[11px] text-gray-400 mt-1.5 truncate">{label}</span>
     </span>
   );
 }
