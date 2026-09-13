@@ -188,7 +188,7 @@ export default function ToolShell({
 /** 앱 아이콘(/satellite/<key>_app.svg)이 있는 툴. 그 밖의 제품은 도크에서 기호로 그린다. */
 const SATELLITE_KEYS = new Set(["papillon", "astro", "aether", "probe", "castor", "libra"]);
 
-function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
+export function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
   const [copied, setCopied] = useState(false);
   async function talk() {
     if (!libra) return;
