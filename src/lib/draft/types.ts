@@ -215,7 +215,7 @@ export interface Lead {
   score: number | null;
   angle: string | null; // 공략 포인트
   memo: string | null;
-  source: "manual" | "sheet:현황" | "sheet:신규" | "sheet:후보" | "paste";
+  source: "manual" | "sheet:현황" | "sheet:신규" | "sheet:후보" | "sheet:후보계명" | "paste";
   created_at: string;
   converted_restaurant_id: number | null;
 }

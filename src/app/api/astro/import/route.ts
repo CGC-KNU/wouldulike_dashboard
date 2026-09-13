@@ -22,7 +22,7 @@ import { emptyStoreOps, type BackendRestaurant, type Lead, type StoreOps } from 
 type Tab = keyof typeof SALES_SHEET.tabs;
 
 function isTab(v: string | null): v is Tab {
-  return v === "현황" || v === "신규" || v === "후보" || v === "계약";
+  return v === "현황" || v === "신규" || v === "후보" || v === "후보계명" || v === "계약";
 }
 
 async function restaurants(): Promise<BackendRestaurant[]> {
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   const tab = req.nextUrl.searchParams.get("tab");
-  if (!isTab(tab)) return NextResponse.json({ detail: "tab 은 현황·신규·후보·계약 중 하나입니다." }, { status: 400 });
+  if (!isTab(tab)) return NextResponse.json({ detail: "tab 은 현황·신규·후보·후보계명·계약 중 하나입니다." }, { status: 400 });
 
   const rows = await fetchTab(SALES_SHEET.tabs[tab]);
   if (rows === null) return NextResponse.json({ ok: false, detail: "시트를 읽지 못했습니다. 공개 설정을 확인하세요." }, { status: 502 });
