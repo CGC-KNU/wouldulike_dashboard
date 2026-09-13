@@ -2491,7 +2491,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
  * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "aether" | "probe" | "castor";
+type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "drive";
 
 const PRODUCTS: {
   key: Product;
@@ -2692,17 +2692,14 @@ export default function AdminHomePage() {
     );
   }
 
-  const availableProducts = PRODUCTS.filter((p) =>
-    p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
-  );
-
   /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
   if (!selectedProduct) {
     return (
       <>
         <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
         <Launcher
-          available={availableProducts.filter((p) => p.ready).map((p) => p.key as ToolKey)}
+          available={availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => p.key as ToolKey)}
+          extras={availableProducts.filter((p) => p.ready && p.key === "drive").map((p) => ({ key: p.key, name: p.name, subtitle: p.subtitle, description: p.description }))}
           userName={me.display_name || me.username}
           onSelect={(key) => selectProduct(key as Product)}
           status={satStatus}

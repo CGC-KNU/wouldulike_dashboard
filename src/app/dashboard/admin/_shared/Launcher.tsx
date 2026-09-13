@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconArrowUpRight, IconBrandSlack, IconChevronLeft, IconChevronRight, IconMessageChatbot } from "@tabler/icons-react";
+import { IconArrowUpRight, IconBrandSlack, IconChevronLeft, IconChevronRight, IconFolder, IconMessageChatbot } from "@tabler/icons-react";
 import { TOOLS, TOOL_ORDER, slackUrl, type ToolKey, type ToolMeta } from "@/lib/satellite";
 import { focusRing, periodLocal, agoLabel } from "./ui";
 import type { SatelliteStatus } from "./useSatelliteStatus";
@@ -29,7 +29,10 @@ const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
   external: { label: "슬랙", cls: "text-gray-400" },
 };
 
-export default function Launcher({ available, userName, onSelect, status, onGo }: { available: ToolKey[]; userName: string; onSelect: (key: ToolKey) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
+/** 세틀라이트 툴이 아니면서 런처에서 열어야 하는 제품(예: Drive — 파일 저장소). 카드 대신 하단 스트립. */
+export interface LauncherExtra { key: string; name: string; subtitle?: string; description?: string }
+
+export default function Launcher({ available, extras = [], userName, onSelect, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
   const [pulse, setPulse] = useState<Pulse>({});
 
   useEffect(() => {
@@ -122,6 +125,24 @@ export default function Launcher({ available, userName, onSelect, status, onGo }
           );
         })}
       </Gallery>
+
+      {/* 세틀라이트 밖 제품(Drive 등) — 권한과 무관하게 모두가 여는 것이라 카드가 아니라 줄로. */}
+      {extras.length > 0 && (
+        <ul aria-label="그 밖의 제품" className="mt-5 grid gap-2">
+          {extras.map((e) => (
+            <li key={e.key}>
+              <button type="button" onClick={() => onSelect(e.key)} className={`w-full text-left rounded-[18px] border border-white/70 bg-white/70 backdrop-blur px-5 py-3.5 flex items-center gap-3 hover:border-navy/20 transition-colors ${focusRing}`}>
+                <IconFolder size={20} className="text-navy shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-bold text-gray-900 tracking-[-0.01em]">{e.name}{e.subtitle && <span className="text-[12px] font-medium text-gray-500 ml-1.5">{e.subtitle}</span>}</span>
+                  {e.description && <span className="block text-[12px] text-gray-500 mt-0.5 truncate">{e.description}</span>}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-navy shrink-0">열기 <IconArrowUpRight size={14} aria-hidden="true" /></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Libra — 고르는 툴이 아니라 전체를 받치는 층. 그래서 카드가 아니라 스트립이다. */}
       <section aria-label="Libra" className="mt-6 rounded-[22px] border border-white/70 bg-[linear-gradient(135deg,rgba(5,0,114,0.05),rgba(99,102,224,0.08))] backdrop-blur px-5 py-4 flex flex-wrap items-center gap-4">
