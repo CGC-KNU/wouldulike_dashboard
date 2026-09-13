@@ -54,16 +54,14 @@ jobs:
           COMMIT_URL="https://github.com/$REPO/commit/$SHA"
           LINK="${TARGET_URL:-$LOG_URL}"
 
-          TEXT="$ICON *$TITLE: 세틀라이트 ($ENV_LABEL)*
-• commit: <$COMMIT_URL|$SHORT_SHA>${REF:+ ($REF)}
-• time: $KST
-• 올린 사람: ${ACTOR:-unknown}${LINK:+
-• 열기: $LINK}"
-
-          # 실패는 채널에 알림이 울리게 한다 — 운영이면 더 그렇다
-          if [ "$STATE" != "success" ] && [ "$ENV_LABEL" = "운영" ]; then
-            TEXT="<!here> $TEXT"
-          fi
+          LINE1="$ICON *$TITLE: 세틀라이트 ($ENV_LABEL)*"
+          LINE2="• commit: <$COMMIT_URL|$SHORT_SHA>${REF:+ ($REF)}"
+          LINE3="• time: $KST"
+          LINE4="• 올린 사람: ${ACTOR:-unknown}"
+          if [ -n "$LINK" ]; then LINE5="• 열기: $LINK"; else LINE5=""; fi
+          # 운영 실패는 채널에 알림이 울리게 한다
+          if [ "$STATE" != "success" ] && [ "$ENV_LABEL" = "운영" ]; then LINE1="<!here> $LINE1"; fi
+          TEXT=$(printf '%s\n' "$LINE1" "$LINE2" "$LINE3" "$LINE4" ${LINE5:+"$LINE5"})
 
           RESPONSE=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
