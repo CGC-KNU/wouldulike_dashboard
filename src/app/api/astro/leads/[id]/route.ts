@@ -3,7 +3,7 @@ import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedLeads } from "@/lib/draft/seed";
 import { LEAD_EDITABLE, LEAD_STAGES, type Lead } from "@/lib/draft/types";
 import { requireTool } from "@/lib/draft/guard";
-import { sendSlackNotification } from "@/lib/slack";
+import { notifyAstro } from "@/lib/slack";
 
 const KEY = "astro_leads";
 const VALID_STAGE = new Set<string>([...LEAD_STAGES, "거절"]);
@@ -31,10 +31,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!updated) return NextResponse.json({ detail: "찾을 수 없습니다." }, { status: 404 });
 
   if (before && body.stage && body.stage !== before.stage) {
-    await sendSlackNotification(
-      "SLACK_FEEDBACK_WEBHOOK_URL",
-      `:arrow_right: *${updated.name}* — ${before.stage} → ${updated.stage}`
-    );
+    await notifyAstro(`:arrow_right: *${updated.name}* — ${before.stage} → ${updated.stage}${updated.campus ? ` · ${updated.campus}` : ""}`);
   }
 
   return NextResponse.json({ lead: updated, draft: true });

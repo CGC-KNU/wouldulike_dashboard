@@ -5,7 +5,7 @@ import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { emptyStoreOps, isPaidTier, type BackendRestaurant, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
-import { sendSlackNotification } from "@/lib/slack";
+import { notifyAstro } from "@/lib/slack";
 
 /**
  * 세금계산서 목록 · 월납 일괄 생성.
@@ -84,8 +84,7 @@ export async function POST(req: NextRequest) {
 
   if (created.length) {
     writeDraft(KEY, [...created, ...existing]);
-    await sendSlackNotification(
-      "SLACK_FEEDBACK_WEBHOOK_URL",
+    await notifyAstro(
       `:page_facing_up: *세금계산서 품의 ${created.length}건* — ${label} 월납 · ${actor ?? requested_by ?? ""}\n${created.map((c) => `· ${c.name} ${c.total.toLocaleString()}원`).join("\n")}`
     );
   }

@@ -6,6 +6,7 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { contractRowToOps, fetchTab, normName, parseTable, rowToLead, statusRowToOps } from "@/lib/draft/sheet";
 import { SALES_SHEET } from "@/lib/satellite";
+import { notifyAstro } from "@/lib/slack";
 import { emptyStoreOps, type BackendRestaurant, type Lead, type StoreOps } from "@/lib/draft/types";
 
 /**
@@ -144,6 +145,7 @@ export async function POST(req: NextRequest) {
       applied += 1;
     }
     writeDraft("astro_store_ops", opsList);
+    if (applied) await notifyAstro(`:inbox_tray: *매장 정보 불러오기 — ${tab}* · 반영 ${applied}곳${unmatched?.length ? ` · 매칭 실패 ${unmatched.length}곳` : ""}`);
     return NextResponse.json({ ok: true, tab, applied, unmatched });
   }
 
@@ -171,5 +173,6 @@ export async function POST(req: NextRequest) {
     }
   }
   writeDraft("astro_leads", list);
+  if (created || updated) await notifyAstro(`:inbox_tray: *후보 불러오기 — ${tab}* · 새로 ${created}곳 · 갱신 ${updated}곳`);
   return NextResponse.json({ ok: true, tab, created, updated });
 }
