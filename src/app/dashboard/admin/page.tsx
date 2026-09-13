@@ -2798,7 +2798,9 @@ export default function AdminHomePage() {
           user={{ name: me.display_name || me.username, role: me.department_label }}
           /* 도크는 ToolShell 을 쓰는 Astro·Probe·Castor 안에서만. Papillon·Aether 화면은 그대로 둔다(0913 재민님 복원 존중). */
           dock={showProductPicker ? {
-            tools: availableProducts.filter((p) => p.ready && ["astro", "probe", "castor"].includes(p.key)).map((p) => ({ key: p.key, name: p.name })),
+            /* 0913 민열님: 도크에 Papillon·Aether 도 뜨게. 도크는 '툴 갈아타기'용이라 세틀라이트 다섯이 다 있어야 한다.
+               (Drive 는 세틀라이트 툴이 아니라 런처에서만 연다.) 눌러서 넘어간 화면은 각자의 셸을 그대로 쓴다. */
+            tools: availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => ({ key: p.key, name: p.name })),
             active: selectedProduct,
             onSwitch: (key) => selectProduct(key as Product),
             onHome: backToProducts,

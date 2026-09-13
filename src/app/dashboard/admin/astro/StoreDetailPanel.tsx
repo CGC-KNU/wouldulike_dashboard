@@ -21,6 +21,7 @@ import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton, periodLocal } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
 import CampusPicker from "./CampusPicker";
+import StoreAppSection from "./StoreAppSection";
 
 /**
  * 매장 한 장 — 오른쪽 슬라이드 패널.
@@ -130,7 +131,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       <PanelSection title="계약 (시트 '계약 세부사항' 열)">
         <div className="grid grid-cols-2 gap-3">
           <Cell label="계약일" value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
-          <Field label="플랜" hint="식당 관리에서 바꿉니다"><Input value={row.tier ?? "미지정"} disabled /></Field>
+          <Field label="플랜" hint="위 '식당 관리' 블록에서 바꿉니다"><Input value={row.tier ?? "미지정"} disabled /></Field>
           <Cell label="월 이용료 (VAT 포함)" value={o.monthly_fee} onCommit={(v) => onPatch(id, { monthly_fee: v === null ? null : Number(v.replace(/[^\d]/g, "")) || 0 })} placeholder="33000" type="number" />
           <Field label="청구 시작 월" hint="월 중간 합류면 이번 달/다음 달 중 선택. 비우면 계약 시작월">
             <Select value={o.billing_start_period ?? ""} onChange={(e) => onPatch(id, { billing_start_period: e.target.value || null })}>
@@ -176,6 +177,11 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           <Cell label="홍보물 수령 (포스터/QR/배너)" value={o.kit_note} onCommit={set("kit_note")} placeholder="2장/10장" />
           <Cell label="PIN 번호" value={o.pin} onCommit={set("pin")} placeholder="1234" />
         </div>
+      </PanelSection>
+
+      {/* 0913: 식당 관리에서 하던 일을 여기로. 이 블록만 백엔드 매장 레코드에 저장된다. */}
+      <PanelSection title="식당 관리 (앱에 보이는 정보)">
+        <StoreAppSection id={id} tier={row.tier} isAffiliate={row.is_affiliate !== false} onChanged={() => onPatch(id, {})} />
       </PanelSection>
 
       <PanelSection title="매장 정보 (시트 '매장 현황')">
