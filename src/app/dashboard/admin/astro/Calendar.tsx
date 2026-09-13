@@ -95,15 +95,24 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
   const groupsOf = (list: CalEvent[]) =>
     ORDER.map((k) => ({ kind: k, items: list.filter((e) => e.kind === k) })).filter((g) => g.items.length > 0);
 
-  // 오늘 → 없으면 오늘 이후 첫 날 → 없으면 이 달 마지막 일정일
+  /** 오늘(일정이 있으면) → 오늘 이후 첫 날 → 오늘(이 달이면) → 이 달 마지막 일정일.
+   *  0913: 계약 시작이 전부 1일에 몰려 있어 13일에 열면 '지남'만 보였다. 지난 날을 기본으로 띄우지 않는다. */
   const firstDayWith = useMemo(() => {
     const keys = [...byDay.keys()].sort();
-    return keys.find((d) => d >= today) ?? keys[keys.length - 1] ?? null;
-  }, [byDay, today]);
+    const future = keys.find((d) => d >= today);
+    if (future) return future;
+    if (today.slice(0, 7) === ym) return today;          // 이 달이면 오늘을 띄운다 (비어 있으면 비었다고 말한다)
+    return keys[keys.length - 1] ?? null;
+  }, [byDay, today, ym]);
   const [sel, setSel] = useState<string | null>(null);
   useEffect(() => setSel(null), [ym]);
   const shown = sel ?? firstDayWith;
   const shownList = shown ? byDay.get(shown) ?? [] : [];
+
+  /** 한 종류가 이만큼 넘으면 접는다. 9/1 처럼 계약 시작이 27건 몰리는 날을 위한 것. */
+  const FOLD = 6;
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  useEffect(() => setExpanded({}), [ym]);
 
   const shift = (k: number) => { const d = new Date(y, m - 1 + k, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
   const goToday = () => { const t = todayLocal(); onMonth(t.slice(0, 7)); setSel(t); };
@@ -177,17 +186,36 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
         <p className="text-[12px] font-semibold text-gray-700 mb-2">
           {shown ? `${Number(shown.slice(5, 7))}월 ${Number(shown.slice(8))}일` : "일정"}
           {shown === today && <span className="ml-1.5 text-[11px] font-medium text-navy">오늘</span>}
-          {shown && shown !== today && <span className="ml-1.5 text-[11px] font-medium text-gray-400">{shown > today ? "예정" : "지남"}</span>}
+          {shown && shown !== today && <span className="ml-1.5 text-[11px] font-medium text-gray-400">{shown > today ? "· 예정" : "· 지남"}</span>}
         </p>
         {shownList.length === 0 ? (
-          <p className="text-[13px] text-gray-500">{total === 0 ? "이 달에 잡힌 일정이 없습니다. 후보의 미팅 일시·기한, 매장의 계약 시작일을 적으면 여기에 뜹니다." : "이 날은 비어 있습니다."}</p>
+          <div className="text-[13px] text-gray-500">
+            {total === 0 ? (
+              "이 달에 잡힌 일정이 없습니다. 후보의 미팅 일시·기한, 매장의 계약 시작일을 적으면 여기에 뜹니다."
+            ) : (
+              <>
+                이 날은 비어 있습니다.
+                {(() => {
+                  const keys = [...byDay.keys()].sort();
+                  const next = keys.find((d) => d > (shown ?? today));
+                  const prev = [...keys].reverse().find((d) => d < (shown ?? today));
+                  const jump = next ?? prev;
+                  return jump ? (
+                    <button type="button" onClick={() => setSel(jump)} className={`ml-1 font-semibold text-navy hover:underline rounded ${focusRing}`}>
+                      {next ? "다음" : "지난"} 일정 {Number(jump.slice(5, 7))}/{Number(jump.slice(8))} 보기
+                    </button>
+                  ) : null;
+                })()}
+              </>
+            )}
+          </div>
         ) : (
           <div className="space-y-3 max-h-[22rem] overflow-y-auto pr-1">
             {groupsOf(shownList).map((g) => (
               <div key={g.kind}>
                 <p className="flex items-baseline gap-1.5 mb-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[g.kind].dot}`} /><span className="text-[11px] font-semibold text-gray-600">{KIND[g.kind].label}</span><span className="text-[11px] text-gray-400 tabular-nums">{g.items.length}</span></p>
                 <ul className={`border-l-2 ${KIND[g.kind].bar} pl-2 space-y-0.5`}>
-                  {g.items.map((e, i) => (
+                  {(expanded[`${shown}:${g.kind}`] ? g.items : g.items.slice(0, FOLD)).map((e, i) => (
                     <li key={i} className="flex items-center gap-1">
                       <button type="button" onClick={e.onClick} className={`flex-1 min-w-0 text-left py-1 px-1 rounded hover:bg-black/[0.03] ${focusRing}`}>
                         <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
@@ -203,6 +231,12 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                     </li>
                   ))}
                 </ul>
+                {g.items.length > FOLD && (
+                  <button type="button" onClick={() => setExpanded((x) => ({ ...x, [`${shown}:${g.kind}`]: !x[`${shown}:${g.kind}`] }))}
+                    className={`mt-1 ml-2 text-[11px] font-semibold text-navy hover:underline rounded ${focusRing}`}>
+                    {expanded[`${shown}:${g.kind}`] ? "접기" : `${g.items.length - FOLD}곳 더 보기`}
+                  </button>
+                )}
               </div>
             ))}
           </div>
