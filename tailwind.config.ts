@@ -13,6 +13,8 @@ const config: Config = {
         periwinkle: "#6366E0",
         "dark-card": "#182031",
         gold: "#E0A23C",
+        /* Libra 고유색 — 비서(리브라) UI 팔레트 그대로. 세틀라이트 네이비와 구분되는 자리 표시. */
+        libra: { DEFAULT: "#2BBE9B", deep: "#12836A", soft: "#E9F7F2" },
         background: "#F4F4F9",
       },
       fontFamily: {

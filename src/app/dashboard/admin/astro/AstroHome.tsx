@@ -5,6 +5,7 @@ import { IconBrandSlack, IconExternalLink } from "@tabler/icons-react";
 import { LEAD_STAGES, isPaidTier, type Activity, type Lead, type StoreRow } from "@/lib/draft/types";
 import { SALES_SHEET, TOOLS, slackUrl } from "@/lib/satellite";
 import { Button, Card, Chip, Empty, Kpi, PageHeader, Skeleton, agoLabel, daysSince, type ChipTone, periodLocal } from "../_shared/ui";
+import CampusMark from "./CampusMark";
 
 /**
  * Astro · 홈. Pitchr 대시보드를 따랐다 — 상단 "지금 막힌 것" KPI, 파이프라인 요약(단계별 막대), 최근 기록.
@@ -97,7 +98,7 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
                   const ld = active.filter((l) => (l.campus ?? "경북대") === c);
                   return (
                     <li key={c} className="flex items-center gap-3 py-2 text-[13px]">
-                      <span className="flex-1 font-semibold text-gray-900">{c}</span>
+                      <span className="flex-1 font-semibold text-gray-900 inline-flex items-center gap-1.5"><CampusMark campus={c} size={16} />{c}</span>
                       <span className="text-gray-500">파트너 <span className="font-semibold text-gray-900 tabular-nums">{st.length}</span> (유료 {st.filter((s) => isPaidTier(s.tier)).length})</span>
                       <span className="text-gray-500">후보 <span className="font-semibold text-gray-900 tabular-nums">{ld.length}</span></span>
                     </li>

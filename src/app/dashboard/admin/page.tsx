@@ -24,6 +24,10 @@ import MileageOps from "./probe/MileageOps";
 import Reports from "./probe/Reports";
 import CastorMap from "./castor/CastorMap";
 import CastorExperiments, { type VariantSeed } from "./castor/CastorExperiments";
+import Launcher from "./_shared/Launcher";
+import CommandPalette from "./_shared/CommandPalette";
+import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
+import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -2511,7 +2515,8 @@ const PRODUCTS: {
     name: "Astro",
     subtitle: "영업 툴",
     description: "파트너 매장 · 파트너 후보 · 입금 · 계산서",
-    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs", "restaurants"],
+    /* 0913 민열님: Astro 에서 '식당 관리'(재민님 화면)는 빼고 간다 — 파트너 매장이 그 자리를 대신한다 */
+    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs"],
     ready: true,
   },
   {
@@ -2654,6 +2659,9 @@ export default function AdminHomePage() {
     setActiveTab(tab as Tab);
   }
 
+  // 런처·사이드바 배지가 쓰는 전체 현황. 훅이라 조건부 return 앞에 둔다.
+  const satStatus = useSatelliteStatus(Boolean(me));
+
   if (!me) {
     return (
       <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
@@ -2687,44 +2695,20 @@ export default function AdminHomePage() {
     );
   }
 
-  /* ─── 제품 선택 화면 (대시보드 진입점) ─── */
+  /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
   if (!selectedProduct) {
     return (
-      <div className="px-4 pt-4 pb-20 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-5 px-1">
-          <div>
-            <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Satellite</p>
-            <h1 className="text-lg font-bold text-navy leading-tight">사용할 도구를 선택하세요</h1>
-          </div>
-          <span className="text-[11px] text-gray-400">{me.display_name || me.username}</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {availableProducts.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => p.ready && selectProduct(p.key)}
-              disabled={!p.ready}
-              className={`text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4 transition-all ${
-                p.ready ? "hover:border-periwinkle/40 hover:shadow-md" : "opacity-50 cursor-not-allowed"
-              }`}
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-bold text-gray-800">{p.name}</span>
-                <span className="text-[10px] font-semibold text-periwinkle bg-periwinkle/10 rounded-full px-2 py-0.5">
-                  {p.subtitle}
-                </span>
-                {!p.ready && (
-                  <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
-                    준비 중
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">{p.description}</p>
-            </button>
-          ))}
-        </div>
-      </div>
+      <>
+        <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
+        <Launcher
+          available={availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => p.key as ToolKey)}
+          extras={availableProducts.filter((p) => p.ready && p.key === "drive").map((p) => ({ key: p.key, name: p.name, subtitle: p.subtitle, description: p.description }))}
+          userName={me.display_name || me.username}
+          onSelect={(key) => selectProduct(key as Product)}
+          status={satStatus}
+          onGo={go}
+        />
+      </>
     );
   }
 
@@ -2809,7 +2793,16 @@ export default function AdminHomePage() {
           activeKey={activeTab}
           onSelect={(key) => setActiveTab(key as Tab)}
           onBack={showProductPicker ? backToProducts : undefined}
+          badges={navBadges(satStatus)}
           user={{ name: me.display_name || me.username, role: me.department_label }}
+          /* 도크는 ToolShell 을 쓰는 Astro·Probe·Castor 안에서만. Papillon·Aether 화면은 그대로 둔다(0913 재민님 복원 존중). */
+          dock={showProductPicker ? {
+            tools: availableProducts.filter((p) => p.ready && ["astro", "probe", "castor"].includes(p.key)).map((p) => ({ key: p.key, name: p.name })),
+            active: selectedProduct,
+            onSwitch: (key) => selectProduct(key as Product),
+            onHome: backToProducts,
+            libra: { channelUrl: slackUrl(TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra), channel: (TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra).slack.channel, context: `${productMeta.name} · ${productTabs.find((t) => t.key === activeTab)?.label ?? ""}` },
+          } : undefined}
         >
           {/* Astro: 영업 */}
           {activeTab === "restaurants" && <RestaurantsTab />}

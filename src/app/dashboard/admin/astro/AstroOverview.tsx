@@ -6,6 +6,7 @@ import { CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, type Campus, typ
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, Segmented, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
 import StoreDetailPanel from "./StoreDetailPanel";
 import CampusPicker, { allCampuses } from "./CampusPicker";
+import CampusMark from "./CampusMark";
 
 /**
  * Astro · 매장 현황.
@@ -133,7 +134,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
         }
       >
         <div className="flex flex-wrap items-center gap-3">
-          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}` })), { key: "all", label: "전체" }]} />
+          <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}`, icon: <CampusMark campus={c} size={15} /> })), { key: "all", label: "전체" }]} />
           <div className="relative flex-1 min-w-[10rem] max-w-xs ml-auto">
             <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장명 또는 ID" aria-label="매장 검색" className="pl-8" />
@@ -171,7 +172,8 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                 return (
                   <tr key={r.restaurant_id} className={rowClickable} onClick={() => setOpenId(r.restaurant_id)}>
                     <Td>
-                      <span className="font-semibold text-gray-900">{r.name}</span>
+                      {/* 캠퍼스를 '전체'로 볼 때는 어느 캠퍼스인지가 안 보인다 — 이름 앞에 표식을 둔다 */}
+                      <span className="font-semibold text-gray-900 inline-flex items-center gap-1.5">{campus === "all" && <CampusMark campus={campusOf(r)} size={15} />}{r.name}</span>
                       <span className="block text-[11px] text-gray-400">{[o?.map_name && o.map_name !== r.name ? `지도: ${o.map_name}` : null, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
                     </Td>
                     <Td>{r.tier ? <Chip tone={PLAN_TONE[r.tier] ?? "gray"}>{r.tier}</Chip> : <span className="text-gray-400">미지정</span>}</Td>
