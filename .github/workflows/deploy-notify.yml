@@ -1,0 +1,75 @@
+# 배포 알림 — 애딧 콘솔이 하던 것과 같은 모양으로 슬랙에 띄운다 (민열님 0913).
+#
+#   성공 → #sat-dev   (C0C1K8G5ZMF)
+#   실패 → #code-119  (C0BPSQGMLUU)
+#
+# Vercel 이 배포할 때마다 GitHub 에 `deployment_status` 이벤트를 보낸다. 그 이벤트를 받아 슬랙에 올린다.
+# 따로 켜야 하는 것: 저장소 Secrets 에 **SLACK_BOT_TOKEN**(xoxb-…, `chat:write` 권한) 을 넣고,
+# 두 채널에 그 봇을 초대해 두면 된다. 토큰이 없으면 이 워크플로는 조용히 건너뛴다.
+name: 배포 알림
+
+on:
+  deployment_status:
+
+jobs:
+  notify:
+    # 진행 중(queued/in_progress) 은 알리지 않는다 — 결과만 올린다
+    if: github.event.deployment_status.state != 'pending' && github.event.deployment_status.state != 'queued' && github.event.deployment_status.state != 'in_progress'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 슬랙에 올리기
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          STATE: ${{ github.event.deployment_status.state }}
+          ENVIRONMENT: ${{ github.event.deployment_status.environment }}
+          TARGET_URL: ${{ github.event.deployment_status.environment_url }}
+          LOG_URL: ${{ github.event.deployment_status.log_url }}
+          SHA: ${{ github.event.deployment.sha }}
+          REF: ${{ github.event.deployment.ref }}
+          ACTOR: ${{ github.event.deployment.creator.login }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$SLACK_BOT_TOKEN" ]; then
+            echo "SLACK_BOT_TOKEN 이 없어 건너뜁니다. 저장소 Secrets 에 봇 토큰을 넣으세요."
+            exit 0
+          fi
+
+          SUCCESS_CHANNEL="C0C1K8G5ZMF"   # #sat-dev
+          FAILURE_CHANNEL="C0BPSQGMLUU"   # #code-119
+
+          if [ "$STATE" = "success" ]; then
+            CHANNEL="$SUCCESS_CHANNEL"; ICON="✅"; TITLE="배포 성공"
+          else
+            CHANNEL="$FAILURE_CHANNEL";  ICON="🚨"; TITLE="배포 실패 ($STATE)"
+          fi
+
+          # 운영/프리뷰를 제목에서 구분한다 — 프리뷰 알림이 운영처럼 보이면 안 된다
+          case "$ENVIRONMENT" in
+            Production|production) ENV_LABEL="운영" ;;
+            *) ENV_LABEL="프리뷰" ;;
+          esac
+
+          KST=$(TZ=Asia/Seoul date "+%Y-%m-%d %H:%M:%S KST")
+          SHORT_SHA=$(echo "$SHA" | cut -c1-7)
+          COMMIT_URL="https://github.com/$REPO/commit/$SHA"
+          LINK="${TARGET_URL:-$LOG_URL}"
+
+          TEXT="$ICON *$TITLE: 세틀라이트 ($ENV_LABEL)*
+• commit: <$COMMIT_URL|$SHORT_SHA>${REF:+ ($REF)}
+• time: $KST
+• 올린 사람: ${ACTOR:-unknown}${LINK:+
+• 열기: $LINK}"
+
+          # 실패는 채널에 알림이 울리게 한다 — 운영이면 더 그렇다
+          if [ "$STATE" != "success" ] && [ "$ENV_LABEL" = "운영" ]; then
+            TEXT="<!here> $TEXT"
+          fi
+
+          RESPONSE=$(curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$(jq -n --arg c "$CHANNEL" --arg t "$TEXT" '{channel:$c, text:$t, unfurl_links:false}')")
+
+          echo "$RESPONSE" | jq -r '"slack ok=\(.ok) error=\(.error // "-")"'
+          # 알림이 실패해도 배포 자체를 깨뜨리지는 않는다
+          [ "$(echo "$RESPONSE" | jq -r .ok)" = "true" ] || echo "::warning::슬랙 전송 실패 — 봇이 채널에 초대돼 있는지, 토큰 권한(chat:write)이 있는지 확인하세요."
