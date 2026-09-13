@@ -309,6 +309,10 @@ function IssuerPanel({ issuer, isAdmin, onClose, onSaved }: { issuer: IssuerSett
           <Field label="상호"><Input value={f.name} onChange={set("name")} /></Field>
           <Field label="사업자등록번호"><Input value={f.biz_no} onChange={set("biz_no")} /></Field>
           <Field label="대표자"><Input value={f.ceo} onChange={set("ceo")} /></Field>
+          {/* 계약 완료 안내 문자에 들어가는 계좌. 코드에 박지 않고 여기서만 관리한다(0914). */}
+          <Field label="입금 은행" hint="계약 완료 안내 문자에 들어갑니다"><Input value={f.bank_name ?? ""} onChange={set("bank_name")} placeholder="토스뱅크" /></Field>
+          <Field label="입금 계좌번호"><Input value={f.bank_account ?? ""} onChange={set("bank_account")} placeholder="1002-0000-0000" inputMode="numeric" /></Field>
+          <Field label="예금주"><Input value={f.bank_holder ?? ""} onChange={set("bank_holder")} /></Field>
           <Field label="담당 이메일"><Input value={f.email} onChange={set("email")} type="email" /></Field>
         </div>
         <div className="mt-3"><Field label="주소"><Input value={f.address} onChange={set("address")} /></Field></div>

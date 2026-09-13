@@ -3,7 +3,8 @@
  *
  * 규칙 — 리포트와 같다. 지어낸 숫자·약속을 넣지 않는다.
  *  · 금액·월·날짜는 **넘겨받은 값만** 쓴다. 없으면 그 문장을 뺀다.
- *  · 계좌번호·사업자번호는 넣지 않는다(문자에 남고 돌아다닌다). "안내드린 계좌"까지만.
+ *  · 사업자번호는 넣지 않는다. **입금 계좌는 계약 완료 안내에만** 넣는다 — 팀이 실제로 그렇게 보내고(0914 민열님),
+ *    값은 코드가 아니라 발행 주체 설정(IssuerSettings)에서 온다. 넣을 값이 없으면 그 줄이 빠진다.
  *  · 보장·단정("반드시" "매출이 늘어납니다")은 쓰지 않는다.
  *  · 문안은 초안이다. 사람이 고쳐서 보낸다.
  */
@@ -11,7 +12,7 @@
 export type MsgKind =
   | "payment_notice" | "payment_due" | "payment_overdue" | "payment_thanks"
   | "meeting_confirm" | "meeting_remind" | "meeting_after"
-  | "contract_start" | "blank";
+  | "contract_start" | "onboarding" | "blank";
 
 export interface MsgContext {
   /** 매장/후보 이름 */
@@ -26,6 +27,15 @@ export interface MsgContext {
   meetingAt?: string | null;  // "9/15(월) 14시"
   nextAction?: string | null;
   sender?: string;            // 보내는 사람 이름
+  /* ── 계약 완료 안내에만 쓰는 값들 (없으면 그 줄이 빠진다) ── */
+  plan?: string | null;         // BOOST · CONTENT
+  couponBasic?: string | null;  // 기본 쿠폰
+  couponLimited?: string | null;// 한정 쿠폰
+  stampCount?: string | null;   // "3 / 5 / 7 / 10"
+  stampReward?: string | null;  // 단계별 혜택
+  bank?: string | null;         // "토스뱅크 1002-…" — 발행 주체 설정 값
+  bankHolder?: string | null;   // 예금주
+  semester?: string | null;     // "26-2학기"
 }
 
 export interface MsgTemplate { kind: MsgKind; label: string; group: "입금" | "미팅" | "계약" | "기타"; text: string }
@@ -45,6 +55,12 @@ export function josa(word: string, pair: "이/가" | "을/를" | "은/는" | "�
 }
 
 const won = (n: number) => `${n.toLocaleString()}원`;
+/** 시트에는 '없음'을 x·-·없 으로도 적는다. 그대로 내보내면 "스탬프: x" 가 점주에게 간다. */
+const real = (v?: string | null): string | null => {
+  const t = (v ?? "").trim();
+  if (!t || /^(x|X|×|-|없|없음|n\/a|na)$/i.test(t)) return null;
+  return t;
+};
 const monthOf = (p?: string | null) => (p ? `${Number(p.slice(5))}월` : null);
 
 /** 상황별 문안. 값이 없는 문장은 통째로 빠진다. */
@@ -88,6 +104,31 @@ export function templates(c: MsgContext): MsgTemplate[] {
     {
       kind: "contract_start", label: "파트너 시작 안내", group: "계약",
       text: `${hi}\n\n오늘부터 ${c.name}${josa(c.name, "이/가")} 우주라이크 앱에 파트너 매장으로 올라갑니다.\n포스터와 QR 스티커는 계산대처럼 학생들 눈에 띄는 자리에 두시면 좋습니다. 혜택이나 메뉴가 바뀌면 언제든 말씀해 주세요.${sign}`,
+    },
+    {
+      kind: "onboarding", label: "계약 완료 · 운영 시작 전 안내", group: "계약",
+      text: [
+        `${hi}`,
+        "",
+        line(`${c.semester ?? "이번 학기"} 제휴 운영 시작 전`, "최종 혜택 내용 확인과 이용료 안내드립니다."),
+        "",
+        "현재 등록 예정인 혜택은 아래와 같습니다.",
+        real(c.couponBasic) ? `· 기본 쿠폰: ${real(c.couponBasic)}` : null,
+        `· 한정 쿠폰: ${real(c.couponLimited) ?? "없음"}`,
+        real(c.stampCount) ? `· 스탬프: ${real(c.stampCount)}` : null,
+        real(c.stampReward) ? `· 스탬프 혜택: ${real(c.stampReward)}` : null,
+        "",
+        "위 내용으로 최종 등록해도 괜찮은지 확인 부탁드립니다.",
+        "",
+        c.plan || c.fee ? line("이번 학기에는", c.plan ? `${c.plan} 플랜` : null, c.fee ? `/ 월 ${won(c.fee)}(VAT 포함)` : null, "으로 운영됩니다.") : null,
+        c.bank ? "" : null,
+        c.bank ? `입금 계좌\n${c.bank}${c.bankHolder ? `\n예금주: ${c.bankHolder}` : ""}` : null,
+        "",
+        m && c.fee ? `${m} 이용료 ${won(c.fee)} 입금 부탁드립니다.` : null,
+        "안내문·견적서·세금계산서도 같이 보내드립니다.",
+        "",
+        "감사합니다!",
+      ].filter((l) => l !== null && l !== undefined).join("\n").replace(/\n{3,}/g, "\n\n") + sign,
     },
     { kind: "blank", label: "직접 쓰기", group: "기타", text: `${hi}\n\n${sign}` },
   ];
