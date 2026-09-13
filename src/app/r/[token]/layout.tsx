@@ -7,5 +7,5 @@ export const metadata: Metadata = { metadataBase: new URL(process.env.NEXT_PUBLI
 export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 5, userScalable: true };
 
 export default function ReportLayout({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#F5F5F7] text-gray-900">{children}</div>;
+  return <div className="min-h-screen bg-[#F5F5F7] print:bg-white print:min-h-0 text-gray-900">{children}</div>;
 }

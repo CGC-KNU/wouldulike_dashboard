@@ -5,6 +5,7 @@ import { readDraft } from "@/lib/draft/store";
 import { METRIC_LABEL, TILE_KEYS, approx, comparable } from "@/lib/draft/report";
 import type { ReportMetric, StoreReport } from "@/lib/draft/types";
 import ViewBeacon from "./ViewBeacon";
+import DownloadBar from "./DownloadBar";
 
 /**
  * 점주가 카톡으로 받아 여는 **매장 리포트** — 로그인 없음.
@@ -76,8 +77,10 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   const appVisible = s.app && (s.app.coupon_redeemed + s.app.stamp_earned + s.app.revisit + s.app.loyal_total > 0);
   const posted = s.post.posted_at ? fmtD(s.post.posted_at) : null;
 
+  const fname = `${s.store.name}_매장리포트_${s.as_of.slice(0, 10).replace(/-/g, "")}`;
+
   return (
-    <Frame preview={preview}>
+    <Frame preview={preview} download={preview ? fname : undefined}>
       {!preview && r.token && <ViewBeacon token={r.token} />}
 
       <header className="mb-4">
@@ -169,16 +172,19 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
   );
 }
 
-function Frame({ children, preview }: { children: React.ReactNode; preview?: boolean }) {
+function Frame({ children, preview, download }: { children: React.ReactNode; preview?: boolean; download?: string }) {
   return (
     <>
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-black/[0.06]">
+      {/* 인쇄(PDF 저장): 상단 바·버튼줄 숨김, 배경색 유지, 한 열 그대로 */}
+      <style>{`@media print{html,body{background:#fff!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}main{padding-top:0!important;padding-bottom:0!important}section{break-inside:avoid}}@page{size:A4;margin:12mm}`}</style>
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-black/[0.06] print:hidden">
         <div className="max-w-[520px] mx-auto px-4 h-12 flex items-center gap-2">
           <span role="img" aria-label="우주라이크" className="block h-[15px] w-[86px] bg-navy" style={{ WebkitMaskImage: "url(/brand/wordmark.png)", maskImage: "url(/brand/wordmark.png)", WebkitMaskSize: "contain", maskSize: "contain", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat" }} />
           <span className="text-[13px] text-gray-500">매장 리포트</span>
           {preview && <span className="ml-auto text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">미리보기 · 아직 발행 전</span>}
         </div>
       </div>
+      {download && <DownloadBar filename={download} />}
       <main className="max-w-[520px] mx-auto px-4 pt-5 pb-12">{children}</main>
     </>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconBrandInstagram, IconCheck, IconCopy, IconExternalLink, IconFileDescription, IconLink, IconRefresh, IconTrash } from "@tabler/icons-react";
+import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconLink, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { METRIC_LABEL, checkText, reportAllText } from "@/lib/draft/report";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
@@ -249,6 +249,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           {(r.status === "LINKED" || r.status === "SENT") && url && <Button variant={r.status === "SENT" ? "primary" : "secondary"} icon={<IconCopy />} onClick={() => copy(url)}>{copied ? "복사했습니다" : "링크 복사"}</Button>}
           {r.status === "LINKED" && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>카톡으로 보냈음</Button>}
           <a href={r.token && (r.status === "LINKED" || r.status === "SENT") ? `/r/${r.token}` : `/r/preview-${r.id}`} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>{r.token ? "열어보기" : "미리보기"}</Button></a>
+          <a href={`/r/preview-${r.id}?print=1`} target="_blank" rel="noreferrer" title="미리보기에서 PDF · HTML 파일로 내려받기"><Button icon={<IconDownload />}>파일로</Button></a>
           {(r.status === "LINKED" || r.status === "SENT") && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
           <span className="ml-auto text-[12px] text-gray-400">{r.token ? `열람 ${r.views.count}회${r.views.last_at ? ` · ${agoLabel(r.views.last_at)}` : ""}` : r.approved_by ? `${r.approved_by} 승인` : `${r.created_by} 작성`}</span>
         </>
