@@ -33,6 +33,8 @@ export default function AdminHeader() {
   return (
     <header className="bg-[#0A0676] text-white px-4 py-3 flex items-center justify-between">
       <div className="flex items-center gap-2 min-w-0">
+        {/* 세틀라이트 마크 — 사내툴 묶음의 얼굴. 탭 아이콘(src/app/icon.svg)과 같은 도형이다. */}
+        <img src="/satellite/satellite_app.svg" alt="" width={24} height={24} className="w-6 h-6 rounded-[7px] shrink-0 ring-1 ring-white/25" aria-hidden="true" />
         <span className="text-base font-bold tracking-tight shrink-0">우주라이크</span>
         {me ? (
           <>

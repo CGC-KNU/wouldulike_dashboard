@@ -74,7 +74,11 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
     <div className="max-w-5xl mx-auto px-5 pt-10 pb-16">
       <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-[13px] font-semibold text-navy tracking-wide">Satellite</p>
+          <p className="text-[13px] font-semibold text-navy tracking-wide inline-flex items-center gap-1.5">
+            {/* 세틀라이트 마크 — 상단 바·탭 아이콘과 같은 도형 */}
+            <img src="/satellite/satellite_app.svg" alt="" width={18} height={18} className="w-[18px] h-[18px] rounded-[5px]" aria-hidden="true" />
+            Satellite
+          </p>
           <h1 className="text-[34px] md:text-[40px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.1] mt-1 text-balance">
             {greet}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{userName}</span>님.
           </h1>
