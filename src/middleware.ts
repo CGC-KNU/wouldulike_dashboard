@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/auth/", "/api/auth/"];
+// 점주가 로그인 없이 여는 리포트 링크 — 접두어가 아니라 **정확한 모양**만 연다 (40자 hex, 또는 담당자 미리보기는 쿠키가 있어야 하므로 여기 없음).
+const PUBLIC_EXACT = [/^\/r\/[0-9a-f]{40}$/, /^\/api\/r\/[0-9a-f]{40}\/view$/];
 
 interface DashboardJWT {
   is_admin?: boolean;
@@ -21,11 +23,16 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // 공개 경로는 통과
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || PUBLIC_EXACT.some((re) => re.test(pathname))) {
     return NextResponse.next();
   }
 
   const token = req.cookies.get("access_token")?.value;
+
+  // Castor 파서(CI)는 쿠키가 없다. 이 한 경로만 라우트 안에서 X-Castor-Token 으로 판정한다.
+  if (!token && pathname === "/api/castor/graph" && req.method === "POST" && req.headers.has("x-castor-token")) {
+    return NextResponse.next();
+  }
 
   if (!token) {
     // 앱 → 웹 자동로그인: ?token= 파라미터 있으면 처리 페이지로

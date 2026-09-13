@@ -2,11 +2,31 @@
 
 import { useEffect, useState, useCallback } from "react";
 import PapillonShell from "./satellite/PapillonShell";
-import ProductShell from "./ProductShell";
+import ToolShell from "./_shared/ToolShell";
+import Launcher from "./_shared/Launcher";
+import CommandPalette from "./_shared/CommandPalette";
+import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
+import AstroHome from "./astro/AstroHome";
+import CalendarPage from "./astro/CalendarPage";
+import ProbeHome from "./probe/ProbeHome";
+import AppMetrics from "./probe/AppMetrics";
+import CastorHome from "./castor/CastorHome";
+import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
 import ContentTab from "./ContentTab";
 import DriveScreen from "./DriveScreen";
 import ImageUploader from "@/components/ImageUploader";
 import { BenefitCatalogSection, BenefitGlance, StampRuleSection } from "@/components/CouponCatalog";
+import AstroOverview from "./astro/AstroOverview";
+import LeadPipeline from "./astro/LeadPipeline";
+import BillingBoard from "./astro/BillingBoard";
+import AstroDocs from "./astro/AstroDocs";
+import TaxInvoices from "./astro/TaxInvoices";
+import ProbeOverview from "./probe/ProbeOverview";
+import DataQuality from "./probe/DataQuality";
+import MileageOps from "./probe/MileageOps";
+import Reports from "./probe/Reports";
+import CastorMap from "./castor/CastorMap";
+import CastorExperiments, { type VariantSeed } from "./castor/CastorExperiments";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -23,7 +43,31 @@ interface Stats {
 }
 type SortKey = "name" | "tier" | "id";
 type SortDir = "asc" | "desc";
-type Tab = "restaurants" | "content" | "notifications" | "satellite" | "settings";
+type Tab =
+  | "restaurants"
+  | "content"
+  | "notifications"
+  | "satellite"
+  | "settings"
+  // Astro(영업) 확장 — 2026-08-07 요구사항 3종을 담는 화면들
+  | "astro-home"
+  | "astro-calendar"
+  | "astro-ops"
+  | "astro-leads"
+  | "astro-billing"
+  | "astro-docs"
+  | "astro-tax"
+  // Probe(지표·데이터)
+  | "probe-home"
+  | "probe-metrics"
+  | "probe-app"
+  | "probe-quality"
+  | "probe-reports"
+  | "probe-mileage"
+  // Castor(앱 구조·여정)
+  | "castor-home"
+  | "castor-map"
+  | "castor-experiments";
 
 type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 type SatelliteRole = "LEAD" | "MEMBER";
@@ -2412,6 +2456,29 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "notifications", label: "마케팅", icon: "✉", allow: (me) => me.permissions.can_marketing },
   { key: "satellite", label: "세틀라이트", icon: "▦", allow: (me) => me.permissions.can_satellite },
   { key: "settings", label: "관리자 설정", icon: "⚙", allow: (me) => me.is_superadmin },
+
+  // ── Astro 확장. 식당 관리와 같은 권한을 쓴다 — 영업이 보는 매장 정보의 다른 레이어일 뿐이다.
+  { key: "astro-home", label: "홈", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-calendar", label: "일정", icon: "▦", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-ops", label: "파트너 매장", icon: "◉", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-leads", label: "파트너 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-tax", label: "세금계산서", icon: "▥", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-docs", label: "자료실", icon: "▤", allow: (me) => me.permissions.can_restaurants },
+
+  // ── Probe. 입금·계약 상태까지 다루므로 식당 관리와 같은 권한이다.
+  //    마케팅에게 지표를 열려면 입금 규칙을 뺀 별도 탭으로 — 여기서 조용히 권한을 넓히지 않는다.
+  { key: "probe-home", label: "홈", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-metrics", label: "매장 지표", icon: "▲", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-app", label: "앱 지표", icon: "▤", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-reports", label: "매장 리포트", icon: "▤", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-mileage", label: "마일리지 추첨", icon: "◍", allow: (me) => me.permissions.can_restaurants },
+
+  // ── Castor. 앱 구조를 바꾸는 제안을 만드는 곳이라 관리자만 본다.
+  { key: "castor-home", label: "홈", icon: "⌂", allow: (me) => me.is_admin || me.is_superadmin },
+  { key: "castor-map", label: "화면 지도", icon: "◫", allow: (me) => me.is_admin || me.is_superadmin },
+  { key: "castor-experiments", label: "A/B 후보", icon: "⇄", allow: (me) => me.is_admin || me.is_superadmin },
 ];
 
 /**
@@ -2424,7 +2491,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
  * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "aether" | "probe" | "drive";
+type Product = "papillon" | "astro" | "aether" | "probe" | "castor";
 
 const PRODUCTS: {
   key: Product;
@@ -2446,8 +2513,8 @@ const PRODUCTS: {
     key: "astro",
     name: "Astro",
     subtitle: "영업 툴",
-    description: "식당 관리 · 쿠폰 · 계약 현황",
-    tabs: ["restaurants"],
+    description: "파트너 매장 · 파트너 후보 · 입금 · 계산서",
+    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs", "restaurants"],
     ready: true,
   },
   {
@@ -2462,9 +2529,17 @@ const PRODUCTS: {
     key: "probe",
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
-    description: "채널/캠페인 지표 대시보드",
-    tabs: [],
-    ready: false,
+    description: "매장 리포트 · 마일리지 추첨 · 매장·앱 지표 · 정합성",
+    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-metrics", "probe-app", "probe-quality"],
+    ready: true,
+  },
+  {
+    key: "castor",
+    name: "Castor",
+    subtitle: "앱 구조 · 여정",
+    description: "화면 지도 · 블록 배치 · A/B 후보",
+    tabs: ["castor-home", "castor-map", "castor-experiments"],
+    ready: true,
   },
   {
     key: "drive",
@@ -2499,6 +2574,10 @@ export default function AdminHomePage() {
   const [me, setMe] = useState<AdminMe | null>(null);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  // 전체 현황 — 런처 카드·사이드바 배지가 같은 숫자를 본다
+  const satStatus = useSatelliteStatus(Boolean(me));
+  // Castor 화면 지도에서 블록 순서를 바꾼 뒤 "A/B 후보로" 를 누르면 여기에 담겨 A/B 탭으로 넘어간다
+  const [castorSeed, setCastorSeed] = useState<VariantSeed | null>(null);
 
   useEffect(() => {
     fetch("/api/dashboard/admin/me")
@@ -2529,7 +2608,9 @@ export default function AdminHomePage() {
   useEffect(() => {
     if (!me || selectedProduct) return;
     const allowed = TABS.filter((t) => t.allow(me));
-    const wanted = new URL(window.location.href).searchParams.get("tab") as Tab | null;
+    const rawTab = new URL(window.location.href).searchParams.get("tab");
+    // 0913: 홍보 인사이트가 매장 리포트로 합쳐졌다 — 옛 링크(슬랙 알림 등)는 그대로 살려 둔다
+    const wanted = (rawTab === "probe-insights" ? "probe-reports" : rawTab) as Tab | null;
 
     if (wanted && allowed.some((t) => t.key === wanted)) {
       const owner = PRODUCTS.find((p) => p.tabs.includes(wanted));
@@ -2540,8 +2621,8 @@ export default function AdminHomePage() {
       }
     }
 
-    const realProducts = PRODUCTS.filter(
-      (p) => p.key !== "probe" && p.tabs.some((t) => allowed.some((a) => a.key === t))
+    const realProducts = PRODUCTS.filter((p) =>
+      p.tabs.some((t) => allowed.some((a) => a.key === t))
     );
     if (realProducts.length === 1) {
       const p = realProducts[0];
@@ -2562,6 +2643,20 @@ export default function AdminHomePage() {
   function backToProducts() {
     setSelectedProduct(null);
     setActiveTab(null);
+  }
+
+  /** 다른 제품의 탭으로도 뛴다 — 매장 상세의 'Papillon 열기', 정합성의 '고치러 가기' 등. */
+  function go(target: string) {
+    // "astro-ops?open=256" 처럼 항목까지 지정할 수 있다 — 캘린더·알림에서 바로 연다
+    const [tab, query] = target.split("?");
+    const owner = PRODUCTS.find((p) => p.tabs.includes(tab as Tab));
+    if (owner) setSelectedProduct(owner.key);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    url.searchParams.delete("open");
+    if (query) for (const [k, v] of new URLSearchParams(query)) url.searchParams.set(k, v);
+    window.history.replaceState(null, "", url.toString());
+    setActiveTab(tab as Tab);
   }
 
   if (!me) {
@@ -2597,59 +2692,44 @@ export default function AdminHomePage() {
     );
   }
 
-  /* ─── 제품 선택 화면 (대시보드 진입점) ─── */
+  const availableProducts = PRODUCTS.filter((p) =>
+    p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
+  );
+
+  /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
   if (!selectedProduct) {
     return (
-      <div className="px-4 pt-4 pb-20 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-5 px-1">
-          <div>
-            <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest">Satellite</p>
-            <h1 className="text-lg font-bold text-navy leading-tight">사용할 도구를 선택하세요</h1>
-          </div>
-          <span className="text-[11px] text-gray-400">{me.display_name || me.username}</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {availableProducts.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => p.ready && selectProduct(p.key)}
-              disabled={!p.ready}
-              className={`text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4 transition-all ${
-                p.ready ? "hover:border-periwinkle/40 hover:shadow-md" : "opacity-50 cursor-not-allowed"
-              }`}
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-bold text-gray-800">{p.name}</span>
-                <span className="text-[10px] font-semibold text-periwinkle bg-periwinkle/10 rounded-full px-2 py-0.5">
-                  {p.subtitle}
-                </span>
-                {!p.ready && (
-                  <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
-                    준비 중
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">{p.description}</p>
-            </button>
-          ))}
-        </div>
-      </div>
+      <>
+        <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
+        <Launcher
+          available={availableProducts.filter((p) => p.ready).map((p) => p.key as ToolKey)}
+          userName={me.display_name || me.username}
+          onSelect={(key) => selectProduct(key as Product)}
+          status={satStatus}
+          onGo={go}
+        />
+      </>
     );
   }
 
   /* ─── 제품 내부 화면 ─── */
   const productMeta = PRODUCTS.find((p) => p.key === selectedProduct)!;
-  const productTabs = TABS.filter((t) => productMeta.tabs.includes(t.key) && t.allow(me));
+  // 입금 체크·활동 기록에 "누가" 를 남기기 위한 이름. 시트가 못 남기던 값이다.
+  const actorName = me.display_name || me.username || "unknown";
+  // 사이드바 순서는 PRODUCTS 선언 순서를 따른다 — TABS 배열 순서가 아니라. (Astro 첫 칸 = 영업 현황)
+  const productTabs = productMeta.tabs
+    .map((k) => TABS.find((t) => t.key === k))
+    .filter((t): t is (typeof TABS)[number] => !!t && t.allow(me));
   const showProductPicker = availableProducts.length > 1;
 
   return (
     <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-3 px-1">
+      <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
+      {selectedProduct === "papillon" && <div className="flex items-center justify-between mb-3 px-1">
         {showProductPicker ? (
           <button
             onClick={backToProducts}
-            className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1"
+            className="text-[12px] font-semibold text-gray-500 hover:text-navy flex items-center gap-1 transition-colors"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -2672,44 +2752,68 @@ export default function AdminHomePage() {
             </span>
           )}
         </span>
-      </div>
+      </div>}
 
-      {showProductPicker && (
-        <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest mb-1 px-1">
-          {productMeta.name} · {productMeta.subtitle}
-        </p>
-      )}
-
-      {selectedProduct !== "papillon" && <div className="mb-5" />}
-
-      {/* 탭 컨텐츠 — Papillon(마케팅 툴)은 자체 사이드바 셸(PapillonShell)을 그대로 쓰고,
-          Aether·Astro는 그 사이드바 셸 패턴을 공용화한 ProductShell로 감싼다(§0-30). */}
+      {/* 탭 컨텐츠 — Papillon(마케팅 툴)은 자체 셸(PapillonShell)을 그대로 쓰고,
+          나머지(Astro·Probe·Castor·Aether)는 애딧 Pitchr 문법의 ToolShell 로 감싼다. */}
       {activeTab === "satellite" && <PapillonShell />}
 
-      {activeTab && activeTab !== "satellite" && (selectedProduct === "aether" || selectedProduct === "astro") && (
-        <ProductShell
-          navItems={productTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
+      {activeTab && activeTab !== "satellite" && selectedProduct !== "papillon" && (
+        <ToolShell
+          product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
+          navItems={productTabs.map((t) => ({ key: t.key, label: t.label }))}
           activeKey={activeTab}
           onSelect={(key) => setActiveTab(key as Tab)}
-          footer={
-            <div>
-              <p className="text-xs font-bold text-white">{me.display_name || me.username}</p>
-              <p className="text-[10px] text-white/50 mt-0.5">{me.department_label}</p>
-            </div>
-          }
+          onBack={showProductPicker ? backToProducts : undefined}
+          user={{ name: me.display_name || me.username, role: me.department_label }}
+          badges={navBadges(satStatus)}
+          dock={showProductPicker ? {
+            tools: availableProducts.filter((p) => p.ready).map((p) => ({ key: p.key, name: p.name })),
+            active: selectedProduct,
+            onSwitch: (key) => selectProduct(key as Product),
+            onHome: backToProducts,
+            libra: { channelUrl: slackUrl(TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra), channel: (TOOLS[selectedProduct as ToolKey] ?? TOOLS.libra).slack.channel, context: `${productMeta.name} · ${productTabs.find((t) => t.key === activeTab)?.label ?? ""}` },
+          } : undefined}
         >
-          {activeTab === "restaurants" && <RestaurantsTab />}
+          {/* Aether: 관리 및 운영 */}
           {activeTab === "content" && <ContentTab />}
           {activeTab === "notifications" && <MarketingTab />}
           {activeTab === "settings" && <SettingsTab />}
-        </ProductShell>
-      )}
 
-      {selectedProduct === "probe" && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
-          <p className="text-sm font-bold text-gray-700">Probe</p>
-          <p className="text-[11px] text-gray-400 mt-1">지표 · 데이터 분석 — 준비 중입니다</p>
-        </div>
+          {/* Astro: 영업 */}
+          {activeTab === "restaurants" && <RestaurantsTab />}
+          {activeTab === "astro-home" && <AstroHome onGo={go} />}
+          {activeTab === "astro-calendar" && <CalendarPage actor={actorName} onGo={go} />}
+          {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={go} />}
+          {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
+          {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} />}
+          {activeTab === "astro-leads" && <LeadPipeline actor={actorName} />}
+          {activeTab === "astro-billing" && <BillingBoard actor={actorName} onGo={go} />}
+
+          {/* Probe: 지표·데이터. 정합성 점검의 '고치러 가기'는 다른 제품의 탭으로도 뛴다. */}
+          {activeTab === "probe-home" && <ProbeHome onGo={go} />}
+          {activeTab === "probe-reports" && <Reports onGo={go} />}
+          {activeTab === "probe-mileage" && <MileageOps actor={actorName} />}
+          {activeTab === "probe-metrics" && <ProbeOverview />}
+          {activeTab === "probe-app" && <AppMetrics />}
+          {activeTab === "probe-quality" && (
+            <DataQuality onGo={go} />
+          )}
+
+          {/* Castor: 앱 구조·여정. 지도에서 만든 배치를 A/B 탭으로 그대로 넘긴다. */}
+          {activeTab === "castor-home" && <CastorHome onGo={(t) => setActiveTab(t as Tab)} />}
+          {activeTab === "castor-map" && (
+            <CastorMap
+              onDraftVariant={(screen, blocks) => {
+                setCastorSeed({ screen: screen.id, blocksA: screen.blocks, blocksB: blocks });
+                setActiveTab("castor-experiments");
+              }}
+            />
+          )}
+          {activeTab === "castor-experiments" && (
+            <CastorExperiments seed={castorSeed} onSeedConsumed={() => setCastorSeed(null)} actor={actorName} />
+          )}
+        </ToolShell>
       )}
 
       {selectedProduct === "drive" && <DriveScreen />}

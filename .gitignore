@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Castor 파서 산출물 — 커밋하지 않는다 (CI 가 매번 새로 만든다)
+graph.json
+
+# 초안 저장소 — 백엔드 테이블이 생기기 전까지만 쓰는 임시 데이터
+.draft-data/
+
+# OMC 세션 상태 — 커밋하지 않는다
+.omc/
+
+# 계약서·제안서 PDF — 공개 레포에 올리지 않는다. 로컬 미리보기 전용, 운영은 드라이브/S3 링크
+public/astro-docs/
