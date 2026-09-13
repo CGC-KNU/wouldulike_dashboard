@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import PapillonShell from "./satellite/PapillonShell";
 import ProductShell from "./ProductShell";
 import ContentTab from "./ContentTab";
+import DriveScreen from "./DriveScreen";
 import ImageUploader from "@/components/ImageUploader";
 import { BenefitCatalogSection, BenefitGlance, StampRuleSection } from "@/components/CouponCatalog";
 
@@ -2417,8 +2418,13 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 관리자 대시보드 전체가 "세틀라이트"다 — Papillon(마케팅)/Astro(영업)/Aether(관리운영)/Probe(지표)
  * 4개 제품으로 나뉘고, 대시보드 진입 시 이 중 하나를 고르게 한다. 기존 5개 탭은 그대로 두되
  * 각 탭을 어느 제품 산하로 볼지만 여기서 묶는다 (§0 큰 그림 / §5 코드베이스 연결점).
+ *
+ * Drive는 이 TABS 권한 체계 밖에 있는 별도 제품이다 — tabs: [] 로 두면 아래
+ * availableProducts 필터에서 부서 권한과 무관하게 항상 노출된다(요청: "모두가
+ * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
+ * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "aether" | "probe";
+type Product = "papillon" | "astro" | "aether" | "probe" | "drive";
 
 const PRODUCTS: {
   key: Product;
@@ -2459,6 +2465,14 @@ const PRODUCTS: {
     description: "채널/캠페인 지표 대시보드",
     tabs: [],
     ready: false,
+  },
+  {
+    key: "drive",
+    name: "Drive",
+    subtitle: "파일 저장소",
+    description: "트렌드 · 팝업 · 기획전에 등록된 이미지를 모아보고 다운로드",
+    tabs: [],
+    ready: true,
   },
 ];
 
@@ -2561,7 +2575,14 @@ export default function AdminHomePage() {
 
   const visibleTabs = TABS.filter((t) => t.allow(me));
 
-  if (visibleTabs.length === 0) {
+  // Drive처럼 tabs: [] 인 제품은 TABS 권한과 무관하게 항상 접근 가능해야 하므로
+  // (요청: "모두가 다운로드 받을 수 있게"), "접근 가능한 메뉴가 없습니다" 판정도
+  // visibleTabs가 아니라 availableProducts 기준으로 내린다.
+  const availableProducts = PRODUCTS.filter(
+    (p) => p.tabs.length === 0 || p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
+  );
+
+  if (availableProducts.length === 0) {
     return (
       <div className="px-4 pt-10 pb-20 max-w-md mx-auto text-center">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10">
@@ -2575,10 +2596,6 @@ export default function AdminHomePage() {
       </div>
     );
   }
-
-  const availableProducts = PRODUCTS.filter(
-    (p) => p.key === "probe" || p.tabs.some((t) => visibleTabs.some((v) => v.key === t))
-  );
 
   /* ─── 제품 선택 화면 (대시보드 진입점) ─── */
   if (!selectedProduct) {
@@ -2694,6 +2711,8 @@ export default function AdminHomePage() {
           <p className="text-[11px] text-gray-400 mt-1">지표 · 데이터 분석 — 준비 중입니다</p>
         </div>
       )}
+
+      {selectedProduct === "drive" && <DriveScreen />}
     </div>
   );
 }
