@@ -28,6 +28,7 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
+  const [storeSource, setStoreSource] = useState<string | null>(null);
   const [period, setPeriod] = useState(thisPeriod());
   const [bucket, setBucket] = useState<Row["bucket"] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,18 +40,36 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({})), fetch("/api/astro/invoices").then((r) => r.json()).catch(() => ({}))])
-      .then(([s, i]) => { setStores(s.stores ?? []); setDraft({ on: Boolean(s.draft), note: s.draft_note }); setInvoices(i.invoices ?? []); })
+      .then(([s, i]) => { setStores(s.stores ?? []); setStoreSource(s.restaurants_source ?? null); setDraft({ on: Boolean(s.draft), note: s.draft_note }); setInvoices(i.invoices ?? []); })
       .finally(() => setLoading(false));
   }, []);
   useEffect(load, [load]);
 
   const paid = useMemo(() => stores.filter((s) => s.is_affiliate && isPaidTier(s.tier) && !s.ops?.is_test), [stores]);
-  const rows: Row[] = useMemo(() => paid.map((store) => {
-    const inv = invoices.find((i) => i.restaurant_id === store.restaurant_id && i.period === period && !["CANCELED", "REJECTED"].includes(i.status)) ?? null;
-    const fee = store.ops?.monthly_fee ?? null;
-    const bucket: Row["bucket"] = !fee || store.ops?.pay_cycle === "LUMP" ? "skip" : !inv ? "none" : inv.paid_at ? "paid" : inv.status === "ISSUED" ? "issued" : "pending";
-    return { store, inv, bucket };
-  }).sort((a, b) => ["none", "pending", "issued", "paid", "skip"].indexOf(a.bucket) - ["none", "pending", "issued", "paid", "skip"].indexOf(b.bucket) || a.store.name.localeCompare(b.store.name, "ko")), [paid, invoices, period]);
+  /**
+   * 행은 **유료 매장 ∪ 이 달 청구 건** 이다 (민열님 0913: "입금 현황에 식당이 비어 있다").
+   * 매장 목록을 못 읽으면 예전에는 표가 통째로 비었다 — 청구 건은 있는데 이름을 붙일 매장이 없어서였다.
+   * 이제 청구 건에 적힌 이름으로 행을 세우고, 매장 목록에서 못 찾았다고 화면이 말한다.
+   */
+  const rows: Row[] = useMemo(() => {
+    const byId = new Map(paid.map((s) => [s.restaurant_id, s]));
+    const base: Row[] = paid.map((store) => {
+      const inv = invoices.find((i) => i.restaurant_id === store.restaurant_id && i.period === period && !["CANCELED", "REJECTED"].includes(i.status)) ?? null;
+      const fee = store.ops?.monthly_fee ?? null;
+      const bucket: Row["bucket"] = !fee || store.ops?.pay_cycle === "LUMP" ? "skip" : !inv ? "none" : inv.paid_at ? "paid" : inv.status === "ISSUED" ? "issued" : "pending";
+      return { store, inv, bucket };
+    });
+    // 매장 목록에 없는 청구 건 — 이름은 청구 건이 들고 있다
+    const orphans: Row[] = invoices
+      .filter((i) => i.period === period && !["CANCELED", "REJECTED"].includes(i.status) && !byId.has(i.restaurant_id))
+      .map((inv) => ({
+        store: { restaurant_id: inv.restaurant_id, name: inv.name, tier: null, is_affiliate: true, ops: null, missing: true } as StoreRow & { missing?: boolean },
+        inv,
+        bucket: (inv.paid_at ? "paid" : inv.status === "ISSUED" ? "issued" : "pending") as Row["bucket"],
+      }));
+    const ORDER: Row["bucket"][] = ["none", "pending", "issued", "paid", "skip"];
+    return [...base, ...orphans].sort((a, b) => ORDER.indexOf(a.bucket) - ORDER.indexOf(b.bucket) || a.store.name.localeCompare(b.store.name, "ko"));
+  }, [paid, invoices, period]);
   const counts = useMemo(() => ({ none: rows.filter((r) => r.bucket === "none").length, pending: rows.filter((r) => r.bucket === "pending").length, issued: rows.filter((r) => r.bucket === "issued").length, paid: rows.filter((r) => r.bucket === "paid").length, skip: rows.filter((r) => r.bucket === "skip").length }), [rows]);
   const sums = useMemo(() => ({ expected: rows.filter((r) => r.bucket !== "skip").reduce((a, r) => a + (r.inv?.total ?? r.store.ops?.monthly_fee ?? 0), 0), paid: rows.filter((r) => r.bucket === "paid").reduce((a, r) => a + (r.inv?.total ?? 0), 0) }), [rows]);
   const periods = useMemo(() => { const set = new Set([thisPeriod(), ...invoices.map((i) => i.period)]); const d = new Date(); for (let k = 1; k <= 2; k++) set.add(periodLocal(-k)); return [...set].sort().reverse(); }, [invoices]);
@@ -97,6 +116,16 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
 
       {msg && <div className="mb-4"><Notice tone="blue" title={msg} /></div>}
 
+      {/* 표가 비는 진짜 이유를 말한다 — 유료 매장이 없어서인지, 매장 목록을 못 읽어서인지 (민열님 0913) */}
+      {!loading && storeSource === "unavailable" && (
+        <div className="mb-4">
+          <Notice tone="red" title="매장 목록을 읽지 못했습니다">
+            파트너 매장과 같은 목록(백엔드 식당 데이터)을 못 읽었습니다. 아래 표는 <strong>청구 건에 적힌 이름</strong>으로만 세운 것이라
+            플랜·납부 방식 같은 매장 정보가 비어 있습니다. 백엔드 연결을 확인하세요.
+          </Notice>
+        </div>
+      )}
+
       <div className="mb-5">
         <StepTiles active={bucket} onSelect={(k) => setBucket(bucket === k ? null : (k as Row["bucket"]))} steps={[
           { key: "none", label: "청구 안 됨", count: counts.none, hint: "우리가 만들어야 함", tone: counts.none ? "alert" : "plain" },
@@ -108,13 +137,17 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] gap-4 items-start">
         <Card flush title={`${label(period)} · ${visible.length}곳`} description={counts.skip ? `일시납·이용료 미입력 ${counts.skip}곳은 뺐습니다.` : undefined}>
-          {loading ? <Skeleton rows={6} cols={5} /> : paid.length === 0 ? <Empty title="유료 매장이 없습니다" detail="식당 관리에서 플랜을 먼저 지정하세요." /> : visible.length === 0 ? <Empty title="이 칸은 비었습니다" /> : (
+          {loading ? <Skeleton rows={6} cols={5} /> : rows.length === 0 ? (
+            storeSource === "unavailable"
+              ? <Empty title="매장 목록을 못 읽었습니다" detail="비어 있는 것이 아니라 못 읽은 것입니다. 파트너 매장 탭도 같은 목록을 씁니다 — 거기서도 0곳이면 백엔드 연결 문제입니다." />
+              : <Empty title="유료 매장이 없습니다" detail="파트너 매장 상세의 '식당 관리' 블록에서 플랜을 먼저 지정하세요. 플랜이 BOOST·CONTENT 인 매장만 청구 대상입니다." />
+          ) : visible.length === 0 ? <Empty title="이 칸은 비었습니다" /> : (
             <Table minWidth="38rem">
               <thead><tr><Th>매장</Th><Th width="6.5rem" align="right">금액</Th><Th width="8.5rem">상태</Th><Th width="5rem">입금일</Th><Th width="7.5rem" align="right">처리</Th></tr></thead>
               <tbody>
                 {visible.map(({ store, inv, bucket: b }) => (
                   <tr key={store.restaurant_id} className={inv ? rowClickable : ""} onClick={() => inv && onGo?.("astro-tax")}>
-                    <Td><span className="font-semibold text-gray-900 whitespace-nowrap">{store.name}</span><span className="block text-[11px] text-gray-400 whitespace-nowrap">{store.tier}{store.ops?.pay_cycle === "MONTHLY" ? " · 월납" : ""}{store.ops?.district ? ` · ${store.ops.district}` : ""}</span></Td>
+                    <Td><span className="font-semibold text-gray-900 whitespace-nowrap">{store.name}</span><span className="block text-[11px] text-gray-400 whitespace-nowrap">{(store as StoreRow & { missing?: boolean }).missing ? "매장 목록에서 못 찾음 · 청구 건 기준" : `${store.tier ?? "플랜 미지정"}${store.ops?.pay_cycle === "MONTHLY" ? " · 월납" : ""}${store.ops?.district ? ` · ${store.ops.district}` : ""}`}</span></Td>
                     <Td align="right" numeric className="font-semibold text-gray-900">{won(inv?.total ?? store.ops?.monthly_fee ?? 0)}</Td>
                     <Td><Chip tone={TONE[b]} dot={b === "none"}>{LABEL[b]}</Chip>{inv && <span className="block text-[11px] text-gray-400 mt-0.5">{TAX_STATUS_LABEL[inv.status]}{inv.nts_no ? ` · ${inv.nts_no}` : ""}</span>}</Td>
                     <Td className="text-[12px] text-gray-600">{inv?.paid_at ? inv.paid_at.slice(5, 10).replace("-", "/") : "-"}</Td>
