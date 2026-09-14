@@ -234,12 +234,9 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           tier={row.tier}
           isAffiliate={row.is_affiliate !== false}
           onChanged={() => onPatch(id, {})}
-          /* 계약 종료 — 앱 쪽 제휴를 끄고, 같은 손짓으로 종료일을 남긴다.
+          /* 제휴 끄기는 위 블록이 한다. 여기서는 종료일만 남긴다 —
              날짜가 없으면 나중에 "언제 끝났더라"를 아무도 모른다. */
-          onEnd={async () => {
-            await fetch(`/api/dashboard/admin/restaurants/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_affiliate: false }) });
-            onPatch(id, { contract_ends_on: o.contract_ends_on ?? todayLocal() });
-          }}
+          onEnd={() => onPatch(id, { contract_ends_on: o.contract_ends_on ?? todayLocal() })}
         />
       </PanelSection>
 

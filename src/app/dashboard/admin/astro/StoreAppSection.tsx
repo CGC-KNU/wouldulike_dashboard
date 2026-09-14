@@ -21,7 +21,7 @@ import { Button, Chip, Field, Input, Notice, Select, Skeleton } from "../_shared
 
 interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null }
 
-export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEnd }: { id: number; tier: string | null; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void }) {
+export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEnd }: { id: number; tier: string | null; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void> }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [promo, setPromo] = useState<{ poster_url: string; qr_url: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +53,33 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEn
       if (!res.ok) { const d = await res.json().catch(() => ({})); setMsg({ tone: "red", text: (d as { detail?: string }).detail ?? `저장하지 못했습니다 (${res.status}).` }); return; }
       setMsg({ tone: "blue", text: ok });
       onChanged?.();
+    } finally { setBusy(false); }
+  }
+
+  /**
+   * 계약 종료 — 두 곳을 같이 고친다.
+   *   ① 앱 매장의 제휴를 끈다 (앱에서 혜택이 사라진다)
+   *   ② 영업 기록에 종료일을 남긴다 (날짜가 없으면 나중에 아무도 모른다)
+   * 둘 다 끝난 뒤에야 "옮겼다"고 말한다. 하나라도 실패하면 실패라고 말한다.
+   */
+  async function endContract() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/dashboard/admin/restaurants/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_affiliate: false }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setMsg({ tone: "red", text: (d as { detail?: string }).detail ?? `제휴를 끄지 못했습니다 (${res.status}).` });
+        return;
+      }
+      await onEnd?.();
+      setEnding(false);
+      setMsg({ tone: "blue", text: "계약 종료로 옮겼습니다. 파트너 매장의 '계약 종료' 칸에서 볼 수 있고, 재계약하면 그대로 되돌아옵니다." });
+      onChanged?.();
+    } catch {
+      setMsg({ tone: "red", text: "서버에 연결하지 못했습니다. 옮기지 못했습니다." });
     } finally { setBusy(false); }
   }
 
@@ -136,7 +163,7 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEn
               <li>기록은 지우지 않습니다. 재계약하면 그대로 되살아납니다.</li>
             </ul>
             <div className="flex gap-2 mt-2.5">
-              <Button size="sm" variant="danger" disabled={busy} onClick={() => { setEnding(false); onEnd?.(); }}>네, 계약 종료로 옮깁니다</Button>
+              <Button size="sm" variant="danger" disabled={busy} onClick={endContract}>{busy ? "옮기는 중…" : "네, 계약 종료로 옮깁니다"}</Button>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEnding(false)}>취소</Button>
             </div>
           </div>
