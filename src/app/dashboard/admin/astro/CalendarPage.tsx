@@ -39,7 +39,7 @@ export default function CalendarPage({ actor, onGo }: { actor: string; onGo: (ta
     <>
       <PageHeader
         title="일정"
-        description="미팅·기한은 파트너 후보에서, 계약 시작·입금 예정은 파트너 매장에서 옵니다. 입금·미팅은 여기서 바로 문자로 이어집니다."
+        description="날짜 칸의 + 를 누르면 그 날로 미팅·기한·계약 시작을 바로 등록합니다. 값은 파트너 후보·파트너 매장의 같은 칸으로 들어갑니다."
         actions={<>{draft.on && <DraftBadge note={draft.note} />}<Button icon={<IconRefresh />} onClick={load}>다시 읽기</Button></>}
       />
 
@@ -51,7 +51,7 @@ export default function CalendarPage({ actor, onGo }: { actor: string; onGo: (ta
       </div>
 
       <Card>
-        {loading ? <Skeleton rows={6} cols={7} /> : <Calendar ym={ym} onMonth={setYm} actor={actor} onLogged={load} events={events} />}
+        {loading ? <Skeleton rows={6} cols={7} /> : <Calendar ym={ym} onMonth={setYm} actor={actor} onLogged={load} events={events} leads={leads ?? []} stores={stores ?? []} />}
       </Card>
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
