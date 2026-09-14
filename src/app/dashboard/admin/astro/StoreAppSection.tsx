@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { IconExternalLink, IconRefresh } from "@tabler/icons-react";
 import ImageUploader from "@/components/ImageUploader";
-import { Button, Chip, Field, Input, Notice, Select, Skeleton } from "../_shared/ui";
+import { Button, Chip, Field, Input, Notice, Skeleton } from "../_shared/ui";
 
 /**
  * 파트너 매장 상세 안의 **식당 관리** 블록.
@@ -21,7 +21,7 @@ import { Button, Chip, Field, Input, Notice, Select, Skeleton } from "../_shared
 
 interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null }
 
-export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEnd }: { id: number; tier: string | null; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void> }) {
+export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: { id: number; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void> }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [promo, setPromo] = useState<{ poster_url: string; qr_url: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,15 +117,9 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEn
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        <Field label="플랜" hint="앱과 청구가 같이 보는 값입니다">
-          <Select value={tier ?? ""} disabled={busy} onChange={(e) => patchStore({ tier: e.target.value || null }, `플랜을 ${e.target.value || "미지정"} 으로 바꿨습니다.`)}>
-            <option value="">미지정</option>
-            <option value="FREE">FREE</option>
-            <option value="BOOST">BOOST</option>
-            <option value="CONTENT">CONTENT</option>
-          </Select>
-        </Field>
+      {/* 플랜은 위 '계약' 블록 한 곳에서만 바꾼다 — 월 이용료·계약 시작일과 같이 보이는 자리라야
+          플랜을 올렸을 때 청구가 어떻게 되는지가 같이 보인다. 같은 값을 두 칸에 두지 않는다. */}
+      <div className="grid grid-cols-1 gap-2.5">
         <Field label="매장 PIN" hint="손님이 부르는 번호. 앱의 적립이 이 값으로 붙습니다">
           <div className="flex gap-1.5">
             <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="1234" inputMode="numeric" />

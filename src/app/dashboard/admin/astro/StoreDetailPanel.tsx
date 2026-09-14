@@ -63,7 +63,7 @@ function Cell({ label, value, onCommit, placeholder, hint, type, rows }: { label
   );
 }
 
-export default function StoreDetailPanel({ row, invoice = null, actor, campusOptions = [...CAMPUSES], onClose, onPatch, onGo, onMarkPaid }: { row: StoreRow | null; invoice?: TaxInvoice | null; actor: string; campusOptions?: string[]; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void; onGo?: (tab: string) => void; onMarkPaid?: (inv: TaxInvoice) => Promise<void> }) {
+export default function StoreDetailPanel({ row, invoice = null, actor, campusOptions = [...CAMPUSES], onClose, onPatch, onReload, onGo, onMarkPaid }: { row: StoreRow | null; invoice?: TaxInvoice | null; actor: string; campusOptions?: string[]; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void; onReload?: () => void; onGo?: (tab: string) => void; onMarkPaid?: (inv: TaxInvoice) => Promise<void> }) {
   if (!row) return null;
   const o: StoreOps = { ...emptyStoreOps(row.restaurant_id), ...(row.ops ?? {}) };
   const id = row.restaurant_id;
@@ -106,8 +106,9 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         setTierMsg(`${tier || "미지정"} 으로 바꿨습니다. 월 이용료가 비어 있어 ${fee.toLocaleString()}원(기본값)도 같이 넣었습니다.`);
       } else {
         setTierMsg(`${tier || "미지정"} 으로 바꿨습니다.`);
-        onPatch(id, {});   // 목록을 다시 읽어 배지와 표가 따라오게
       }
+      // 플랜은 ops 가 아니라 매장 레코드에 있다 — 목록을 다시 읽지 않으면 표와 이 칸이 옛 값을 문다
+      onReload?.();
     } catch {
       setTierMsg("서버에 연결하지 못했습니다.");
     } finally { setTierBusy(false); }
@@ -178,7 +179,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         <div className="grid grid-cols-2 gap-3">
           <Cell label="계약일" value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
           {/* 플랜은 여기서 바로 바꾼다 (민열님 0914). 위 '식당 관리' 블록의 것과 같은 값이라 둘 다 따라 움직인다. */}
-          <Field label="플랜" hint={tierMsg ?? "앱에 보이는 플랜입니다. 바꾸면 바로 반영됩니다."}>
+          <Field label="플랜" hint={tierMsg ?? "앱과 청구가 같이 보는 값입니다. 바꾸면 바로 반영됩니다."}>
             <Select value={row.tier ?? ""} disabled={tierBusy} onChange={(e) => changeTier(e.target.value)}>
               <option value="">미지정</option>
               <option value="FREE">FREE</option>
@@ -271,7 +272,6 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       <PanelSection title="식당 관리 (앱에 보이는 정보)">
         <StoreAppSection
           id={id}
-          tier={row.tier}
           isAffiliate={row.is_affiliate !== false}
           onChanged={() => onPatch(id, {})}
           /* 제휴 끄기는 위 블록이 한다. 여기서는 종료일만 남긴다 —
