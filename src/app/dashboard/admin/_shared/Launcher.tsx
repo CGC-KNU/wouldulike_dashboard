@@ -132,9 +132,11 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
 
       {/* 세틀라이트 밖 제품(Drive 등) — 권한과 무관하게 모두가 여는 것이라 카드가 아니라 줄로. */}
       {extras.length > 0 && (
-        <ul aria-label="그 밖의 제품" className="mt-5 grid gap-2">
+        <ul aria-label="그 밖의 제품" className="mt-5 grid grid-cols-1 gap-2">
+          {/* grid-cols-1 이 있어야 한다. 칸을 안 정하면 트랙이 내용 폭(max-content)으로 늘어나
+              폰에서 스트립이 화면 밖으로 나간다 — 390px 에서 24px 넘쳤다 (0914). */}
           {extras.map((e) => (
-            <li key={e.key}>
+            <li key={e.key} className="min-w-0">
               <button type="button" onClick={() => onSelect(e.key)} className={`w-full text-left rounded-[18px] border border-white/70 bg-white/70 backdrop-blur px-5 py-3.5 flex items-center gap-3 hover:border-navy/20 transition-colors ${focusRing}`}>
                 <IconFolder size={20} className="text-navy shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1">

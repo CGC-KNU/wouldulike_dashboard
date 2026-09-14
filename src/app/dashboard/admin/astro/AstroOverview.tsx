@@ -103,8 +103,22 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   const pay = useCallback((r: StoreRow) => payOf(r, invById.get(r.restaurant_id)), [invById]);
 
   const affiliateAll = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test), [rows]);
-  /** 계약 종료 — 제휴를 끈 매장. 지우지 않고 따로 세워 둔다(재계약할 수 있다). */
-  const endedAll = useMemo(() => rows.filter((r) => !r.is_affiliate && !r.ops?.is_test), [rows]);
+  /**
+   * 계약 종료 — 제휴를 끈 매장. 지우지 않고 따로 세워 둔다(재계약할 수 있다).
+   *
+   * **비제휴라고 다 계약 종료가 아니다.** 앱 DB에는 제휴한 적 없는 일반 식당이 150곳 넘게 있다.
+   * 그래서 '우리와 계약한 적이 있는가'로 가른다 — 계약 시작일·체결일·종료일·월 이용료 중
+   * 하나라도 적혀 있으면 우리 매장이었던 것이다. 툴에서 '계약 종료'를 누르면 종료일이 남으므로
+   * 앞으로 종료하는 곳은 전부 여기 걸린다.
+   */
+  const endedAll = useMemo(
+    () => rows.filter((r) => {
+      if (r.is_affiliate || r.ops?.is_test) return false;
+      const o = r.ops;
+      return Boolean(o && (o.contract_ends_on || o.contract_started_on || o.contract_signed_on || o.monthly_fee));
+    }),
+    [rows]
+  );
   const ended = useMemo(() => endedAll.filter((r) => campus === "all" || campusOf(r) === campus), [endedAll, campus]);
   const campuses = useMemo(() => allCampuses(affiliateAll.map((r) => r.ops?.campus)), [affiliateAll]);
   const countIn = (c: Campus) => affiliateAll.filter((r) => campusOf(r) === c).length;
