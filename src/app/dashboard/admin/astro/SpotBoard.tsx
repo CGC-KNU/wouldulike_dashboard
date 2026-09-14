@@ -40,7 +40,10 @@ const STAGE_TONE: Record<string, ChipTone> = {
   촬영: "amber", 편집: "amber", 납품: "green", 정산: "green",
   보류: "gray", 거절: "red",
 };
+/** 한 건의 금액. 0 은 '무료'로 읽는다 — 첫 건을 그냥 주는 일이 있다. */
 const won = (n: number | null) => (n === null ? "-" : n === 0 ? "무료" : `${n.toLocaleString()}원`);
+/** 여러 건을 더한 값. 합계가 0 인 건 '무료'가 아니라 **받을 게 없다**는 뜻이라 그냥 0원으로 적는다. */
+const sumWon = (n: number) => `${n.toLocaleString()}원`;
 
 export default function SpotBoard({ actor }: { actor: string }) {
   const [spots, setSpots] = useState<SpotJob[] | null>(null);
@@ -113,8 +116,8 @@ export default function SpotBoard({ actor }: { actor: string }) {
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="진행 중" value={loading ? "-" : live.length} hint="보류·거절 뺀 것" />
         <Kpi label="계약 이후" value={loading ? "-" : contracted.length} hint="촬영·편집·납품·정산" />
-        <Kpi label="받을 돈" value={loading ? "-" : won(sum(unpaid))} tone={unpaid.length ? "alert" : "plain"} hint={`아직 ${unpaid.length}건`} />
-        <Kpi label="받은 돈" value={loading ? "-" : won(sum(contracted.filter((s) => s.paid_at)))} hint="정산 완료" />
+        <Kpi label="받을 돈" value={loading ? "-" : sumWon(sum(unpaid))} tone={unpaid.length ? "alert" : "plain"} hint={`아직 ${unpaid.length}건`} />
+        <Kpi label="받은 돈" value={loading ? "-" : sumWon(sum(contracted.filter((s) => s.paid_at)))} hint="정산 완료" />
       </div>
 
       {msg && <div className="mb-4"><Notice tone="red" title={msg} /></div>}
