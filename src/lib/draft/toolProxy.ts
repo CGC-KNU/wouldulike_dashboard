@@ -135,12 +135,21 @@ function cacheKey(path: string, search: string | undefined, tok: string) {
   return `${tok.slice(-12)}|${path}|${search ?? ""}`;
 }
 
-export async function fetchBackendJson<T>(path: string, search?: string): Promise<T | null> {
+/**
+ * `fresh` 는 이 캐시를 **건너뛰고** 백엔드를 직접 읽는다.
+ *
+ * 값을 바꾼 직후의 재조회에 쓴다. `clearBackendCache()` 로는 부족하다 —
+ * Vercel 은 요청마다 다른 인스턴스가 받을 수 있어서, 쓰기를 처리한 인스턴스의 캐시를 비워도
+ * 바로 뒤의 조회가 **다른 인스턴스의 6초짜리 옛 캐시**에 맞으면 바꾸기 전 값이 돌아온다.
+ * 화면은 그 값을 그대로 물고, 사람 눈에는 "바꿨는데 안 바뀐다"로 보인다
+ * (0914 플랜 드롭다운이 미지정으로 되돌아가던 증상).
+ */
+export async function fetchBackendJson<T>(path: string, search?: string, fresh = false): Promise<T | null> {
   if (!process.env.NEXT_PUBLIC_API_URL) return null;
   const tok = await token();
   const key = cacheKey(path, search, tok);
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.data as T;
+  if (!fresh && hit && Date.now() - hit.at < TTL_MS) return hit.data as T;
 
   try {
     const res = await fetch(backend(path, search), {

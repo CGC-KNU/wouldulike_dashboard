@@ -88,9 +88,16 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
    */
   const [tierBusy, setTierBusy] = useState(false);
   const [tierMsg, setTierMsg] = useState<string | null>(null);
+  /**
+   * 방금 고른 값. 목록이 다시 돌아오기 전까지 이걸 보여 준다.
+   * 없으면 칸이 **옛 값으로 되돌아간 것처럼** 보인다 — 저장은 됐는데 화면만 안 따라온 것이라
+   * 사람은 안 바뀌었다고 읽는다 (민열님 0914 제보).
+   */
+  const [tierLocal, setTierLocal] = useState<string | null>(null);
+  useEffect(() => { setTierLocal(null); setTierMsg(null); }, [id]);
   async function changeTier(tier: string) {
     if (tierBusy) return;
-    setTierBusy(true); setTierMsg(null);
+    setTierBusy(true); setTierMsg(null); setTierLocal(tier);
     try {
       const res = await fetch(`/api/dashboard/admin/restaurants/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tier: tier || null }),
@@ -98,6 +105,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         setTierMsg(`바꾸지 못했습니다 — ${(d as { detail?: string }).detail ?? res.status}`);
+        setTierLocal(null);   // 저장이 안 됐으니 원래 값으로 되돌린다
         return;
       }
       const fee = defaultMonthlyFee(tier, o.campus);
@@ -111,6 +119,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       onReload?.();
     } catch {
       setTierMsg("서버에 연결하지 못했습니다.");
+      setTierLocal(null);
     } finally { setTierBusy(false); }
   }
 
@@ -180,7 +189,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           <Cell label="계약일" value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
           {/* 플랜은 여기서 바로 바꾼다 (민열님 0914). 위 '식당 관리' 블록의 것과 같은 값이라 둘 다 따라 움직인다. */}
           <Field label="플랜" hint={tierMsg ?? "앱과 청구가 같이 보는 값입니다. 바꾸면 바로 반영됩니다."}>
-            <Select value={row.tier ?? ""} disabled={tierBusy} onChange={(e) => changeTier(e.target.value)}>
+            <Select value={tierLocal ?? row.tier ?? ""} disabled={tierBusy} onChange={(e) => changeTier(e.target.value)}>
               <option value="">미지정</option>
               <option value="FREE">FREE</option>
               <option value="BOOST">BOOST</option>
@@ -273,7 +282,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         <StoreAppSection
           id={id}
           isAffiliate={row.is_affiliate !== false}
-          onChanged={() => onPatch(id, {})}
+          onChanged={() => (onReload ? onReload() : onPatch(id, {}))}
           /* 제휴 끄기는 위 블록이 한다. 여기서는 종료일만 남긴다 —
              날짜가 없으면 나중에 "언제 끝났더라"를 아무도 모른다. */
           onEnd={() => onPatch(id, { contract_ends_on: o.contract_ends_on ?? todayLocal() })}
