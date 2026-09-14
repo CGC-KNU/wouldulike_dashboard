@@ -4,6 +4,7 @@ import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { emptyStoreOps, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
 import { notifyAstro } from "@/lib/slack";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
  * 계산서 한 건의 상태 전이. 세발의 approve / cancel / sync / 재시도 를 하나의 action 으로 받는다.
@@ -43,6 +44,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (deny) return deny;
   const { id } = await ctx.params;
   const b = (await req.json().catch(() => ({}))) as { action?: Action; by?: string; reason?: string; nts_no?: string; url?: string; memo?: string; supply?: number; tax?: number; title?: string; paid_at?: string };
+  // 백엔드가 원본이면 상태 전이도 거기서 한다. 슬랙 문구는 어느 쪽이든 여기서 만든다.
+  const remoteList = await remoteGet<{ invoices: TaxInvoice[] }>("/api/astro/invoices/");
+  if (remoteList.handled && remoteList.ok) {
+    const before = (remoteList.data?.invoices ?? []).find((i) => i.id === id) ?? null;
+    if (!before) return NextResponse.json({ detail: "찾을 수 없습니다." }, { status: 404 });
+    const r = await remoteSend<{ invoice: TaxInvoice }>("PATCH", `/api/astro/invoices/${id}/`, b);
+    if (r.handled) {
+      if (!r.ok) return NextResponse.json(r.data ?? { detail: "처리하지 못했습니다." }, { status: r.status });
+      const after = r.data!.invoice;
+      const msg = slackFor(b.action, before, after, (await actorName()) ?? b.by ?? "unknown");
+      if (msg) await notifyAstro(msg);
+      return NextResponse.json({ invoice: after, draft: false });
+    }
+  }
+
   const inv = readDraft<TaxInvoice[]>(KEY, seedInvoices).find((i) => i.id === id);
   if (!inv) return NextResponse.json({ detail: "찾을 수 없습니다." }, { status: 404 });
   // "누가"는 서버가 찍는다. 본문 by 는 백엔드를 못 읽을 때의 마지막 폴백.
@@ -121,4 +137,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const updated = patchDraftItem<TaxInvoice>(KEY, seedInvoices, id, patch);
   if (slack) await notifyAstro(slack);
   return NextResponse.json({ invoice: updated, draft: true });
+}
+
+/** 상태 전이마다 슬랙에 뭐라고 쓸지. 백엔드 경로와 초안 경로가 같은 문구를 쓰게 한 곳에 둔다. */
+function slackFor(action: string | undefined, before: TaxInvoice, after: TaxInvoice, by: string): string | null {
+  const won = after.total.toLocaleString();
+  switch (action) {
+    case "approve":
+      return `:receipt: *발행 요청(승인)* — ${after.name} · ${after.title} · ${won}원 · 승인 ${by}`;
+    case "mark-issued":
+      return `:white_check_mark: *발행 완료* — ${after.name} · ${after.title} · ${won}원${after.nts_no ? ` · 승인번호 ${after.nts_no}` : ""}`;
+    case "unmark-paid":
+      return `:leftwards_arrow_with_hook: *입금 확인 취소* — ${after.name} · ${after.title} · ${won}원 · ${by}`;
+    case "mark-paid":
+      return before.paid_at ? null : `:moneybag: *입금 확인* — ${after.name} · ${won}원${after.paid_at ? ` · ${after.paid_at.slice(0, 10)}` : ""} · ${by}`;
+    default:
+      return null;
+  }
 }

@@ -5,6 +5,7 @@ import { seedStoreOps } from "@/lib/draft/seed";
 import { emptyStoreOps, type BackendRestaurant, type StoreOps } from "@/lib/draft/types";
 import { requireTool } from "@/lib/draft/guard";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 import { contractRowToOps, fetchTab, normName, statusRowToOps } from "@/lib/draft/sheet";
 import { SALES_SHEET } from "@/lib/satellite";
 
@@ -64,11 +65,32 @@ export async function GET() {
   // 백엔드가 없고 미리보기 모드면 실측 스냅샷으로 화면을 돌려본다 (previewStores.ts 주석 참고)
   const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
 
-  // 운영 필드는 아직 백엔드에 테이블이 없다 — 초안 저장소에서 읽고, 비어 있으면 시트에서 채운다
-  let opsList = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
-  let opsSource: "draft" | "sheet" | "sheet_error" = "draft";
+  // 운영 필드의 원본 — 백엔드(astro 앱)가 살아 있으면 거기, 아니면 초안 저장소.
+  let opsList: StoreOps[];
+  let opsSource: "backend" | "draft" | "sheet" | "sheet_error" = "draft";
+  const remote = await remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/");
+  const onBackend = remote.handled && remote.ok;
+  if (onBackend) {
+    opsList = remote.data?.ops ?? [];
+    opsSource = "backend";
+    // 막 올린 직후라 비어 있으면 시트 값을 한 번 밀어 넣는다 (그 뒤로는 툴이 원본).
+    if (restaurants.length > 0 && opsList.every((o) => !o.monthly_fee)) {
+      const fromSheet = await opsFromSheet(restaurants, opsList);
+      if (fromSheet.ops.length) {
+        const push = await remoteSend("POST", "/api/astro/stores/ops/bulk/", { ops: fromSheet.ops });
+        if (push.ok) {
+          const again = await remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/");
+          if (again.ok) opsList = again.data?.ops ?? opsList;
+        } else {
+          opsList = fromSheet.ops; // 못 밀어 넣었어도 이번 응답에는 보여 준다
+        }
+      }
+    }
+  } else {
+    opsList = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
+  }
   // 계약 정보(월 이용료)가 **한 곳도 없으면** 시트에서 채운다. 시드만 있는 배포 직후가 그 상태다.
-  if (restaurants.length > 0 && opsList.every((o) => !o.monthly_fee)) {
+  if (!onBackend && restaurants.length > 0 && opsList.every((o) => !o.monthly_fee)) {
     const fromSheet = await opsFromSheet(restaurants, opsList);
     opsSource = fromSheet.error ? "sheet_error" : fromSheet.ops.length ? "sheet" : "draft";
     if (fromSheet.ops.length) {
@@ -92,8 +114,9 @@ export async function GET() {
     // 매장 본체는 실데이터, 운영 필드만 초안이다. 화면이 이 둘을 구분해 표시한다.
     restaurants_source: backend ? "backend" : isPreview() ? "preview-snapshot" : "unavailable",
     ops_source: opsSource,
-    draft: true,
-    draft_note:
-      "매장·플랜은 실데이터입니다. 입금·학기/방학·비치물 등 운영 필드는 백엔드 테이블이 생기기 전까지 초안 저장소를 씁니다.",
+    draft: !onBackend,
+    draft_note: onBackend
+      ? undefined
+      : "매장·플랜은 실데이터입니다. 입금·학기/방학·비치물 등 운영 필드는 백엔드 테이블이 생기기 전까지 초안 저장소를 씁니다.",
   });
 }

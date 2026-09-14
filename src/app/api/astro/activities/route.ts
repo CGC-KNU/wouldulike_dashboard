@@ -5,6 +5,7 @@ import type { Activity, Lead } from "@/lib/draft/types";
 import { requireTool } from "@/lib/draft/guard";
 import { seedLeads } from "@/lib/draft/seed";
 import { patchDraftItem } from "@/lib/draft/store";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
  * 활동 기록 — 메모·전화·카톡·미팅·방문.
@@ -21,6 +22,9 @@ export async function GET(req: NextRequest) {
   if (deny) return deny;
   const type = req.nextUrl.searchParams.get("target_type");
   const id = req.nextUrl.searchParams.get("target_id");
+  const search = type && id ? `target_type=${encodeURIComponent(type)}&target_id=${encodeURIComponent(id)}` : undefined;
+  const r = await remoteGet<{ activities: Activity[] }>("/api/astro/activities/", search);
+  if (r.handled && r.ok) return NextResponse.json({ activities: r.data?.activities ?? [], draft: false });
   let list = readDraft<Activity[]>(KEY, seedActivities);
   if (type && id) list = list.filter((a) => a.target_type === type && a.target_id === id);
   return NextResponse.json({ activities: list, draft: true });
@@ -33,6 +37,12 @@ export async function POST(req: NextRequest) {
   if (!body.body?.trim() || !body.target_id) {
     return NextResponse.json({ detail: "내용과 대상이 필요합니다." }, { status: 400 });
   }
+  const r = await remoteSend<{ activity: Activity }>("POST", "/api/astro/activities/", body);
+  if (r.handled) {
+    if (!r.ok) return NextResponse.json(r.data ?? { detail: "기록하지 못했습니다." }, { status: r.status });
+    return NextResponse.json({ activity: r.data!.activity, draft: false }, { status: 201 });
+  }
+
   const created = appendDraftItem<Activity>(KEY, seedActivities, {
     target_type: body.target_type ?? "store",
     target_id: String(body.target_id),

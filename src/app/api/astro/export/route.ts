@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { readDraft } from "@/lib/draft/store";
+import { remoteGet } from "@/lib/draft/remote";
 import { seedLeads, seedStoreOps } from "@/lib/draft/seed";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
@@ -31,7 +32,9 @@ export async function GET(req: NextRequest) {
   if (tab === "계약") {
     const b = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
     const stores = b?.restaurants ?? (isPreview() ? previewRestaurants() : []);
-    const ops = new Map(readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).map((o) => [o.id, o]));
+    const opsRes = await remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/");
+    const opsSrc = opsRes.handled && opsRes.ok ? (opsRes.data?.ops ?? []) : readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
+    const ops = new Map(opsSrc.map((o) => [o.id, o]));
     const rows = stores
       .filter((s) => s.is_affiliate !== false)
       .map((s) => ({ s, o: { ...emptyStoreOps(s.restaurant_id), ...(ops.get(s.restaurant_id) ?? {}) } }))
@@ -41,7 +44,9 @@ export async function GET(req: NextRequest) {
     csv = toCsv(CONTRACT_CSV_HEAD, rows);
     file = `astro_계약세부사항_${today}.csv`;
   } else {
-    const leads = readDraft<Lead[]>("astro_leads", seedLeads).filter((l) => !district || l.district === district);
+    const leadsRes = await remoteGet<{ leads: Lead[] }>("/api/astro/leads/");
+    const leadsSrc = leadsRes.handled && leadsRes.ok ? (leadsRes.data?.leads ?? []) : readDraft<Lead[]>("astro_leads", seedLeads);
+    const leads = leadsSrc.filter((l) => !district || l.district === district);
     csv = toCsv(LEAD_CSV_HEAD, leads.map(leadToCsvRow));
     file = `astro_입점후보_${today}.csv`;
   }
