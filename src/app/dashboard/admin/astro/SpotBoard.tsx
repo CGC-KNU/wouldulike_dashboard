@@ -2,17 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconCopy, IconExternalLink, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-react";
-import { CAMPUSES, APP_CATEGORIES, type Campus } from "@/lib/draft/types";
+import { APP_CATEGORIES } from "@/lib/draft/types";
+import { looseToISO } from "@/lib/draft/dates";
 import {
   ALL_SPOT_STAGES, SPOT_PRODUCTS, SPOT_SIDE_STAGES, SPOT_STAGES,
   productOf, spotAmount, type SpotJob, type SpotStage,
 } from "@/lib/draft/spot";
 import {
   Button, Card, Chip, DraftBadge, Empty, Field, Input, Kpi, Notice, PageHeader,
-  Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, todayLocal, type ChipTone,
+  PanelSection, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, todayLocal, type ChipTone,
 } from "../_shared/ui";
-import CampusMark from "./CampusMark";
-import CampusPicker, { allCampuses } from "./CampusPicker";
 
 /**
  * Astro · 스팟 제작 — 제휴와 별개로 파는 콘텐츠 제작 건 (민열님 0914).
@@ -46,7 +45,6 @@ const won = (n: number | null) => (n === null ? "-" : `${n.toLocaleString()}원`
 export default function SpotBoard({ actor }: { actor: string }) {
   const [spots, setSpots] = useState<SpotJob[] | null>(null);
   const [draft, setDraft] = useState(false);
-  const [campus, setCampus] = useState<Campus | "all">("all");
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -61,18 +59,18 @@ export default function SpotBoard({ actor }: { actor: string }) {
       .catch(() => setSpots([]));
   }, []);
   useEffect(load, [load]);
+  // 일정 탭에서 넘어올 때 그 건을 바로 연다 (astro-spots?open=<id>)
+  useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
   const loading = spots === null;
   const all = spots ?? [];
-  const campuses = useMemo(() => allCampuses(all.map((s) => s.campus)), [all]);
-  const inCampus = useMemo(() => all.filter((s) => campus === "all" || (s.campus ?? "경북대") === campus), [all, campus]);
   const visible = useMemo(() => {
     const s = q.trim();
-    return inCampus.filter((x) => !s || x.name.includes(s));
-  }, [inCampus, q]);
+    return all.filter((x) => !s || x.name.includes(s));
+  }, [all, q]);
 
   /** 진행 중 = 보류·거절이 아닌 것. 돈은 납품 뒤에 들어오므로 '받을 돈'과 '받은 돈'을 갈라 센다. */
-  const live = inCampus.filter((s) => !SPOT_SIDE_STAGES.includes(s.stage as (typeof SPOT_SIDE_STAGES)[number]));
+  const live = all.filter((s) => !SPOT_SIDE_STAGES.includes(s.stage as (typeof SPOT_SIDE_STAGES)[number]));
   const contracted = live.filter((s) => ["계약", "촬영", "편집", "납품", "정산"].includes(s.stage));
   const unpaid = contracted.filter((s) => !s.paid_at);
   const sum = (list: SpotJob[]) => list.reduce((a, s) => a + (spotAmount(s) ?? 0), 0);
@@ -102,9 +100,9 @@ export default function SpotBoard({ actor }: { actor: string }) {
           </>
         }
       >
+        {/* 캠퍼스 구분 없음 (민열님 0914). 스팟 제작은 제휴 영업과 달리 상권으로 나뉘지 않는다 —
+            윤지님이 전 상권을 혼자 맡고, 한 건은 캠퍼스가 아니라 **매장**에 붙는다. */}
         <div className="flex flex-wrap items-center gap-2">
-          <CampusPicker value={campus === "all" ? (campuses[0] ?? "경북대") : campus} options={[...campuses]} onChange={(v) => setCampus(v)} />
-          <button type="button" onClick={() => setCampus("all")} className={`h-9 px-3 rounded-[10px] text-[13px] font-semibold ${campus === "all" ? "bg-navy text-white" : "bg-black/[0.05] text-gray-700"} ${focusRing}`}>전체</button>
           <div className="relative w-52 ml-auto">
             <IconSearch size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="매장명" className="pl-7" aria-label="매장명으로 찾기" />
@@ -150,14 +148,15 @@ export default function SpotBoard({ actor }: { actor: string }) {
             />
           </div>
         ) : (
-          <Table minWidth="54rem">
+          <Table minWidth="62rem">
             <thead>
               <tr>
                 <Th>매장</Th>
                 <Th width="10rem">상품</Th>
                 <Th width="8rem" align="right">금액</Th>
                 <Th width="9rem">단계</Th>
-                <Th width="8rem">다음 날짜</Th>
+                <Th width="9rem">다음 일정</Th>
+                <Th width="7.5rem">기획안</Th>
                 <Th width="6rem" align="right">마지막</Th>
               </tr>
             </thead>
@@ -165,12 +164,14 @@ export default function SpotBoard({ actor }: { actor: string }) {
               {visible.map((s) => {
                 const p = productOf(s.product);
                 const amount = spotAmount(s);
+                // 단계에 따라 지금 중요한 날짜가 다르다 — 계약 전엔 미팅, 계약 뒤엔 촬영, 그 뒤엔 납품 기한.
                 const next = s.stage === "촬영" || s.stage === "계약" ? s.shoot_at : s.stage === "미팅" ? s.meeting_at : s.due;
+                const nextLabel = s.stage === "촬영" || s.stage === "계약" ? "촬영" : s.stage === "미팅" ? "미팅" : "기한";
                 return (
                   <tr key={s.id} className={rowClickable} onClick={() => setOpenId(s.id)}>
                     <Td>
                       <span className="font-semibold text-gray-900 inline-flex items-center gap-1.5">
-                        {campus === "all" && <CampusMark campus={(s.campus ?? "경북대") as Campus} size={15} />}{s.name}
+                        {s.name}
                       </span>
                       <span className="block text-[11px] text-gray-400">{[s.owner ? `담당 ${s.owner}` : null, s.category, s.next_action].filter(Boolean).join(" · ") || "—"}</span>
                     </Td>
@@ -197,7 +198,23 @@ export default function SpotBoard({ actor }: { actor: string }) {
                         </Select>
                       </span>
                     </Td>
-                    <Td className="text-[12px] text-gray-600">{next || <span className="text-gray-300">-</span>}</Td>
+                    <Td className="text-[12px] text-gray-600">
+                      {next ? <><span className="text-gray-400">{nextLabel}</span> {next}</> : <span className="text-gray-300">-</span>}
+                    </Td>
+                    {/* 기획안은 '링크가 있나'가 아니라 **보냈나**가 중요하다 — 만들어 두고 못 보낸 건이 막힌 자리다 */}
+                    <Td>
+                      <span onClick={(e) => e.stopPropagation()}>
+                        {s.plan_sent_at ? (
+                          <Chip tone="blue">{s.plan_sent_at.slice(5).replace("-", "/")} 발송</Chip>
+                        ) : (
+                          <button type="button" disabled={busy === s.id}
+                            onClick={() => patch(s.id, { plan_sent_at: todayLocal(), ...(s.stage === "컨택" || s.stage === "미팅" ? { stage: "기획안" as SpotStage } : {}) })}
+                            className={`h-7 px-2 rounded-lg text-[12px] font-semibold text-gray-600 bg-black/[0.05] hover:bg-black/[0.08] disabled:opacity-50 ${focusRing}`}>
+                            오늘 보냄
+                          </button>
+                        )}
+                      </span>
+                    </Td>
                     <Td align="right" className="text-[12px] text-gray-500">{agoLabel(s.last_touch_at ?? s.updated_at)}</Td>
                   </tr>
                 );
@@ -212,8 +229,8 @@ export default function SpotBoard({ actor }: { actor: string }) {
         받을 돈은 계약 이후 단계 중 정산이 안 된 건의 합입니다.
       </p>
 
-      {open && <SpotPanel spot={open} actor={actor} campusOptions={[...campuses]} onClose={() => setOpenId(null)} onPatch={patch} onDeleted={() => { setOpenId(null); load(); }} />}
-      {adding && <NewSpotPanel actor={actor} campusOptions={[...campuses]} onClose={() => setAdding(false)} onCreated={load} />}
+      {open && <SpotPanel spot={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onDeleted={() => { setOpenId(null); load(); }} />}
+      {adding && <NewSpotPanel actor={actor} onClose={() => setAdding(false)} onCreated={load} />}
       {planning && <ResearchPanel onClose={() => setPlanning(false)} />}
     </>
   );
@@ -231,8 +248,33 @@ function Cell({ label, value, onCommit, placeholder, type, hint }: { label: stri
   );
 }
 
-function SpotPanel({ spot, actor, campusOptions, onClose, onPatch, onDeleted }: {
-  spot: SpotJob; actor: string; campusOptions: string[]; onClose: () => void;
+/**
+ * 미팅·촬영은 **날짜와 시각**을 같이 적는다. 그런데 원본은 "8/6(목) 14시" 같은 자유 서식이라
+ * 통째로 날짜 칸으로 바꿔 버리면 시트에서 넘어온 값이 날아간다. 그래서 둘로 나눠 받고
+ * `"2026-09-20 14시"` 로 합쳐 저장한다 — 달력이 읽는 형식이면서 시각 메모도 남는다.
+ */
+function WhenCell({ label, value, onCommit, hint }: { label: string; value: string | null; onCommit: (v: string | null) => void; hint?: string }) {
+  const iso = looseToISO(value);
+  // 앞머리의 날짜를 떼면 나머지가 시각 메모다. "8/6(목) 14시" · "2026-09-20 14:00" 둘 다 문다.
+  const rest = (value ?? "").replace(/^\s*(\d{4}[-./])?\d{1,2}[-./]\d{1,2}(\([^)]*\))?\s*/, "").trim();
+  const [t, setT] = useState(rest);
+  useEffect(() => setT(rest), [rest]);
+  const put = (d: string | null, time: string) => {
+    const v = [d, time.trim()].filter(Boolean).join(" ").trim();
+    if (v !== (value ?? "")) onCommit(v || null);
+  };
+  return (
+    <Field label={label} hint={hint ?? (value && !iso ? `지금 값: ${value} (날짜로 못 읽어 달력에 안 뜹니다)` : undefined)}>
+      <div className="flex gap-1.5">
+        <Input type="date" value={iso ?? ""} onChange={(e) => put(e.target.value || null, t)} className="flex-1" aria-label={`${label} 날짜`} />
+        <Input value={t} onChange={(e) => setT(e.target.value)} onBlur={() => put(iso, t)} placeholder="14시" className="w-[5.5rem]" aria-label={`${label} 시각`} />
+      </div>
+    </Field>
+  );
+}
+
+function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
+  spot: SpotJob; actor: string; onClose: () => void;
   onPatch: (id: string, body: Partial<SpotJob>) => void; onDeleted: () => void;
 }) {
   const set = (k: keyof SpotJob) => (v: string | null) => onPatch(spot.id, { [k]: v } as Partial<SpotJob>);
@@ -271,7 +313,6 @@ function SpotPanel({ spot, actor, campusOptions, onClose, onPatch, onDeleted }: 
         <Cell label="금액" value={spot.price === null ? "" : String(spot.price)} type="number"
           hint={p ? `비워 두면 정가 ${p.price.toLocaleString()}원으로 셉니다.` : "상품을 고르면 정가가 붙습니다."}
           onCommit={(v) => onPatch(spot.id, { price: v ? Number(v.replace(/[^\d]/g, "")) || null : null })} />
-        <Field label="캠퍼스"><CampusPicker value={(spot.campus ?? "경북대") as Campus} options={campusOptions} onChange={(v) => onPatch(spot.id, { campus: v })} /></Field>
         <Cell label="담당" value={spot.owner} onCommit={set("owner")} placeholder={actor} />
         <Field label="카테고리">
           <Select value={spot.category ?? ""} onChange={(e) => onPatch(spot.id, { category: e.target.value || null })}>
@@ -280,14 +321,30 @@ function SpotPanel({ spot, actor, campusOptions, onClose, onPatch, onDeleted }: 
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 pt-1">
-        <Cell label="미팅 일시" value={spot.meeting_at} onCommit={set("meeting_at")} placeholder="9/20 14시" />
-        <Cell label="촬영 일시" value={spot.shoot_at} onCommit={set("shoot_at")} placeholder="9/24 11시" />
-        <Cell label="납품 기한" value={spot.due} onCommit={set("due")} type="date" />
-        <Cell label="납품한 날" value={spot.delivered_at} onCommit={set("delivered_at")} type="date" />
-        <Cell label="입금된 날" value={spot.paid_at} onCommit={set("paid_at")} type="date" hint="적으면 '받을 돈'에서 빠집니다." />
-        <Cell label="기획안 링크" value={spot.plan_url} onCommit={set("plan_url")} placeholder="드라이브 PDF" />
-      </div>
+      {/* 일정 — 적으면 **일정 탭 달력에 바로 뜬다** (민열님 0914).
+          날짜를 못 읽는 값은 조용히 빠진다. 지어내지 않는다. */}
+      <PanelSection title="일정 (적으면 일정 탭 달력에 바로 뜹니다)">
+        <div className="grid grid-cols-2 gap-3">
+          <WhenCell label="미팅" value={spot.meeting_at} onCommit={set("meeting_at")} />
+          <WhenCell label="촬영" value={spot.shoot_at} onCommit={set("shoot_at")} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <Field label="기획안 보낸 날" hint="보냈는지가 링크보다 먼저입니다.">
+            <div className="flex gap-1.5">
+              <Input type="date" value={spot.plan_sent_at ?? ""} onChange={(e) => onPatch(spot.id, { plan_sent_at: e.target.value || null })} className="flex-1" />
+              {!spot.plan_sent_at && (
+                <Button size="sm" onClick={() => onPatch(spot.id, { plan_sent_at: todayLocal(), ...(spot.stage === "컨택" || spot.stage === "미팅" ? { stage: "기획안" as SpotStage } : {}) })}>오늘</Button>
+              )}
+            </div>
+          </Field>
+          <Cell label="기획안 링크" value={spot.plan_url} onCommit={set("plan_url")} placeholder="드라이브 PDF" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <Cell label="납품 기한" value={spot.due} onCommit={set("due")} type="date" />
+          <Cell label="납품한 날" value={spot.delivered_at} onCommit={set("delivered_at")} type="date" />
+          <Cell label="입금된 날" value={spot.paid_at} onCommit={set("paid_at")} type="date" hint="적으면 '받을 돈'에서 빠집니다." />
+        </div>
+      </PanelSection>
 
       <div className="grid grid-cols-2 gap-3 pt-1">
         <Cell label="대표자" value={spot.owner_name} onCommit={set("owner_name")} />
@@ -304,8 +361,8 @@ function SpotPanel({ spot, actor, campusOptions, onClose, onPatch, onDeleted }: 
 
 /* ═══════════ 새 건 ═══════════ */
 
-function NewSpotPanel({ actor, campusOptions, onClose, onCreated }: { actor: string; campusOptions: string[]; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: "", campus: (campusOptions[0] ?? "경북대") as Campus, category: "", product: "", owner: actor, contact: "", insta: "", map_url: "", memo: "" });
+function NewSpotPanel({ actor, onClose, onCreated }: { actor: string; onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState({ name: "", category: "", product: "", owner: actor, contact: "", insta: "", map_url: "", memo: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -325,7 +382,6 @@ function NewSpotPanel({ actor, campusOptions, onClose, onCreated }: { actor: str
       footer={<><Button variant="primary" onClick={submit} disabled={!form.name.trim() || saving}>{saving ? "만드는 중…" : "건 추가"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
       <Field label="매장명" required><Input value={form.name} onChange={set("name")} placeholder="예: 서서맥주" autoFocus /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="캠퍼스"><CampusPicker value={form.campus} options={campusOptions} onChange={(v) => setForm((f) => ({ ...f, campus: v }))} /></Field>
         <Field label="상품" hint="나중에 정해도 됩니다.">
           <Select value={form.product} onChange={set("product")}>
             <option value="">미정</option>{SPOT_PRODUCTS.map((x) => <option key={x.key} value={x.key}>{x.label} · {x.price.toLocaleString()}원</option>)}

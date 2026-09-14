@@ -50,6 +50,8 @@ export interface SpotJob {
   due: string | null;
   delivered_at: string | null;
   paid_at: string | null;
+  /** 기획안을 **보낸** 날. 링크가 있는 것과 보낸 것은 다르다 — 만들어 두고 못 보낸 건이 막힌 자리다. */
+  plan_sent_at: string | null;
   plan_url: string | null;
   next_action: string | null;
   memo: string | null;
@@ -63,5 +65,5 @@ export const SPOT_EDITABLE = [
   "name", "campus", "district", "category", "stage", "owner",
   "product", "price", "owner_name", "contact", "insta", "map_url", "restaurant_id",
   "meeting_at", "shoot_at", "due", "delivered_at", "paid_at",
-  "plan_url", "next_action", "memo",
+  "plan_sent_at", "plan_url", "next_action", "memo",
 ] as const;

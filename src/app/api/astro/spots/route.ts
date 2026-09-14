@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
     due: body.due ?? null,
     delivered_at: body.delivered_at ?? null,
     paid_at: body.paid_at ?? null,
+    plan_sent_at: body.plan_sent_at ?? null,
     plan_url: body.plan_url ?? null,
     next_action: body.next_action ?? null,
     memo: body.memo ?? null,
