@@ -112,6 +112,21 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
       load();
     } finally { setRowBusy(null); }
   }
+  /**
+   * 청구서가 없어도 입금을 찍는다 (민열님 0914).
+   * 돈은 이미 들어와 있는데 "청구서를 먼저 만드세요"는 순서가 뒤바뀐 요구다.
+   * 서버가 그 달 청구를 만들면서 같은 요청에서 입금까지 찍는다.
+   */
+  async function payNow(store: StoreRow, at: string) {
+    setRowBusy(`gen:${store.restaurant_id}`); setMsg(null);
+    try {
+      const res = await fetch("/api/astro/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, requested_by: actor, restaurant_id: store.restaurant_id, paid_on: at }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setMsg(d.detail ?? "입금을 찍지 못했습니다."); return; }
+      if (!d.paid) setMsg(`${store.name} 은(는) 청구를 만들 수 없어 입금을 못 찍었습니다${d.skipped?.length ? ` — ${d.skipped.join(", ")}` : " — 월 이용료·납부 방식·청구 시작 월을 확인하세요."}`);
+      load();
+    } finally { setRowBusy(null); }
+  }
   /** 표에서 '청구 안 됨' 한 줄만 되살린다. 전체 생성 버튼은 머리에 그대로 둔다. */
   async function generateOne(store: StoreRow) {
     setRowBusy(`gen:${store.restaurant_id}`); setMsg(null);
@@ -181,7 +196,9 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
                     <Td className="text-[12px] text-gray-600">{inv?.paid_at ? inv.paid_at.slice(5, 10).replace("-", "/") : "-"}</Td>
                     <Td align="right">
                       <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        {b === "none" && <Button size="sm" onClick={() => generateOne(store)} disabled={rowBusy === `gen:${store.restaurant_id}`} icon={<IconFileInvoice />}>청구 생성</Button>}
+                        {/* 청구가 없어도 입금은 찍을 수 있다. 돈이 먼저 들어오는 달이 많다. */}
+                        {b === "none" && <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => payNow(store, todayLocal())} disabled={rowBusy === `gen:${store.restaurant_id}`}>{rowBusy === `gen:${store.restaurant_id}` ? "…" : "입금 확인"}</Button>}
+                        {b === "none" && <Button size="sm" onClick={() => generateOne(store)} disabled={rowBusy === `gen:${store.restaurant_id}`} icon={<IconFileInvoice />}>청구만</Button>}
                         {inv && b !== "paid" && <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => markPaid(inv)} disabled={rowBusy === inv.id}>{rowBusy === inv.id ? "…" : "입금 확인"}</Button>}
                         {/* 되돌리기를 같은 자리에 둔다 — 잘못 눌렀을 때 어디로 가야 하는지 찾지 않게 */}
                         {inv && b === "paid" && (
@@ -231,7 +248,7 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
           period={period}
           busy={rowBusy === (openRow.inv?.id ?? `gen:${openRow.store.restaurant_id}`)}
           onClose={() => setOpen(null)}
-          onPaid={(at) => openRow.inv && markPaid(openRow.inv, at)}
+          onPaid={(at) => (openRow.inv ? markPaid(openRow.inv, at) : payNow(openRow.store, at))}
           onUnpaid={() => openRow.inv && unmarkPaid(openRow.inv)}
           onGenerate={() => generateOne(openRow.store)}
           onTax={() => { setOpen(null); onGo?.("astro-tax"); }}
@@ -254,11 +271,13 @@ function PaymentPanel({
   row, period, busy, onClose, onPaid, onUnpaid, onGenerate, onTax, onStore, onSms,
 }: {
   row: Row; period: string; busy: boolean; onClose: () => void;
-  onPaid: (at?: string) => void; onUnpaid: () => void; onGenerate: () => void;
+  onPaid: (at: string) => void; onUnpaid: () => void; onGenerate: () => void;
   onTax: () => void; onStore: () => void; onSms: () => void;
 }) {
   const { store, inv, bucket: b } = row;
   const [at, setAt] = useState(todayLocal());
+  /** 금액을 모르면 아무것도 찍을 수 없다. 0원짜리 청구를 만들어 두면 나중에 더 헷갈린다. */
+  const canPay = Boolean(inv) || Boolean(store.ops?.monthly_fee && store.ops.pay_cycle !== "LUMP");
   const TONE: Record<Row["bucket"], ChipTone> = { none: "red", pending: "amber", issued: "blue", paid: "green", skip: "gray" };
   const LABEL: Record<Row["bucket"], string> = { none: "청구 안 됨", pending: "품의 · 승인", issued: "발행 · 입금 대기", paid: "입금 확인", skip: "해당 없음" };
 
@@ -267,9 +286,9 @@ function PaymentPanel({
       badge={<Chip tone={TONE[b]} dot={b === "none"}>{LABEL[b]}</Chip>}
       footer={
         <>
-          {inv && b !== "paid" && <Button variant="primary" icon={<IconCheck />} onClick={() => onPaid(at)} disabled={busy}>{busy ? "처리 중…" : "입금 확인"}</Button>}
-          {inv && b === "paid" && <Button icon={<IconArrowBackUp />} onClick={onUnpaid} disabled={busy}>{busy ? "처리 중…" : "입금 확인 취소"}</Button>}
-          {!inv && <Button variant="primary" icon={<IconFileInvoice />} onClick={onGenerate} disabled={busy}>{busy ? "만드는 중…" : "이 매장 청구 만들기"}</Button>}
+          {b !== "paid" && <Button variant="primary" icon={<IconCheck />} onClick={() => onPaid(at)} disabled={busy || !canPay}>{busy ? "처리 중…" : "입금 확인"}</Button>}
+          {b === "paid" && <Button icon={<IconArrowBackUp />} onClick={onUnpaid} disabled={busy}>{busy ? "처리 중…" : "입금 확인 취소"}</Button>}
+          {!inv && <Button icon={<IconFileInvoice />} onClick={onGenerate} disabled={busy || !canPay}>청구만 만들기</Button>}
           <Button variant="ghost" onClick={onClose}>닫기</Button>
         </>
       }>
@@ -281,15 +300,21 @@ function PaymentPanel({
         { label: "점주", value: store.ops?.owner_name ?? "-" },
       ]} />
 
-      {inv && b !== "paid" && (
-        <Field label="입금된 날" hint="비워 둘 수 없습니다. 오늘 이후로는 찍히지 않습니다.">
+      {b !== "paid" && canPay && (
+        <Field label="입금된 날" hint={inv ? "비워 둘 수 없습니다. 오늘 이후로는 찍히지 않습니다." : "청구서가 없어도 됩니다 — 이 달 청구를 만들면서 같이 찍습니다."}>
           <Input type="date" value={at} max={todayLocal()} onChange={(e) => setAt(e.target.value)} className="w-44" />
         </Field>
       )}
 
-      {!inv && (
-        <Notice tone="amber" title="이 달 청구가 없습니다">
-          월 이용료·납부 방식·청구 시작 월이 채워져 있어야 만들어집니다. 비어 있으면 파트너 매장 상세에서 먼저 채우세요.
+      {!inv && canPay && (
+        <Notice tone="blue" title="이 달 청구가 아직 없습니다">
+          <b>입금 확인</b>을 누르면 {label(period)} 청구를 만들면서 입금까지 한 번에 찍습니다. 청구서만 세워 두려면 <b>청구만 만들기</b>를 쓰세요.
+        </Notice>
+      )}
+
+      {!canPay && (
+        <Notice tone="amber" title="월 이용료가 비어 있습니다">
+          금액을 모르면 청구도 입금도 찍을 수 없습니다. 파트너 매장 상세에서 <b>월 이용료</b>와 <b>납부 방식</b>을 먼저 채우세요.
         </Notice>
       )}
 
