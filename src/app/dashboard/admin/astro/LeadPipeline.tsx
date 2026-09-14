@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport } from "@tabler/icons-react";
+import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport, IconTargetArrow } from "@tabler/icons-react";
 import { ALL_LEAD_STAGES, APP_CATEGORIES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES, PROPOSED_PLANS, type Campus, type Lead, type LeadIntent, type LeadStage } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
+import { INSTA_STATES, fitOf, type InstaState } from "@/lib/draft/fit";
 import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, PanelSection, Segmented, Select, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, daysSince, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
@@ -334,15 +335,25 @@ function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConve
 /* ═══════════ 등록 ═══════════ */
 
 function NewLeadPanel({ actor, campus, campusOptions, onClose, onCreated }: { actor: string; campus: Campus; campusOptions: string[]; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ name: "", campus, kind: "신규", category: "", owner: actor, intent: "", phone: "", link: "", proposed_plan: "", next_action: "", due: "", memo: "" });
+  const [form, setForm] = useState({ name: "", campus, kind: "신규", category: "", owner: actor, intent: "", phone: "", link: "", insta: "", proposed_plan: "", next_action: "", due: "", memo: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 파트너 적합도 — 접혀 있다가 펼치면 나온다. 안 쓰는 사람에게는 없는 칸이어야 한다. */
+  const [fitOpen, setFitOpen] = useState(false);
+  const [fitIn, setFitIn] = useState<{ reviews: string; blogs: string; followers: string; insta_state: string }>({ reviews: "", blogs: "", followers: "", insta_state: "" });
+  const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[^\d]/g, "")) || 0);
+  const fit = fitOf({ reviews: num(fitIn.reviews), blogs: num(fitIn.blogs), followers: num(fitIn.followers), insta_state: (fitIn.insta_state || null) as InstaState | null });
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
   async function submit() {
     if (!form.name.trim() || saving) return;
     setSaving(true); setError(null);
     try {
-      const res = await fetch("/api/astro/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, intent: form.intent || null }) });
+      const res = await fetch("/api/astro/leads", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        // 적합도를 봤으면 등급·점수·공략 포인트도 같이 넣는다 — Lead 에 이미 있는 칸이다
+        body: JSON.stringify({ ...form, intent: form.intent || null,
+          ...(fit.score !== null ? { grade: fit.grade, score: fit.score, angle: fit.angle } : {}) }),
+      });
       if (res.ok) { onCreated(); onClose(); } else { const d = await res.json().catch(() => ({})); setError(d.detail ?? "등록하지 못했습니다."); }
     } catch { setError("서버에 연결하지 못했습니다."); } finally { setSaving(false); }
   }
@@ -358,11 +369,85 @@ function NewLeadPanel({ actor, campus, campusOptions, onClose, onCreated }: { ac
         <Field label="제안 플랜"><Select value={form.proposed_plan} onChange={set("proposed_plan")}><option value="">미정</option>{PROPOSED_PLANS.map((pl) => <option key={pl} value={pl}>{pl}</option>)}</Select></Field>
         <Field label="매장 전화"><Input value={form.phone} onChange={set("phone")} type="tel" inputMode="tel" /></Field>
         <Field label="링크"><Input value={form.link} onChange={set("link")} type="url" inputMode="url" placeholder="네이버 플레이스" /></Field>
+        <Field label="인스타"><Input value={form.insta} onChange={set("insta")} placeholder="@handle" /></Field>
         <Field label="다음 액션"><Input value={form.next_action} onChange={set("next_action")} placeholder="예: 금요일 재방문" /></Field>
         <Field label="기한"><Input type="date" value={form.due} onChange={set("due")} /></Field>
       </div>
+      {/* 파트너 적합도 (베타) — 판단이 실제로 일어나는 자리에 둔다.
+          Scope 를 툴로 세우는 대신 후보를 넣는 이 화면 안으로 접어 넣었다 (민열님 0914). */}
+      <div className="rounded-[14px] border border-black/[0.07] bg-black/[0.015] overflow-hidden">
+        <button type="button" onClick={() => setFitOpen((v) => !v)}
+          className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left ${focusRing}`}>
+          <IconTargetArrow size={16} className="text-navy shrink-0" aria-hidden="true" />
+          <span className="text-[13px] font-semibold text-gray-900">파트너 적합도</span>
+          <span className="text-[10.5px] font-bold text-white bg-navy/80 rounded px-1.5 py-[1px]">베타</span>
+          {fit.score !== null && !fitOpen && (
+            <span className="text-[12px] font-semibold text-navy ml-1">{fit.score}점 · {fit.grade}</span>
+          )}
+          <span className="ml-auto text-[12px] font-semibold text-navy">{fitOpen ? "접기" : "보기"}</span>
+        </button>
+
+        {fitOpen && (
+          <div className="px-3.5 pb-3.5 pt-0.5 border-t border-black/[0.05]">
+            <p className="text-[12px] text-gray-500 leading-relaxed mb-3">
+              네이버 플레이스와 인스타를 열어 네 칸만 옮겨 적으면 등급이 나옵니다.
+              <span className="text-gray-700 font-medium"> 인스타 상태만 골라도</span> 절반은 채워집니다.
+            </p>
+            <Field label="인스타 상태" hint={INSTA_STATES.find((v) => v.key === fitIn.insta_state)?.why}>
+              <Select value={fitIn.insta_state} onChange={(e) => setFitIn((f) => ({ ...f, insta_state: e.target.value }))}>
+                <option value="">아직 안 봤습니다</option>
+                {INSTA_STATES.map((v) => <option key={v.key} value={v.key}>{v.label} · 여지 {v.room}</option>)}
+              </Select>
+            </Field>
+            <div className="grid grid-cols-3 gap-2.5 mt-2">
+              <Field label="방문자리뷰"><Input value={fitIn.reviews} onChange={(e) => setFitIn((f) => ({ ...f, reviews: e.target.value }))} inputMode="numeric" placeholder="820" /></Field>
+              <Field label="블로그리뷰"><Input value={fitIn.blogs} onChange={(e) => setFitIn((f) => ({ ...f, blogs: e.target.value }))} inputMode="numeric" placeholder="140" /></Field>
+              <Field label="팔로워"><Input value={fitIn.followers} onChange={(e) => setFitIn((f) => ({ ...f, followers: e.target.value }))} inputMode="numeric" placeholder="290" /></Field>
+            </div>
+
+            <div className="mt-3 rounded-[12px] bg-white border border-black/[0.06] px-3.5 py-3">
+              {fit.score === null ? (
+                <p className="text-[12.5px] text-gray-400">
+                  규모 {fit.size ?? "—"} · 여지 {fit.room ?? "—"} — <span className="font-medium text-gray-500">둘 다 있어야 점수를 매깁니다.</span>
+                </p>
+              ) : (
+                <>
+                  <p className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-[26px] font-bold text-gray-900 tabular-nums leading-none tracking-[-0.02em]">{fit.score}</span>
+                    <span className={`text-[13px] font-bold px-2 py-0.5 rounded-md text-white ${fit.grade === "A" ? "bg-emerald-700" : fit.grade === "B" ? "bg-amber-600" : "bg-gray-400"}`}>{fit.grade}</span>
+                    <span className="text-[12px] text-gray-500 font-mono ml-auto">0.75 × {fit.size} + 0.25 × {fit.room}</span>
+                  </p>
+                  <div className="mt-2.5 grid gap-1.5">
+                    <FitBar label="규모" hint="손님이 얼마나 오나" v={fit.size ?? 0} tone="navy" />
+                    <FitBar label="여지" hint="우리가 낄 자리가 있나" v={fit.room ?? 0} tone="teal" />
+                  </div>
+                  {fit.angle && <p className="mt-2.5 text-[12.5px] text-gray-700 leading-relaxed">{fit.angle}</p>}
+                </>
+              )}
+            </div>
+            <p className="text-[11.5px] text-gray-400 mt-2 leading-relaxed">
+              영남대 37곳에 팀이 이미 매겨 둔 등급에서 역산한 공식입니다 — 되돌려 보니 <span className="text-gray-600 font-medium">37곳 중 35곳</span>이 맞았습니다.
+              다른 상권에서도 맞는지는 아직 모릅니다. 어긋나면 알려 주세요.
+            </p>
+          </div>
+        )}
+      </div>
+
       <Field label="메모"><Textarea rows={3} value={form.memo} onChange={set("memo")} /></Field>
     </SlideOver>
+  );
+}
+
+/** 규모·여지 막대. 둘이 무엇을 재는지 옆에 적는다 — 숫자만 있으면 무슨 뜻인지 모른다. */
+function FitBar({ label, hint, v, tone }: { label: string; hint: string; v: number; tone: "navy" | "teal" }) {
+  return (
+    <span className="grid grid-cols-[38px_1fr_28px] items-center gap-2">
+      <span className="text-[11.5px] font-semibold text-gray-700">{label}</span>
+      <span className="h-[7px] rounded-full bg-black/[0.06] overflow-hidden" title={hint}>
+        <span className={`block h-full rounded-full ${tone === "navy" ? "bg-navy" : "bg-libra"}`} style={{ width: `${v}%` }} />
+      </span>
+      <span className="text-[11.5px] tabular-nums text-right text-gray-600 font-semibold">{v}</span>
+    </span>
   );
 }
 
