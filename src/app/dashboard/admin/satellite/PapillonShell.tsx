@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import ToolShell from "../_shared/ToolShell";
 import AttendanceDashboard from "./AttendanceDashboard";
 import ContentTab from "../ContentTab";
 import MyDashboardScreen from "./MyDashboardScreen";
@@ -53,18 +54,18 @@ interface Me {
  * 버튼 자체를 렌더링하지 않는다. 그래서 멤버가 "에디터"를 눌러도 결과적으로 본인 담당
  * 건만 보이고, 그 안에서도 편집 불가능한 건은 에디터 탭이 뜨지 않아 규칙이 지켜진다.
  */
-const NAV: { key: Screen; label: string; icon: string; leadOnly?: boolean; sepBefore?: boolean }[] = [
-  { key: "calendar", label: "캘린더", icon: "▦" },
-  { key: "sponsorship", label: "협찬", icon: "◆" },
-  { key: "content-list", label: "콘텐츠 피드백", icon: "✎" },
-  { key: "editor-list", label: "에디터", icon: "⊕" },
-  { key: "overview", label: "오버뷰", icon: "◎", sepBefore: true },
-  { key: "mine", label: "내 대시보드", icon: "◐" },
-  { key: "post-list", label: "게시물 상세", icon: "▤" },
-  { key: "attendance", label: "근태", icon: "⏱", leadOnly: true, sepBefore: true },
-  { key: "tagging", label: "태깅 콘솔", icon: "⊞", leadOnly: true },
-  { key: "banner", label: "배너/팝업", icon: "▥", leadOnly: true },
-  { key: "settings", label: "설정", icon: "⚙", leadOnly: true },
+const NAV: { key: Screen; label: string; leadOnly?: boolean; sepBefore?: boolean }[] = [
+  { key: "calendar", label: "캘린더" },
+  { key: "sponsorship", label: "협찬" },
+  { key: "content-list", label: "콘텐츠 피드백" },
+  { key: "editor-list", label: "에디터" },
+  { key: "overview", label: "오버뷰", sepBefore: true },
+  { key: "mine", label: "내 대시보드" },
+  { key: "post-list", label: "게시물 상세" },
+  { key: "attendance", label: "근태", leadOnly: true, sepBefore: true },
+  { key: "tagging", label: "태깅 콘솔", leadOnly: true },
+  { key: "banner", label: "배너/팝업", leadOnly: true },
+  { key: "settings", label: "설정", leadOnly: true },
 ];
 
 /**
@@ -77,7 +78,7 @@ const NAV: { key: Screen; label: string; icon: string; leadOnly?: boolean; sepBe
  * 기존 PlanEditor 모달 흐름은 그대로 유지된다 — 이 세 메뉴는 "어디서 시작하든 결국
  * 같은 PlanEditor 로 들어간다"는 별도 진입로일 뿐이다.
  */
-export default function PapillonShell() {
+export default function PapillonShell({ onBack }: { onBack?: () => void } = {}) {
   const [screen, setScreen] = useState<Screen>("calendar");
   const [me, setMe] = useState<Me | null>(null);
 
@@ -92,33 +93,18 @@ export default function PapillonShell() {
   const visibleNav = NAV.filter((n) => !n.leadOnly || isLead);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6 items-start">
-      <aside className="bg-navy rounded-2xl p-3 md:p-4 md:sticky md:top-4">
-        <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
-          {visibleNav.map((n) => (
-            <div key={n.key} className="contents">
-              {n.sepBefore && <div className="hidden md:block h-px bg-white/10 my-1.5" />}
-              <button
-                onClick={() => setScreen(n.key)}
-                className={`flex items-center gap-2.5 text-left text-xs font-semibold rounded-lg px-3 py-2.5 whitespace-nowrap transition-colors ${
-                  screen === n.key ? "bg-white/15 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <span className="w-4 text-center opacity-85">{n.icon}</span>
-                {n.label}
-              </button>
-            </div>
-          ))}
-        </div>
-        {me && (
-          <div className="hidden md:block mt-4 pt-4 border-t border-white/10">
-            <p className="text-xs font-bold text-white">{me.display_name || me.username}</p>
-            <p className="text-[10px] text-white/50 mt-0.5">{isLead ? "리드" : "멤버"}</p>
-          </div>
-        )}
-      </aside>
-
-      <main className="min-w-0 max-w-6xl">
+    /* 0914: 사이드바만 Astro·Probe 와 같은 것(ToolShell)으로 바꿨다.
+       항목·순서·구분선·리드 전용 규칙·화면 연결은 위와 아래 그대로다. */
+    <ToolShell
+      product={{ key: "papillon", name: "Papillon", subtitle: "마케팅 툴" }}
+      navItems={visibleNav.map((n) => ({ key: n.key, label: n.label, sepBefore: n.sepBefore }))}
+      activeKey={screen}
+      onSelect={(key) => setScreen(key as Screen)}
+      onBack={onBack}
+      user={{ name: me ? me.display_name || me.username : "", role: me ? (isLead ? "리드" : "멤버") : "" }}
+    >
+      {/* 떠 있는 도크가 마지막 줄을 가리지 않게. 도크는 메인으로 돌아갈 수 있을 때만 뜬다. */}
+      <div className={`min-w-0 max-w-6xl ${onBack ? "pb-24" : ""}`}>
         {screen === "calendar" && <PapillonDashboard />}
         {screen === "sponsorship" && <SponsorshipList />}
         {screen === "content-list" && (
@@ -154,7 +140,7 @@ export default function PapillonShell() {
         {screen === "tagging" && isLead && <TaggingConsole embedded onClose={() => setScreen("calendar")} />}
         {screen === "banner" && isLead && <ContentTab />}
         {screen === "settings" && isLead && <SettingsScreen />}
-      </main>
-    </div>
+      </div>
+    </ToolShell>
   );
 }
