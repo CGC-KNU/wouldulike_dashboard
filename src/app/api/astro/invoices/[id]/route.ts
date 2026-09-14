@@ -14,11 +14,20 @@ import { notifyAstro } from "@/lib/slack";
  *   mark-issued  * → ISSUED               볼타/홈택스에서 사람이 발행한 뒤 승인번호를 적는다. 슬랙 ✅. 매장 운영의 invoice=ISSUED
  *   sync      ISSUING|RESULT_UNKNOWN → ?  볼타 상태 동기화(미구현) — 그대로 둔다
  *   cancel    !ISSUED → CANCELED
- *   mark-paid ISSUED → paid_at            매장 운영의 billing=PAID (입금 현황과 같은 값)
+ *   mark-paid ISSUED → paid_at            매장 운영의 billing=PAID (입금 현황과 같은 값). 날짜를 주면 그 날로 찍는다
+ *   unmark-paid  paid_at → null           잘못 눌렀을 때 되돌린다. 매장 운영의 billing 은 '입금 대기'로
  */
 
 const KEY = "astro_invoices";
-type Action = "approve" | "reject" | "issue" | "mark-issued" | "sync" | "cancel" | "mark-paid" | "edit";
+type Action = "approve" | "reject" | "issue" | "mark-issued" | "sync" | "cancel" | "mark-paid" | "unmark-paid" | "edit";
+
+/** "2026-09-14" 같은 날짜만 받는다. 미래 날짜는 입금일이 될 수 없다. */
+function normalizePaidAt(v: string | undefined, now: string): string | null {
+  if (!v) return now;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  if (v > now.slice(0, 10)) return null;
+  return `${v}T00:00:00.000Z`;
+}
 
 function syncOps(inv: TaxInvoice, patch: Partial<StoreOps>, by: string) {
   const list = [...readDraft<StoreOps[]>("astro_store_ops", seedStoreOps)];
@@ -33,7 +42,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   const { id } = await ctx.params;
-  const b = (await req.json().catch(() => ({}))) as { action?: Action; by?: string; reason?: string; nts_no?: string; url?: string; memo?: string; supply?: number; tax?: number; title?: string };
+  const b = (await req.json().catch(() => ({}))) as { action?: Action; by?: string; reason?: string; nts_no?: string; url?: string; memo?: string; supply?: number; tax?: number; title?: string; paid_at?: string };
   const inv = readDraft<TaxInvoice[]>(KEY, seedInvoices).find((i) => i.id === id);
   if (!inv) return NextResponse.json({ detail: "찾을 수 없습니다." }, { status: 404 });
   // "누가"는 서버가 찍는다. 본문 by 는 백엔드를 못 읽을 때의 마지막 폴백.
@@ -78,12 +87,23 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       if (inv.status === "ISSUED") return bad("발행 완료 건은 취소가 어렵습니다. 국세청 수정세금계산서로 처리하세요.");
       patch = { status: "CANCELED" };
       break;
-    case "mark-paid":
+    case "mark-paid": {
       // 월납은 발행 전에 돈이 먼저 오기도 한다. 입금은 입금대로 찍고, 계산서 상태는 건드리지 않는다 (발행 완료로 '만들지' 않는다 — 0911 리뷰).
       if (inv.status === "CANCELED" || inv.status === "REJECTED") return bad("취소·반려된 건에는 입금을 찍을 수 없습니다.");
       if (inv.paid_at) return bad("이미 입금 확인된 건입니다.");
-      patch = { paid_at: now };
-      syncOps(inv, { billing: "PAID", billing_checked_at: now.slice(0, 10), billing_checked_by: by }, by);
+      // 돈은 대개 어제 들어와 있고 우리는 오늘 확인한다. 날짜를 주면 그 날로 찍는다 (민열님 0914).
+      const at = normalizePaidAt(b.paid_at, now);
+      if (!at) return NextResponse.json({ detail: "입금일은 YYYY-MM-DD 형식의 오늘 이전 날짜여야 합니다." }, { status: 400 });
+      patch = { paid_at: at };
+      syncOps(inv, { billing: "PAID", billing_checked_at: at.slice(0, 10), billing_checked_by: by }, by);
+      break;
+    }
+    case "unmark-paid":
+      // 잘못 누른 것을 되돌린다. 되돌린 사실도 누가 언제 했는지 남긴다 — 지우는 게 아니라 고치는 것이다.
+      if (!inv.paid_at) return bad("입금으로 찍힌 건이 아닙니다.");
+      patch = { paid_at: null };
+      syncOps(inv, { billing: "PENDING", billing_checked_at: now.slice(0, 10), billing_checked_by: by }, by);
+      slack = `:leftwards_arrow_with_hook: *입금 확인 취소* — ${inv.name} · ${inv.title} · ${inv.total.toLocaleString()}원 · ${by}`;
       break;
     case "edit":
       if (inv.status !== "PENDING" && inv.status !== "REJECTED" && inv.status !== "FAILED") return bad("품의·반려·실패 상태에서만 고칠 수 있습니다.");

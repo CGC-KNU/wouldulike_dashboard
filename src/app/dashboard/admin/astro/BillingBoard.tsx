@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconCheck, IconCopy, IconFileInvoice, IconMessage2, IconPlus } from "@tabler/icons-react";
+import { IconArrowBackUp, IconCheck, IconCopy, IconExternalLink, IconFileInvoice, IconMessage2, IconPlus } from "@tabler/icons-react";
 import { TAX_STATUS_LABEL, isPaidTier, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Notice, PageHeader, Select, Skeleton, StepTiles, Table, Td, Th, focusRing, rowClickable, periodLocal, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DefList, DraftBadge, Empty, Field, Input, Notice, PageHeader, Select, Skeleton, SlideOver, StepTiles, Table, Td, Th, focusRing, rowClickable, periodLocal, todayLocal, type ChipTone } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
 import type { MsgContext } from "@/lib/draft/message";
 
@@ -36,6 +36,9 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
   const [copied, setCopied] = useState(false);
   // 문자 팔로업 — 청구·미납·입금 감사 (민열님 0911)
   const [sms, setSms] = useState<{ ctx: MsgContext; overdue: boolean } | null>(null);
+  /** 표에서 매장을 누르면 여기서 입금 여부를 고친다 (민열님 0914). 세금계산서 탭으로 튕기지 않는다. */
+  const [open, setOpen] = useState<number | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -74,6 +77,7 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
   const sums = useMemo(() => ({ expected: rows.filter((r) => r.bucket !== "skip").reduce((a, r) => a + (r.inv?.total ?? r.store.ops?.monthly_fee ?? 0), 0), paid: rows.filter((r) => r.bucket === "paid").reduce((a, r) => a + (r.inv?.total ?? 0), 0) }), [rows]);
   const periods = useMemo(() => { const set = new Set([thisPeriod(), ...invoices.map((i) => i.period)]); const d = new Date(); for (let k = 1; k <= 2; k++) set.add(periodLocal(-k)); return [...set].sort().reverse(); }, [invoices]);
   const visible = bucket ? rows.filter((r) => r.bucket === bucket) : rows.filter((r) => r.bucket !== "skip");
+  const openRow = useMemo(() => (open === null ? null : rows.find((r) => r.store.restaurant_id === open) ?? null), [open, rows]);
 
   /** 최근 6개월 — 청구 대비 입금. 막대는 장식이 아니라 '어느 달이 비었나'를 본다. */
   const history = useMemo(() => {
@@ -90,10 +94,34 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
       setMsg(`${label(period)} 청구 ${d.created}건 생성${d.skipped?.length ? ` · 건너뜀 ${d.skipped.join(", ")}` : ""}`); load();
     } finally { setBusy(false); }
   }
-  async function markPaid(inv: TaxInvoice) {
-    // 입금은 입금대로 찍는다. 발행은 세금계산서 탭에서 승인번호와 함께 — 입금 버튼이 발행을 '만들지' 않는다.
-    const res = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
-    if (!res.ok) setMsg((await res.json()).detail); load();
+  /** 입금은 입금대로 찍는다. 발행은 세금계산서 탭에서 승인번호와 함께 — 입금 버튼이 발행을 '만들지' 않는다. */
+  async function markPaid(inv: TaxInvoice, at?: string) {
+    setRowBusy(inv.id); setMsg(null);
+    try {
+      const res = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor, ...(at ? { paid_at: at } : {}) }) });
+      if (!res.ok) setMsg((await res.json().catch(() => ({}))).detail ?? "입금을 찍지 못했습니다.");
+      load();
+    } finally { setRowBusy(null); }
+  }
+  /** 잘못 누른 것을 되돌린다 — 고칠 수 없는 버튼은 누르기 무섭다. */
+  async function unmarkPaid(inv: TaxInvoice) {
+    setRowBusy(inv.id); setMsg(null);
+    try {
+      const res = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "unmark-paid", by: actor }) });
+      if (!res.ok) setMsg((await res.json().catch(() => ({}))).detail ?? "되돌리지 못했습니다.");
+      load();
+    } finally { setRowBusy(null); }
+  }
+  /** 표에서 '청구 안 됨' 한 줄만 되살린다. 전체 생성 버튼은 머리에 그대로 둔다. */
+  async function generateOne(store: StoreRow) {
+    setRowBusy(`gen:${store.restaurant_id}`); setMsg(null);
+    try {
+      const res = await fetch("/api/astro/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, requested_by: actor, restaurant_id: store.restaurant_id }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setMsg(d.detail ?? "청구를 만들지 못했습니다."); return; }
+      if (!d.created) setMsg(`${store.name} 은(는) 청구를 만들 수 없습니다${d.skipped?.length ? ` — ${d.skipped.join(", ")}` : " — 월 이용료·납부 방식·청구 시작 월을 확인하세요."}`);
+      load();
+    } finally { setRowBusy(null); }
   }
   async function copyReport() {
     const names = (b: Row["bucket"]) => rows.filter((r) => r.bucket === b).map((r) => r.store.name).join(", ") || "없음";
@@ -146,16 +174,23 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
               <thead><tr><Th>매장</Th><Th width="6.5rem" align="right">금액</Th><Th width="8.5rem">상태</Th><Th width="5rem">입금일</Th><Th width="7.5rem" align="right">처리</Th></tr></thead>
               <tbody>
                 {visible.map(({ store, inv, bucket: b }) => (
-                  <tr key={store.restaurant_id} className={inv ? rowClickable : ""} onClick={() => inv && onGo?.("astro-tax")}>
+                  <tr key={store.restaurant_id} className={rowClickable} onClick={() => setOpen(store.restaurant_id)}>
                     <Td><span className="font-semibold text-gray-900 whitespace-nowrap">{store.name}</span><span className="block text-[11px] text-gray-400 whitespace-nowrap">{(store as StoreRow & { missing?: boolean }).missing ? "매장 목록에서 못 찾음 · 청구 건 기준" : `${store.tier ?? "플랜 미지정"}${store.ops?.pay_cycle === "MONTHLY" ? " · 월납" : ""}${store.ops?.district ? ` · ${store.ops.district}` : ""}`}</span></Td>
                     <Td align="right" numeric className="font-semibold text-gray-900">{won(inv?.total ?? store.ops?.monthly_fee ?? 0)}</Td>
                     <Td><Chip tone={TONE[b]} dot={b === "none"}>{LABEL[b]}</Chip>{inv && <span className="block text-[11px] text-gray-400 mt-0.5">{TAX_STATUS_LABEL[inv.status]}{inv.nts_no ? ` · ${inv.nts_no}` : ""}</span>}</Td>
                     <Td className="text-[12px] text-gray-600">{inv?.paid_at ? inv.paid_at.slice(5, 10).replace("-", "/") : "-"}</Td>
                     <Td align="right">
-                      <div className="inline-flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        {b === "none" && <Button size="sm" onClick={generate} disabled={busy} icon={<IconFileInvoice />}>청구 생성</Button>}
-                        {inv && b !== "paid" && <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => markPaid(inv)}>입금 확인</Button>}
-                        {b === "paid" && <span className="text-[12px] text-emerald-700 font-semibold">{inv?.status === "ISSUED" ? "완료" : "입금 · 발행 필요"}</span>}
+                      <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {b === "none" && <Button size="sm" onClick={() => generateOne(store)} disabled={rowBusy === `gen:${store.restaurant_id}`} icon={<IconFileInvoice />}>청구 생성</Button>}
+                        {inv && b !== "paid" && <Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => markPaid(inv)} disabled={rowBusy === inv.id}>{rowBusy === inv.id ? "…" : "입금 확인"}</Button>}
+                        {/* 되돌리기를 같은 자리에 둔다 — 잘못 눌렀을 때 어디로 가야 하는지 찾지 않게 */}
+                        {inv && b === "paid" && (
+                          <button type="button" onClick={() => unmarkPaid(inv)} disabled={rowBusy === inv.id}
+                            aria-label={`${store.name} 입금 확인 취소`} title="입금 확인 취소"
+                            className={`inline-flex items-center gap-1 h-8 px-2 rounded-lg text-[12px] font-semibold text-gray-500 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 ${focusRing}`}>
+                            <IconArrowBackUp size={14} aria-hidden="true" />취소
+                          </button>
+                        )}
                         <button type="button" aria-label={`${store.name} 문자 보내기`} title="문자 보내기"
                           onClick={() => setSms({ ctx: { name: store.name, targetType: "store", targetId: String(store.restaurant_id), owner: store.ops?.owner_name, phone: store.ops?.owner_phone, fee: inv?.total ?? store.ops?.monthly_fee ?? null, period, sender: actor }, overdue: b !== "paid" && b !== "none" })}
                           className={`w-8 h-8 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
@@ -189,6 +224,86 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
       </div>
 
       {sms && <MessageComposer open ctx={sms.ctx} event={{ kind: "payment", overdue: sms.overdue }} onClose={() => setSms(null)} onSent={load} />}
+
+      {openRow && (
+        <PaymentPanel
+          row={openRow}
+          period={period}
+          busy={rowBusy === (openRow.inv?.id ?? `gen:${openRow.store.restaurant_id}`)}
+          onClose={() => setOpen(null)}
+          onPaid={(at) => openRow.inv && markPaid(openRow.inv, at)}
+          onUnpaid={() => openRow.inv && unmarkPaid(openRow.inv)}
+          onGenerate={() => generateOne(openRow.store)}
+          onTax={() => { setOpen(null); onGo?.("astro-tax"); }}
+          onStore={() => { setOpen(null); onGo?.(`astro-ops?open=${openRow.store.restaurant_id}`); }}
+          onSms={() => setSms({ ctx: { name: openRow.store.name, targetType: "store", targetId: String(openRow.store.restaurant_id), owner: openRow.store.ops?.owner_name, phone: openRow.store.ops?.owner_phone, fee: openRow.inv?.total ?? openRow.store.ops?.monthly_fee ?? null, period, sender: actor }, overdue: openRow.bucket !== "paid" && openRow.bucket !== "none" })}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * 한 매장의 이 달 입금 — 표에서 줄을 누르면 열린다.
+ *
+ * 표의 버튼은 "지금 들어왔다"를 한 번에 찍는 자리이고, 여기는 **날짜를 골라 고치는** 자리다.
+ * 돈은 대개 어제 들어와 있고 우리는 오늘 확인한다. 확인한 날이 아니라 들어온 날을 적어야
+ * 나중에 어느 달 것인지 다투지 않는다.
+ */
+function PaymentPanel({
+  row, period, busy, onClose, onPaid, onUnpaid, onGenerate, onTax, onStore, onSms,
+}: {
+  row: Row; period: string; busy: boolean; onClose: () => void;
+  onPaid: (at?: string) => void; onUnpaid: () => void; onGenerate: () => void;
+  onTax: () => void; onStore: () => void; onSms: () => void;
+}) {
+  const { store, inv, bucket: b } = row;
+  const [at, setAt] = useState(todayLocal());
+  const TONE: Record<Row["bucket"], ChipTone> = { none: "red", pending: "amber", issued: "blue", paid: "green", skip: "gray" };
+  const LABEL: Record<Row["bucket"], string> = { none: "청구 안 됨", pending: "품의 · 승인", issued: "발행 · 입금 대기", paid: "입금 확인", skip: "해당 없음" };
+
+  return (
+    <SlideOver open onClose={onClose} title={store.name} subtitle={`${label(period)} 입금`}
+      badge={<Chip tone={TONE[b]} dot={b === "none"}>{LABEL[b]}</Chip>}
+      footer={
+        <>
+          {inv && b !== "paid" && <Button variant="primary" icon={<IconCheck />} onClick={() => onPaid(at)} disabled={busy}>{busy ? "처리 중…" : "입금 확인"}</Button>}
+          {inv && b === "paid" && <Button icon={<IconArrowBackUp />} onClick={onUnpaid} disabled={busy}>{busy ? "처리 중…" : "입금 확인 취소"}</Button>}
+          {!inv && <Button variant="primary" icon={<IconFileInvoice />} onClick={onGenerate} disabled={busy}>{busy ? "만드는 중…" : "이 매장 청구 만들기"}</Button>}
+          <Button variant="ghost" onClick={onClose}>닫기</Button>
+        </>
+      }>
+      <DefList items={[
+        { label: "금액", value: <span className="tabular-nums font-semibold">{won(inv?.total ?? store.ops?.monthly_fee ?? 0)}</span> },
+        { label: "플랜 · 납부", value: `${store.tier ?? "플랜 미지정"}${store.ops?.pay_cycle === "MONTHLY" ? " · 월납" : store.ops?.pay_cycle === "LUMP" ? " · 일시납" : ""}` },
+        { label: "계산서", value: inv ? `${TAX_STATUS_LABEL[inv.status]}${inv.nts_no ? ` · ${inv.nts_no}` : ""}` : "아직 없음" },
+        { label: "입금일", value: inv?.paid_at ? inv.paid_at.slice(0, 10) : "-" },
+        { label: "점주", value: store.ops?.owner_name ?? "-" },
+      ]} />
+
+      {inv && b !== "paid" && (
+        <Field label="입금된 날" hint="비워 둘 수 없습니다. 오늘 이후로는 찍히지 않습니다.">
+          <Input type="date" value={at} max={todayLocal()} onChange={(e) => setAt(e.target.value)} className="w-44" />
+        </Field>
+      )}
+
+      {!inv && (
+        <Notice tone="amber" title="이 달 청구가 없습니다">
+          월 이용료·납부 방식·청구 시작 월이 채워져 있어야 만들어집니다. 비어 있으면 파트너 매장 상세에서 먼저 채우세요.
+        </Notice>
+      )}
+
+      {b === "paid" && inv?.status !== "ISSUED" && (
+        <Notice tone="blue" title="돈은 받았고 계산서는 아직입니다">
+          발행은 세금계산서 탭에서 승인번호와 함께 찍습니다. 입금 버튼이 발행을 대신 만들지 않습니다.
+        </Notice>
+      )}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button size="sm" icon={<IconMessage2 />} onClick={onSms}>문자 보내기</Button>
+        <Button size="sm" variant="ghost" icon={<IconExternalLink />} onClick={onStore}>파트너 매장 열기</Button>
+        {inv && <Button size="sm" variant="ghost" icon={<IconExternalLink />} onClick={onTax}>세금계산서 탭</Button>}
+      </div>
+    </SlideOver>
   );
 }

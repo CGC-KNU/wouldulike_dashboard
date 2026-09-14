@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconChevronLeft, IconChevronRight, IconFileDownload, IconMessage2, IconSearch } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconFileDownload, IconMessage2, IconPlus, IconSearch } from "@tabler/icons-react";
 import type { Lead, StoreRow } from "@/lib/draft/types";
 import { isPaidTier } from "@/lib/draft/types";
 import type { MsgContext } from "@/lib/draft/message";
 import { Input, focusRing, todayLocal } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
+import QuickAdd from "./QuickAdd";
 
 /**
  * 영업 일정 — 미팅 · 기한 · 계약 시작 · 입금 예정을 한 달에 놓는다 (민열님 0911).
@@ -70,7 +71,7 @@ export function buildEvents(stores: StoreRow[], leads: Lead[], ym: string, onSto
   return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
 }
 
-export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogged }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void; actor?: string; onLogged?: () => void }) {
+export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogged, leads = [], stores = [] }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void; actor?: string; onLogged?: () => void; leads?: Lead[]; stores?: StoreRow[] }) {
   const [y, m] = ym.split("-").map(Number);
   // 필터 — 종류(미팅/기한/계약 시작/입금 예정)와 식당 이름 (민열님 0911)
   const [kinds, setKinds] = useState<CalKind[]>([...ORDER]);
@@ -115,6 +116,8 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   /** 미팅 항목에서 '자료'를 누르면 그 줄 아래에 계약서·혜택 등록서 내려받기가 열린다 (민열님 0914). */
   const [docsFor, setDocsFor] = useState<string | null>(null);
+  /** 날짜 칸의 '+' — 그 날짜로 미팅·기한·계약 시작을 바로 등록한다 (민열님 0914). */
+  const [addFor, setAddFor] = useState<string | null>(null);
   useEffect(() => setExpanded({}), [ym]);
 
   const shift = (k: number) => { const d = new Date(y, m - 1 + k, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
@@ -163,19 +166,29 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
             const on = shown === d;
             const isToday = d === today;
             return (
-              <button key={d} type="button" onClick={() => setSel(on ? null : d)} aria-pressed={on}
-                aria-label={`${m}월 ${i + 1}일${list.length ? ` · ${gs.map((g) => `${KIND[g.kind].label} ${g.items.length}`).join(", ")}` : " · 일정 없음"}`}
-                className={`min-h-[74px] rounded-xl border text-left px-1.5 pt-1.5 pb-1 transition-colors ${focusRing} ${on ? "border-navy/60 bg-navy/[0.05] ring-1 ring-navy/20" : list.length ? "border-black/[0.06] bg-white hover:bg-navy/[0.03]" : "border-black/[0.04] bg-white/60"}`}>
-                <span className={`inline-flex items-center justify-center text-[11px] tabular-nums leading-none ${isToday ? "w-[18px] h-[18px] rounded-full bg-navy text-white font-bold" : list.length ? "text-gray-800 font-semibold" : "text-gray-400"}`}>{i + 1}</span>
-                <span className="block mt-1 space-y-[3px]">
-                  {gs.slice(0, 2).map((g) => (
-                    <span key={g.kind} className={`block text-[10px] leading-[14px] px-1 rounded truncate ${KIND[g.kind].chip}`}>
-                      {g.items.length === 1 ? g.items[0].label : `${KIND[g.kind].label} ${g.items.length}`}
-                    </span>
-                  ))}
-                  {gs.length > 2 && <span className="block text-[10px] leading-[14px] px-1 text-gray-400">+{gs.length - 2}종</span>}
-                </span>
-              </button>
+              /* 칸 전체가 누르는 자리이고, 오른쪽 위 '+' 는 그 위에 얹는다.
+                 버튼 안에 버튼을 넣을 수 없어 형제로 두고 칸 버튼을 절대 위치로 깔았다. */
+              <div key={d} className="relative group min-h-[74px]">
+                <button type="button" onClick={() => setSel(on ? null : d)} aria-pressed={on}
+                  aria-label={`${m}월 ${i + 1}일${list.length ? ` · ${gs.map((g) => `${KIND[g.kind].label} ${g.items.length}`).join(", ")}` : " · 일정 없음"}`}
+                  className={`absolute inset-0 w-full h-full rounded-xl border text-left px-1.5 pt-1.5 pb-1 transition-colors ${focusRing} ${on ? "border-navy/60 bg-navy/[0.05] ring-1 ring-navy/20" : list.length ? "border-black/[0.06] bg-white hover:bg-navy/[0.03]" : "border-black/[0.04] bg-white/60"}`}>
+                  <span className={`inline-flex items-center justify-center text-[11px] tabular-nums leading-none ${isToday ? "w-[18px] h-[18px] rounded-full bg-navy text-white font-bold" : list.length ? "text-gray-800 font-semibold" : "text-gray-400"}`}>{i + 1}</span>
+                  <span className="block mt-1 space-y-[3px] pr-4">
+                    {gs.slice(0, 2).map((g) => (
+                      <span key={g.kind} className={`block text-[10px] leading-[14px] px-1 rounded truncate ${KIND[g.kind].chip}`}>
+                        {g.items.length === 1 ? g.items[0].label : `${KIND[g.kind].label} ${g.items.length}`}
+                      </span>
+                    ))}
+                    {gs.length > 2 && <span className="block text-[10px] leading-[14px] px-1 text-gray-400">+{gs.length - 2}종</span>}
+                  </span>
+                </button>
+                {/* 늘 보이되 조용히. 칸에 손이 가면 또렷해진다 — 있는 줄 모르면 없는 것과 같다. */}
+                <button type="button" onClick={() => setAddFor(d)}
+                  aria-label={`${m}월 ${i + 1}일에 일정 등록`} title="미팅 · 기한 · 계약 시작 등록"
+                  className={`absolute top-1 right-1 w-5 h-5 rounded-md flex items-center justify-center text-gray-400 bg-white/80 border border-black/[0.06] opacity-45 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-navy hover:border-navy/30 hover:bg-navy/[0.06] transition-opacity ${focusRing}`}>
+                  <IconPlus size={12} aria-hidden="true" />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -186,11 +199,17 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
       </div>
 
       <div className="xl:border-l xl:border-black/[0.06] xl:pl-4">
-        <p className="text-[12px] font-semibold text-gray-700 mb-2">
-          {shown ? `${Number(shown.slice(5, 7))}월 ${Number(shown.slice(8))}일` : "일정"}
-          {shown === today && <span className="ml-1.5 text-[11px] font-medium text-navy">오늘</span>}
-          {shown && shown !== today && <span className="ml-1.5 text-[11px] font-medium text-gray-400">{shown > today ? "· 예정" : "· 지남"}</span>}
-        </p>
+        <div className="flex items-center gap-2 mb-2">
+          <p className="text-[12px] font-semibold text-gray-700">
+            {shown ? `${Number(shown.slice(5, 7))}월 ${Number(shown.slice(8))}일` : "일정"}
+            {shown === today && <span className="ml-1.5 text-[11px] font-medium text-navy">오늘</span>}
+            {shown && shown !== today && <span className="ml-1.5 text-[11px] font-medium text-gray-400">{shown > today ? "· 예정" : "· 지남"}</span>}
+          </p>
+          <button type="button" onClick={() => setAddFor(shown ?? today)}
+            className={`ml-auto inline-flex items-center gap-1 h-7 px-2 rounded-lg text-[12px] font-semibold text-navy border border-navy/20 bg-navy/[0.04] hover:bg-navy/[0.09] ${focusRing}`}>
+            <IconPlus size={13} aria-hidden="true" />이 날에 등록
+          </button>
+        </div>
         {shownList.length === 0 ? (
           <div className="text-[13px] text-gray-500">
             {total === 0 ? (
@@ -263,6 +282,12 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
       {msg && (
         <MessageComposer open ctx={msg.ctx} event={{ kind: msg.ev.kind === "due" ? "due" : msg.ev.kind, past: msg.ev.past, tomorrow: msg.ev.tomorrow, overdue: msg.ev.kind === "payment" && msg.ev.past }}
           onClose={() => setMsg(null)} onSent={onLogged} />
+      )}
+
+      {addFor && (
+        <QuickAdd date={addFor} leads={leads} stores={stores} actor={actor}
+          onClose={() => setAddFor(null)}
+          onSaved={() => { setSel(addFor); onLogged?.(); }} />
       )}
     </div>
   );
