@@ -81,6 +81,38 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
     }).catch(() => { /* 값이 없으면 문안에서 그 줄이 빠진다 */ });
   }, [onboarding, bank.line]);
 
+  /**
+   * 플랜 바꾸기. 플랜은 앱 매장 레코드에 있고 월 이용료는 영업 기록에 있다.
+   * 유료로 올리는데 금액이 비어 있으면 청구가 못 나가므로 **비어 있을 때만** 캠퍼스 기본값을 같이 채운다.
+   * 이미 적힌 금액은 건드리지 않는다 — 정든밤 22,000 같은 예외가 있다.
+   */
+  const [tierBusy, setTierBusy] = useState(false);
+  const [tierMsg, setTierMsg] = useState<string | null>(null);
+  async function changeTier(tier: string) {
+    if (tierBusy) return;
+    setTierBusy(true); setTierMsg(null);
+    try {
+      const res = await fetch(`/api/dashboard/admin/restaurants/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tier: tier || null }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setTierMsg(`바꾸지 못했습니다 — ${(d as { detail?: string }).detail ?? res.status}`);
+        return;
+      }
+      const fee = defaultMonthlyFee(tier, o.campus);
+      if (fee && fee > 0 && !o.monthly_fee) {
+        onPatch(id, { monthly_fee: fee, pay_cycle: o.pay_cycle ?? "MONTHLY" });
+        setTierMsg(`${tier || "미지정"} 으로 바꿨습니다. 월 이용료가 비어 있어 ${fee.toLocaleString()}원(기본값)도 같이 넣었습니다.`);
+      } else {
+        setTierMsg(`${tier || "미지정"} 으로 바꿨습니다.`);
+        onPatch(id, {});   // 목록을 다시 읽어 배지와 표가 따라오게
+      }
+    } catch {
+      setTierMsg("서버에 연결하지 못했습니다.");
+    } finally { setTierBusy(false); }
+  }
+
   const Tri = ({ label, value, onChange }: { label: string; value: boolean | null; onChange: (v: boolean | null) => void }) => (
     <div className="flex items-center justify-between gap-3 py-2">
       <span className="text-[13px] text-gray-700">{label}</span>
@@ -145,7 +177,15 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       <PanelSection title="계약 (시트 '계약 세부사항' 열)">
         <div className="grid grid-cols-2 gap-3">
           <Cell label="계약일" value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
-          <Field label="플랜" hint="위 '식당 관리' 블록에서 바꿉니다"><Input value={row.tier ?? "미지정"} disabled /></Field>
+          {/* 플랜은 여기서 바로 바꾼다 (민열님 0914). 위 '식당 관리' 블록의 것과 같은 값이라 둘 다 따라 움직인다. */}
+          <Field label="플랜" hint={tierMsg ?? "앱에 보이는 플랜입니다. 바꾸면 바로 반영됩니다."}>
+            <Select value={row.tier ?? ""} disabled={tierBusy} onChange={(e) => changeTier(e.target.value)}>
+              <option value="">미지정</option>
+              <option value="FREE">FREE</option>
+              <option value="BOOST">BOOST</option>
+              <option value="CONTENT">CONTENT</option>
+            </Select>
+          </Field>
           {/* 기본값은 플랜·캠퍼스에서 온다 (영남대·계명대 Boost 49,500). 예외가 많아 늘 고칠 수 있다 — 정든밤 22,000. */}
           <div>
             <Cell
