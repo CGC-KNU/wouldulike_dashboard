@@ -222,20 +222,23 @@ export function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
     window.open(libra.channelUrl, "_blank", "noreferrer");
   }
   return (
-    <nav aria-label="툴 바꾸기" className="fixed left-0 right-0 bottom-4 z-30 flex justify-center px-4 pointer-events-none">
-      <ul className="pointer-events-auto inline-flex items-end gap-1 px-2 py-1.5 rounded-[22px] bg-white/70 backdrop-blur-2xl saturate-150 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.06),0_24px_48px_-24px_rgba(5,0,114,0.5)]">
-        <li>
-          <button type="button" onClick={onHome} aria-label="런처" className={`group flex flex-col items-center w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
+    /* 폰에서는 도크가 화면보다 넓다(툴 5개 + 런처 + 리브라 = 약 420px).
+       예전에는 가운데 정렬만 해서 양끝이 잘려 나갔다 — 왼쪽 '전체'와 오른쪽 '리브라랑 대화'가 반씩 잘렸다.
+       이제 화면 폭을 넘지 않게 묶고 그 안에서 가로로 민다. 데스크톱에서는 넘칠 일이 없어 그대로다. */
+    <nav aria-label="툴 바꾸기" className="fixed left-0 right-0 bottom-4 z-30 flex justify-center px-3 pointer-events-none">
+      <ul className="pointer-events-auto inline-flex items-end gap-1 px-2 py-1.5 rounded-[22px] bg-white/70 backdrop-blur-2xl saturate-150 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.06),0_24px_48px_-24px_rgba(5,0,114,0.5)] max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <li className="shrink-0">
+          <button type="button" onClick={onHome} aria-label="런처" className={`group flex flex-col items-center w-[52px] sm:w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
             <span className="w-10 h-10 rounded-[12px] bg-white border border-black/[0.06] flex items-center justify-center text-navy shadow-sm"><IconLayoutGrid size={18} stroke={2} aria-hidden="true" /></span>
             <span className="text-[10px] font-semibold text-gray-500 mt-1">전체</span>
           </button>
         </li>
-        <li aria-hidden="true" className="w-px h-8 bg-black/[0.08] mx-1 mb-3" />
+        <li aria-hidden="true" className="w-px h-8 bg-black/[0.08] mx-1 mb-3 shrink-0" />
         {tools.map((t) => {
           const on = t.key === active;
           return (
-            <li key={t.key}>
-              <button type="button" onClick={() => onSwitch(t.key)} aria-current={on ? "page" : undefined} aria-label={`${t.name}${on ? " (현재)" : ""}`} className={`group flex flex-col items-center w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
+            <li key={t.key} className="shrink-0">
+              <button type="button" onClick={() => onSwitch(t.key)} aria-current={on ? "page" : undefined} aria-label={`${t.name}${on ? " (현재)" : ""}`} className={`group flex flex-col items-center w-[52px] sm:w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
                 {/* 세틀라이트 툴은 앱 아이콘, 그 밖의 제품(Drive 등)은 아이콘 파일이 없어 기호로 */}
                 {SATELLITE_KEYS.has(t.key) ? (
                   <img src={`/satellite/${t.key}_app.svg`} alt="" width={40} height={40} className={`w-10 h-10 rounded-[12px] ${on ? "shadow-[0_8px_18px_-8px_rgba(5,0,114,0.7)] ring-2 ring-navy/20" : "opacity-80 group-hover:opacity-100"}`} aria-hidden="true" />
@@ -249,9 +252,9 @@ export function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
         })}
         {libra && (
           <>
-            <li aria-hidden="true" className="w-px h-8 bg-black/[0.08] mx-1 mb-3" />
-            <li className="relative">
-              <button type="button" onClick={talk} aria-label={`리브라랑 대화하기 — #${libra.channel} 에서 @Libra 태그`} className={`group flex flex-col items-center w-[72px] py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
+            <li aria-hidden="true" className="w-px h-8 bg-black/[0.08] mx-1 mb-3 shrink-0" />
+            <li className="relative shrink-0">
+              <button type="button" onClick={talk} aria-label={`리브라랑 대화하기 — #${libra.channel} 에서 @Libra 태그`} className={`group flex flex-col items-center w-[64px] sm:w-[72px] py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>
                 <span className="w-10 h-10 rounded-[12px] bg-[linear-gradient(135deg,#7FE9CB,#2BBE9B)] text-white flex items-center justify-center shadow-[0_8px_18px_-8px_rgba(18,131,106,0.75)]"><IconMessageChatbot size={19} stroke={1.9} aria-hidden="true" /></span>
                 <span className="text-[10px] font-semibold text-libra-deep mt-1 whitespace-nowrap">리브라랑 대화</span>
               </button>
