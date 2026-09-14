@@ -6,6 +6,7 @@ import ProductShell from "./ProductShell";
 import ToolShell, { Dock } from "./_shared/ToolShell";
 import AstroHome from "./astro/AstroHome";
 import CalendarPage from "./astro/CalendarPage";
+import SpotBoard from "./astro/SpotBoard";
 import ProbeHome from "./probe/ProbeHome";
 import AppMetrics from "./probe/AppMetrics";
 import CastorHome from "./castor/CastorHome";
@@ -53,6 +54,7 @@ type Tab =
   // Astro(영업) 확장 — 2026-08-07 요구사항 3종을 담는 화면들
   | "astro-home"
   | "astro-calendar"
+  | "astro-spots"
   | "astro-ops"
   | "astro-leads"
   | "astro-billing"
@@ -2461,6 +2463,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   // ── Astro 확장. 식당 관리와 같은 권한을 쓴다 — 영업이 보는 매장 정보의 다른 레이어일 뿐이다.
   { key: "astro-home", label: "홈", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-calendar", label: "일정", icon: "▦", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-spots", label: "스팟 제작", icon: "▶", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-ops", label: "파트너 매장", icon: "◉", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-leads", label: "파트너 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
@@ -2518,7 +2521,7 @@ const PRODUCTS: {
     /* 0913 민열님: 식당 관리에서 하던 일(사진·플랜·PIN·제휴·포스터/QR)이 파트너 매장 상세로 옮겨져
        탭을 없앤다. 데이터 풀은 그대로 백엔드 매장 레코드다 — 화면만 하나로 합쳤다.
        (식당 관리 화면 자체는 남아 있다. `?tab=restaurants` 로 열 수 있고, Aether 쪽에서도 쓴다.) */
-    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-leads", "astro-billing", "astro-tax", "astro-docs"],
+    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-spots", "astro-leads", "astro-billing", "astro-tax", "astro-docs"],
     ready: true,
   },
   {
@@ -2844,6 +2847,7 @@ export default function AdminHomePage() {
           {activeTab === "restaurants" && <RestaurantsTab />}
           {activeTab === "astro-home" && <AstroHome onGo={go} />}
           {activeTab === "astro-calendar" && <CalendarPage actor={actorName} onGo={go} />}
+          {activeTab === "astro-spots" && <SpotBoard actor={actorName} />}
           {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={go} />}
           {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
           {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} />}
