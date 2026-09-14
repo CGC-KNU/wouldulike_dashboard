@@ -47,11 +47,12 @@ export interface Blocker {
   note?: string;
 }
 
+/** 칩에 쓰는 말 — 팀이 실제로 쓰는 말로 (민열님 0914). "돈"·"비치물"은 우리가 안 쓰는 말이었다. */
 const KIND_LABEL: Record<BlockerKind, string> = {
-  money: "돈",
+  money: "입금",
   contract: "계약",
-  lead: "후보",
-  kit: "비치물",
+  lead: "컨택",
+  kit: "포스터·스티커",
 };
 export { KIND_LABEL as BLOCKER_KIND_LABEL };
 
