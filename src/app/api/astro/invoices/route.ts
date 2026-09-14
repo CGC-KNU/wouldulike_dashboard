@@ -30,8 +30,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const { period, requested_by } = (await req.json().catch(() => ({}))) as { period?: string; requested_by?: string };
+  const { period, requested_by, restaurant_id } = (await req.json().catch(() => ({}))) as { period?: string; requested_by?: string; restaurant_id?: number };
   if (!period || !/^\d{4}-\d{2}$/.test(period)) return NextResponse.json({ detail: "period 는 YYYY-MM 이어야 합니다." }, { status: 400 });
+  // restaurant_id 를 주면 그 매장 한 곳만 만든다 — 입금 현황 표에서 한 줄만 되살릴 때 (민열님 0914).
+  const only = typeof restaurant_id === "number" ? restaurant_id : null;
 
   const b = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
   const stores = b?.restaurants ?? (isPreview() ? previewRestaurants() : []);
@@ -48,6 +50,7 @@ export async function POST(req: NextRequest) {
   const skipped: string[] = [];
 
   for (const s of stores) {
+    if (only !== null && s.restaurant_id !== only) continue;
     if (s.is_affiliate === false || !isPaidTier(s.tier)) continue;
     const o = ops.get(s.restaurant_id);
     const fee = o?.monthly_fee ?? null;
