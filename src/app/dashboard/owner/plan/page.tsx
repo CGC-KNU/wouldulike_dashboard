@@ -220,7 +220,7 @@ export default async function PlanPage({
       </div>
 
       {/* 하단 안내 */}
-      <div className="mt-6 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+      <div className="mt-6 bg-white/85 backdrop-blur rounded-[18px] border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04)] px-5 py-4">
         <p className="text-xs text-gray-500 leading-relaxed text-center">
           플랜 변경이 필요하시면{" "}
           <span className="font-semibold text-gray-700">우주라이크 팀</span>에 직접 문의해주세요.

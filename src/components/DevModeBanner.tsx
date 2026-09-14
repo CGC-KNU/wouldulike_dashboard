@@ -15,28 +15,28 @@ export default function AdminViewBanner({ currentMode, rid }: AdminViewBannerPro
   const ownerHref = rid ? `/dashboard/owner?rid=${rid}` : "/dashboard/owner";
 
   return (
-    <div className="w-full bg-[#0A0676] text-white text-xs flex items-center justify-between px-4 py-1.5">
-      <span className="font-mono font-semibold opacity-70">관리자 모드</span>
+    <div className="w-full bg-navy text-white text-xs flex items-center justify-between px-4 py-1.5">
+      <span className="font-semibold text-white/60 tracking-wide">관리자 모드 — 점주에게 보이는 화면입니다</span>
       <div className="flex gap-2">
         <Link
           href={ownerHref}
           className={`px-2.5 py-0.5 rounded-full font-semibold transition-colors ${
             currentMode === "owner"
-              ? "bg-white text-[#0A0676]"
+              ? "bg-white text-navy"
               : "bg-white/20 hover:bg-white/30 text-white"
           }`}
         >
-          👤 사장님 뷰
+          사장님 뷰
         </Link>
         <Link
           href="/dashboard/admin"
           className={`px-2.5 py-0.5 rounded-full font-semibold transition-colors ${
             currentMode === "admin"
-              ? "bg-white text-[#0A0676]"
+              ? "bg-white text-navy"
               : "bg-white/20 hover:bg-white/30 text-white"
           }`}
         >
-          🔧 관리자 뷰
+          관리자 뷰
         </Link>
       </div>
     </div>

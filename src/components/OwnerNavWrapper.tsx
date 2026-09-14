@@ -11,7 +11,7 @@ export default function OwnerNavWrapper({ children }: { children: React.ReactNod
     return (
       <div className="flex min-h-screen">
         <SideNav />
-        <main className="flex-1 ml-56">{children}</main>
+        <main className="flex-1 ml-56 min-w-0">{children}</main>
       </div>
     );
   }
