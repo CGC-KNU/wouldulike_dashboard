@@ -63,8 +63,11 @@ export async function GET() {
     return NextResponse.json({ leads, draft: false, source: "backend" });
   }
 
+  const backendNote = r.reason?.startsWith("backend-") || r.reason === "unreachable"
+    ? "백엔드를 읽지 못해 임시 저장소를 보여 주고 있습니다. 여기서 고친 값은 오래 남지 않습니다."
+    : undefined;
   const stored = readDraft<Lead[]>(KEY, seedLeads);
-  if (stored.length > 0) return NextResponse.json({ leads: stored, draft: true, source: "store" });
+  if (stored.length > 0) return NextResponse.json({ leads: stored, draft: true, source: "store", sheet_note: backendNote });
 
   // 비어 있으면 시트가 원본이다
   const { leads, error } = await sheetLeads();
