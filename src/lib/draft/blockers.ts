@@ -1,4 +1,5 @@
-import { isPaidTier, type Lead, type StoreRow, type TaxInvoice } from "./types";
+import { isPaidTier, type Campus, type Lead, type StoreRow, type TaxInvoice } from "./types";
+import { defaultMonthlyFee } from "./pricing";
 
 /**
  * "지금 막힌 것" — 애딧 Pitchr 의 '오늘 끝내야 할 일'을 우리 일에 맞춰 옮긴 것 (민열님 0914).
@@ -181,14 +182,21 @@ export function buildBlockers(
 }
 
 /**
- * 제안 플랜 글자에서 월 이용료를 읽는다 — "Boost 3만" · "33,000" · "4.5만".
- * **숫자가 없으면 세지 않는다.** 플랜 이름만 보고 금액을 지어내면 합계가 거짓이 된다.
+ * 제안 플랜에서 월 이용료를 읽는다.
+ *
+ *   1) 글자에 숫자가 있으면 그걸 쓴다 — "Boost 3만" · "33,000" · "4.5만" (예전 자유 입력 값).
+ *   2) 없으면 플랜 이름과 캠퍼스의 **기본 단가**를 쓴다 — "Boost" + 영남대 = 49,500.
+ *   3) 둘 다 아니면 `null`. 프리미엄처럼 정가가 없는 것은 세지 않는다.
+ *
+ * 지어내지 않는다는 규칙은 그대로다. 2)는 우리가 실제로 정한 값이지 추측이 아니다.
  */
-export function monthlyFromPlan(plan: string | null | undefined): number | null {
+export function monthlyFromPlan(plan: string | null | undefined, campus?: Campus | null): number | null {
   if (!plan) return null;
   const man = plan.match(/(\d+(?:\.\d+)?)\s*만/);
   if (man) return Math.round(Number(man[1]) * 10_000);
   const won = plan.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원?/);
   if (won) return Number(won[1].replace(/,/g, ""));
-  return null;
+  const tier = /boost/i.test(plan) ? "BOOST" : /free|무료/i.test(plan) ? "FREE" : null;
+  const v = tier ? defaultMonthlyFee(tier, campus ?? null) : null;
+  return v && v > 0 ? v : null;
 }

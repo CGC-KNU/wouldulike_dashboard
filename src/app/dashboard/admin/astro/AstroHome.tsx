@@ -48,7 +48,7 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
    *  금액은 제안 플랜 글자에서 숫자를 읽은 것만 센다. 플랜 이름만 있고 숫자가 없으면 '금액 미정'으로 따로 센다. */
   const byStage = LEAD_STAGES.map((st) => {
     const list = active.filter((l) => l.stage === st);
-    const fees = list.map((l) => monthlyFromPlan(l.proposed_plan));
+    const fees = list.map((l) => monthlyFromPlan(l.proposed_plan, l.campus));
     return { stage: st, n: list.length, won: fees.reduce<number>((a, f) => a + (f ?? 0), 0), unknown: fees.filter((f) => f === null).length };
   });
   const max = Math.max(1, ...byStage.map((b) => b.n));
