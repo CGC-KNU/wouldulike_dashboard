@@ -181,7 +181,10 @@ export function PageHeader({
           <h1 className="text-[24px] font-bold text-gray-900 leading-tight tracking-[-0.025em] text-balance">{title}</h1>
           {description && <p className="text-[13.5px] text-gray-500 mt-1.5 max-w-[60ch] leading-relaxed">{description}</p>}
         </div>
-        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+        {/* 버튼 줄은 **접힌다**. `shrink-0` 만 두면 버튼이 셋만 넘어가도 좁은 화면에서 페이지가
+            통째로 가로로 밀린다 — 스팟 제작(버튼 4개)이 390px 에서 32px 넘쳤다 (0914).
+            넓은 화면에서는 지금처럼 한 줄로 오른쪽에 붙는다. */}
+        {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0 min-w-0">{actions}</div>}
       </div>
       {children && <div className="mt-4">{children}</div>}
     </div>
@@ -383,9 +386,14 @@ export function Card({
 
 /* ═══════════ 테이블 (Pitchr 리드 목록) ═══════════ */
 
+/**
+ * 표는 좁은 화면에서 가로로 스크롤된다. 그런데 **더 있다는 표시가 없어서** 사람이 모른다
+ * (0914 모바일 점검). 양 끝에 옅은 그늘을 둔다 — `background-attachment: local` 이라
+ * 끝까지 밀면 그늘이 저절로 사라진다. 자바스크립트도 스크롤 이벤트도 필요 없다.
+ */
 export function Table({ children, minWidth = "40rem" }: { children: ReactNode; minWidth?: string }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto bg-[linear-gradient(to_right,white,white),linear-gradient(to_right,white,white),linear-gradient(to_right,rgba(16,24,40,0.10),rgba(16,24,40,0)),linear-gradient(to_left,rgba(16,24,40,0.10),rgba(16,24,40,0))] bg-[length:22px_100%,22px_100%,14px_100%,14px_100%] bg-[position:left_center,right_center,left_center,right_center] bg-no-repeat [background-attachment:local,local,scroll,scroll]">
       <table className="w-full text-[13px] border-collapse" style={{ minWidth }}>
         {children}
       </table>
