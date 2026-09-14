@@ -29,6 +29,8 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEn
   const [msg, setMsg] = useState<{ tone: "blue" | "red"; text: string } | null>(null);
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 계약 종료는 앱에 바로 보이는 변화라 화면 안에서 한 번 더 확인받는다. */
+  const [ending, setEnding] = useState(false);
 
   const load = () => {
     setLoading(true); setMsg(null);
@@ -106,20 +108,38 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEn
       </div>
 
       {/* 계약 종료 — 지우지 않는다. 제휴만 끄고 종료일을 적어 '계약 종료' 칸으로 옮긴다.
-          재계약하는 곳이 있어서 이력을 지우면 안 된다 (민열님 0914). */}
-      <div className="flex items-center justify-between gap-3 py-1">
-        <span className="text-[13px] text-gray-700">
-          상태 {isAffiliate ? <Chip tone="green">제휴 중</Chip> : <Chip tone="gray">계약 종료</Chip>}
-        </span>
-        {isAffiliate ? (
-          <Button size="sm" disabled={busy} onClick={() => {
-            if (!confirm("계약 종료로 옮깁니다.\n\n· 파트너 매장 목록에서 '계약 종료' 칸으로 갑니다\n· 청구·입금·홈 큐에서 빠집니다\n· 기록은 그대로 남고 언제든 되돌릴 수 있습니다\n\n앱에서는 제휴 혜택이 사라지지만 일반 식당으로는 계속 보입니다.")) return;
-            onEnd?.();
-          }}>계약 종료로</Button>
-        ) : (
-          <Button size="sm" variant="primary" disabled={busy} onClick={() => patchStore({ is_affiliate: true }, "다시 제휴 매장으로 옮겼습니다. 계약 시작일과 월 이용료를 확인하세요.")}>
-            재계약 — 제휴 켜기
-          </Button>
+          재계약하는 곳이 있어서 이력을 지우면 안 된다 (민열님 0914).
+          되돌릴 수는 있지만 앱에 바로 보이는 변화라, **한 번 더 묻는다**. */}
+      <div className="py-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[13px] text-gray-700">
+            상태 {isAffiliate ? <Chip tone="green">제휴 중</Chip> : <Chip tone="red">계약 종료</Chip>}
+          </span>
+          {isAffiliate ? (
+            <Button size="sm" variant="danger" disabled={busy} onClick={() => setEnding((v) => !v)} aria-expanded={ending}>
+              계약 종료
+            </Button>
+          ) : (
+            <Button size="sm" variant="primary" disabled={busy} onClick={() => patchStore({ is_affiliate: true }, "다시 제휴 매장으로 옮겼습니다. 계약 시작일과 월 이용료를 확인하세요.")}>
+              재계약 — 제휴 켜기
+            </Button>
+          )}
+        </div>
+
+        {ending && isAffiliate && (
+          <div className="mt-2 rounded-[12px] border border-red-200 bg-red-50/70 p-3">
+            <p className="text-[13px] font-semibold text-red-700">정말 계약 종료로 옮길까요?</p>
+            <ul className="mt-1.5 text-[12px] text-red-900/80 leading-relaxed list-disc pl-4 space-y-0.5">
+              <li>앱에서 <b>제휴 혜택이 바로 사라집니다</b> (쿠폰·스탬프). 일반 식당으로는 계속 보입니다.</li>
+              <li>파트너 매장 목록의 <b>계약 종료</b> 칸으로 갑니다.</li>
+              <li>청구·입금·홈 큐·일정에서 빠집니다.</li>
+              <li>기록은 지우지 않습니다. 재계약하면 그대로 되살아납니다.</li>
+            </ul>
+            <div className="flex gap-2 mt-2.5">
+              <Button size="sm" variant="danger" disabled={busy} onClick={() => { setEnding(false); onEnd?.(); }}>네, 계약 종료로 옮깁니다</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEnding(false)}>취소</Button>
+            </div>
+          </div>
         )}
       </div>
 
