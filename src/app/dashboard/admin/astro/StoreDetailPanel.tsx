@@ -18,7 +18,7 @@ import {
   TAX_STATUS_LABEL,
 } from "@/lib/draft/types";
 import { SALES_SHEET } from "@/lib/satellite";
-import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton, periodLocal } from "../_shared/ui";
+import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton, periodLocal, todayLocal } from "../_shared/ui";
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 import ActivityLog from "./ActivityLog";
 import CampusPicker from "./CampusPicker";
@@ -229,7 +229,18 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
 
       {/* 0913: 식당 관리에서 하던 일을 여기로. 이 블록만 백엔드 매장 레코드에 저장된다. */}
       <PanelSection title="식당 관리 (앱에 보이는 정보)">
-        <StoreAppSection id={id} tier={row.tier} isAffiliate={row.is_affiliate !== false} onChanged={() => onPatch(id, {})} />
+        <StoreAppSection
+          id={id}
+          tier={row.tier}
+          isAffiliate={row.is_affiliate !== false}
+          onChanged={() => onPatch(id, {})}
+          /* 계약 종료 — 앱 쪽 제휴를 끄고, 같은 손짓으로 종료일을 남긴다.
+             날짜가 없으면 나중에 "언제 끝났더라"를 아무도 모른다. */
+          onEnd={async () => {
+            await fetch(`/api/dashboard/admin/restaurants/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_affiliate: false }) });
+            onPatch(id, { contract_ends_on: o.contract_ends_on ?? todayLocal() });
+          }}
+        />
       </PanelSection>
 
       <PanelSection title="매장 정보 (시트 '매장 현황')">

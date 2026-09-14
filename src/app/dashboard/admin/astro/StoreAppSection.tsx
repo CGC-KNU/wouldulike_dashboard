@@ -21,7 +21,7 @@ import { Button, Chip, Field, Input, Notice, Select, Skeleton } from "../_shared
 
 interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null }
 
-export default function StoreAppSection({ id, tier, isAffiliate, onChanged }: { id: number; tier: string | null; isAffiliate: boolean; onChanged?: () => void }) {
+export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEnd }: { id: number; tier: string | null; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [promo, setPromo] = useState<{ poster_url: string; qr_url: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,11 +105,22 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged }: { 
         </Field>
       </div>
 
+      {/* 계약 종료 — 지우지 않는다. 제휴만 끄고 종료일을 적어 '계약 종료' 칸으로 옮긴다.
+          재계약하는 곳이 있어서 이력을 지우면 안 된다 (민열님 0914). */}
       <div className="flex items-center justify-between gap-3 py-1">
-        <span className="text-[13px] text-gray-700">제휴 매장 {isAffiliate ? <Chip tone="green">켬</Chip> : <Chip tone="gray">끔</Chip>}</span>
-        <Button size="sm" disabled={busy} onClick={() => patchStore({ is_affiliate: !isAffiliate }, isAffiliate ? "제휴를 껐습니다." : "제휴를 켰습니다.")}>
-          {isAffiliate ? "제휴 끄기" : "제휴 켜기"}
-        </Button>
+        <span className="text-[13px] text-gray-700">
+          상태 {isAffiliate ? <Chip tone="green">제휴 중</Chip> : <Chip tone="gray">계약 종료</Chip>}
+        </span>
+        {isAffiliate ? (
+          <Button size="sm" disabled={busy} onClick={() => {
+            if (!confirm("계약 종료로 옮깁니다.\n\n· 파트너 매장 목록에서 '계약 종료' 칸으로 갑니다\n· 청구·입금·홈 큐에서 빠집니다\n· 기록은 그대로 남고 언제든 되돌릴 수 있습니다\n\n앱에서는 제휴 혜택이 사라지지만 일반 식당으로는 계속 보입니다.")) return;
+            onEnd?.();
+          }}>계약 종료로</Button>
+        ) : (
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => patchStore({ is_affiliate: true }, "다시 제휴 매장으로 옮겼습니다. 계약 시작일과 월 이용료를 확인하세요.")}>
+            재계약 — 제휴 켜기
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

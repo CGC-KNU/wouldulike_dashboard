@@ -59,8 +59,11 @@ export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
 
+  // 계약이 끝난 매장(비제휴)도 같이 받는다 — 제휴를 끄면 목록에서 사라져 되돌릴 수 없던 문제.
+  // 앱은 그대로다. 이 옵션은 관리자 목록에서만 켜진다.
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>(
-    "/api/dashboard/restaurants/"
+    "/api/dashboard/restaurants/",
+    "include_inactive=1"
   );
   // 백엔드가 없고 미리보기 모드면 실측 스냅샷으로 화면을 돌려본다 (previewStores.ts 주석 참고)
   const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
