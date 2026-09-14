@@ -6,6 +6,7 @@ import { requireTool } from "@/lib/draft/guard";
 import { fetchTab, normName, rowToLead } from "@/lib/draft/sheet";
 import { SALES_SHEET } from "@/lib/satellite";
 import { notifyAstro } from "@/lib/slack";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
  * 파트너 후보(신규 컨택) 목록·등록.
@@ -41,6 +42,27 @@ async function sheetLeads(): Promise<{ leads: Lead[]; error: boolean }> {
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
+
+  // 백엔드(Django astro 앱)가 살아 있으면 그쪽이 원본이다.
+  const r = await remoteGet<{ leads: Lead[] }>("/api/astro/leads/");
+  if (r.handled) {
+    if (!r.ok) return NextResponse.json(r.data ?? { detail: "후보를 읽지 못했습니다." }, { status: r.status });
+    const leads = r.data?.leads ?? [];
+    // 처음 올린 직후라 비어 있으면 시트 값을 한 번 밀어 넣는다 (그 뒤로는 툴이 원본).
+    if (leads.length === 0) {
+      const { leads: fromSheet, error } = await sheetLeads();
+      if (fromSheet.length > 0) {
+        const push = await remoteSend<{ created: number }>("POST", "/api/astro/leads/bulk/", { leads: fromSheet });
+        if (push.ok) {
+          const again = await remoteGet<{ leads: Lead[] }>("/api/astro/leads/");
+          if (again.ok) return NextResponse.json({ leads: again.data?.leads ?? [], draft: false, source: "backend_seeded" });
+        }
+      }
+      if (error) return NextResponse.json({ leads: [], draft: false, source: "backend", sheet_note: "저장소는 비어 있고 팀 시트도 읽지 못했습니다 — 시트 공개 설정을 확인하세요." });
+    }
+    return NextResponse.json({ leads, draft: false, source: "backend" });
+  }
+
   const stored = readDraft<Lead[]>(KEY, seedLeads);
   if (stored.length > 0) return NextResponse.json({ leads: stored, draft: true, source: "store" });
 
@@ -67,6 +89,15 @@ export async function POST(req: NextRequest) {
   // 모르는 단계로 들어오면 칸반 어느 열에도 안 보이면서 KPI 에만 잡힌다 — 여기서 막는다
   if (body.stage !== undefined && !VALID_STAGE.has(body.stage)) {
     return NextResponse.json({ detail: `알 수 없는 단계입니다: ${body.stage}` }, { status: 400 });
+  }
+
+  // 백엔드가 있으면 거기에 만든다. 슬랙 알림은 어느 쪽이든 여기서 보낸다.
+  const r = await remoteSend<{ lead: Lead }>("POST", "/api/astro/leads/", { ...body, name: body.name.trim() });
+  if (r.handled) {
+    if (!r.ok) return NextResponse.json(r.data ?? { detail: "후보를 만들지 못했습니다." }, { status: r.status });
+    const lead = r.data!.lead;
+    await notifyAstro(`:round_pushpin: *파트너 후보 등록* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${lead.owner ? ` · 담당 ${lead.owner}` : ""}`);
+    return NextResponse.json({ lead, draft: false }, { status: 201 });
   }
 
   const now = new Date().toISOString();

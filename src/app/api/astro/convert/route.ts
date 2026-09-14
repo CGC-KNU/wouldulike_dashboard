@@ -8,6 +8,7 @@ import { normName } from "@/lib/draft/sheet";
 import { emptyStoreOps, type BackendRestaurant, type Lead, type StoreOps } from "@/lib/draft/types";
 import { proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
  * 입점 후보 → 제휴 매장.
@@ -25,7 +26,10 @@ export async function POST(req: NextRequest) {
   const { lead_id, tier, updated_by } = (await req.json().catch(() => ({}))) as { lead_id?: string; tier?: string | null; updated_by?: string };
   if (!lead_id) return NextResponse.json({ detail: "lead_id 가 필요합니다." }, { status: 400 });
 
-  const lead = readDraft<Lead[]>("astro_leads", seedLeads).find((l) => l.id === lead_id);
+  // 원본이 백엔드면 거기서 읽는다. 폴백이면 초안에서.
+  const leadsRes = await remoteGet<{ leads: Lead[] }>("/api/astro/leads/");
+  const onBackend = leadsRes.handled && leadsRes.ok;
+  const lead = (onBackend ? (leadsRes.data?.leads ?? []) : readDraft<Lead[]>("astro_leads", seedLeads)).find((l) => l.id === lead_id);
   if (!lead) return NextResponse.json({ detail: "후보를 찾을 수 없습니다." }, { status: 404 });
 
   // 1) 같은 이름의 매장이 있으면 잇기만 한다
@@ -63,6 +67,28 @@ export async function POST(req: NextRequest) {
 
   // 2) 후보의 정보를 매장 운영 필드로
   const now = new Date().toISOString();
+  if (onBackend) {
+    const cur = await remoteGet<{ ops: StoreOps | null }>(`/api/astro/stores/${store.restaurant_id}/`);
+    const base = cur.ok ? cur.data?.ops ?? null : null;
+    await remoteSend("PATCH", `/api/astro/stores/${store.restaurant_id}/`, {
+      campus: base?.campus ?? lead.campus,
+      district: base?.district ?? lead.district,
+      owner_name: base?.owner_name ?? lead.owner_name,
+      owner_phone: base?.owner_phone ?? lead.contact ?? lead.phone,
+      sheet_owner: base?.sheet_owner ?? lead.owner,
+      memo: base?.memo ?? (lead.proposed_plan ? `제안 플랜: ${lead.proposed_plan}` : null),
+      updated_by: updated_by ?? "convert",
+    });
+    const patched = await remoteSend<{ lead: Lead }>("PATCH", `/api/astro/leads/${lead_id}/`, {
+      converted_restaurant_id: store.restaurant_id,
+      stage: "계약 완료",
+    });
+    await notifyAstro(
+      `:tada: *파트너 전환* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${tier ? ` · ${tier}` : ""} ${created ? "(매장 새로 만듦)" : "(기존 매장에 연결)"} · ${updated_by ?? "unknown"}`
+    );
+    return NextResponse.json({ ok: true, created, restaurant_id: store.restaurant_id, lead: patched.data?.lead ?? lead, draft: false });
+  }
+
   const list = [...readDraft<StoreOps[]>("astro_store_ops", seedStoreOps)];
   const idx = list.findIndex((o) => o.id === store!.restaurant_id);
   const base: StoreOps = { ...emptyStoreOps(store.restaurant_id), ...(idx === -1 ? {} : list[idx]) };

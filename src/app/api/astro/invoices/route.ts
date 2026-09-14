@@ -6,6 +6,7 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { emptyStoreOps, isPaidTier, type BackendRestaurant, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
 import { notifyAstro } from "@/lib/slack";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
  * 세금계산서 목록 · 월납 일괄 생성.
@@ -21,6 +22,11 @@ export async function GET(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   const period = req.nextUrl.searchParams.get("period");
+  const r = await remoteGet<{ invoices: TaxInvoice[] }>("/api/astro/invoices/", period ? `period=${period}` : undefined);
+  if (r.handled) {
+    if (!r.ok) return NextResponse.json(r.data ?? { detail: "청구를 읽지 못했습니다." }, { status: r.status });
+    return NextResponse.json({ invoices: r.data?.invoices ?? [], draft: false });
+  }
   let list = readDraft<TaxInvoice[]>(KEY, seedInvoices);
   if (period) list = list.filter((i) => i.period === period);
   return NextResponse.json({ invoices: list, draft: true });
@@ -44,9 +50,18 @@ export async function POST(req: NextRequest) {
 
   const b = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
   const stores = b?.restaurants ?? (isPreview() ? previewRestaurants() : []);
-  const ops = new Map(readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).map((o) => [o.id, { ...emptyStoreOps(o.id), ...o }]));
-  const issuer = readDraft<IssuerSettings>("astro_issuer", seedIssuer);
-  const existing = readDraft<TaxInvoice[]>(KEY, seedInvoices);
+  // 운영 값(월 이용료·납부 방식·청구 시작 월)도 원본에서 읽는다 — 초안에서 읽으면
+  // DB 에 적어 둔 금액을 못 보고 "월 이용료 없음"으로 건너뛴다.
+  const opsRemote = await remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/");
+  const opsSrc = opsRemote.handled && opsRemote.ok ? (opsRemote.data?.ops ?? []) : readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
+  const ops = new Map(opsSrc.map((o) => [o.id, { ...emptyStoreOps(o.id), ...o }]));
+  const issuerRemote = await remoteGet<{ issuer: IssuerSettings }>("/api/astro/issuer/");
+  const issuer = issuerRemote.handled && issuerRemote.ok && issuerRemote.data?.issuer?.item_template
+    ? issuerRemote.data.issuer
+    : readDraft<IssuerSettings>("astro_issuer", seedIssuer);
+  const remoteList = await remoteGet<{ invoices: TaxInvoice[] }>("/api/astro/invoices/");
+  const onBackend = remoteList.handled && remoteList.ok;
+  const existing = onBackend ? (remoteList.data?.invoices ?? []) : readDraft<TaxInvoice[]>(KEY, seedInvoices);
   const have = new Set(existing.filter((i) => i.period === period && i.status !== "CANCELED" && i.status !== "REJECTED").map((i) => i.restaurant_id));
 
   const actor = await actorName();
@@ -56,10 +71,16 @@ export async function POST(req: NextRequest) {
     const found = existing.find((i) => i.restaurant_id === only && i.period === period && !["CANCELED", "REJECTED"].includes(i.status));
     if (found) {
       if (found.paid_at) return NextResponse.json({ detail: "이미 입금 확인된 건입니다." }, { status: 409 });
+      if (onBackend) {
+        const r = await remoteSend<{ invoice: TaxInvoice }>("PATCH", `/api/astro/invoices/${found.id}/`, { action: "mark-paid", paid_at: paid_on });
+        if (!r.ok) return NextResponse.json(r.data ?? { detail: "입금을 찍지 못했습니다." }, { status: r.status });
+        await notifyAstro(`:moneybag: *입금 확인* — ${found.name} · ${found.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
+        return NextResponse.json({ ok: true, created: 0, paid: 1, skipped: [], draft: false });
+      }
       const at = `${paid_on}T00:00:00.000Z`;
       const list = readDraft<TaxInvoice[]>(KEY, seedInvoices).map((i) => (i.id === found.id ? { ...i, paid_at: at } : i));
       writeDraft(KEY, list);
-      syncPaid(only, at, actor ?? requested_by ?? "unknown");
+      await syncPaid(only, at, actor ?? requested_by ?? "unknown");
       await notifyAstro(`:moneybag: *입금 확인* — ${found.name} · ${found.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
       return NextResponse.json({ ok: true, created: 0, paid: 1, skipped: [], draft: true });
     }
@@ -111,10 +132,31 @@ export async function POST(req: NextRequest) {
   const at = paid_on ? `${paid_on}T00:00:00.000Z` : null;
   if (at) for (const c of created) c.paid_at = at;
 
+  // 백엔드가 원본이면 거기에 넣는다. 실패하면 만들었다고 말하지 않는다.
+  if (onBackend) {
+    const saved: TaxInvoice[] = [];
+    for (const c of created) {
+      const { id: _drop, ...payload } = c;
+      const r = await remoteSend<{ invoice: TaxInvoice }>("POST", "/api/astro/invoices/", payload);
+      if (r.ok && r.data?.invoice) saved.push(r.data.invoice);
+      else if (r.handled && r.status !== 409) return NextResponse.json(r.data ?? { detail: "청구를 만들지 못했습니다." }, { status: r.status });
+    }
+    if (saved.length) {
+      if (at) {
+        for (const c of saved) await notifyAstro(`:moneybag: *입금 확인* — ${c.name} · ${c.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
+      } else {
+        await notifyAstro(
+          `:page_facing_up: *세금계산서 품의 ${saved.length}건* — ${label} 월납 · ${actor ?? requested_by ?? ""}\n${saved.map((c) => `· ${c.name} ${c.total.toLocaleString()}원`).join("\n")}`
+        );
+      }
+    }
+    return NextResponse.json({ ok: true, created: saved.length, paid: at ? saved.length : 0, skipped, draft: false });
+  }
+
   if (created.length) {
     writeDraft(KEY, [...created, ...existing]);
     if (at) {
-      for (const c of created) syncPaid(c.restaurant_id, at, actor ?? requested_by ?? "unknown");
+      for (const c of created) await syncPaid(c.restaurant_id, at, actor ?? requested_by ?? "unknown");
       await notifyAstro(`:moneybag: *입금 확인* — ${created.map((c) => `${c.name} ${c.total.toLocaleString()}원`).join(", ")} · ${paid_on} · ${actor ?? requested_by ?? ""}`);
     } else {
       await notifyAstro(
@@ -126,7 +168,9 @@ export async function POST(req: NextRequest) {
 }
 
 /** 입금을 찍으면 매장 운영의 수금 상태도 같은 값으로 옮긴다 — 두 화면이 다른 말을 하지 않게. */
-function syncPaid(restaurantId: number, at: string, by: string) {
+async function syncPaid(restaurantId: number, at: string, by: string) {
+  // 백엔드가 원본이면 거기서 이미 맞춰 준다(계산서 뷰가 StoreOps 를 같이 고친다).
+  // 초안 경로일 때만 여기서 맞춘다 — 두 곳에 쓰면 값이 갈라진다.
   const list = [...readDraft<StoreOps[]>("astro_store_ops", seedStoreOps)];
   const idx = list.findIndex((o) => o.id === restaurantId);
   const base = { ...emptyStoreOps(restaurantId), ...(idx === -1 ? {} : list[idx]) };

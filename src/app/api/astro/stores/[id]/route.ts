@@ -4,6 +4,7 @@ import { seedStoreOps } from "@/lib/draft/seed";
 import { STORE_OPS_EDITABLE, emptyStoreOps, type StoreOps } from "@/lib/draft/types";
 import { actorName, requireTool } from "@/lib/draft/guard";
 import { notifyAstro } from "@/lib/slack";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /** 매장 운영 필드 조회·수정. 수정자와 시각을 반드시 같이 남긴다 (시트가 못 남기던 것). */
 
@@ -18,6 +19,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   const { id } = await ctx.params;
+  const r = await remoteGet<{ ops: StoreOps | null }>(`/api/astro/stores/${id}/`);
+  if (r.handled && r.ok) {
+    const o = r.data?.ops ?? null;
+    return NextResponse.json({ ops: o ? { ...emptyStoreOps(o.id), ...o } : null, draft: false });
+  }
   const list = readDraft<StoreOps[]>(KEY, seedStoreOps);
   const found = list.find((o) => String(o.id) === id) ?? null;
   return NextResponse.json({ ops: found ? { ...emptyStoreOps(found.id), ...found } : null, draft: true });
@@ -44,6 +50,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (body.billing === "PAID" && !body.billing_checked_at) {
     stamped.billing_checked_at = new Date().toISOString().slice(0, 10);
     stamped.billing_checked_by = who;
+  }
+
+  // 백엔드가 원본이면 거기서 고친다.
+  const prevRes = await remoteGet<{ ops: StoreOps | null }>(`/api/astro/stores/${rid}/`);
+  if (prevRes.handled && prevRes.ok) {
+    const prev = prevRes.data?.ops ?? null;
+    const r = await remoteSend<{ ops: StoreOps }>("PATCH", `/api/astro/stores/${rid}/`, { ...body, updated_by: who });
+    if (r.handled) {
+      if (!r.ok) return NextResponse.json(r.data ?? { detail: "저장하지 못했습니다." }, { status: r.status });
+      await notifyStoreChange(r.data!.ops, prev, body, who);
+      return NextResponse.json({ ops: r.data!.ops, draft: false });
+    }
   }
 
   const before = readDraft<StoreOps[]>(KEY, seedStoreOps).find((o) => String(o.id) === id) ?? null;

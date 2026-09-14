@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { readDraft, writeDraft } from "@/lib/draft/store";
+import { remoteGet, remoteSend } from "@/lib/draft/remote";
 import { seedLeads, seedStoreOps } from "@/lib/draft/seed";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
@@ -84,6 +85,14 @@ export async function POST(req: NextRequest) {
     const skipped = parsed.length - incoming.length;
     const stores = await restaurants();
     const byNorm = new Map(stores.map((st) => [normName(st.name), st]));
+    // 원본이 백엔드면 그쪽에 넣는다. 이미 있는 이름은 건드리지 않는다 —
+    // 툴에서 고친 값을 붙여넣기가 덮으면 "툴이 원본"이라는 말이 거짓이 된다.
+    const onBackend = (await remoteGet<{ leads: Lead[] }>("/api/astro/leads/")).ok;
+    if (onBackend && !body.dry) {
+      const push = await remoteSend<{ created: number; skipped: number }>("POST", "/api/astro/leads/bulk/", { leads: incoming.map((l) => ({ ...l, source: "paste" })) });
+      if (!push.ok) return NextResponse.json(push.data ?? { detail: "가져오지 못했습니다." }, { status: push.status });
+      return NextResponse.json({ ok: true, tab: "붙여넣기", rows: parsed.length, created: push.data?.created ?? 0, updated: 0, kept: push.data?.skipped ?? 0, skipped, columns: Object.keys(parsed[0]), dry: false, draft: false });
+    }
     const list = [...readDraft<Lead[]>("astro_leads", seedLeads)];
     let created = 0, updated = 0;
     const names: string[] = [];
@@ -118,6 +127,23 @@ export async function POST(req: NextRequest) {
     const infos = (rows.map((r) => (tab === "계약" ? contractRowToOps(r, now) : statusRowToOps(r))).filter(Boolean)) as NonNullable<
       ReturnType<typeof contractRowToOps>
     >[];
+    // 백엔드가 원본이면 빈 칸만 채우는 일괄 경로를 쓴다.
+    const opsRemote = await remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/");
+    if (opsRemote.ok) {
+      const payload: Record<string, unknown>[] = [];
+      const miss: string[] = [];
+      for (const info of infos) {
+        const st = byNorm.get(info.norm);
+        if (!st) { miss.push(info.name); continue; }
+        payload.push({ id: st.restaurant_id, ...info.patch });
+      }
+      const push = await remoteSend<{ created: number; filled: number }>("POST", "/api/astro/stores/ops/bulk/", { ops: payload });
+      if (!push.ok) return NextResponse.json(push.data ?? { detail: "반영하지 못했습니다." }, { status: push.status });
+      const applied = (push.data?.filled ?? 0) + (push.data?.created ?? 0);
+      if (applied) await notifyAstro(`:inbox_tray: *매장 정보 불러오기 — ${tab}* · 반영 ${applied}곳${miss.length ? ` · 매칭 실패 ${miss.length}곳` : ""}`);
+      return NextResponse.json({ ok: true, tab, applied, unmatched: miss, draft: false });
+    }
+
     const opsList = [...readDraft<StoreOps[]>("astro_store_ops", seedStoreOps)];
     let applied = 0;
     const unmatched: string[] = [];
@@ -151,6 +177,14 @@ export async function POST(req: NextRequest) {
 
   // 후보·신규 → leads. 이름이 같으면 시트 값이 있는 칸만 덮는다.
   const incoming = rows.map((r) => rowToLead(r, `sheet:${tab}` as Lead["source"], now)).filter(Boolean) as Lead[];
+  const leadsRemote = await remoteGet<{ leads: Lead[] }>("/api/astro/leads/");
+  if (leadsRemote.ok) {
+    const push = await remoteSend<{ created: number; skipped: number }>("POST", "/api/astro/leads/bulk/", { leads: incoming });
+    if (!push.ok) return NextResponse.json(push.data ?? { detail: "가져오지 못했습니다." }, { status: push.status });
+    const made = push.data?.created ?? 0;
+    if (made) await notifyAstro(`:inbox_tray: *후보 불러오기 — ${tab}* · 새로 ${made}곳 · 이미 있어 그대로 둔 곳 ${push.data?.skipped ?? 0}`);
+    return NextResponse.json({ ok: true, tab, created: made, updated: 0, kept: push.data?.skipped ?? 0, draft: false });
+  }
   const list = [...readDraft<Lead[]>("astro_leads", seedLeads)];
   let created = 0;
   let updated = 0;
