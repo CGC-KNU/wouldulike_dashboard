@@ -2,76 +2,27 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import {
+  IconBell, IconBuildingStore, IconChevronRight, IconDeviceDesktop, IconDownload,
+  IconPhone, IconPhoto, IconQrcode, IconTicket,
+} from "@tabler/icons-react";
 import { useViewMode } from "@/contexts/ViewModeContext";
 
-/* ─── SVG 아이콘 ─────────────────────────────────────── */
+/**
+ * 아이콘은 관리자 화면과 **같은 집합**을 쓴다 (@tabler, 0914).
+ * 예전에는 여기서 손으로 SVG 를 그렸다 — 같은 그림이 두 벌 있으면 선 굵기부터 어긋나고,
+ * 점주에게 보여 주는 화면에서 급조한 티가 난다.
+ */
 const IC = {
-  Store: ({ size = 18 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 9l1-5h16l1 5"/>
-      <path d="M3 9h18"/>
-      <path d="M5 11v8a1 1 0 001 1h12a1 1 0 001-1v-8"/>
-      <rect x="9" y="14" width="6" height="6" rx="0.5"/>
-    </svg>
-  ),
-  Ticket: ({ size = 18 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
-      <line x1="9" y1="12" x2="15" y2="12"/>
-    </svg>
-  ),
-  Image: ({ size = 16 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2"/>
-      <circle cx="8.5" cy="8.5" r="1.5"/>
-      <polyline points="21 15 16 10 5 21"/>
-    </svg>
-  ),
-  Qr: ({ size = 16 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="2" y="2" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
-      <rect x="14" y="2" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
-      <rect x="2" y="14" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
-      <rect x="4.5" y="4.5" width="3" height="3" rx="0.5" fill="currentColor"/>
-      <rect x="16.5" y="4.5" width="3" height="3" rx="0.5" fill="currentColor"/>
-      <rect x="4.5" y="16.5" width="3" height="3" rx="0.5" fill="currentColor"/>
-      <rect x="14" y="14" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
-      <rect x="18.5" y="14" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
-      <rect x="14" y="18.5" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
-      <rect x="18.5" y="18.5" width="2.5" height="2.5" rx="0.5" fill="currentColor"/>
-    </svg>
-  ),
-  Download: ({ size = 13 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/>
-      <line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>
-  ),
-  Bell: ({ size = 12 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-    </svg>
-  ),
-  Monitor: ({ size = 16 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="3" width="20" height="14" rx="2"/>
-      <line x1="8" y1="21" x2="16" y2="21"/>
-      <line x1="12" y1="17" x2="12" y2="21"/>
-    </svg>
-  ),
-  Phone: ({ size = 16 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="5" y="2" width="14" height="20" rx="2"/>
-      <line x1="12" y1="18" x2="12" y2="18.01"/>
-    </svg>
-  ),
-  ChevronRight: ({ size = 12 }: { size?: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6"/>
-    </svg>
-  ),
+  Store: (p: { size?: number }) => <IconBuildingStore size={p.size ?? 18} stroke={1.8} />,
+  Ticket: (p: { size?: number }) => <IconTicket size={p.size ?? 18} stroke={1.8} />,
+  Image: (p: { size?: number }) => <IconPhoto size={p.size ?? 16} stroke={1.8} />,
+  Qr: (p: { size?: number }) => <IconQrcode size={p.size ?? 16} stroke={1.8} />,
+  Download: (p: { size?: number }) => <IconDownload size={p.size ?? 13} stroke={2} />,
+  Bell: (p: { size?: number }) => <IconBell size={p.size ?? 12} stroke={2} />,
+  Monitor: (p: { size?: number }) => <IconDeviceDesktop size={p.size ?? 16} stroke={1.8} />,
+  Phone: (p: { size?: number }) => <IconPhone size={p.size ?? 14} stroke={1.8} />,
+  ChevronRight: (p: { size?: number }) => <IconChevronRight size={p.size ?? 14} stroke={2} />,
 };
 
 /* ─── 타입 ────────────────────────────────────────── */
@@ -186,7 +137,7 @@ function PromoMaterialsBlock({ promoFiles }: { promoFiles: PromoFiles }) {
     { Icon: IC.Qr,    name: "QR 스티커",  desc: "우주라이크 앱 QR 코드", iconCls: "bg-navy/8 text-navy",              url: promoFiles.qr_url    },
   ];
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white/85 backdrop-blur rounded-[18px] border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden">
       <div className="px-4 py-3 flex flex-col gap-1">
         {items.map(({ Icon, name, desc, iconCls, url }) => (
           <div key={name} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
@@ -260,7 +211,7 @@ function MarketingCalendar({
   const legendTypes = Array.from(new Set(monthCamps.map((c) => c.campaign_type)));
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white/85 backdrop-blur rounded-[18px] border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden">
 
       {/* 헤더 */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-50">
@@ -566,7 +517,7 @@ export default function HomeContent({
       {/* ── 식당 정보 바로가기 ── */}
       <Link
         href={`/dashboard/owner/restaurant${ridParam}`}
-        className="flex items-center gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:border-periwinkle/30 hover:shadow-md transition-all"
+        className="flex items-center gap-3 bg-white/85 backdrop-blur rounded-[18px] border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04)] px-5 py-4 hover:border-periwinkle/30 hover:shadow-md transition-all"
       >
         <div className="w-10 h-10 rounded-xl bg-periwinkle/10 flex items-center justify-center text-periwinkle">
           <IC.Store size={18} />
