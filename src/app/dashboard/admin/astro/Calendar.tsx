@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IconChevronLeft, IconChevronRight, IconFileDownload, IconMessage2, IconPlus, IconSearch } from "@tabler/icons-react";
-import type { Lead, StoreRow } from "@/lib/draft/types";
+import type { Lead, StoreRow, TaxInvoice } from "@/lib/draft/types";
 import { isPaidTier } from "@/lib/draft/types";
 import type { MsgContext } from "@/lib/draft/message";
 import { Input, focusRing, todayLocal } from "../_shared/ui";
@@ -11,7 +11,7 @@ import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 import QuickAdd from "./QuickAdd";
 
 /**
- * 영업 일정 — 미팅 · 기한 · 계약 시작 · 입금 예정을 한 달에 놓는다 (민열님 0911).
+ * 영업 일정 — 날짜가 있는 것은 전부 한 달 위에 놓는다 (민열님 0911 · 0914).
  *
  * 실제 데이터는 한 날짜에 몰린다 — 대부분 9월 1일 계약 시작 + 월납. 그래서 점을 40개 찍는 대신
  * **종류별로 묶어 글자로** 보여준다("입금 예정 12곳"). 하루에 한 건이면 매장 이름을 그대로 쓴다.
@@ -20,20 +20,49 @@ import QuickAdd from "./QuickAdd";
  * 시트 날짜는 "8/6(목) 14시" 같은 자유 서식이라 느슨하게 읽고, 못 읽으면 조용히 빠진다(지어내지 않는다).
  */
 
-export type CalKind = "meeting" | "due" | "contract" | "payment";
+/**
+ * 달력에 찍히는 날짜의 전부 (민열님 0914: "뭐든 날짜가 있는 건 다 표기되게").
+ * 후보 · 매장 운영 · 세금계산서 세 곳에 흩어져 있던 날짜 칸을 여기 한 줄로 모았다.
+ * 감사 로그성 시각(마지막 손댐 · 시트 동기화 · 수정 시각)은 뺀다 — 그건 일정이 아니라 흔적이다.
+ */
+export type CalKind =
+  | "contacted" | "meeting" | "due"
+  | "quote" | "returned" | "signed" | "contract" | "contract_end"
+  | "payment" | "paid" | "issued" | "requested" | "approved";
+
 export type CalEvent = {
   date: string; kind: CalKind; label: string; sub?: string; onClick?: () => void;
   /** 문자 보내기에 필요한 값. 입금·미팅·계약 시작 항목에만 붙는다. */
   msg?: MsgContext;
 };
 
-const KIND: Record<CalKind, { label: string; dot: string; chip: string; bar: string }> = {
-  meeting: { label: "미팅", dot: "bg-navy", chip: "bg-navy/[0.07] text-navy", bar: "border-l-navy" },
-  due: { label: "기한", dot: "bg-amber-500", chip: "bg-amber-50 text-amber-800", bar: "border-l-amber-500" },
-  contract: { label: "계약 시작", dot: "bg-emerald-500", chip: "bg-emerald-50 text-emerald-800", bar: "border-l-emerald-500" },
-  payment: { label: "입금 예정", dot: "bg-periwinkle", chip: "bg-periwinkle/15 text-navy", bar: "border-l-periwinkle" },
+const KIND: Record<CalKind, { label: string; dot: string; chip: string; bar: string; from: string }> = {
+  contacted:    { label: "컨택",        dot: "bg-slate-400",     chip: "bg-slate-100 text-slate-700",   bar: "border-l-slate-400",   from: "후보" },
+  meeting:      { label: "미팅",        dot: "bg-navy",          chip: "bg-navy/[0.07] text-navy",      bar: "border-l-navy",        from: "후보" },
+  due:          { label: "기한",        dot: "bg-amber-500",     chip: "bg-amber-50 text-amber-800",    bar: "border-l-amber-500",   from: "후보" },
+  quote:        { label: "견적서 발송",  dot: "bg-sky-500",       chip: "bg-sky-50 text-sky-800",        bar: "border-l-sky-500",     from: "매장" },
+  returned:     { label: "계약서 회수",  dot: "bg-violet-500",    chip: "bg-violet-50 text-violet-800",  bar: "border-l-violet-500",  from: "매장" },
+  signed:       { label: "계약 체결",    dot: "bg-teal-500",      chip: "bg-teal-50 text-teal-800",      bar: "border-l-teal-500",    from: "매장" },
+  contract:     { label: "계약 시작",    dot: "bg-emerald-500",   chip: "bg-emerald-50 text-emerald-800", bar: "border-l-emerald-500", from: "매장" },
+  contract_end: { label: "계약 종료",    dot: "bg-rose-500",      chip: "bg-rose-50 text-rose-800",      bar: "border-l-rose-500",    from: "매장" },
+  payment:      { label: "입금 예정",    dot: "bg-periwinkle",    chip: "bg-periwinkle/15 text-navy",    bar: "border-l-periwinkle",  from: "매장" },
+  paid:         { label: "입금 완료",    dot: "bg-green-600",     chip: "bg-green-50 text-green-800",    bar: "border-l-green-600",   from: "청구" },
+  issued:       { label: "계산서 발행",  dot: "bg-cyan-600",      chip: "bg-cyan-50 text-cyan-800",      bar: "border-l-cyan-600",    from: "청구" },
+  requested:    { label: "계산서 품의",  dot: "bg-gray-300",      chip: "bg-gray-100 text-gray-600",     bar: "border-l-gray-300",    from: "청구" },
+  approved:     { label: "계산서 승인",  dot: "bg-indigo-400",    chip: "bg-indigo-50 text-indigo-700",  bar: "border-l-indigo-400",  from: "청구" },
 };
-const ORDER: CalKind[] = ["meeting", "due", "contract", "payment"];
+const ORDER: CalKind[] = [
+  "meeting", "due", "contacted",
+  "quote", "returned", "signed", "contract", "contract_end",
+  "payment", "paid", "issued", "requested", "approved",
+];
+/** 처음 열었을 때 켜 두는 것. 품의·승인은 하루 안에 지나가는 절차라 꺼 둔다 — 칩 하나로 켠다. */
+const DEFAULT_ON: CalKind[] = ORDER.filter((k) => k !== "requested" && k !== "approved");
+
+/** 문자 템플릿은 네 가지뿐이다. 어떤 일정에서 어떤 문안을 기본으로 열지 정한다. 없으면 문자 버튼도 없다. */
+const SMS_KIND: Partial<Record<CalKind, "payment" | "meeting" | "contract" | "due">> = {
+  meeting: "meeting", due: "due", contract: "contract", payment: "payment", paid: "payment",
+};
 
 /** "2026-09-04" · "9/4" · "9월 4일" · "8/6(목) 14시" → YYYY-MM-DD (연도 없으면 기준 연도). */
 export function parseLoose(s: string | null | undefined, year: number): string | null {
@@ -45,36 +74,82 @@ export function parseLoose(s: string | null | undefined, year: number): string |
   return null;
 }
 
-export function buildEvents(stores: StoreRow[], leads: Lead[], ym: string, onStore: (id: number) => void, onLead: (id: string) => void): CalEvent[] {
+/** ISO 시각("2026-09-14T01:11:17Z")도, 날짜만("2026-09-14")도 앞 10자가 날짜다. */
+function ymd(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const d = v.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+}
+
+export function buildEvents(
+  stores: StoreRow[],
+  leads: Lead[],
+  ym: string,
+  onStore: (id: number) => void,
+  onLead: (id: string) => void,
+  invoices: TaxInvoice[] = [],
+  onTax?: () => void,
+): CalEvent[] {
   const [y, m] = ym.split("-").map(Number);
   const out: CalEvent[] = [];
+
+  // ── 파트너 후보 — 컨택 · 미팅 · 기한
   for (const l of leads) {
     if (["재컨택", "보류", "거절", "계약 완료"].includes(l.stage)) continue;
     const msg: MsgContext = { name: l.name, targetType: "lead", targetId: l.id, owner: l.owner_name, phone: l.contact ?? l.phone, meetingAt: l.meeting_at, nextAction: l.next_action };
-    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, sub: l.meeting_at ?? undefined, onClick: () => onLead(l.id), msg });
-    const du = parseLoose(l.due, y); if (du) out.push({ date: du, kind: "due", label: l.name, sub: l.next_action ?? undefined, onClick: () => onLead(l.id), msg });
+    const go = () => onLead(l.id);
+    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, sub: l.meeting_at ?? undefined, onClick: go, msg });
+    const du = parseLoose(l.due, y); if (du) out.push({ date: du, kind: "due", label: l.name, sub: l.next_action ?? undefined, onClick: go, msg });
+    const ct = parseLoose(l.contacted_at, y); if (ct) out.push({ date: ct, kind: "contacted", label: l.name, sub: l.channel ? `${l.channel} · ${l.stage}` : l.stage, onClick: go });
   }
+
+  // ── 파트너 매장 — 견적 · 회수 · 체결 · 시작 · 종료 · 입금 예정
   for (const s of stores) {
     if (!s.is_affiliate || s.ops?.is_test) continue;
-    const start = parseLoose(s.ops?.contract_started_on, y);
-    const base: MsgContext = { name: s.name, targetType: "store", targetId: String(s.restaurant_id), owner: s.ops?.owner_name, phone: s.ops?.owner_phone, fee: s.ops?.monthly_fee, period: ym };
-    if (start) out.push({ date: start, kind: "contract", label: s.name, sub: "파트너 계약 시작", onClick: () => onStore(s.restaurant_id), msg: base });
-    if (isPaidTier(s.tier) && s.ops?.pay_cycle !== "LUMP" && s.ops?.billing !== "EXEMPT") {
-      const billingStart = s.ops?.billing_start_period ?? (start ? start.slice(0, 7) : null);
+    const o = s.ops;
+    const start = parseLoose(o?.contract_started_on, y);
+    const go = () => onStore(s.restaurant_id);
+    const base: MsgContext = { name: s.name, targetType: "store", targetId: String(s.restaurant_id), owner: o?.owner_name, phone: o?.owner_phone, fee: o?.monthly_fee, period: ym };
+
+    const q = ymd(o?.quote_sent_at); if (q) out.push({ date: q, kind: "quote", label: s.name, sub: o?.extra_quote ? `별도 견적: ${o.extra_quote}` : "견적서 발송", onClick: go });
+    const r = ymd(o?.contract_returned_at); if (r) out.push({ date: r, kind: "returned", label: s.name, sub: o?.contract_original ? `원본 ${o.contract_original}` : "계약서 회수", onClick: go });
+    const sg = parseLoose(o?.contract_signed_on, y); if (sg) out.push({ date: sg, kind: "signed", label: s.name, sub: o?.contract_months ? `${o.contract_months}개월 계약` : "계약 체결", onClick: go });
+    if (start) out.push({ date: start, kind: "contract", label: s.name, sub: "파트너 계약 시작", onClick: go, msg: base });
+    const end = parseLoose(o?.contract_ends_on, y); if (end) out.push({ date: end, kind: "contract_end", label: s.name, sub: "계약 종료 — 갱신 이야기를 꺼낼 때", onClick: go });
+
+    if (isPaidTier(s.tier) && o?.pay_cycle !== "LUMP" && o?.billing !== "EXEMPT") {
+      const billingStart = o?.billing_start_period ?? (start ? start.slice(0, 7) : null);
       if (billingStart && ym < billingStart) continue;
+      // 이미 입금이 찍힌 달은 '예정'을 겹쳐 찍지 않는다 — 아래 '입금 완료'가 그 자리를 맡는다.
+      const invThis = invoices.find((i) => i.restaurant_id === s.restaurant_id && i.period === ym && !["CANCELED", "REJECTED"].includes(i.status));
+      if (invThis?.paid_at) continue;
       const day = start ? Number(start.slice(8, 10)) : 1;
       const last = new Date(y, m, 0).getDate();
       const d = `${ym}-${String(Math.min(day, last)).padStart(2, "0")}`;
-      out.push({ date: d, kind: "payment", label: s.name, sub: s.ops?.monthly_fee ? `${s.ops.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: () => onStore(s.restaurant_id), msg: { ...base, dateLabel: `${Number(d.slice(5, 7))}/${Number(d.slice(8))}` } });
+      out.push({ date: d, kind: "payment", label: s.name, sub: o?.monthly_fee ? `${o.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: go, msg: { ...base, dateLabel: `${Number(d.slice(5, 7))}/${Number(d.slice(8))}` } });
     }
   }
+
+  // ── 세금계산서 — 실제로 일어난 날. 어느 달 것인지(period)가 아니라 **그 일이 있었던 날**에 찍는다.
+  for (const inv of invoices) {
+    if (["CANCELED", "REJECTED"].includes(inv.status)) continue;
+    const go = onTax ?? (() => onStore(inv.restaurant_id));
+    const won = `${inv.total.toLocaleString()}원`;
+    const per = `${Number(inv.period.slice(5))}월분`;
+    const msg: MsgContext = { name: inv.name, targetType: "store", targetId: String(inv.restaurant_id), fee: inv.total, period: inv.period };
+    const pd = ymd(inv.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: inv.name, sub: `${won} · ${per} 입금`, onClick: go, msg });
+    const isd = ymd(inv.issued_at); if (isd) out.push({ date: isd, kind: "issued", label: inv.name, sub: inv.nts_no ? `승인번호 ${inv.nts_no}` : `${won} · ${per}`, onClick: go });
+    const rq = ymd(inv.requested_at); if (rq) out.push({ date: rq, kind: "requested", label: inv.name, sub: `${won} · ${per} 품의`, onClick: go });
+    const ap = ymd(inv.approved_at); if (ap) out.push({ date: ap, kind: "approved", label: inv.name, sub: inv.approved_by ? `승인 ${inv.approved_by}` : `${won} · ${per}`, onClick: go });
+  }
+
   return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
 }
 
 export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogged, leads = [], stores = [] }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void; actor?: string; onLogged?: () => void; leads?: Lead[]; stores?: StoreRow[] }) {
   const [y, m] = ym.split("-").map(Number);
   // 필터 — 종류(미팅/기한/계약 시작/입금 예정)와 식당 이름 (민열님 0911)
-  const [kinds, setKinds] = useState<CalKind[]>([...ORDER]);
+  const [kinds, setKinds] = useState<CalKind[]>([...DEFAULT_ON]);
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState<{ ctx: MsgContext; ev: { kind: CalKind; past: boolean; tomorrow: boolean } } | null>(null);
   const events = useMemo(() => {
@@ -83,6 +158,7 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
   }, [allEvents, kinds, q]);
   const names = useMemo(() => [...new Set(allEvents.map((e) => e.label))].sort((a, b) => a.localeCompare(b, "ko")), [allEvents]);
   const toggle = (k: CalKind) => setKinds((cur) => (cur.includes(k) ? (cur.length === 1 ? cur : cur.filter((x) => x !== k)) : [...cur, k]));
+  const allOn = ORDER.every((k) => kinds.includes(k));
   const days = new Date(y, m, 0).getDate();
   const lead = new Date(y, m - 1, 1).getDay();
   const today = todayLocal();
@@ -129,16 +205,21 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
       <div>
         {/* 필터 — 종류는 칩으로 켜고 끄고, 식당은 이름으로 (같은 이름의 미팅·입금을 한 번에 본다) */}
         <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
-          {ORDER.map((k) => {
+          {/* 이 달에 실제로 있는 종류만 칩으로 낸다 — 늘 0인 칩 13개는 필터가 아니라 잡음이다. */}
+          {ORDER.filter((k) => allEvents.some((e) => e.kind === k)).map((k) => {
             const on = kinds.includes(k);
             const n = allEvents.filter((e) => e.kind === k).length;
             return (
-              <button key={k} type="button" onClick={() => toggle(k)} aria-pressed={on}
+              <button key={k} type="button" onClick={() => toggle(k)} aria-pressed={on} title={`${KIND[k].from}에서 옵니다`}
                 className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] font-semibold border transition-colors ${focusRing} ${on ? "bg-white border-black/[0.1] text-gray-800" : "bg-transparent border-black/[0.06] text-gray-400"}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${on ? KIND[k].dot : "bg-gray-300"}`} />{KIND[k].label}<span className="tabular-nums text-gray-400">{n}</span>
               </button>
             );
           })}
+          <button type="button" onClick={() => setKinds(allOn ? [...DEFAULT_ON] : [...ORDER])}
+            className={`h-7 px-2.5 rounded-full text-[12px] font-semibold text-navy hover:bg-navy/[0.06] ${focusRing}`}>
+            {allOn ? "기본만" : "전부 보기"}
+          </button>
           <div className="relative ml-auto w-44">
             <IconSearch size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} list="cal-names" placeholder="식당 이름" aria-label="식당으로 거르기" className="pl-7 h-8 text-[12px]" />
@@ -194,7 +275,9 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
         </div>
 
         <div className="flex flex-wrap gap-3 mt-2.5 text-[11px] text-gray-500">
-          {ORDER.map((k) => <span key={k} className="inline-flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[k].dot}`} />{KIND[k].label}</span>)}
+          {ORDER.filter((k) => kinds.includes(k) && allEvents.some((e) => e.kind === k)).map((k) => (
+            <span key={k} className="inline-flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[k].dot}`} />{KIND[k].label}</span>
+          ))}
         </div>
       </div>
 
@@ -251,7 +334,7 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                           <IconFileDownload size={15} aria-hidden="true" />
                         </button>
                       )}
-                      {e.msg && (e.kind === "payment" || e.kind === "meeting" || e.kind === "contract") && (
+                      {e.msg && SMS_KIND[e.kind] && (
                         <button type="button" aria-label={`${e.label} 문자 보내기`} title="문자 보내기"
                           onClick={() => setMsg({ ctx: { ...e.msg!, sender: actor }, ev: { kind: e.kind, past: e.date < today, tomorrow: isTomorrow(e.date, today) } })}
                           className={`shrink-0 w-7 h-7 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
@@ -280,7 +363,7 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
       </div>
 
       {msg && (
-        <MessageComposer open ctx={msg.ctx} event={{ kind: msg.ev.kind === "due" ? "due" : msg.ev.kind, past: msg.ev.past, tomorrow: msg.ev.tomorrow, overdue: msg.ev.kind === "payment" && msg.ev.past }}
+        <MessageComposer open ctx={msg.ctx} event={{ kind: SMS_KIND[msg.ev.kind] ?? "payment", past: msg.ev.past, tomorrow: msg.ev.tomorrow, overdue: msg.ev.kind === "payment" && msg.ev.past }}
           onClose={() => setMsg(null)} onSent={onLogged} />
       )}
 
