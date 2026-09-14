@@ -16,9 +16,15 @@ import { cookies } from "next/headers";
  *
  * ## 무엇을 폴백으로 보고 무엇을 에러로 보나
  *
- * **404·405·501 만** "아직 없음"으로 본다. 401·403 은 권한 문제고, 500·502 는 장애다.
- * 장애 때 조용히 초안으로 떨어지면 **쓰기가 DB 와 메모리로 갈라진다** — 그게 제일 나쁘다.
- * 그래서 그런 응답은 그대로 올려보낸다.
+ * 읽기와 쓰기를 다르게 다룬다.
+ *
+ *   읽기 — 404·405·501(아직 없음)은 물론 5xx·연결 실패도 초안으로 떨어진다.
+ *          백엔드가 아프다고 화면이 통째로 깨지면 안 된다. 대신 떨어졌다는 사실을
+ *          `reason` 으로 남기고, 화면은 "임시 저장소를 보고 있다"고 말한다.
+ *   쓰기 — **404·405·501 만** 폴백이다. 5xx 는 그대로 에러로 올린다.
+ *          저장된 줄 알았는데 메모리에만 남는 것이 제일 위험하다.
+ *
+ * 401·403 은 양쪽 다 그대로 올린다 — 로그인하라고 말해야 하는 상황이다.
  */
 
 const NOT_IMPLEMENTED = new Set([404, 405, 501]);
@@ -72,10 +78,17 @@ export async function remoteGet<T>(path: string, search?: string): Promise<Remot
       }
     }
     if (FALLBACK_ON && NOT_IMPLEMENTED.has(res.status)) return MISS;
+    // 권한 문제(401·403)는 그대로 올린다 — 로그인하라고 말해야 한다.
+    if (res.status === 401 || res.status === 403) {
+      return { handled: true, ok: false, status: res.status, data: await safeJson<T>(res) };
+    }
+    // 그 밖의 실패(5xx)는 **읽기에 한해** 초안으로 떨어진다.
+    // 백엔드가 아파도 화면이 통째로 깨지지 않게. 쓰기는 아래에서 여전히 막는다.
+    if (FALLBACK_ON) return { ...MISS, reason: `backend-${res.status}` };
     return { handled: true, ok: false, status: res.status, data: await safeJson<T>(res) };
   } catch {
     // 네트워크가 끊긴 것은 '미구현'이 아니다. 하지만 읽기는 초안으로라도 보여 주는 편이 낫다.
-    return MISS;
+    return { ...MISS, reason: "unreachable" };
   }
 }
 
@@ -98,6 +111,8 @@ export async function remoteSend<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
     });
+    // 쓰기는 '아직 없음'만 폴백이다. 5xx 를 초안으로 떨어뜨리면 저장된 줄 알았는데
+    // 메모리에만 남는다 — 그게 제일 위험하다.
     if (FALLBACK_ON && NOT_IMPLEMENTED.has(res.status)) return MISS;
     if (res.status === 204) return { handled: true, ok: true, status: 204, data: null };
     return { handled: true, ok: res.ok, status: res.status, data: await safeJson<T>(res) };
