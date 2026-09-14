@@ -111,6 +111,18 @@ function ToolIcon({ k }: { k?: string }) {
   return <img src={`/satellite/${k}_app.svg`} alt="" width={32} height={32} className="w-8 h-8 rounded-lg shrink-0" aria-hidden="true" />;
 }
 
+/**
+ * 켜진 탭의 색. 기본은 네이비인데 **스팟 제작만 핫핑크**다 (민열님 0914).
+ *
+ * 스팟은 윤지님 혼자 쓰는 탭이라 영업 흐름과 색으로 갈라 둔다 —
+ * 옆 사람 화면을 흘깃 봐도 지금 무슨 일을 하는 중인지 구분된다.
+ * 색을 늘릴 거면 **쓰는 사람이 갈리는 탭에만** 준다. 탭마다 색이면 아무 뜻이 없다.
+ */
+const ACCENT_DEFAULT = "bg-[linear-gradient(180deg,#1512a3,#050072)] text-white shadow-[0_6px_16px_-8px_rgba(5,0,114,0.7)]";
+const ACCENT: Record<string, string> = {
+  "astro-spots": "bg-[linear-gradient(180deg,#FF2D8A,#D6006E)] text-white shadow-[0_6px_16px_-8px_rgba(214,0,110,0.75)]",
+};
+
 export default function ToolShell({
   product,
   navItems,
@@ -178,7 +190,7 @@ export default function ToolShell({
                     onClick={() => onSelect(n.key)}
                     aria-current={on ? "page" : undefined}
                     className={`w-full flex items-center gap-2.5 h-9 px-3 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 touch-manipulation ${focusRing} ${
-                      on ? "bg-[linear-gradient(180deg,#1512a3,#050072)] text-white shadow-[0_6px_16px_-8px_rgba(5,0,114,0.7)]" : "text-gray-600 hover:bg-navy/[0.05] hover:text-gray-900"
+                      on ? (ACCENT[n.key] ?? ACCENT_DEFAULT) : "text-gray-600 hover:bg-navy/[0.05] hover:text-gray-900"
                     }`}
                   >
                     <Icon size={18} stroke={1.75} className={on ? "text-white/90" : "text-gray-400"} aria-hidden="true" />
