@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport } from "@tabler/icons-react";
-import { ALL_LEAD_STAGES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES, type Campus, type Lead, type LeadIntent, type LeadStage } from "@/lib/draft/types";
+import { ALL_LEAD_STAGES, APP_CATEGORIES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES, PROPOSED_PLANS, type Campus, type Lead, type LeadIntent, type LeadStage } from "@/lib/draft/types";
+import { looseToISO } from "@/lib/draft/dates";
 import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, PanelSection, Segmented, Select, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, daysSince, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
@@ -207,6 +208,37 @@ function LeadCard({ lead, onOpen, showCampus }: { lead: Lead; onOpen: () => void
   );
 }
 
+
+
+/* ═══════════ 골라서 넣는 칸 ═══════════
+   손으로 적던 칸을 목록으로 바꾼다. 사람마다 "한식"·"한식당"·"韓食" 으로 적으면
+   나중에 세지도 거르지도 못한다. 다만 **예전 값을 지우지는 않는다** —
+   목록에 없는 값이 이미 들어 있으면 그 값도 보기에 넣어 준다. */
+function PickCell({ label, value, options, onCommit, hint, placeholder }: {
+  label: string; value: string | null; options: readonly string[];
+  onCommit: (v: string | null) => void; hint?: string; placeholder?: string;
+}) {
+  const extra = value && !options.includes(value) ? [value] : [];
+  return (
+    <Field label={label} hint={hint}>
+      <Select value={value ?? ""} onChange={(e) => onCommit(e.target.value || null)}>
+        <option value="">{placeholder ?? "미정"}</option>
+        {[...options, ...extra].map((o) => <option key={o} value={o}>{o}</option>)}
+      </Select>
+    </Field>
+  );
+}
+
+/** 기한은 달력에서 고른다. 시트에서 온 "9/20" 같은 값은 열 때 날짜로 읽어 준다. */
+function DateCell({ label, value, onCommit, hint }: { label: string; value: string | null; onCommit: (v: string | null) => void; hint?: string }) {
+  const iso = looseToISO(value);
+  return (
+    <Field label={label} hint={hint ?? (value && !iso ? `지금 값: ${value} (날짜로 못 읽었습니다)` : undefined)}>
+      <Input type="date" value={iso ?? ""} onChange={(e) => onCommit(e.target.value || null)} />
+    </Field>
+  );
+}
+
 /* ═══════════ 상세 패널 ═══════════ */
 
 function Cell({ label, value, onCommit, placeholder, type, rows, hint }: { label: string; value: string | null; onCommit: (v: string | null) => void; placeholder?: string; type?: string; rows?: number; hint?: string }) {
@@ -262,9 +294,9 @@ function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConve
         <div className="grid grid-cols-2 gap-3">
           <Field label="캠퍼스"><CampusPicker value={campusOf(lead)} options={campusOptions} onChange={(v) => onPatch(lead.id, { campus: v })} /></Field>
           <Field label="유료화 의향"><Select value={lead.intent ?? ""} onChange={(e) => onPatch(lead.id, { intent: (e.target.value || null) as LeadIntent | null })}><option value="">미정</option>{(["A", "B", "C", "D"] as LeadIntent[]).map((i) => <option key={i} value={i}>{i} · {INTENT_LABEL[i]}</option>)}</Select></Field>
-          <Cell label="제안 플랜" value={lead.proposed_plan} onCommit={set("proposed_plan")} placeholder="예: Boost 3만" />
+          <PickCell label="제안 플랜" value={lead.proposed_plan} options={PROPOSED_PLANS} onCommit={set("proposed_plan")} />
           <Cell label="담당" value={lead.owner} onCommit={set("owner")} placeholder="이름 (참고용)" />
-          <Cell label="기한" value={lead.due} onCommit={set("due")} placeholder="예: 9/20" />
+          <DateCell label="기한" value={lead.due} onCommit={set("due")} />
         </div>
         <div className="mt-3"><Cell label="다음 액션" value={lead.next_action} onCommit={set("next_action")} placeholder="예: 금요일 재방문" hint="카드 앞면에 보입니다." /></div>
       </PanelSection>
@@ -280,7 +312,7 @@ function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConve
       <PanelSection title="매장 정보">
         <div className="grid grid-cols-2 gap-3">
           <Field label="구분"><Select value={lead.kind ?? ""} onChange={(e) => onPatch(lead.id, { kind: (e.target.value || null) as Lead["kind"] })}><option value="">-</option><option>기존 파트너</option><option>신규</option></Select></Field>
-          <Cell label="카테고리" value={lead.category} onCommit={set("category")} />
+          <PickCell label="카테고리" value={lead.category} options={APP_CATEGORIES} onCommit={set("category")} hint="앱이 쓰는 목록입니다." />
           <Cell label="대표자" value={lead.owner_name} onCommit={set("owner_name")} />
           <Cell label="대표 연락처" value={lead.contact} onCommit={set("contact")} type="tel" />
           <Cell label="매장 전화" value={lead.phone} onCommit={set("phone")} type="tel" />
@@ -321,13 +353,13 @@ function NewLeadPanel({ actor, campus, campusOptions, onClose, onCreated }: { ac
       <div className="grid grid-cols-2 gap-3">
         <Field label="캠퍼스"><CampusPicker value={form.campus} options={campusOptions} onChange={(v) => setForm((f) => ({ ...f, campus: v }))} /></Field>
         <Field label="구분"><Select value={form.kind} onChange={set("kind")}><option>신규</option><option>기존 파트너</option></Select></Field>
-        <Field label="카테고리"><Input value={form.category} onChange={set("category")} placeholder="예: 한식" /></Field>
+        <Field label="카테고리" hint="앱이 쓰는 목록입니다."><Select value={form.category} onChange={set("category")}><option value="">미정</option>{APP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
         <Field label="유료화 의향"><Select value={form.intent} onChange={set("intent")}><option value="">미정</option>{(["A", "B", "C", "D"] as LeadIntent[]).map((i) => <option key={i} value={i}>{i} · {INTENT_LABEL[i]}</option>)}</Select></Field>
-        <Field label="제안 플랜"><Input value={form.proposed_plan} onChange={set("proposed_plan")} placeholder="예: Boost 3만" /></Field>
+        <Field label="제안 플랜"><Select value={form.proposed_plan} onChange={set("proposed_plan")}><option value="">미정</option>{PROPOSED_PLANS.map((pl) => <option key={pl} value={pl}>{pl}</option>)}</Select></Field>
         <Field label="매장 전화"><Input value={form.phone} onChange={set("phone")} type="tel" inputMode="tel" /></Field>
         <Field label="링크"><Input value={form.link} onChange={set("link")} type="url" inputMode="url" placeholder="네이버 플레이스" /></Field>
         <Field label="다음 액션"><Input value={form.next_action} onChange={set("next_action")} placeholder="예: 금요일 재방문" /></Field>
-        <Field label="기한"><Input value={form.due} onChange={set("due")} placeholder="예: 9/20" /></Field>
+        <Field label="기한"><Input type="date" value={form.due} onChange={set("due")} /></Field>
       </div>
       <Field label="메모"><Textarea rows={3} value={form.memo} onChange={set("memo")} /></Field>
     </SlideOver>

@@ -9,6 +9,7 @@ import { Input, focusRing, todayLocal } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 import QuickAdd from "./QuickAdd";
+import { looseToISO } from "@/lib/draft/dates";
 
 /**
  * 영업 일정 — 날짜가 있는 것은 전부 한 달 위에 놓는다 (민열님 0911 · 0914).
@@ -64,15 +65,8 @@ const SMS_KIND: Partial<Record<CalKind, "payment" | "meeting" | "contract" | "du
   meeting: "meeting", due: "due", contract: "contract", payment: "payment", paid: "payment",
 };
 
-/** "2026-09-04" · "9/4" · "9월 4일" · "8/6(목) 14시" → YYYY-MM-DD (연도 없으면 기준 연도). */
-export function parseLoose(s: string | null | undefined, year: number): string | null {
-  if (!s) return null;
-  let m = s.match(/(\d{4})[-./]\s?(\d{1,2})[-./]\s?(\d{1,2})/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-  m = s.match(/(\d{1,2})\s*[/월]\s*(\d{1,2})/);
-  if (m && Number(m[1]) <= 12 && Number(m[2]) <= 31) return `${year}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
-  return null;
-}
+/** 같은 규칙이 두 곳에서 갈라지지 않게 공용 것을 쓴다. 예전 이름은 그대로 둔다. */
+export const parseLoose = looseToISO;
 
 /** ISO 시각("2026-09-14T01:11:17Z")도, 날짜만("2026-09-14")도 앞 10자가 날짜다. */
 function ymd(v: string | null | undefined): string | null {

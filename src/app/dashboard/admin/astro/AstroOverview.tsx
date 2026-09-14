@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconDownload, IconPlus, IconSearch } from "@tabler/icons-react";
-import { CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, type Campus, type StoreOps, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
+import { APP_CATEGORIES, CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, type Campus, type StoreOps, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, Segmented, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
 import StoreDetailPanel from "./StoreDetailPanel";
 import CampusPicker, { allCampuses } from "./CampusPicker";
@@ -281,7 +281,7 @@ function NewStorePanel({ actor, campus, campusOptions, onClose, onCreated }: { a
           <Input type="number" inputMode="numeric" value={fee} onChange={(e) => { setFee(e.target.value); setFeeTouched(true); }} placeholder={suggested ? String(suggested) : "예: 22000"} />
         </Field>
         <Field label="청구 시작" hint="월 중간에 들어오면 이번 달부터 받을지 다음 달부터 받을지"><Select value={form.billing_start} onChange={set("billing_start")}><option value={thisP}>이번 달부터 ({Number(thisP.slice(5))}월)</option><option value={nextP}>다음 달부터 ({Number(nextP.slice(5))}월)</option></Select></Field>
-        <Field label="카테고리"><Input value={form.category} onChange={set("category")} placeholder="예: 한식" /></Field>
+        <Field label="카테고리" hint="앱 목록 그대로입니다."><Select value={form.category} onChange={set("category")}><option value="">미정</option>{APP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
         <Field label="매장 전화"><Input value={form.phone} onChange={set("phone")} type="tel" inputMode="tel" /></Field>
         <Field label="링크"><Input value={form.url} onChange={set("url")} type="url" inputMode="url" placeholder="네이버 플레이스" /></Field>
       </div>

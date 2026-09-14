@@ -56,6 +56,20 @@ export const INVOICE_LABEL: Record<InvoiceState, string> = {
 /** 캠퍼스 — 상권 위의 축. 팀이 경북대 마무리 → 영남대·계명대 컨택으로 나뉘어 뛴다 (0901·0906). */
 /** 기본 캠퍼스. **열린 목록**이다 — 새 대학에 들어가면 화면에서 바로 추가한다 (민열님 0911). */
 export const CAMPUSES = ["경북대", "영남대", "계명대"] as const;
+
+/**
+ * 카테고리 — **앱이 쓰는 목록 그대로** (백엔드 appconfig/defaults.py).
+ * 여기서 다른 말을 만들면 앱 화면과 영업 화면이 다른 분류를 쓰게 되고,
+ * 나중에 "돈가스는 어느 쪽이 맞나"를 사람이 매번 판단해야 한다.
+ */
+export const APP_CATEGORIES = ["한식", "중식", "일식", "양식", "분식", "술집", "카페", "돈가스", "햄버거", "기타"] as const;
+
+/**
+ * 제안 플랜 — 우리가 파는 세 가지. 금액은 여기 적지 않는다(캠퍼스마다 다르다, pricing.ts).
+ * 자유 입력이던 시절의 "Boost 3만" 같은 값도 그대로 남아 있어서, 화면은 목록에 없는 값도 보여 준다.
+ */
+export const PROPOSED_PLANS = ["Free", "Boost", "Premium"] as const;
+
 export type Campus = string;
 
 export interface StoreOps {
