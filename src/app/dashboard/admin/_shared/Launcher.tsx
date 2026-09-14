@@ -35,7 +35,11 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
   const [pulse, setPulse] = useState<Pulse>({});
 
   useEffect(() => {
-    const j = (u: string) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    // 늦는 한 곳 때문에 카드 숫자가 통째로 안 뜨는 걸 막는다 (useSatelliteStatus 와 같은 이유)
+    const j = (u: string) =>
+      fetch(u, { signal: AbortSignal.timeout(8000) })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
     const period = periodLocal();
     // Castor 는 보류 상태라 부르지 않는다. 안 쓰는 툴의 숫자를 매 로그인마다 받아 올 이유가 없다 (0914).
     Promise.all([j("/api/astro/stores"), j("/api/astro/leads"), j(`/api/astro/invoices?period=${period}`), j("/api/probe/quality"), j("/api/probe/insights"), j("/api/probe/mileage")]).then(
