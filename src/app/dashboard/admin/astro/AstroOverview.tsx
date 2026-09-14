@@ -209,12 +209,12 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                       <span className="font-semibold text-gray-900 inline-flex items-center gap-1.5">
                         {campus === "all" && <CampusMark campus={campusOf(r)} size={15} />}
                         <span className={r.is_affiliate ? "" : "text-gray-500"}>{r.name}</span>
-                        {!r.is_affiliate && <Chip tone="gray">계약 종료</Chip>}
                       </span>
                       <span className="block text-[11px] text-gray-400">{[!r.is_affiliate && o?.contract_ends_on ? `종료 ${o.contract_ends_on}` : null, o?.map_name && o.map_name !== r.name ? `지도: ${o.map_name}` : null, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
                     </Td>
                     <Td>{r.tier ? <Chip tone={PLAN_TONE[r.tier] ?? "gray"}>{r.tier}</Chip> : <span className="text-gray-400">미지정</span>}</Td>
-                    <Td>{isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
+                    {/* 운영 구분 — 계약이 끝난 곳은 학기/방학이 의미가 없다. 종료를 먼저 말한다 (민열님 0914). */}
+                    <Td>{!r.is_affiliate ? <Chip tone="red" dot>계약 종료</Chip> : isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
                     <Td>{p.key === "free" ? <span className="text-gray-400">무료</span> : <Chip tone={p.tone} dot={p.stuck}>{p.label}</Chip>}</Td>
                     <Td align="center">{o?.kit_delivered ? <span className="text-emerald-700 font-semibold">전달</span> : <span className="text-gray-300">-</span>}</Td>
                     <Td align="right" className="text-gray-500 text-[12px]">{agoLabel(o?.updated_at)}</Td>
