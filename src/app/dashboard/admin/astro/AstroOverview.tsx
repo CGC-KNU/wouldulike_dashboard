@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconDownload, IconPlus, IconSearch } from "@tabler/icons-react";
 import { APP_CATEGORIES, CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, type Campus, type StoreOps, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, Segmented, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, Segmented, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
 import StoreDetailPanel from "./StoreDetailPanel";
 import CampusPicker, { allCampuses } from "./CampusPicker";
 import CampusMark from "./CampusMark";
@@ -60,6 +60,8 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "billing", dir: "asc" });
   const [openId, setOpenId] = useState<number | null>(null);
+  const [tierBusy, setTierBusy] = useState<number | null>(null);
+  const [tierMsg, setTierMsg] = useState<string | null>(null);
   // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(Number(o)); } catch { /* 무시 */ } }, []);
   const [adding, setAdding] = useState(false);
@@ -132,6 +134,42 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
     season: paid.filter((r) => !r.ops || (r.ops.semester_active === null && r.ops.vacation_active === null)),
   }), [paid, pay]);
 
+  /**
+   * 플랜 바꾸기 — 표 안에서 바로.
+   *
+   * 플랜은 앱 매장 레코드(restaurants)에 있고 월 이용료는 영업 기록(ops)에 있다.
+   * 유료로 올리는데 금액이 비어 있으면 청구가 못 나가므로, **비어 있을 때만**
+   * 캠퍼스 기본값을 같이 채운다. 이미 적힌 금액은 건드리지 않는다 (정든밤 22,000 같은 예외).
+   */
+  async function setTier(r: StoreRow, tier: string) {
+    if (tierBusy) return;
+    setTierBusy(r.restaurant_id);
+    setTierMsg(null);
+    try {
+      const res = await fetch(`/api/dashboard/admin/restaurants/${r.restaurant_id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tier: tier || null }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setTierMsg(`${r.name} 플랜을 바꾸지 못했습니다 — ${(d as { detail?: string }).detail ?? res.status}`);
+        return;
+      }
+      const fee = defaultMonthlyFee(tier, r.ops?.campus ?? null);
+      let note = `${r.name} 플랜을 ${tier || "미지정"} 으로 바꿨습니다.`;
+      if (fee && fee > 0 && !r.ops?.monthly_fee) {
+        await fetch(`/api/astro/stores/${r.restaurant_id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ monthly_fee: fee, pay_cycle: r.ops?.pay_cycle ?? "MONTHLY", updated_by: actor }),
+        });
+        note += ` 월 이용료가 비어 있어 ${fee.toLocaleString()}원(기본값)도 같이 넣었습니다.`;
+      }
+      setTierMsg(note);
+      load();
+    } catch {
+      setTierMsg("서버에 연결하지 못했습니다.");
+    } finally { setTierBusy(null); }
+  }
+
   const visible = useMemo(() => {
     let list: StoreRow[] = filter === "all" ? affiliate : filter === "paid" ? paid : filter === "ended" ? ended : stuck[filter as "unpaid" | "kit" | "season"];
     const q = search.trim();
@@ -183,6 +221,15 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
         <Kpi label="학기/방학 미정" value={loading ? "-" : stuck.season.length} hint="방학 전 점주 확인 필요" onClick={() => setFilter("season")} active={filter === "season"} />
       </div>
 
+      {/* 표 안에서 플랜을 바꾸면 무슨 일이 있었는지 여기서 말한다 — 줄만 조용히 바뀌면 바뀐 줄 모른다. */}
+      {tierMsg && (
+        <div className="mb-3">
+          <Notice tone={tierMsg.includes("못했습니다") ? "red" : "blue"} title={tierMsg}>
+            <button type="button" onClick={() => setTierMsg(null)} className="text-[12px] font-semibold underline">닫기</button>
+          </Notice>
+        </div>
+      )}
+
       <Card flush title={`매장 ${visible.length}곳`}
         actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : filter === "ended" ? "ended" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }, ...(endedAll.length ? [{ key: "ended", label: "계약 종료", count: ended.length }] : [])]} />}>
         {loading ? <Skeleton rows={8} cols={6} /> : visible.length === 0 ? (
@@ -192,7 +239,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
             <thead>
               <tr>
                 <Th onClick={() => toggleSort("name")} sorted={sort.key === "name" ? sort.dir : null}>매장</Th>
-                <Th width="6rem" onClick={() => toggleSort("tier")} sorted={sort.key === "tier" ? sort.dir : null}>플랜</Th>
+                <Th width="8.5rem" onClick={() => toggleSort("tier")} sorted={sort.key === "tier" ? sort.dir : null}>플랜</Th>
                 <Th width="7rem">운영 구분</Th>
                 <Th width="8rem" onClick={() => toggleSort("billing")} sorted={sort.key === "billing" ? sort.dir : null}>{monthLabel} 입금</Th>
                 <Th width="5rem" align="center">비치물</Th>
@@ -212,7 +259,24 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                       </span>
                       <span className="block text-[11px] text-gray-400">{[!r.is_affiliate && o?.contract_ends_on ? `종료 ${o.contract_ends_on}` : null, o?.map_name && o.map_name !== r.name ? `지도: ${o.map_name}` : null, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
                     </Td>
-                    <Td>{r.tier ? <Chip tone={PLAN_TONE[r.tier] ?? "gray"}>{r.tier}</Chip> : <span className="text-gray-400">미지정</span>}</Td>
+                    {/* 플랜은 여기서 바로 바꾼다 — 상세를 열지 않고 (민열님 0914).
+                        줄 클릭이 상세를 여니 이 칸의 클릭은 위로 올리지 않는다. */}
+                    <Td>
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          aria-label={`${r.name} 플랜`}
+                          value={r.tier ?? ""}
+                          disabled={tierBusy === r.restaurant_id}
+                          onChange={(e) => setTier(r, e.target.value)}
+                          className={`h-8 text-[12px] w-[7.5rem] font-semibold ${r.tier === "BOOST" ? "text-navy" : r.tier === "CONTENT" ? "text-amber-700" : r.tier ? "text-gray-700" : "text-gray-400"}`}
+                        >
+                          <option value="">미지정</option>
+                          <option value="FREE">FREE</option>
+                          <option value="BOOST">BOOST</option>
+                          <option value="CONTENT">CONTENT</option>
+                        </Select>
+                      </span>
+                    </Td>
                     {/* 운영 구분 — 계약이 끝난 곳은 학기/방학이 의미가 없다. 종료를 먼저 말한다 (민열님 0914). */}
                     <Td>{!r.is_affiliate ? <Chip tone="red" dot>계약 종료</Chip> : isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
                     <Td>{p.key === "free" ? <span className="text-gray-400">무료</span> : <Chip tone={p.tone} dot={p.stuck}>{p.label}</Chip>}</Td>
