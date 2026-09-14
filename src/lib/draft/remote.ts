@@ -25,9 +25,24 @@ import { cookies } from "next/headers";
  *          저장된 줄 알았는데 메모리에만 남는 것이 제일 위험하다.
  *
  * 401·403 은 양쪽 다 그대로 올린다 — 로그인하라고 말해야 하는 상황이다.
+ *
+ * 백엔드가 한 번이라도 답한 뒤에는 쓰기에서 404 도 폴백이 아니다(`proven`). 아래 주석 참고.
  */
 
 const NOT_IMPLEMENTED = new Set([404, 405, 501]);
+
+/**
+ * 백엔드가 이 프로세스에서 **한 번이라도 제대로 답한 적이 있는가.**
+ *
+ * 이게 필요한 이유 — 운영에서 실제로 밟았다. 백엔드가 원본인데 없는 id 로 DELETE 를 보냈더니
+ * 404 가 '아직 없음'으로 읽혀 초안 저장소로 떨어졌고, 초안에는 그 행이 없으니 **204 성공**이
+ * 돌아왔다. 지운 적 없는데 지웠다고 말한 것이다.
+ *
+ * 그래서 한 번이라도 답을 받은 뒤에는 **쓰기에서 404 를 폴백으로 보지 않는다.** 진짜 404 다.
+ * 읽기는 그대로 관대하다 — 화면이 통째로 깨지는 것보다 예전 값이라도 보여 주는 편이 낫다.
+ * 프로세스가 새로 뜨면 다시 false 로 시작하고, 첫 성공에서 true 가 된다. 되돌아가지 않는다.
+ */
+let proven = false;
 
 /** 백엔드가 올라온 뒤 폴백을 끄고 싶을 때. 미구현 응답도 그대로 에러가 된다. */
 const FALLBACK_ON = process.env.DRAFT_FALLBACK !== "0";
@@ -68,6 +83,7 @@ export async function remoteGet<T>(path: string, search?: string): Promise<Remot
   if (!backendConfigured()) return MISS;
   try {
     const res = await fetch(url(path, search), { headers: await authHeader(), cache: "no-store" });
+    if (res.ok) proven = true;
     if (res.ok) {
       const text = await res.text();
       try {
@@ -111,13 +127,16 @@ export async function remoteSend<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
     });
+    if (res.ok) proven = true;
     // 쓰기는 '아직 없음'만 폴백이다. 5xx 를 초안으로 떨어뜨리면 저장된 줄 알았는데
     // 메모리에만 남는다 — 그게 제일 위험하다.
-    if (FALLBACK_ON && NOT_IMPLEMENTED.has(res.status)) return MISS;
+    // 그리고 백엔드가 이미 답한 적 있으면 404 도 폴백이 아니라 **진짜 없음**이다.
+    if (FALLBACK_ON && !proven && NOT_IMPLEMENTED.has(res.status)) return MISS;
     if (res.status === 204) return { handled: true, ok: true, status: 204, data: null };
     return { handled: true, ok: res.ok, status: res.status, data: await safeJson<T>(res) };
   } catch {
-    if (FALLBACK_ON) return MISS; // 백엔드가 아직 없는 환경(로컬 미리보기)에서는 초안으로
+    // 백엔드가 아직 없는 환경(로컬 미리보기)에서는 초안으로. 한 번이라도 답한 적 있으면 장애다.
+    if (FALLBACK_ON && !proven) return MISS;
     return { handled: true, ok: false, status: 503, data: null, reason: "unreachable" };
   }
 }
