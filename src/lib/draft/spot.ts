@@ -23,9 +23,14 @@ export type SpotProduct = (typeof SPOT_PRODUCTS)[number]["key"];
 export function productOf(key: string | null | undefined) {
   return SPOT_PRODUCTS.find((p) => p.key === key) ?? null;
 }
-/** 적어 둔 금액이 있으면 그것, 없으면 정가. 둘 다 없으면 null — 지어내지 않는다. */
+/**
+ * 적어 둔 금액이 있으면 그것, 없으면 정가. 둘 다 없으면 null — 지어내지 않는다.
+ *
+ * **0원은 적어 둔 금액이다.** 첫 건을 무료로 주는 일이 실제로 있다(교동 서서·후추, 0914).
+ * 0 을 '안 적음'으로 보면 화면이 조용히 정가를 되살려서, 무료로 준 건이 받을 돈에 얹힌다.
+ */
 export function spotAmount(s: { product: string | null; price: number | null }): number | null {
-  if (typeof s.price === "number" && s.price > 0) return s.price;
+  if (typeof s.price === "number" && s.price >= 0) return s.price;
   return productOf(s.product)?.price ?? null;
 }
 

@@ -40,7 +40,7 @@ const STAGE_TONE: Record<string, ChipTone> = {
   촬영: "amber", 편집: "amber", 납품: "green", 정산: "green",
   보류: "gray", 거절: "red",
 };
-const won = (n: number | null) => (n === null ? "-" : `${n.toLocaleString()}원`);
+const won = (n: number | null) => (n === null ? "-" : n === 0 ? "무료" : `${n.toLocaleString()}원`);
 
 export default function SpotBoard({ actor }: { actor: string }) {
   const [spots, setSpots] = useState<SpotJob[] | null>(null);
@@ -72,7 +72,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
   /** 진행 중 = 보류·거절이 아닌 것. 돈은 납품 뒤에 들어오므로 '받을 돈'과 '받은 돈'을 갈라 센다. */
   const live = all.filter((s) => !SPOT_SIDE_STAGES.includes(s.stage as (typeof SPOT_SIDE_STAGES)[number]));
   const contracted = live.filter((s) => ["계약", "촬영", "편집", "납품", "정산"].includes(s.stage));
-  const unpaid = contracted.filter((s) => !s.paid_at);
+  const unpaid = contracted.filter((s) => !s.paid_at && (spotAmount(s) ?? 0) > 0);
   const sum = (list: SpotJob[]) => list.reduce((a, s) => a + (spotAmount(s) ?? 0), 0);
 
   async function patch(id: string, body: Partial<SpotJob>) {
@@ -185,9 +185,9 @@ export default function SpotBoard({ actor }: { actor: string }) {
                         </Select>
                       </span>
                     </Td>
-                    <Td align="right" numeric className={s.price ? "font-semibold text-gray-900" : "text-gray-500"}>
+                    <Td align="right" numeric className={s.price !== null ? "font-semibold text-gray-900" : "text-gray-500"}>
                       {won(amount)}
-                      {!s.price && p && <span className="block text-[11px] text-gray-400">정가</span>}
+                      {s.price === null && p && <span className="block text-[11px] text-gray-400">정가</span>}
                     </Td>
                     <Td>
                       <span onClick={(e) => e.stopPropagation()}>
@@ -283,7 +283,7 @@ function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
   const [removing, setRemoving] = useState(false);
 
   return (
-    <SlideOver open onClose={onClose} title={spot.name} subtitle={`${p?.label ?? "상품 미정"}${amount ? ` · ${amount.toLocaleString()}원` : ""}`}
+    <SlideOver open onClose={onClose} title={spot.name} subtitle={`${p?.label ?? "상품 미정"}${amount === null ? "" : ` · ${won(amount)}`}`}
       badge={<Chip tone={STAGE_TONE[spot.stage] ?? "gray"}>{spot.stage}</Chip>}
       footer={<><Button variant="ghost" onClick={onClose}>닫기</Button>
         <span className="ml-auto">
@@ -310,9 +310,14 @@ function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
             {SPOT_PRODUCTS.map((x) => <option key={x.key} value={x.key}>{x.label} · {x.price.toLocaleString()}원</option>)}
           </Select>
         </Field>
+        {/* 0 을 적으면 **무료**다. `Number(v) || null` 로 쓰면 0 이 null 로 떨어져서
+            "비워 둔 것"이 되고, 화면이 정가를 되살린다 (민열님 0914 제보). */}
         <Cell label="금액" value={spot.price === null ? "" : String(spot.price)} type="number"
-          hint={p ? `비워 두면 정가 ${p.price.toLocaleString()}원으로 셉니다.` : "상품을 고르면 정가가 붙습니다."}
-          onCommit={(v) => onPatch(spot.id, { price: v ? Number(v.replace(/[^\d]/g, "")) || null : null })} />
+          hint={p ? `비워 두면 정가 ${p.price.toLocaleString()}원. 0 을 적으면 무료입니다.` : "상품을 고르면 정가가 붙습니다. 0 을 적으면 무료입니다."}
+          onCommit={(v) => {
+            const digits = (v ?? "").replace(/[^\d]/g, "");
+            onPatch(spot.id, { price: digits === "" ? null : Number(digits) });
+          }} />
         <Cell label="담당" value={spot.owner} onCommit={set("owner")} placeholder={actor} />
         <Field label="카테고리">
           <Select value={spot.category ?? ""} onChange={(e) => onPatch(spot.id, { category: e.target.value || null })}>

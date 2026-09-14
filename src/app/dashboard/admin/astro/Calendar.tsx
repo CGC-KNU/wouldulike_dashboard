@@ -156,7 +156,8 @@ export function buildEvents(
     const go = onSpot ? () => onSpot(sp.id) : undefined;
     const p = productOf(sp.product);
     const amount = spotAmount(sp);
-    const tail = [p?.label, amount ? `${amount.toLocaleString()}원` : null].filter(Boolean).join(" · ");
+    // 0 원은 무료로 준 건이다 — 금액이 없는 것과 다르다 (0914)
+    const tail = [p?.label, amount === null ? null : amount === 0 ? "무료" : `${amount.toLocaleString()}원`].filter(Boolean).join(" · ");
     const msg: MsgContext = { name: sp.name, targetType: "lead", targetId: sp.id, owner: sp.owner_name, phone: sp.contact, meetingAt: sp.meeting_at, nextAction: sp.next_action };
 
     const mt = parseLoose(sp.meeting_at, y); if (mt) out.push({ date: mt, kind: "spot_meeting", label: sp.name, sub: sp.meeting_at ?? tail, onClick: go, msg });
