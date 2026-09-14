@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Campus, Lead, StoreRow } from "@/lib/draft/types";
 import { CAMPUSES } from "@/lib/draft/types";
 import { Button, Field, Input, Notice, Segmented, Select, SlideOver, periodLocal } from "../_shared/ui";
+import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 
 /**
  * 일정 빠른 등록 — 달력의 날짜 칸에서 '+' 를 누르면 열린다 (민열님 0914).
@@ -72,6 +73,9 @@ export default function QuickAdd({
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
   const [tier, setTier] = useState("BOOST");
+  /** 전환하면서 월 이용료까지 적는다 — 캠퍼스 기본값으로 채우되 고칠 수 있다. */
+  const [fee, setFee] = useState<string>("");
+  const [feeTouched, setFeeTouched] = useState(false);
   const [billingStart, setBillingStart] = useState(date.slice(0, 7));
   const [moveStage, setMoveStage] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -99,6 +103,21 @@ export default function QuickAdd({
   }, [kind, mode, openLeads, partnerStores]);
 
   const resolved = useMemo(() => options.find((o) => o.value === pick.trim())?.key ?? null, [options, pick]);
+
+  /** 고른 대상의 캠퍼스 — 기본 월 이용료가 캠퍼스마다 다르다 (영남대·계명대 49,500). */
+  const targetCampus: Campus | null = useMemo(() => {
+    if (!resolved) return null;
+    if (resolved.startsWith("store:")) {
+      const id = Number(resolved.slice(6));
+      return stores.find((s) => s.restaurant_id === id)?.ops?.campus ?? null;
+    }
+    return leads.find((l) => l.id === resolved.slice(5))?.campus ?? null;
+  }, [resolved, stores, leads]);
+  const suggestedFee = defaultMonthlyFee(tier, targetCampus);
+  useEffect(() => {
+    if (feeTouched) return;
+    setFee(suggestedFee !== null && suggestedFee > 0 ? String(suggestedFee) : "");
+  }, [suggestedFee, feeTouched]);
 
   /** 고른 후보의 지금 단계 — '미팅 예정'으로 옮길지 물어보는 데 쓴다. */
   const pickedLead = useMemo(() => {
@@ -166,7 +185,12 @@ export default function QuickAdd({
 
       const res = await fetch(`/api/astro/stores/${rid}`, {
         method: "PATCH", headers: json,
-        body: JSON.stringify({ contract_started_on: date, billing_start_period: billingStart, updated_by: actor }),
+        body: JSON.stringify({
+          contract_started_on: date,
+          billing_start_period: billingStart,
+          ...(Number(fee) > 0 ? { monthly_fee: Number(fee), pay_cycle: "MONTHLY" } : {}),
+          updated_by: actor,
+        }),
       });
       if (!res.ok) { setError((await res.json().catch(() => ({}))).detail ?? "계약 시작일을 저장하지 못했습니다."); return; }
       onSaved(); onClose();
@@ -302,6 +326,9 @@ export default function QuickAdd({
               </Select>
             </Field>
           )}
+          <Field label="월 이용료 (VAT 포함)" hint={feeHint(tier, targetCampus) ?? "비워 두면 건드리지 않습니다."}>
+            <Input type="number" inputMode="numeric" value={fee} onChange={(e) => { setFee(e.target.value); setFeeTouched(true); }} placeholder={suggestedFee ? String(suggestedFee) : "예: 22000"} />
+          </Field>
           <Field label="청구 시작 월" hint="월 중간에 들어온 매장은 다음 달부터가 보통입니다.">
             <Select value={billingStart} onChange={(e) => setBillingStart(e.target.value)}>
               <option value={date.slice(0, 7)}>이번 달부터 ({Number(date.slice(5, 7))}월)</option>

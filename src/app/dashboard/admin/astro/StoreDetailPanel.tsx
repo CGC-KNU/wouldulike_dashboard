@@ -19,6 +19,7 @@ import {
 } from "@/lib/draft/types";
 import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton, periodLocal } from "../_shared/ui";
+import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 import ActivityLog from "./ActivityLog";
 import CampusPicker from "./CampusPicker";
 import StoreAppSection from "./StoreAppSection";
@@ -145,7 +146,27 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         <div className="grid grid-cols-2 gap-3">
           <Cell label="계약일" value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
           <Field label="플랜" hint="위 '식당 관리' 블록에서 바꿉니다"><Input value={row.tier ?? "미지정"} disabled /></Field>
-          <Cell label="월 이용료 (VAT 포함)" value={o.monthly_fee} onCommit={(v) => onPatch(id, { monthly_fee: v === null ? null : Number(v.replace(/[^\d]/g, "")) || 0 })} placeholder="33000" type="number" />
+          {/* 기본값은 플랜·캠퍼스에서 온다 (영남대·계명대 Boost 49,500). 예외가 많아 늘 고칠 수 있다 — 정든밤 22,000. */}
+          <div>
+            <Cell
+              label="월 이용료 (VAT 포함)"
+              value={o.monthly_fee}
+              onCommit={(v) => onPatch(id, { monthly_fee: v === null ? null : Number(v.replace(/[^\d]/g, "")) || 0 })}
+              placeholder={String(defaultMonthlyFee(row.tier, o.campus) ?? 33000)}
+              type="number"
+              hint={feeHint(row.tier, o.campus)}
+            />
+            {(() => {
+              const d = defaultMonthlyFee(row.tier, o.campus);
+              if (d === null || d === 0 || o.monthly_fee === d) return null;
+              return (
+                <button type="button" onClick={() => onPatch(id, { monthly_fee: d })}
+                  className="mt-1 text-[12px] font-semibold text-navy hover:underline">
+                  기본 {d.toLocaleString()}원 넣기
+                </button>
+              );
+            })()}
+          </div>
           <Field label="청구 시작 월" hint="월 중간 합류면 이번 달/다음 달 중 선택. 비우면 계약 시작월">
             <Select value={o.billing_start_period ?? ""} onChange={(e) => onPatch(id, { billing_start_period: e.target.value || null })}>
               <option value="">계약 시작월 따름</option>{[0, 1, 2].map((k) => { const p = periodLocal(k); return <option key={p} value={p}>{p.replace("-", "년 ")}월부터</option>; })}{o.billing_start_period && ![0, 1, 2].map(periodLocal).includes(o.billing_start_period) && <option value={o.billing_start_period}>{o.billing_start_period}부터</option>}
