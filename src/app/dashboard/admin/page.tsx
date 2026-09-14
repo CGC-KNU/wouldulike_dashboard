@@ -2782,10 +2782,10 @@ export default function AdminHomePage() {
 
       {selectedProduct !== "papillon" && <div className="mb-5" />}
 
-      {/* 탭 컨텐츠 — Papillon(마케팅 툴)은 자체 사이드바 셸(PapillonShell), Aether는 지금까지 쓰던
-          ProductShell을 그대로 쓴다(둘 다 무변경). Astro·Probe·Castor는 새 ToolShell로 감싼다 —
-          Aether·Papillon과는 별개 셸이라 서로 영향을 주지 않는다. */}
-      {activeTab === "satellite" && <PapillonShell />}
+      {/* 탭 컨텐츠 — 다섯 제품이 이제 같은 사이드바(ToolShell)를 쓴다 (민열님 0914).
+          Papillon 은 PapillonShell, Aether 는 ProductShell 을 거치는데 둘 다 안에서 ToolShell 을 부른다.
+          화면 구성과 기능은 그대로고 메뉴 생김새만 통일했다. */}
+      {activeTab === "satellite" && <PapillonShell onBack={showProductPicker ? backToProducts : undefined} />}
 
       {/* 0913 민열님: 파피용·에테르에서도 하단 도크가 떠야 한다. 셸(화면 생김새)은 그대로 두고
           떠 있는 도크만 따로 얹는다 — ToolShell 을 쓰는 Astro·Probe·Castor 는 셸 안에서 이미 그린다. */}
@@ -2805,15 +2805,12 @@ export default function AdminHomePage() {
 
       {activeTab && activeTab !== "satellite" && selectedProduct === "aether" && (
         <ProductShell
+          product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
           navItems={productTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
           activeKey={activeTab}
           onSelect={(key) => { setActiveTab(key as Tab); syncUrl(key); }}
-          footer={
-            <div>
-              <p className="text-xs font-bold text-white">{me.display_name || me.username}</p>
-              <p className="text-[10px] text-white/50 mt-0.5">{me.department_label}</p>
-            </div>
-          }
+          onBack={showProductPicker ? backToProducts : undefined}
+          user={{ name: me.display_name || me.username, role: me.department_label }}
         >
           {activeTab === "content" && <ContentTab />}
           {activeTab === "notifications" && <MarketingTab />}

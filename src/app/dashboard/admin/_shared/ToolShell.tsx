@@ -10,20 +10,28 @@ import {
   IconCash,
   IconChartBar,
   IconChevronLeft,
+  IconClipboardList,
+  IconClockHour4,
   IconDeviceMobile,
   IconFileDescription,
   IconFileInvoice,
   IconFiles,
   IconFolder,
   IconGift,
+  IconHeartHandshake,
   IconHome,
   IconLayoutGrid,
   IconMail,
+  IconMessage2,
   IconMessageChatbot,
+  IconPencil,
   IconPhoto,
+  IconPresentationAnalytics,
   IconSettings,
   IconSitemap,
+  IconTags,
   IconTargetArrow,
+  IconUserCircle,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -34,12 +42,15 @@ import { focusRing } from "./ui";
  * 예전 네이비 블록 사이드바는 화면 안에서 가장 진한 덩어리라 눈이 먼저 거기로 갔다.
  * 사이드바는 길잡이지 주인공이 아니다. 주인공은 오른쪽 표와 숫자다.
  *
- * Papillon 은 자체 셸(PapillonShell)을 그대로 쓴다 — 아윤·재민이 지금 손대고 있는 화면이라 건드리지 않는다.
+ * 0914 민열님: Papillon · Aether 도 같은 메뉴로 통일한다("빠삐용 메뉴창도 이렇게 통일할까요?" — 아윤님 동의).
+ * **생김새만 맞춘다.** 항목·순서·구분선·권한(리드 전용)·화면은 전부 그대로다.
  */
 
 export interface ToolNavItem {
   key: string;
   label: string;
+  /** 위에 가는 선을 하나 긋는다 — Papillon 목업의 묶음 구분을 그대로 살린다. */
+  sepBefore?: boolean;
 }
 
 /** 하단 도크 — 앱의 탭바처럼 툴을 바꾼다 (민열님 0911: "하단에서 우주라이크 앱처럼 툴을 고를 수 있으면"). */
@@ -73,6 +84,17 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   content: IconPhoto,
   notifications: IconMail,
   settings: IconSettings,
+  // Papillon (마케팅) — 라벨과 순서는 그대로 두고 아이콘만 같은 집합으로 바꾼다
+  calendar: IconCalendarMonth,
+  sponsorship: IconHeartHandshake,
+  "content-list": IconMessage2,
+  "editor-list": IconPencil,
+  overview: IconPresentationAnalytics,
+  mine: IconUserCircle,
+  "post-list": IconClipboardList,
+  attendance: IconClockHour4,
+  tagging: IconTags,
+  banner: IconPhoto,
 };
 
 /** 툴 아이콘. `00_레퍼런스_네이밍/툴_아이콘` 앱판(네이비 배경 + 흰 선). 없으면 격자 아이콘. */
@@ -147,6 +169,7 @@ export default function ToolShell({
               const on = activeKey === n.key;
               return (
                 <li key={n.key} className="shrink-0 md:shrink">
+                  {n.sepBefore && <div className="hidden md:block h-px bg-black/[0.06] my-1.5 mx-2" aria-hidden="true" />}
                   <button
                     type="button"
                     onClick={() => onSelect(n.key)}
