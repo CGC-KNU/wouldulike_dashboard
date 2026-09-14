@@ -193,7 +193,8 @@ function LeadCard({ lead, onOpen, showCampus }: { lead: Lead; onOpen: () => void
         <Chip tone={STAGE_TONE[lead.stage]}>{lead.stage}</Chip>
       </div>
       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-[12px] text-gray-500">
-        {lead.intent && <span className={`font-semibold ${lead.intent === "A" ? "text-emerald-700" : lead.intent === "D" ? "text-red-600" : "text-gray-700"}`}>의향 {lead.intent}</span>}
+        {/* 유료화 의향은 카드 앞면에 배지로 — 어느 카드부터 볼지가 여기서 갈린다 (애딧 Pitchr 의 '관심도'). */}
+        {lead.intent && <Chip tone={INTENT_TONE[lead.intent]}>의향 {lead.intent}</Chip>}
         {lead.grade && <span>실측 {lead.grade}{lead.score !== null ? ` ${lead.score}` : ""}</span>}
         {lead.proposed_plan && <span>{lead.proposed_plan}</span>}
       </div>
