@@ -19,7 +19,7 @@ import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
  * 설계 원칙은 그대로 — 자동 판정하지 않는다. 학기/방학도 입금도 사람이 확인해서 넣는다(2026-08-12 합의).
  */
 
-type Filter = "all" | "paid" | "unpaid" | "kit" | "season";
+type Filter = "all" | "paid" | "unpaid" | "kit" | "season" | "ended";
 type SortKey = "name" | "tier" | "billing" | "updated";
 
 const PLAN_TONE: Record<string, ChipTone> = { BOOST: "amber", CONTENT: "navy", FREE: "gray" };
@@ -103,6 +103,9 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   const pay = useCallback((r: StoreRow) => payOf(r, invById.get(r.restaurant_id)), [invById]);
 
   const affiliateAll = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test), [rows]);
+  /** 계약 종료 — 제휴를 끈 매장. 지우지 않고 따로 세워 둔다(재계약할 수 있다). */
+  const endedAll = useMemo(() => rows.filter((r) => !r.is_affiliate && !r.ops?.is_test), [rows]);
+  const ended = useMemo(() => endedAll.filter((r) => campus === "all" || campusOf(r) === campus), [endedAll, campus]);
   const campuses = useMemo(() => allCampuses(affiliateAll.map((r) => r.ops?.campus)), [affiliateAll]);
   const countIn = (c: Campus) => affiliateAll.filter((r) => campusOf(r) === c).length;
   const inCampus = useMemo(() => affiliateAll.filter((r) => campus === "all" || campusOf(r) === campus), [affiliateAll, campus]);
@@ -116,7 +119,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
   }), [paid, pay]);
 
   const visible = useMemo(() => {
-    let list: StoreRow[] = filter === "all" ? affiliate : filter === "paid" ? paid : stuck[filter];
+    let list: StoreRow[] = filter === "all" ? affiliate : filter === "paid" ? paid : filter === "ended" ? ended : stuck[filter as "unpaid" | "kit" | "season"];
     const q = search.trim();
     if (q) list = list.filter((r) => r.name.includes(q) || String(r.restaurant_id) === q);
     const dir = sort.dir === "asc" ? 1 : -1;
@@ -130,7 +133,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
         default: return a.name.localeCompare(b.name, "ko") * dir;
       }
     });
-  }, [affiliate, paid, stuck, filter, search, sort, pay]);
+  }, [affiliate, paid, stuck, ended, filter, search, sort, pay]);
 
   const toggleSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" || key === "billing" ? "asc" : "desc" }));
   const open = rows.find((r) => r.restaurant_id === openId) ?? null;
@@ -167,7 +170,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
       </div>
 
       <Card flush title={`매장 ${visible.length}곳`}
-        actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }]} />}>
+        actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : filter === "ended" ? "ended" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }, ...(endedAll.length ? [{ key: "ended", label: "계약 종료", count: ended.length }] : [])]} />}>
         {loading ? <Skeleton rows={8} cols={6} /> : visible.length === 0 ? (
           <Empty title={affiliateAll.length === 0 ? "매장을 불러오지 못했습니다" : "이 조건에 해당하는 매장이 없습니다"} detail={affiliateAll.length === 0 ? "매장 목록은 실데이터(/api/dashboard/restaurants)에서 옵니다. 백엔드 연결을 확인하세요." : campus !== "all" && countIn(campus) === 0 ? `${campus} 매장은 아직 없습니다. 파트너 후보에서 계약이 되면 여기로 옵니다.` : "막힌 곳이 없다는 뜻입니다. 다른 지표를 눌러 보세요."} action={campus !== "all" && countIn(campus) === 0 ? <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button> : undefined} />
         ) : (
@@ -189,8 +192,12 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                   <tr key={r.restaurant_id} className={rowClickable} onClick={() => setOpenId(r.restaurant_id)}>
                     <Td>
                       {/* 캠퍼스를 '전체'로 볼 때는 어느 캠퍼스인지가 안 보인다 — 이름 앞에 표식을 둔다 */}
-                      <span className="font-semibold text-gray-900 inline-flex items-center gap-1.5">{campus === "all" && <CampusMark campus={campusOf(r)} size={15} />}{r.name}</span>
-                      <span className="block text-[11px] text-gray-400">{[o?.map_name && o.map_name !== r.name ? `지도: ${o.map_name}` : null, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
+                      <span className="font-semibold text-gray-900 inline-flex items-center gap-1.5">
+                        {campus === "all" && <CampusMark campus={campusOf(r)} size={15} />}
+                        <span className={r.is_affiliate ? "" : "text-gray-500"}>{r.name}</span>
+                        {!r.is_affiliate && <Chip tone="gray">계약 종료</Chip>}
+                      </span>
+                      <span className="block text-[11px] text-gray-400">{[!r.is_affiliate && o?.contract_ends_on ? `종료 ${o.contract_ends_on}` : null, o?.map_name && o.map_name !== r.name ? `지도: ${o.map_name}` : null, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
                     </Td>
                     <Td>{r.tier ? <Chip tone={PLAN_TONE[r.tier] ?? "gray"}>{r.tier}</Chip> : <span className="text-gray-400">미지정</span>}</Td>
                     <Td>{isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>

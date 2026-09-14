@@ -21,7 +21,7 @@ import { Button, Chip, Field, Input, Notice, Select, Skeleton } from "../_shared
 
 interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null }
 
-export default function StoreAppSection({ id, tier, isAffiliate, onChanged }: { id: number; tier: string | null; isAffiliate: boolean; onChanged?: () => void }) {
+export default function StoreAppSection({ id, tier, isAffiliate, onChanged, onEnd }: { id: number; tier: string | null; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [promo, setPromo] = useState<{ poster_url: string; qr_url: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +29,8 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged }: { 
   const [msg, setMsg] = useState<{ tone: "blue" | "red"; text: string } | null>(null);
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 계약 종료는 앱에 바로 보이는 변화라 화면 안에서 한 번 더 확인받는다. */
+  const [ending, setEnding] = useState(false);
 
   const load = () => {
     setLoading(true); setMsg(null);
@@ -105,11 +107,40 @@ export default function StoreAppSection({ id, tier, isAffiliate, onChanged }: { 
         </Field>
       </div>
 
-      <div className="flex items-center justify-between gap-3 py-1">
-        <span className="text-[13px] text-gray-700">제휴 매장 {isAffiliate ? <Chip tone="green">켬</Chip> : <Chip tone="gray">끔</Chip>}</span>
-        <Button size="sm" disabled={busy} onClick={() => patchStore({ is_affiliate: !isAffiliate }, isAffiliate ? "제휴를 껐습니다." : "제휴를 켰습니다.")}>
-          {isAffiliate ? "제휴 끄기" : "제휴 켜기"}
-        </Button>
+      {/* 계약 종료 — 지우지 않는다. 제휴만 끄고 종료일을 적어 '계약 종료' 칸으로 옮긴다.
+          재계약하는 곳이 있어서 이력을 지우면 안 된다 (민열님 0914).
+          되돌릴 수는 있지만 앱에 바로 보이는 변화라, **한 번 더 묻는다**. */}
+      <div className="py-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[13px] text-gray-700">
+            상태 {isAffiliate ? <Chip tone="green">제휴 중</Chip> : <Chip tone="red">계약 종료</Chip>}
+          </span>
+          {isAffiliate ? (
+            <Button size="sm" variant="danger" disabled={busy} onClick={() => setEnding((v) => !v)} aria-expanded={ending}>
+              계약 종료
+            </Button>
+          ) : (
+            <Button size="sm" variant="primary" disabled={busy} onClick={() => patchStore({ is_affiliate: true }, "다시 제휴 매장으로 옮겼습니다. 계약 시작일과 월 이용료를 확인하세요.")}>
+              재계약 — 제휴 켜기
+            </Button>
+          )}
+        </div>
+
+        {ending && isAffiliate && (
+          <div className="mt-2 rounded-[12px] border border-red-200 bg-red-50/70 p-3">
+            <p className="text-[13px] font-semibold text-red-700">정말 계약 종료로 옮길까요?</p>
+            <ul className="mt-1.5 text-[12px] text-red-900/80 leading-relaxed list-disc pl-4 space-y-0.5">
+              <li>앱에서 <b>제휴 혜택이 바로 사라집니다</b> (쿠폰·스탬프). 일반 식당으로는 계속 보입니다.</li>
+              <li>파트너 매장 목록의 <b>계약 종료</b> 칸으로 갑니다.</li>
+              <li>청구·입금·홈 큐·일정에서 빠집니다.</li>
+              <li>기록은 지우지 않습니다. 재계약하면 그대로 되살아납니다.</li>
+            </ul>
+            <div className="flex gap-2 mt-2.5">
+              <Button size="sm" variant="danger" disabled={busy} onClick={() => { setEnding(false); onEnd?.(); }}>네, 계약 종료로 옮깁니다</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEnding(false)}>취소</Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
