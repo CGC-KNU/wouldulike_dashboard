@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Campus, Lead, StoreRow } from "@/lib/draft/types";
+import { SPOT_SIDE_STAGES, SPOT_STAGES as SPOT_ORDER, type SpotJob } from "@/lib/draft/spot";
 import { CAMPUSES } from "@/lib/draft/types";
 import { Button, Field, Input, Notice, Segmented, Select, SlideOver, periodLocal } from "../_shared/ui";
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
@@ -16,15 +17,19 @@ import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
  * **어디에 쓰이나 — 새 저장소를 만들지 않는다.** 여기서 적은 값은 전부 기존 원본으로 들어간다.
  *   · 미팅 · 기한 → 파트너 후보의 `meeting_at` · `due` (파트너 후보 탭에서 보이는 그 칸)
  *   · 계약 시작  → 파트너 매장의 `contract_started_on` (파트너 매장 탭 상세의 그 칸)
+ *   · 스팟 미팅·촬영·기획안 발송 → 스팟 제작 건의 `meeting_at` · `shoot_at` · `plan_sent_at`
  *   · 후보를 골라 계약 시작을 적으면 **파트너 전환까지 같이** 한다 — 파트너 매장 탭의 '매장 추가'와 같은 경로로
  *     매장이 만들어지고, 후보 카드는 '계약 완료'로 넘어간다.
  *
  * 그래서 저장한 뒤에는 달력·파트너 후보·파트너 매장·입금 현황이 한꺼번에 같은 값을 본다.
  */
 
-type Kind = "meeting" | "due" | "contract";
+type Kind = "meeting" | "due" | "contract" | "spot";
+/** 스팟에서 무엇을 잡나. 한 줄에 다 넣으면 칩이 다섯 개가 되어 좁은 화면에서 넘친다. */
+type SpotKind = "meeting" | "shoot" | "plan";
 
-const KIND_LABEL: Record<Kind, string> = { meeting: "미팅", due: "기한", contract: "계약 시작" };
+const SPOT_LABEL: Record<SpotKind, string> = { meeting: "스팟 미팅", shoot: "촬영", plan: "기획안 발송" };
+const KIND_LABEL: Record<Kind, string> = { meeting: "미팅", due: "기한", contract: "계약 시작", spot: "스팟 일정" };
 
 /** 라벨 + 설명이 붙은 묶음. Field 는 <label> 이라 버튼 묶음(Segmented)을 넣으면 안 된다. */
 function Group({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -53,6 +58,7 @@ export default function QuickAdd({
   date,
   leads,
   stores,
+  spots = [],
   actor,
   onClose,
   onSaved,
@@ -60,11 +66,13 @@ export default function QuickAdd({
   date: string;
   leads: Lead[];
   stores: StoreRow[];
+  spots?: SpotJob[];
   actor?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [kind, setKind] = useState<Kind>("meeting");
+  const [spotKind, setSpotKind] = useState<SpotKind>("meeting");
   /** 미팅·기한: 기존 후보 / 새 후보. 계약 시작: 기존 파트너 매장 / 후보에서 전환. */
   const [mode, setMode] = useState<"pick" | "new">("pick");
   const [pick, setPick] = useState("");
@@ -92,7 +100,14 @@ export default function QuickAdd({
   );
 
   /** 계약 시작은 후보 중에서도 고를 수 있다 — 고르면 파트너 매장으로 만들어 준다. */
+  /** 스팟 — 보류·거절은 일정을 잡을 일이 없다. */
+  const liveSpots = useMemo(
+    () => spots.filter((x) => !SPOT_SIDE_STAGES.includes(x.stage as (typeof SPOT_SIDE_STAGES)[number])),
+    [spots]
+  );
+
   const options = useMemo(() => {
+    if (kind === "spot") return liveSpots.map((x) => ({ value: labelOf(x.name, x.stage), key: `spot:${x.id}` }));
     if (kind === "contract" && mode === "pick") {
       return partnerStores.map((s) => ({ value: labelOf(s.name, s.ops?.campus), key: `store:${s.restaurant_id}` }));
     }
@@ -100,7 +115,7 @@ export default function QuickAdd({
       return openLeads.map((l) => ({ value: labelOf(l.name, l.campus), key: `lead:${l.id}` }));
     }
     return openLeads.map((l) => ({ value: labelOf(l.name, l.campus), key: `lead:${l.id}` }));
-  }, [kind, mode, openLeads, partnerStores]);
+  }, [kind, mode, openLeads, partnerStores, liveSpots]);
 
   const resolved = useMemo(() => options.find((o) => o.value === pick.trim())?.key ?? null, [options, pick]);
 
@@ -127,7 +142,7 @@ export default function QuickAdd({
   const stageWouldMove =
     kind === "meeting" && pickedLead != null && ["미컨택", "컨택 중", "미팅 조율"].includes(pickedLead.stage);
 
-  const needsName = (kind !== "contract" && mode === "new");
+  const needsName = (kind !== "contract" && kind !== "spot" && mode === "new");
   const canSave = needsName ? newName.trim().length > 0 : resolved !== null;
 
   /** 미팅 일시는 "2026-09-16 14:00" 처럼 적는다 — 달력이 읽는 형식이고, 시트 자유 서식과도 섞이지 않는다. */
@@ -152,6 +167,23 @@ export default function QuickAdd({
         else { body.due = date; if (note.trim()) body.next_action = note.trim(); }
         const res = await fetch("/api/astro/leads", { method: "POST", headers: json, body: JSON.stringify(body) });
         if (!res.ok) { setError((await res.json().catch(() => ({}))).detail ?? "후보를 만들지 못했습니다."); return; }
+        onSaved(); onClose(); return;
+      }
+
+      // ── 1.5) 스팟 제작 건의 일정. 새 저장소를 만들지 않는다 — 스팟 제작 탭의 그 칸으로 들어간다.
+      if (kind === "spot") {
+        const id = resolved!.slice(5);
+        const cur = liveSpots.find((x) => x.id === id);
+        const body: Record<string, unknown> =
+          spotKind === "meeting" ? { meeting_at: meetingAt }
+          : spotKind === "shoot" ? { shoot_at: meetingAt }
+          : { plan_sent_at: date };
+        // 일정을 잡는 것 자체가 단계를 옮기는 일이다 — 뒤로는 절대 돌리지 않는다.
+        const to = spotKind === "meeting" ? "미팅" : spotKind === "shoot" ? "촬영" : "기획안";
+        const at = (st: string) => (SPOT_ORDER as readonly string[]).indexOf(st);
+        if (moveStage && cur && at(cur.stage) >= 0 && at(cur.stage) < at(to)) body.stage = to;
+        const res = await fetch(`/api/astro/spots/${id}`, { method: "PATCH", headers: json, body: JSON.stringify(body) });
+        if (!res.ok) { setError((await res.json().catch(() => ({}))).detail ?? "저장하지 못했습니다."); return; }
         onSaved(); onClose(); return;
       }
 
@@ -202,8 +234,8 @@ export default function QuickAdd({
   }
 
   const pickLabel =
-    kind === "contract"
-      ? (mode === "pick" ? "파트너 매장" : "파트너 후보")
+    kind === "spot" ? "스팟 제작 건"
+      : kind === "contract" ? (mode === "pick" ? "파트너 매장" : "파트너 후보")
       : "파트너 후보";
 
   return (
@@ -215,7 +247,7 @@ export default function QuickAdd({
       footer={
         <>
           <Button variant="primary" onClick={save} disabled={!canSave || saving}>
-            {saving ? "저장 중…" : `${KIND_LABEL[kind]} 등록`}
+            {saving ? "저장 중…" : `${kind === "spot" ? SPOT_LABEL[spotKind] : KIND_LABEL[kind]} 등록`}
           </Button>
           <Button variant="ghost" onClick={onClose}>취소</Button>
           {error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}
@@ -231,11 +263,28 @@ export default function QuickAdd({
             { key: "meeting" as Kind, label: "미팅" },
             { key: "due" as Kind, label: "기한" },
             { key: "contract" as Kind, label: "계약 시작" },
+            { key: "spot" as Kind, label: "스팟" },
           ]}
         />
       </Group>
 
-      {kind === "contract" ? (
+      {/* 스팟은 종류가 셋이라 한 줄 더 쓴다 — 위 줄에 다 넣으면 좁은 화면에서 칩이 넘친다. */}
+      {kind === "spot" && (
+        <Group label="스팟에서 무엇을" hint="값은 스팟 제작 탭의 같은 칸으로 들어갑니다. 건을 새로 만드는 건 스팟 제작 탭에서 합니다.">
+          <Segmented
+            label="스팟 일정 종류"
+            value={spotKind}
+            onChange={(v) => setSpotKind(v)}
+            options={[
+              { key: "meeting" as SpotKind, label: "미팅" },
+              { key: "shoot" as SpotKind, label: "촬영" },
+              { key: "plan" as SpotKind, label: "기획안 발송" },
+            ]}
+          />
+        </Group>
+      )}
+
+      {kind === "spot" ? null : kind === "contract" ? (
         <Group
           label="어디에"
           hint={mode === "pick"

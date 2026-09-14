@@ -9,6 +9,7 @@ import { Input, focusRing, todayLocal } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 import QuickAdd from "./QuickAdd";
+import { SPOT_SIDE_STAGES, productOf, spotAmount, type SpotJob } from "@/lib/draft/spot";
 import { looseToISO } from "@/lib/draft/dates";
 
 /**
@@ -29,7 +30,8 @@ import { looseToISO } from "@/lib/draft/dates";
 export type CalKind =
   | "contacted" | "meeting" | "due"
   | "quote" | "returned" | "signed" | "contract" | "contract_end"
-  | "payment" | "paid" | "issued" | "requested" | "approved";
+  | "payment" | "paid" | "issued" | "requested" | "approved"
+  | "spot_meeting" | "spot_shoot" | "spot_plan" | "spot_due" | "spot_done";
 
 export type CalEvent = {
   date: string; kind: CalKind; label: string; sub?: string; onClick?: () => void;
@@ -51,9 +53,16 @@ const KIND: Record<CalKind, { label: string; dot: string; chip: string; bar: str
   issued:       { label: "계산서 발행",  dot: "bg-cyan-600",      chip: "bg-cyan-50 text-cyan-800",      bar: "border-l-cyan-600",    from: "청구" },
   requested:    { label: "계산서 품의",  dot: "bg-gray-300",      chip: "bg-gray-100 text-gray-600",     bar: "border-l-gray-300",    from: "청구" },
   approved:     { label: "계산서 승인",  dot: "bg-indigo-400",    chip: "bg-indigo-50 text-indigo-700",  bar: "border-l-indigo-400",  from: "청구" },
+  // 스팟 제작 — 영업과 흐름이 달라 색을 따로 준다 (민열님 0914: "일정이랑 연동")
+  spot_meeting: { label: "스팟 미팅",    dot: "bg-fuchsia-500",   chip: "bg-fuchsia-50 text-fuchsia-800", bar: "border-l-fuchsia-500", from: "스팟" },
+  spot_plan:    { label: "기획안 발송",  dot: "bg-purple-500",    chip: "bg-purple-50 text-purple-800",  bar: "border-l-purple-500",  from: "스팟" },
+  spot_shoot:   { label: "촬영",        dot: "bg-orange-500",    chip: "bg-orange-50 text-orange-800",  bar: "border-l-orange-500",  from: "스팟" },
+  spot_due:     { label: "납품 기한",    dot: "bg-yellow-600",    chip: "bg-yellow-50 text-yellow-800",  bar: "border-l-yellow-600",  from: "스팟" },
+  spot_done:    { label: "납품",        dot: "bg-lime-600",      chip: "bg-lime-50 text-lime-800",      bar: "border-l-lime-600",    from: "스팟" },
 };
 const ORDER: CalKind[] = [
   "meeting", "due", "contacted",
+  "spot_meeting", "spot_plan", "spot_shoot", "spot_due", "spot_done",
   "quote", "returned", "signed", "contract", "contract_end",
   "payment", "paid", "issued", "requested", "approved",
 ];
@@ -63,6 +72,7 @@ const DEFAULT_ON: CalKind[] = ORDER.filter((k) => k !== "requested" && k !== "ap
 /** 문자 템플릿은 네 가지뿐이다. 어떤 일정에서 어떤 문안을 기본으로 열지 정한다. 없으면 문자 버튼도 없다. */
 const SMS_KIND: Partial<Record<CalKind, "payment" | "meeting" | "contract" | "due">> = {
   meeting: "meeting", due: "due", contract: "contract", payment: "payment", paid: "payment",
+  spot_meeting: "meeting", spot_due: "due",
 };
 
 /** 같은 규칙이 두 곳에서 갈라지지 않게 공용 것을 쓴다. 예전 이름은 그대로 둔다. */
@@ -83,6 +93,8 @@ export function buildEvents(
   onLead: (id: string) => void,
   invoices: TaxInvoice[] = [],
   onTax?: () => void,
+  spots: SpotJob[] = [],
+  onSpot?: (id: string) => void,
 ): CalEvent[] {
   const [y, m] = ym.split("-").map(Number);
   const out: CalEvent[] = [];
@@ -137,10 +149,29 @@ export function buildEvents(
     const ap = ymd(inv.approved_at); if (ap) out.push({ date: ap, kind: "approved", label: inv.name, sub: inv.approved_by ? `승인 ${inv.approved_by}` : `${won} · ${per}`, onClick: go });
   }
 
+  // ── 스팟 제작 — 미팅 · 기획안 발송 · 촬영 · 납품 기한 · 납품 (민열님 0914)
+  // 제휴 영업과 담당도 흐름도 달라 종류를 따로 뒀다. 한 달력에서 같이 보여야 촬영일이 겹치는 걸 안다.
+  for (const sp of spots) {
+    if (SPOT_SIDE_STAGES.includes(sp.stage as (typeof SPOT_SIDE_STAGES)[number])) continue;
+    const go = onSpot ? () => onSpot(sp.id) : undefined;
+    const p = productOf(sp.product);
+    const amount = spotAmount(sp);
+    const tail = [p?.label, amount ? `${amount.toLocaleString()}원` : null].filter(Boolean).join(" · ");
+    const msg: MsgContext = { name: sp.name, targetType: "lead", targetId: sp.id, owner: sp.owner_name, phone: sp.contact, meetingAt: sp.meeting_at, nextAction: sp.next_action };
+
+    const mt = parseLoose(sp.meeting_at, y); if (mt) out.push({ date: mt, kind: "spot_meeting", label: sp.name, sub: sp.meeting_at ?? tail, onClick: go, msg });
+    const ps = ymd(sp.plan_sent_at); if (ps) out.push({ date: ps, kind: "spot_plan", label: sp.name, sub: tail || "기획안 발송", onClick: go });
+    const sh = parseLoose(sp.shoot_at, y); if (sh) out.push({ date: sh, kind: "spot_shoot", label: sp.name, sub: sp.shoot_at ?? tail, onClick: go });
+    const du = parseLoose(sp.due, y); if (du) out.push({ date: du, kind: "spot_due", label: sp.name, sub: sp.next_action ?? tail, onClick: go, msg });
+    const dl = ymd(sp.delivered_at); if (dl) out.push({ date: dl, kind: "spot_done", label: sp.name, sub: tail || "납품", onClick: go });
+    // 스팟 입금도 청구의 '입금 완료'와 같은 칸에 찍는다 — 그날 들어온 돈은 한 줄에서 봐야 한다.
+    const pd = ymd(sp.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: sp.name, sub: `${amount ? `${amount.toLocaleString()}원 · ` : ""}스팟 입금`, onClick: go });
+  }
+
   return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
 }
 
-export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogged, leads = [], stores = [] }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void; actor?: string; onLogged?: () => void; leads?: Lead[]; stores?: StoreRow[] }) {
+export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogged, leads = [], stores = [], spots = [] }: { events: CalEvent[]; ym: string; onMonth: (ym: string) => void; actor?: string; onLogged?: () => void; leads?: Lead[]; stores?: StoreRow[]; spots?: SpotJob[] }) {
   const [y, m] = ym.split("-").map(Number);
   // 필터 — 종류(미팅/기한/계약 시작/입금 예정)와 식당 이름 (민열님 0911)
   const [kinds, setKinds] = useState<CalKind[]>([...DEFAULT_ON]);
@@ -362,7 +393,7 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
       )}
 
       {addFor && (
-        <QuickAdd date={addFor} leads={leads} stores={stores} actor={actor}
+        <QuickAdd date={addFor} leads={leads} stores={stores} spots={spots} actor={actor}
           onClose={() => setAddFor(null)}
           onSaved={() => { setSel(addFor); onLogged?.(); }} />
       )}
