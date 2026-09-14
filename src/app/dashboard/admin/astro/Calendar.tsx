@@ -292,7 +292,10 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                 {/* 늘 보이되 조용히. 칸에 손이 가면 또렷해진다 — 있는 줄 모르면 없는 것과 같다. */}
                 <button type="button" onClick={() => setAddFor(d)}
                   aria-label={`${m}월 ${i + 1}일에 일정 등록`} title="미팅 · 기한 · 계약 시작 등록"
-                  className={`absolute top-1 right-1 w-5 h-5 rounded-md flex items-center justify-center text-gray-400 bg-white/80 border border-black/[0.06] opacity-45 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-navy hover:border-navy/30 hover:bg-navy/[0.06] transition-opacity ${focusRing}`}>
+                  /* 손가락으로 누르는 화면에서는 **보이는 크기보다 넓게** 받는다 (0914 모바일 점검).
+                     날짜 칸이 50px 남짓이라 버튼 자체를 키우면 날짜를 덮는다. 그래서 겉모습은 20px 그대로 두고
+                     터치 기기에서만 사방 8px 씩 넓힌 판을 덧대 36px 로 받는다. 마우스에는 영향이 없다. */
+                  className={`absolute top-1 right-1 w-5 h-5 rounded-md flex items-center justify-center text-gray-400 bg-white/80 border border-black/[0.06] opacity-45 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-navy hover:border-navy/30 hover:bg-navy/[0.06] transition-opacity after:content-[''] after:absolute [@media(pointer:coarse)]:after:-inset-2 ${focusRing}`}>
                   <IconPlus size={12} aria-hidden="true" />
                 </button>
               </div>
