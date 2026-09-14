@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 /**
  * 앱 → 웹뷰 자동 로그인 처리 페이지
@@ -43,7 +44,7 @@ function AppLoginInner() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center">
-        <div className="w-8 h-8 border-2 border-periwinkle border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <Spinner size={32} className="mx-auto mb-3 block" />
         <p className="text-sm text-gray-500">로그인 중...</p>
       </div>
     </div>

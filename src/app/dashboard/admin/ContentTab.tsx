@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PreviewableImg } from "@/components/ImagePreview";
 import BannerStudioComposer from "./bannerlab/BannerStudioComposer";
 import WeeklyAutomationComposer from "./bannerlab/WeeklyAutomationComposer";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 interface TrendItem {
   id: number;
@@ -145,7 +146,7 @@ function ImagePickerField({
         )}
         {uploading && (
           <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-            <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+            <Spinner size={20} />
           </div>
         )}
         {value && !uploading && (
@@ -425,7 +426,7 @@ function FeaturedCampaignSection() {
     if (openId === id) setOpenId(null);
   }
 
-  if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-6"><Spinner size={16} /></div>;
 
   return (
     <div>
@@ -780,7 +781,7 @@ function BannerSection() {
     if (res.ok) setItems((prev) => prev.map((x) => (x.id === t.id ? d : x)));
   }
 
-  if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-6"><Spinner size={16} /></div>;
 
   return (
     <div>
@@ -1090,7 +1091,7 @@ function PopupSection() {
   const fmtDate = (iso: string) => iso ? iso.slice(0, 10) : "";
   const now = new Date().toISOString();
 
-  if (loading) return <div className="flex justify-center py-6"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-6"><Spinner size={16} /></div>;
 
   return (
     <div>

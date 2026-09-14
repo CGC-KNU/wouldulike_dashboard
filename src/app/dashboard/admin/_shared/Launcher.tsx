@@ -186,7 +186,7 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
         </section>
       )}
 
-      <p className="text-[12px] text-gray-400 mt-6">Astro · Probe 는 초안입니다. 화면의 '초안 데이터' 표시를 같이 보세요. Castor 는 Visual Engineer 합류 후 다시 봅니다.</p>
+      <p className="text-[12px] text-gray-400 mt-6">Probe 는 아직 초안이라 화면의 &lsquo;초안 데이터&rsquo; 표시를 같이 보세요. Castor 는 Visual Engineer 합류 후 다시 봅니다.</p>
     </div>
   );
 }

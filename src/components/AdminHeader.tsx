@@ -38,8 +38,10 @@ export default function AdminHeader() {
       <a href="/dashboard/admin" aria-label="메인으로"
          className="flex items-center gap-2 min-w-0 rounded-xl px-1.5 -mx-1.5 py-1 hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60">
         <img src="/satellite/satellite_app.svg" alt="" width={26} height={26} className="w-[26px] h-[26px] rounded-[8px] shrink-0 ring-1 ring-white/25" aria-hidden="true" />
-        <span className="text-[15px] font-bold tracking-[-0.01em] shrink-0">우주라이크</span>
-        <span className="hidden sm:inline text-[12px] font-medium text-white/45 shrink-0">Satellite</span>
+        {/* 0914 민열님: 이 바의 이름은 **툴 이름**이다. 회사 이름은 설명으로 내린다 —
+            "우주라이크"가 크게 박혀 있으면 이게 회사 홈인지 툴인지 구분이 안 됐다. */}
+        <span className="text-[15px] font-bold tracking-[-0.01em] shrink-0">세틀라이트</span>
+        <span className="hidden sm:inline text-[12px] font-medium text-white/45 shrink-0">우주라이크 업무 시스템</span>
       </a>
 
       <span aria-hidden="true" className="hidden sm:block w-px h-4 bg-white/15" />
@@ -49,9 +51,6 @@ export default function AdminHeader() {
           <span className={`text-[11px] font-semibold px-2 py-[3px] rounded-full shrink-0 ${DEPT_BADGE[me.department] ?? DEPT_BADGE.ADMIN}`}>
             {me.department_label}
           </span>
-          {me.satellite_role === "LEAD" && (
-            <span className="text-[10px] font-semibold px-1.5 py-[3px] rounded-full bg-white/12 text-white/70 shrink-0">세틀 리드</span>
-          )}
         </div>
       ) : (
         <span className="hidden sm:block bg-white/10 rounded-full w-16 h-5 animate-pulse" />

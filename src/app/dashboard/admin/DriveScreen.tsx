@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { PreviewableImg } from "@/components/ImagePreview";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 interface TrendItem {
   id: number;
@@ -148,7 +149,7 @@ export default function DriveScreen() {
 
       {files === null ? (
         <div className="flex justify-center py-16">
-          <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          <Spinner size={20} />
         </div>
       ) : shown.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">

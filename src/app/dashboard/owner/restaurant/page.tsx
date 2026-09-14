@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import ImageUploader from "@/components/ImageUploader";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 /* ═══════════════════════════════════════════════
    타입
@@ -329,7 +330,7 @@ function CouponBenefitsSection({ rid }: { rid: string | null }) {
     if (res.ok) setBenefits((prev) => prev.map((x) => (x.id === b.id ? d : x)));
   }
 
-  if (loading) return <div className="flex justify-center py-8"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-8"><Spinner size={16} /></div>;
 
   return (
     <div className="flex flex-col gap-3">
@@ -404,7 +405,7 @@ function StampRuleViewOnly({ rid }: { rid: string | null }) {
     })();
   }, [rq]);
 
-  if (loading) return <div className="flex justify-center py-8"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex justify-center py-8"><Spinner size={16} /></div>;
   if (err)     return <p className="text-xs text-red-500">{err}</p>;
 
   if (!rule) return (
@@ -543,7 +544,7 @@ export default function RestaurantPage() {
   if (!ridReady || loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-6 h-6 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+        <Spinner size={24} />
       </div>
     );
   }

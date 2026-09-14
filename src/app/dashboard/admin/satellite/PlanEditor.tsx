@@ -9,6 +9,7 @@ import CommentThread from "./CommentThread";
 import FreeformBlockEditor from "./FreeformBlockEditor";
 import PerformancePanel from "./PerformancePanel";
 import ReelCoverPicker from "./ReelCoverPicker";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 import {
   AudioTrack,
   JOB_STATE_META,
@@ -820,7 +821,7 @@ export default function PlanEditor({
                     >
                       {uploading > 0 ? (
                         <>
-                          <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+                          <Spinner size={16} />
                           <span className="text-[9px]">{uploading}장 처리 중</span>
                         </>
                       ) : (
@@ -1422,7 +1423,7 @@ function AssetTile({
             </>
           ) : (
             <>
-              <div className="w-3 h-3 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+              <Spinner size={12} />
               <span className="text-[8px] text-gray-400">변환 중</span>
             </>
           )}
