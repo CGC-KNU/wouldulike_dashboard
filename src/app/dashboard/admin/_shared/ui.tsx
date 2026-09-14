@@ -635,3 +635,47 @@ export function periodLocal(offsetMonths = 0): string {
   const x = new Date(d.getFullYear(), d.getMonth() + offsetMonths, 1);
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
 }
+
+/* ═══════════ 로딩 — 위성이 공전한다 ═══════════ */
+
+/**
+ * 기다리는 동안 도는 것. 테두리 하나가 도는 흔한 스피너 대신 **위성이 궤도를 돈다**
+ * (민열님 0914). 툴 이름이 세틀라이트고 로고가 위성이라, 기다리는 1초에도 그 이야기가 보인다.
+ *
+ * 구조는 셋뿐이다 — 옅은 궤도(원), 그 위를 도는 점(위성), 뒤따르는 잔상 둘.
+ * 잔상은 속도를 읽게 해 준다. 점 하나만 돌면 어디가 앞인지 안 보인다.
+ *
+ * `prefers-reduced-motion` 이면 돌지 않고 숨만 쉰다 — 회전은 어지러움을 만드는 움직임이라
+ * 끄되, 기다리는 중이라는 신호는 남겨야 한다.
+ */
+export function Spinner({ size = 16, className = "", label = "불러오는 중" }: { size?: number; className?: string; label?: string }) {
+  // 위성은 커져도 위성이다 — 크기를 따라 무한정 키우면 궤도를 도는 점이 아니라 공이 된다.
+  const dot = Math.min(9, Math.max(3, Math.round(size * 0.22)));
+  // 궤도 선 위에 점의 중심을 얹는다. 선이 1px 이라 반 픽셀만큼 내린다.
+  const top = 0.5 - dot / 2;
+  const trail = (deg: number, scale: number, opacity: number) => (
+    <span className="absolute inset-0" style={{ transform: `rotate(${deg}deg)` }} aria-hidden="true">
+      <span
+        className="absolute rounded-full bg-periwinkle"
+        style={{ width: dot * scale, height: dot * scale, top: 0.5 - (dot * scale) / 2, left: "50%", marginLeft: (-dot * scale) / 2, opacity }}
+      />
+    </span>
+  );
+  return (
+    <span role="status" aria-label={label} className={`relative inline-block shrink-0 align-middle ${className}`} style={{ width: size, height: size }}>
+      <span className="absolute inset-0 rounded-full border border-periwinkle/25" aria-hidden="true" />
+      <span
+        className="absolute inset-0 animate-spin motion-reduce:animate-none"
+        style={{ animationDuration: "1.15s", animationTimingFunction: "linear" }}
+      >
+        {trail(-46, 0.5, 0.18)}
+        {trail(-24, 0.72, 0.4)}
+        <span
+          className="absolute rounded-full bg-periwinkle motion-reduce:animate-pulse"
+          style={{ width: dot, height: dot, top, left: "50%", marginLeft: -dot / 2 }}
+          aria-hidden="true"
+        />
+      </span>
+    </span>
+  );
+}

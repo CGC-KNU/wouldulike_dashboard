@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 interface Restaurant {
   restaurant_id: number;
@@ -119,7 +120,7 @@ export default function VerifyPinPage() {
                 />
                 {searching && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+                    <Spinner size={16} />
                   </div>
                 )}
                 {suggestions.length > 0 && (

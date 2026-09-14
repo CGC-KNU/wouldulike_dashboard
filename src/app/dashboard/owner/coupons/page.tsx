@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { BenefitCatalogSection, StampRuleSection } from "@/components/CouponCatalog";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 /* ─── rid 헬퍼 ─────────────────────────────────────── */
 // undefined = 아직 초기화 안 됨, null = ?rid 파라미터 없음, string = rid 값
@@ -27,7 +28,7 @@ export default function CouponsPage() {
       <div className="px-4 pt-4 max-w-lg mx-auto pb-8">
         <h1 className="text-lg font-bold text-navy mb-5">쿠폰·스탬프</h1>
         <div className="flex justify-center py-10">
-          <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+          <Spinner size={20} />
         </div>
       </div>
     );

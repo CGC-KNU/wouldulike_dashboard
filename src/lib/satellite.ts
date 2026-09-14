@@ -40,7 +40,9 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     users: "준영 · 정환 · 윤지",
     slack: { channel: "sat-astro-세일즈", id: "C0BPP3ACEUA" },
     icon: "/satellite/astro.svg",
-    status: "draft",
+    // 0914부터 가동 중. 매장·후보·입금·자료실·스팟이 전부 백엔드(astro 앱) DB 에 들어갔다 —
+    // 임시 저장소로 떨어지지 않으니 더 이상 '초안'이 아니다.
+    status: "live",
   },
   probe: {
     key: "probe",

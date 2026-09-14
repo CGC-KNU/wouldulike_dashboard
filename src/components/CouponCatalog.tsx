@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 /* ─── 타입 ─────────────────────────────────────────── */
 export interface StampThreshold {
@@ -388,7 +389,7 @@ export function BenefitCatalogSection({ rid }: { rid: string | null }) {
 
   if (loading) return (
     <div className="flex justify-center py-6">
-      <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+      <Spinner size={16} />
     </div>
   );
 
@@ -492,7 +493,7 @@ export function BenefitGlance({ rid }: { rid: string | null }) {
   if (benefits === null) {
     return (
       <div className="flex justify-center py-4">
-        <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+        <Spinner size={16} />
       </div>
     );
   }
@@ -694,7 +695,7 @@ export function StampRuleSection({ rid }: { rid: string | null }) {
 
   if (loading) return (
     <div className="flex justify-center py-6">
-      <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+      <Spinner size={16} />
     </div>
   );
 

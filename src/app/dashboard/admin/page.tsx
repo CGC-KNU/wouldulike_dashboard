@@ -29,6 +29,7 @@ import Launcher from "./_shared/Launcher";
 import CommandPalette from "./_shared/CommandPalette";
 import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
 import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
+import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 /* ─── 타입 ─── */
 interface Restaurant {
@@ -296,7 +297,7 @@ function RestaurantDrawer({
             <p className="text-xs font-semibold text-gray-500 mb-3">식당 사진</p>
             {photoUrls == null ? (
               <div className="flex justify-center py-2">
-                <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+                <Spinner size={16} />
               </div>
             ) : (
               <ImageUploader
@@ -320,7 +321,7 @@ function RestaurantDrawer({
             <p className="text-xs font-semibold text-gray-500 mb-3">이번 달 통계</p>
             {statsLoading ? (
               <div className="flex justify-center py-2">
-                <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+                <Spinner size={16} />
               </div>
             ) : stats ? (
               <div className="grid grid-cols-2 gap-3">
@@ -382,7 +383,7 @@ function RestaurantDrawer({
             </div>
             {promoLoading ? (
               <div className="flex justify-center py-2">
-                <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+                <Spinner size={16} />
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -841,7 +842,7 @@ function CampaignCalendarPanel() {
 
         {loading ? (
           <div className="flex justify-center py-6">
-            <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+            <Spinner size={16} />
           </div>
         ) : (
           <div>
@@ -1065,7 +1066,7 @@ function RestaurantCalendarPanel() {
         </div>
         {loading ? (
           <div className="flex justify-center py-6">
-            <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+            <Spinner size={16} />
           </div>
         ) : (
           <>
@@ -1395,7 +1396,7 @@ function MarketingTab() {
 
         {loading ? (
           <div className="flex justify-center py-8">
-            <div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+            <Spinner size={16} />
           </div>
         ) : err ? (
           <p className="text-xs text-red-500 px-4 py-4">{err}</p>
@@ -1924,7 +1925,7 @@ function AdminAccountsSection() {
 
           {/* 계정 목록 */}
           {loading ? (
-            <div className="flex justify-center py-5"><div className="w-4 h-4 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" /></div>
+            <div className="flex justify-center py-5"><Spinner size={16} /></div>
           ) : accounts.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-5">등록된 구성원이 없습니다</p>
           ) : (
@@ -2089,7 +2090,7 @@ function RestaurantsTab() {
         </div>
         {loading ? (
           <div className="flex items-center justify-center py-10">
-            <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+            <Spinner size={20} />
           </div>
         ) : sorted.length === 0 ? (
           <p className="text-center text-sm text-gray-400 py-8">
@@ -2136,7 +2137,7 @@ function RestaurantsTab() {
         </div>
         {loading ? (
           <div className="flex items-center justify-center py-10">
-            <div className="w-5 h-5 border-2 border-periwinkle border-t-transparent rounded-full animate-spin" />
+            <Spinner size={20} />
           </div>
         ) : sorted.length === 0 ? (
           <p className="text-center text-sm text-gray-400 py-8">
