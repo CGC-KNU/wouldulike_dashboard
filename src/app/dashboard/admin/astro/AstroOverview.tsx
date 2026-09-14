@@ -70,11 +70,15 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
    * 둘을 같이 기다리면 둘 중 느린 쪽만큼 흰 화면을 본다. 화면을 옮겼다 돌아오면 **직전 값을 먼저 보여주고**
    * 뒤에서 새로 읽는다(stale-while-revalidate) — 같은 탭을 오가는 게 이 툴에서 제일 잦은 동작이다.
    */
-  const load = useCallback(() => {
-    if (cachedStores.rows.length) { setRows(cachedStores.rows); setInvoices(cachedStores.invoices); setLoading(false); }
-    else setLoading(true);
+  /**
+   * `fresh` 는 **값을 바꾼 직후**에 쓴다. 서버 캐시(6초)를 건너뛰고, 화면에 옛 값을 한 번
+   * 깔아 놓는 것(cachedStores)도 건너뛴다. 둘 다 안 하면 바꾼 값이 잠깐 뒤 옛 값으로 덮인다.
+   */
+  const load = useCallback((fresh = false) => {
+    if (!fresh && cachedStores.rows.length) { setRows(cachedStores.rows); setInvoices(cachedStores.invoices); setLoading(false); }
+    else if (!cachedStores.rows.length) setLoading(true);
 
-    fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({}))
+    fetch(`/api/astro/stores${fresh ? "?fresh=1" : ""}`).then((r) => r.json()).catch(() => ({}))
       .then((s) => {
         const next = s.stores ?? [];
         setRows(next); cachedStores.rows = next;
@@ -238,7 +242,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
         {onGo && <button type="button" onClick={() => onGo("astro-billing")} className="ml-1 text-navy font-medium hover:underline">월별 입금 현황 →</button>}
       </p>
 
-      <StoreDetailPanel row={open} invoice={open ? invById.get(open.restaurant_id) ?? null : null} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onReload={load} onGo={onGo}
+      <StoreDetailPanel row={open} invoice={open ? invById.get(open.restaurant_id) ?? null : null} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onReload={() => load(true)} onGo={onGo}
         onMarkPaid={async (inv) => {
           await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
           load();

@@ -55,15 +55,19 @@ async function opsFromSheet(restaurants: BackendRestaurant[], current: StoreOps[
   return { ops: [...acc.values()], error: false };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
+
+  // 값을 바꾼 직후의 재조회는 캐시를 건너뛴다 — 안 그러면 바꾸기 전 값이 돌아온다 (toolProxy 주석 참고)
+  const fresh = new URL(req.url).searchParams.get("fresh") === "1";
 
   // 계약이 끝난 매장(비제휴)도 같이 받는다 — 제휴를 끄면 목록에서 사라져 되돌릴 수 없던 문제.
   // 앱은 그대로다. 이 옵션은 관리자 목록에서만 켜진다.
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>(
     "/api/dashboard/restaurants/",
-    "include_inactive=1"
+    "include_inactive=1",
+    fresh
   );
   // 백엔드가 없고 미리보기 모드면 실측 스냅샷으로 화면을 돌려본다 (previewStores.ts 주석 참고)
   const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
