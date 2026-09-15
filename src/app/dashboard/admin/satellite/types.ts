@@ -31,6 +31,8 @@ export type PipelineStage = "todo" | "feedback" | "done";
 
 export interface ContentPlan {
   id: number;
+  /** 담당자 목록 (복수, 2026-09-14). 비어 있으면 예전 데이터라 owner_id 한 사람이다. */
+  owners: ShootOwner[];
   owner_id: number | null;
   owner_name: string;
   owner_name_override: string;

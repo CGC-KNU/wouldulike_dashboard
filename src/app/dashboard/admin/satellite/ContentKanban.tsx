@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { IconUsers } from "@tabler/icons-react";
 
-import AssigneePicker from "./AssigneePicker";
+import AssigneeMultiPicker from "./AssigneeMultiPicker";
 import { DeleteConfirmModal } from "./PlanTable";
 import PlanEditor from "./PlanEditor";
-import { ContentPlan, KanbanResponse, MEDIA_META, MediaType, SatelliteMember, fmtMD, ownerColor } from "./types";
+import { ContentPlan, KanbanResponse, MEDIA_META, MediaType, SatelliteMember, ShootOwner, fmtMD, ownerColor } from "./types";
 
 /**
  * 콘텐츠 칸반 (통합 업무 관리 기획안 §5) — 업무 목록 / 피드백 대기 / 완료.
@@ -41,12 +42,16 @@ export default function ContentKanban({
   const [err, setErr] = useState("");
   const [openPlanId, setOpenPlanId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ContentPlan | null>(null);
+  /** 담당자 고치기 — 리드만. 카드를 열지 않고 칸반에서 바로 바꾼다 (아윤님 0914). */
+  const [ownerTarget, setOwnerTarget] = useState<ContentPlan | null>(null);
+  const [ownerDraft, setOwnerDraft] = useState<ShootOwner[]>([]);
+  const [ownerSaving, setOwnerSaving] = useState(false);
 
   const [adding, setAdding] = useState(false);
   const [newDate, setNewDate] = useState(today);
   const [newTopic, setNewTopic] = useState("");
-  const [newOwner, setNewOwner] = useState<number | null>(viewerAccountId ?? null);
-  const [newOwnerName, setNewOwnerName] = useState("");
+  /** 새 카드 담당자 — 복수 (아윤님 2026-09-14). 비워 두면 서버가 본인으로 잡는다. */
+  const [newOwners, setNewOwners] = useState<ShootOwner[]>([]);
   const [newMedia, setNewMedia] = useState<MediaType>("carousel");
   const [creating, setCreating] = useState(false);
   // 담당자(편집 담당) 후보 — 활성 계정 + 배정 가능(satellite_assignable) 만.
@@ -79,10 +84,11 @@ export default function ContentKanban({
     // 열람 전용 계정(리드라도 satellite_assignable=false)은 자기 자신으로 기본
     // 지정되면 안 된다 — 어차피 서버가 거부하지만, 담당자 목록에도 안 뜨는데
     // 자동으로 선택돼 있으면 혼란스럽다.
-    if (viewerAccountId && newOwner === null && !newOwnerName && activeMembers.some((m) => m.id === viewerAccountId)) {
-      setNewOwner(viewerAccountId);
+    if (viewerAccountId && newOwners.length === 0) {
+      const me = activeMembers.find((m) => m.id === viewerAccountId);
+      if (me) setNewOwners([{ account_id: me.id, name: me.display_name || me.username }]);
     }
-  }, [viewerAccountId, newOwner, newOwnerName, activeMembers]);
+  }, [viewerAccountId, newOwners, activeMembers]);
 
   async function submitNew() {
     if (!newDate) return;
@@ -91,12 +97,13 @@ export default function ContentKanban({
       const ok = await onCreate({
         deadline: newDate,
         topic: newTopic.trim(),
-        owner_id: newOwner ?? undefined,
-        owner_name_override: newOwnerName.trim() || undefined,
+        // 목록이 비면 예전 경로 그대로(본인 지정). 서버가 첫 사람을 owner 로 풀어 준다.
+        owners: newOwners.length ? newOwners.map((o) => (o.account_id ? { account_id: o.account_id } : { name: o.name })) : undefined,
         media_type: newMedia,
       });
       if (ok) {
         setNewTopic("");
+        setNewOwners([]);
         setAdding(false);
         load({ soft: true });
       }
@@ -117,6 +124,26 @@ export default function ContentKanban({
    * 새 백엔드 로직 없이 기존에 검증된 전이만 재사용한다.
    */
   const DRAGGABLE_STAGES = new Set(["todo", "feedback"]);
+
+  async function saveOwners() {
+    if (!ownerTarget || ownerSaving) return;
+    setOwnerSaving(true);
+    try {
+      const res = await fetch(`/api/satellite/plans/${ownerTarget.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ owners: ownerDraft.map((o) => (o.account_id ? { account_id: o.account_id } : { name: o.name })) }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.detail ?? "담당자를 바꾸지 못했습니다.");
+        return;
+      }
+      setOwnerTarget(null);
+      load({ soft: true });
+    } finally {
+      setOwnerSaving(false);
+    }
+  }
 
   async function movePlan(planId: number, from: string, to: string) {
     if (from === to) return;
@@ -145,7 +172,7 @@ export default function ContentKanban({
   /** 발행완료는 리드만, 그 외는 리드 또는 본인 담당만 — 백엔드 delete() 규칙과 동일(§0-15). */
   function canDelete(p: ContentPlan): boolean {
     if (p.status === "published") return isLead;
-    return isLead || (viewerAccountId !== null && (p.owner_id === viewerAccountId || p.shoot_owner_id === viewerAccountId));
+    return isLead || (viewerAccountId !== null && ((p.owner_id === viewerAccountId || (p.owners ?? []).some((o) => o.account_id === viewerAccountId)) || p.shoot_owner_id === viewerAccountId));
   }
 
   const showInitialSpinner = loading && !data;
@@ -191,17 +218,14 @@ export default function ContentKanban({
               placeholder="주제 (나중에 채워도 됩니다)"
               className="flex-1 min-w-0 text-xs text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-periwinkle placeholder:text-gray-300"
             />
-            <div className="md:w-36">
-              <AssigneePicker
+            <div className="md:w-44">
+              {/* 담당자 복수 (아윤님 2026-09-14). 한 명만 고르면 예전과 똑같이 동작한다. */}
+              <AssigneeMultiPicker
                 members={activeMembers}
-                accountId={newOwner}
-                nameOverride={newOwnerName}
-                onChange={(id, name) => {
-                  setNewOwner(id);
-                  setNewOwnerName(name);
-                }}
+                value={newOwners}
+                onChange={setNewOwners}
                 disabled={!isLead}
-                unassignedLabel="담당자"
+                addLabel="담당자"
               />
             </div>
             <select
@@ -285,6 +309,7 @@ export default function ContentKanban({
                             <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 shrink-0 ${c.chip}`}>
                               {p.owner_name}
                             </span>
+                            {/* 담당자가 여럿이면 카드에 다 보인다 — owner_name 이 서버에서 "아윤 · 채린" 으로 온다 */}
                             <span className="text-[10px] text-gray-400 shrink-0">{MEDIA_META[p.media_type].label}</span>
                           </div>
                           <p className="text-xs text-gray-700 truncate">{p.topic || "(주제 미정)"}</p>
@@ -300,6 +325,20 @@ export default function ContentKanban({
                             )}
                           </div>
                         </button>
+                        {isLead && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOwnerTarget(p);
+                              setOwnerDraft(p.owners?.length ? p.owners : (p.owner_id || p.owner_name_override ? [{ account_id: p.owner_id, name: p.owner_name }] : []));
+                            }}
+                            aria-label="담당자 바꾸기"
+                            title="담당자 바꾸기"
+                            className={`absolute top-1.5 ${deletable ? "right-8" : "right-1.5"} w-6 h-6 flex items-center justify-center rounded-md text-gray-300 opacity-0 group-hover:opacity-100 hover:text-periwinkle hover:bg-periwinkle/10 transition-all`}
+                          >
+                            <IconUsers size={12} stroke={2.2} aria-hidden="true" />
+                          </button>
+                        )}
                         {deletable && (
                           <button
                             onClick={(e) => {
@@ -345,6 +384,25 @@ export default function ContentKanban({
           }}
         />
       )}
-    </div>
+    
+      {/* 담당자 바꾸기 — 카드를 열지 않고 칸반에서 바로 (아윤님 0914) */}
+      {ownerTarget && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setOwnerTarget(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-gray-900">담당자 바꾸기</h3>
+            <p className="text-xs text-gray-500 mt-0.5 mb-3 truncate">{ownerTarget.topic || "(주제 미정)"}</p>
+            <AssigneeMultiPicker members={activeMembers} value={ownerDraft} onChange={setOwnerDraft} addLabel="담당자 추가" />
+            <p className="text-[11px] text-gray-400 mt-2">여럿이면 카드에 전부 보입니다. 비워 두면 담당자가 없어집니다.</p>
+            <div className="flex gap-2 mt-4">
+              <button onClick={saveOwners} disabled={ownerSaving}
+                className="flex-1 text-xs font-semibold text-white bg-navy rounded-lg py-2 disabled:opacity-50">
+                {ownerSaving ? "저장 중…" : "저장"}
+              </button>
+              <button onClick={() => setOwnerTarget(null)} className="text-xs font-semibold text-gray-500 px-3">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   );
 }
