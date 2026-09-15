@@ -32,6 +32,7 @@ function ops(
     kit_delivered: false,
     owner_name: null,
     owner_phone: null,
+    owner_email: null,
     biz_no: null,
     monthly_fee: null,
     pay_cycle: null,

@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+
+export const metadata: Metadata = { title: "식당 관리" };
 import { cookies } from "next/headers";
 import Link from "next/link";
 

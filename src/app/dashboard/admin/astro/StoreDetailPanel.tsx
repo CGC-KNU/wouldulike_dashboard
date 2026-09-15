@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconCheck, IconExternalLink, IconFiles, IconCash, IconMessage2 } from "@tabler/icons-react";
+import { IconCheck, IconExternalLink, IconFiles, IconCash, IconMessage2, IconDeviceFloppy } from "@tabler/icons-react";
 import {
   BILLING_LABEL,
   INVOICE_LABEL,
@@ -31,7 +31,13 @@ import MessageComposer from "./MessageComposer";
  *
  * Console 캠페인 상세를 따랐다: 상단 단계 표시줄 · 블록 · 하단 고정 액션.
  * **시트 '계약 세부사항' 탭의 열이 전부 여기서 편집된다** (민열님 0910: "시트를 Astro 로 대체하는 게 목적").
- * 저장 버튼이 따로 없다. 칸에서 나가면(blur) 바로 반영되고 실패하면 되돌아간다.
+ *
+ * 저장은 두 갈래다 (민열님 0915).
+ *  - **글자 칸·드롭다운**: 적어 두기만 하고, 아래 '변동사항 저장'을 눌러야 한 번에 나간다.
+ *    칸에서 나갈 때마다 저장하던 걸 바꿨다 — 여러 칸을 이어서 고치는 동안 무엇이 저장됐는지
+ *    화면이 말해 주지 못했고, 사람은 저장됐는지 아닌지를 알 수 없었다.
+ *  - **버튼·토글·체크**(입금/계산서 상태, 학기·방학, 비치물, 캠퍼스, 플랜): 누른 즉시 반영.
+ *    한 번의 동작이 곧 결정이라 모아 둘 게 없다.
  * 플랜(FREE/BOOST/CONTENT)만 백엔드 소유라 식당 관리에서 바꾼다.
  */
 
@@ -63,12 +69,41 @@ function Cell({ label, value, onCommit, placeholder, hint, type, rows }: { label
   );
 }
 
-export default function StoreDetailPanel({ row, invoice = null, actor, campusOptions = [...CAMPUSES], onClose, onPatch, onReload, onGo, onMarkPaid }: { row: StoreRow | null; invoice?: TaxInvoice | null; actor: string; campusOptions?: string[]; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void; onReload?: () => void; onGo?: (tab: string) => void; onMarkPaid?: (inv: TaxInvoice) => Promise<void> }) {
+export default function StoreDetailPanel({ row, invoice = null, actor, campusOptions = [...CAMPUSES], onClose, onPatch, onReload, onGo, onMarkPaid }: { row: StoreRow | null; invoice?: TaxInvoice | null; actor: string; campusOptions?: string[]; onClose: () => void; onPatch: (id: number, body: Partial<StoreOps>) => void | Promise<void>; onReload?: () => void; onGo?: (tab: string) => void; onMarkPaid?: (inv: TaxInvoice) => Promise<void> }) {
   if (!row) return null;
-  const o: StoreOps = { ...emptyStoreOps(row.restaurant_id), ...(row.ops ?? {}) };
+  const saved: StoreOps = { ...emptyStoreOps(row.restaurant_id), ...(row.ops ?? {}) };
   const id = row.restaurant_id;
   const paid = isPaidTier(row.tier);
-  const set = (k: keyof StoreOps) => (v: string | null) => onPatch(id, { [k]: v } as Partial<StoreOps>);
+
+  /** 적어 뒀지만 아직 안 보낸 값. 매장을 바꾸면 버린다. */
+  const [draft, setDraft] = useState<Partial<StoreOps>>({});
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft({}); setSaving(false); }, [id]);
+  /** 화면이 보는 값 = 저장된 값 위에 적어 둔 값. 저장 전에도 문안·기본값 계산이 새 값을 쓴다. */
+  const o: StoreOps = { ...saved, ...draft };
+  const dirty = Object.keys(draft).length;
+
+  /** 칸에 적어 둔다. 원래 값으로 되돌려 놓으면 변동사항에서 빠지고 버튼도 다시 꺼진다. */
+  const stage = <K extends keyof StoreOps>(k: K) => (v: StoreOps[K]) =>
+    setDraft((d) => {
+      const next = { ...d };
+      if (v === saved[k]) delete next[k];
+      else next[k] = v;
+      return next;
+    });
+  const set = (k: keyof StoreOps) => (v: string | null) => stage(k)(v as StoreOps[typeof k]);
+  async function saveDraft() {
+    if (!dirty || saving) return;
+    setSaving(true);
+    const body = draft;
+    try { await onPatch(id, body); setDraft((d) => (d === body ? {} : d)); }
+    finally { setSaving(false); }
+  }
+  /** 적어 둔 걸 안 보내고 닫으면 그대로 사라진다 — 닫기 전에 한 번 묻는다. */
+  function closeGuarded() {
+    if (dirty && !window.confirm(`저장하지 않은 변동사항 ${dirty}건이 있습니다. 그냥 닫을까요?`)) return;
+    onClose();
+  }
   const [onboarding, setOnboarding] = useState(false);
   // 계약 완료 문안에 들어갈 입금 계좌 — 세금계산서 설정에 적힌 값만 쓴다(코드에 박지 않는다)
   const [bank, setBank] = useState<{ line: string | null; holder: string | null }>({ line: null, holder: null });
@@ -137,7 +172,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
   return (
     <SlideOver
       open
-      onClose={onClose}
+      onClose={closeGuarded}
       title={row.name}
       subtitle={[o.campus ?? "경북대", o.map_name && o.map_name !== row.name ? `지도 표기 ${o.map_name}` : null, `매장 ID ${id}`, o.sheet_owner && `담당 ${o.sheet_owner}`].filter(Boolean).join(" · ")}
       badge={row.tier ? <Chip tone={row.tier === "BOOST" ? "amber" : row.tier === "CONTENT" ? "navy" : "gray"}>{row.tier}</Chip> : <Chip tone="gray">플랜 미지정</Chip>}
@@ -148,6 +183,10 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           {paid && invoice && !invoice.paid_at && onMarkPaid && <Button variant="primary" icon={<IconCheck />} onClick={() => onMarkPaid(invoice)}>{invoice.period.slice(5).replace(/^0/, "")}월 입금 확인</Button>}
           {paid && (!invoice || o.pay_cycle === "LUMP") && o.billing !== "PAID" && <Button variant="primary" icon={<IconCheck />} onClick={() => onPatch(id, { billing: "PAID", invoice: "ISSUED" })}>{o.pay_cycle === "LUMP" ? "일시납 입금 확인" : "입금 확인 처리"}</Button>}
           {!o.kit_delivered && <Button onClick={() => onPatch(id, { kit_delivered: true })}>비치물 전달 완료</Button>}
+          {/* 적어 둔 게 있을 때만 켜진다 — 꺼져 있으면 보낼 게 없다는 뜻이다 (민열님 0915) */}
+          <Button variant={dirty ? "primary" : "secondary"} disabled={!dirty || saving} icon={<IconDeviceFloppy />} onClick={saveDraft}>
+            {saving ? "저장 중…" : dirty ? `변동사항 저장 ${dirty}` : "변동사항 저장"}
+          </Button>
           {onGo && <Button variant="ghost" icon={<IconFiles />} onClick={() => onGo("astro-docs")}>자료실</Button>}
           <span className="ml-auto text-[12px] text-gray-400">{o.updated_at ? `${agoLabel(o.updated_at)}${o.updated_by ? ` · ${o.updated_by}` : ""}` : "아직 기록 없음"}</span>
         </>
@@ -201,7 +240,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
             <Cell
               label="월 이용료 (VAT 포함)"
               value={o.monthly_fee}
-              onCommit={(v) => onPatch(id, { monthly_fee: v === null ? null : Number(v.replace(/[^\d]/g, "")) || 0 })}
+              onCommit={(v) => stage("monthly_fee")(v === null ? null : Number(v.replace(/[^\d]/g, "")) || 0)}
               placeholder={String(defaultMonthlyFee(row.tier, o.campus) ?? 33000)}
               type="number"
               hint={feeHint(row.tier, o.campus)}
@@ -210,7 +249,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
               const d = defaultMonthlyFee(row.tier, o.campus);
               if (d === null || d === 0 || o.monthly_fee === d) return null;
               return (
-                <button type="button" onClick={() => onPatch(id, { monthly_fee: d })}
+                <button type="button" onClick={() => stage("monthly_fee")(d)}
                   className="mt-1 text-[12px] font-semibold text-navy hover:underline">
                   기본 {d.toLocaleString()}원 넣기
                 </button>
@@ -218,12 +257,12 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
             })()}
           </div>
           <Field label="청구 시작 월" hint="월 중간 합류면 이번 달/다음 달 중 선택. 비우면 계약 시작월">
-            <Select value={o.billing_start_period ?? ""} onChange={(e) => onPatch(id, { billing_start_period: e.target.value || null })}>
+            <Select value={o.billing_start_period ?? ""} onChange={(e) => stage("billing_start_period")(e.target.value || null)}>
               <option value="">계약 시작월 따름</option>{[0, 1, 2].map((k) => { const p = periodLocal(k); return <option key={p} value={p}>{p.replace("-", "년 ")}월부터</option>; })}{o.billing_start_period && ![0, 1, 2].map(periodLocal).includes(o.billing_start_period) && <option value={o.billing_start_period}>{o.billing_start_period}부터</option>}
             </Select>
           </Field>
           <Field label="납부 방식">
-            <Select value={o.pay_cycle ?? ""} onChange={(e) => onPatch(id, { pay_cycle: (e.target.value || null) as PayCycle | null })}>
+            <Select value={o.pay_cycle ?? ""} onChange={(e) => stage("pay_cycle")((e.target.value || null) as PayCycle | null)}>
               <option value="">-</option><option value="MONTHLY">월납</option><option value="LUMP">일시납</option>
             </Select>
           </Field>
@@ -296,6 +335,9 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           <Cell label="대표자" value={o.owner_name} onCommit={set("owner_name")} />
           <Cell label="연락처" value={o.owner_phone} onCommit={set("owner_phone")} type="tel" />
           <Cell label="사업자등록번호" value={o.biz_no} onCommit={set("biz_no")} placeholder="세금계산서용" />
+          {/* 볼타는 공급받는자 이메일이 **필수**다. 비면 발행 자체가 거절된다 (0915). */}
+          <Cell label="계산서 받을 이메일" value={o.owner_email} onCommit={set("owner_email")} type="email" placeholder="owner@example.com"
+            hint={o.owner_email ? undefined : "비어 있으면 세금계산서를 발행할 수 없습니다"} />
         </div>
       </PanelSection>
 
