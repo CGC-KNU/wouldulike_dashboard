@@ -310,8 +310,10 @@ function IssuerPanel({ issuer, isAdmin, onClose, onSaved }: { issuer: IssuerSett
     <SlideOver open onClose={onClose} title="발행 주체 설정" subtitle="발행 주체 1곳당 볼타 고객 1개. 공동인증서는 볼타에 등록해야 발행됩니다." footer={<><Button variant="primary" onClick={save} disabled={saving || !isAdmin}>{saving ? "저장하는 중…" : "저장"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{!isAdmin && <span className="text-[12px] text-gray-400 ml-auto">관리자만 바꿀 수 있습니다</span>}{err && <span className="text-[12px] text-red-600 ml-auto" role="alert">{err}</span>}</>}>
       <PanelSection title="공급자">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="상호"><Input value={f.name} onChange={set("name")} /></Field>
-          <Field label="사업자등록번호"><Input value={f.biz_no} onChange={set("biz_no")} /></Field>
+          {/* 사업자등록증에 박힌 값이라 여기서 못 고친다 (민열님 0915). 오타 하나가
+              국세청으로 나가면 수정세금계산서로만 되돌린다. 바꿔야 할 일이 생기면 서버에서 손댄다. */}
+          <Field label="상호" hint="사업자등록증 기준 · 고정"><Input value={f.name} disabled /></Field>
+          <Field label="사업자등록번호" hint="사업자등록증 기준 · 고정"><Input value={f.biz_no} disabled /></Field>
           <Field label="대표자"><Input value={f.ceo} onChange={set("ceo")} /></Field>
           {/* 계약 완료 안내 문자에 들어가는 계좌. 코드에 박지 않고 여기서만 관리한다(0914). */}
           <Field label="입금 은행" hint="계약 완료 안내 문자에 들어갑니다"><Input value={f.bank_name ?? ""} onChange={set("bank_name")} placeholder="토스뱅크" /></Field>
