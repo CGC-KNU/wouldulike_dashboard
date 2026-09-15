@@ -2884,7 +2884,7 @@ export default function AdminHomePage() {
           {activeTab === "astro-spots" && <SpotBoard actor={actorName} />}
           {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={go} />}
           {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
-          {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} />}
+          {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} onGo={go} />}
           {activeTab === "astro-leads" && <LeadPipeline actor={actorName} />}
           {activeTab === "astro-billing" && <BillingBoard actor={actorName} onGo={go} />}
 
