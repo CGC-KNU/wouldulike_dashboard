@@ -117,7 +117,9 @@ export default function TaxInvoices({ actor, isAdmin }: { actor: string; isAdmin
           <div className="min-w-0 flex-1">
             <p className="text-[14px] font-semibold text-gray-900">{issuer?.name ?? "발행 주체"} <span className="text-[12px] font-normal text-gray-500 ml-1">{issuer?.biz_no} · 대표 {issuer?.ceo}</span></p>
             <p className="text-[12px] text-gray-500 mt-0.5">
-              {issuer?.bolta_customer_key ? <>볼타 고객 <code className="bg-black/[0.05] px-1 rounded">{issuer.bolta_customer_key}</code></> : <span className="text-amber-700 font-medium">볼타 고객 미등록</span>}
+              {issuer?.bolta_ready
+                ? <span className={issuer.bolta_test ? "text-amber-700 font-medium" : "text-emerald-700 font-medium"}>볼타 연결됨{issuer.bolta_test ? " (테스트 키)" : ""}</span>
+                : <span className="text-amber-700 font-medium">볼타 열쇠 없음 — 서버에 BOLTA_API_KEY 필요</span>}
               {" · "}
               {issuer?.cert_expires_at ? <span className={certDays !== null && certDays < 30 ? "text-red-600 font-medium" : ""}>공동인증서 만료 {issuer.cert_expires_at}{certDays !== null ? ` (D-${certDays})` : ""}</span> : <span className="text-amber-700 font-medium">공동인증서 미등록</span>}
               {" · "}승인자 {issuer?.approver}
@@ -206,7 +208,7 @@ function InvoicePanel({ inv, issuer, actor, isAdmin, onClose, act }: { inv: TaxI
             <Button variant="primary" icon={<IconCheck />} onClick={() => run({ action: "approve" })} disabled={!canApprove} title={canApprove ? undefined : `승인자는 ${issuer?.approver}입니다`}>승인 (발행 요청)</Button>
           )}
           {(inv.status === "APPROVED" || inv.status === "FAILED") && !confirmIssue && (
-            <Button variant="primary" icon={<IconFileInvoice />} onClick={() => setConfirmIssue(true)} disabled={!issuer?.bolta_customer_key} title={issuer?.bolta_customer_key ? undefined : "볼타 미연결"}>{inv.status === "FAILED" ? "재시도 (발행)" : "발행하기"}</Button>
+            <Button variant="primary" icon={<IconFileInvoice />} onClick={() => setConfirmIssue(true)} disabled={!issuer?.bolta_ready} title={issuer?.bolta_ready ? undefined : "볼타 열쇠가 서버에 없습니다 (BOLTA_API_KEY)"}>{inv.status === "FAILED" ? "재시도 (발행)" : "발행하기"}</Button>
           )}
           {(inv.status === "ISSUING" || inv.status === "RESULT_UNKNOWN") && <Button icon={<IconRefresh />} onClick={() => run({ action: "sync" })}>상태 새로고침</Button>}
           {inv.status === "ISSUED" && !inv.paid_at && <Button variant="primary" icon={<IconCheck />} onClick={() => run({ action: "mark-paid" })}>입금 확인 처리</Button>}
@@ -218,8 +220,10 @@ function InvoicePanel({ inv, issuer, actor, isAdmin, onClose, act }: { inv: TaxI
       {err && <Notice tone="red" title={err} />}
 
       {confirmIssue && (
-        <Notice tone="red" title="이 버튼을 누르면 국세청으로 실제 발행됩니다">
-          아래 내용으로 전자세금계산서를 즉시 발행합니다. 취소 후 재제출은 어렵습니다.
+        <Notice tone={issuer?.bolta_test ? "amber" : "red"} title={issuer?.bolta_test ? "테스트 키입니다 — 국세청으로 나가지 않습니다" : "이 버튼을 누르면 국세청으로 실제 발행됩니다"}>
+          {issuer?.bolta_test
+            ? "볼타 테스트 키(test_)로 연결돼 있어 실제 발행은 일어나지 않습니다. 흐름만 확인됩니다."
+            : "아래 내용으로 전자세금계산서를 즉시 발행합니다. 취소 후 재제출은 어렵습니다."}
           <div className="flex gap-2 mt-2">
             <Button size="sm" variant="danger" onClick={async () => { await run({ action: "issue" }); setConfirmIssue(false); }}>발행 확정</Button>
             <Button size="sm" variant="ghost" onClick={() => setConfirmIssue(false)}>돌아가기</Button>
@@ -266,7 +270,7 @@ function InvoicePanel({ inv, issuer, actor, isAdmin, onClose, act }: { inv: TaxI
       </PanelSection>
 
       {inv.status !== "ISSUED" && !dead && (
-        <PanelSection title="발행 완료로 표시 (볼타 미연결 · 홈택스/볼타에서 직접 발행한 경우)">
+        <PanelSection title="발행 완료로 표시 (홈택스에서 직접 발행한 경우)">
           <div className="grid grid-cols-2 gap-3">
             <Field label="국세청 승인번호"><Input value={nts} onChange={(e) => setNts(e.target.value)} placeholder="2026091012345678-…" /></Field>
             <Field label="계산서 보기 링크"><Input value={url} onChange={(e) => setUrl(e.target.value)} type="url" placeholder="https://" /></Field>
@@ -319,7 +323,7 @@ function IssuerPanel({ issuer, isAdmin, onClose, onSaved }: { issuer: IssuerSett
       </PanelSection>
       <PanelSection title="볼타 (전자세금계산서 API)">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="볼타 고객 키" hint="볼타에 고객을 만들면 받는 키. 비어 있으면 '발행하기'가 막힙니다."><Input value={f.bolta_customer_key} onChange={set("bolta_customer_key")} placeholder="미등록" /></Field>
+          <Field label="볼타 고객 키" hint="참고용 메모입니다. 발행 열쇠는 서버 환경변수(BOLTA_API_KEY)에 둡니다 — 화면에 두지 않습니다."><Input value={f.bolta_customer_key} onChange={set("bolta_customer_key")} placeholder="선택" /></Field>
           <Field label="공동인증서 만료일" hint="만료 30일 전부터 빨갛게 표시"><Input value={f.cert_expires_at} onChange={set("cert_expires_at")} type="date" /></Field>
         </div>
         <div className="mt-3 rounded-xl bg-black/[0.03] px-3 py-2.5 text-[12px] text-gray-600 leading-relaxed">
