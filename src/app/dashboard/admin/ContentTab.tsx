@@ -285,6 +285,8 @@ function FeaturedItemForm({
 
 function FeaturedCampaignSection() {
   const [campaigns, setCampaigns] = useState<FeaturedCampaign[]>([]);
+  const [savedOrderIds, setSavedOrderIds] = useState<number[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
@@ -299,13 +301,42 @@ function FeaturedCampaignSection() {
     link_url: "",
   });
 
+  const orderChanged = JSON.stringify(campaigns.map((c) => c.id)) !== JSON.stringify(savedOrderIds);
+
   useEffect(() => {
     fetch("/api/dashboard/admin/featured-campaigns")
       .then((r) => r.json())
-      .then((d) => setCampaigns(Array.isArray(d) ? d : []))
+      .then((d) => {
+        const list = Array.isArray(d) ? d : [];
+        setCampaigns(list);
+        setSavedOrderIds(list.map((c: FeaturedCampaign) => c.id));
+      })
       .catch(() => setErr("불러오기 실패"))
       .finally(() => setLoading(false));
   }, []);
+
+  function moveCampaign(idx: number, dir: -1 | 1) {
+    const next = idx + dir;
+    if (next < 0 || next >= campaigns.length) return;
+    setCampaigns((prev) => {
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
+  }
+
+  async function saveCampaignOrder() {
+    setSavingOrder(true);
+    setErr("");
+    try {
+      await Promise.all(campaigns.map((c, idx) => patchCampaign(c.id, { sort_order: idx })));
+      setSavedOrderIds(campaigns.map((c) => c.id));
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setSavingOrder(false);
+    }
+  }
 
   function replaceCampaign(next: FeaturedCampaign) {
     setCampaigns((prev) => prev.map((c) => (c.id === next.id ? next : c)));
@@ -413,6 +444,7 @@ function FeaturedCampaignSection() {
     const d = await res.json();
     if (!res.ok) { setErr(d.detail ?? "생성 실패"); return; }
     setCampaigns((prev) => [...prev, d]);
+    setSavedOrderIds((prev) => [...prev, d.id]);
     setShowCreate(false);
     setCreateForm({ title: "", starts_at: nowKstInput(), ends_at: plusYearsKstInput(1), image_url: "", link_url: "" });
     setOpenId(d.id);
@@ -423,6 +455,7 @@ function FeaturedCampaignSection() {
     const res = await fetch(`/api/dashboard/admin/featured-campaigns/${id}`, { method: "DELETE" });
     if (!res.ok) { setErr("삭제 실패"); return; }
     setCampaigns((prev) => prev.filter((c) => c.id !== id));
+    setSavedOrderIds((prev) => prev.filter((x) => x !== id));
     if (openId === id) setOpenId(null);
   }
 
@@ -432,12 +465,30 @@ function FeaturedCampaignSection() {
     <div>
       {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
       <div className="flex flex-col gap-2 mb-3">
-        {campaigns.map((c) => {
+        {campaigns.map((c, idx) => {
           const live = isFeaturedLive(c);
           const expanded = openId === c.id;
           return (
             <div key={c.id} className="bg-gray-50 rounded-xl p-2.5">
               <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => moveCampaign(idx, -1)}
+                    disabled={idx === 0}
+                    className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveCampaign(idx, 1)}
+                    disabled={idx === campaigns.length - 1}
+                    className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-navy hover:bg-gray-200 disabled:opacity-20 disabled:cursor-not-allowed transition-colors text-xs"
+                  >
+                    ▼
+                  </button>
+                </div>
                 {c.items?.[0]?.image_url ? (
                   <PreviewableImg src={c.items[0].image_url} alt={c.title} className="w-16 h-20 object-cover rounded-lg shrink-0 bg-gray-200" />
                 ) : (
@@ -549,6 +600,16 @@ function FeaturedCampaignSection() {
           </div>
         )}
       </div>
+      {orderChanged && !showCreate && (
+        <button
+          type="button"
+          onClick={saveCampaignOrder}
+          disabled={savingOrder}
+          className="w-full py-2.5 mb-2 rounded-xl bg-navy text-white text-sm font-bold hover:bg-navy/90 disabled:opacity-60 transition-colors"
+        >
+          {savingOrder ? "저장 중..." : "순서 저장"}
+        </button>
+      )}
       {showCreate ? (
         <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl">
           <ImagePickerField
