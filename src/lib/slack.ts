@@ -51,8 +51,20 @@ export async function notifyAstro(text: string): Promise<void> {
   await postToChannel(ASTRO_CHANNEL_ID, text);
 }
 
+/**
+ * 세금계산서·입금 알림은 **#ops-partner** 로 간다 (민열님 0915).
+ *
+ * #sat-astro 는 영업이 후보를 쫓는 채널이라 단계 변경 알림이 하루에도 여러 번 흐른다.
+ * 돈이 들어오고 계산서가 나가는 일이 그 사이에 섞이면 묻힌다 — 보는 사람도 다르다.
+ */
+export async function notifyPartnerOps(text: string): Promise<void> {
+  await postToChannel(OPS_PARTNER_CHANNEL_ID, text);
+}
+
 /** #sat-astro-세일즈 — lib/satellite.ts 의 TOOLS.astro.slack.id 와 같은 값이다. */
 const ASTRO_CHANNEL_ID = "C0BPP3ACEUA";
+/** #ops-partner — 파트너 매장 운영(계산서·입금) */
+const OPS_PARTNER_CHANNEL_ID = "C0BPSQ7F8LC";
 
 /** 대시보드 딥링크 — PapillonDashboard 가 ?plan=<id> 를 읽어서 바로 에디터를 연다. */
 export function planDeepLink(planId: number): string {

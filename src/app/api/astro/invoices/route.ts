@@ -5,7 +5,7 @@ import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { emptyStoreOps, isPaidTier, type BackendRestaurant, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
-import { notifyAstro } from "@/lib/slack";
+import { notifyPartnerOps } from "@/lib/slack";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
@@ -74,14 +74,14 @@ export async function POST(req: NextRequest) {
       if (onBackend) {
         const r = await remoteSend<{ invoice: TaxInvoice }>("PATCH", `/api/astro/invoices/${found.id}/`, { action: "mark-paid", paid_at: paid_on });
         if (!r.ok) return NextResponse.json(r.data ?? { detail: "입금을 찍지 못했습니다." }, { status: r.status });
-        await notifyAstro(`:moneybag: *입금 확인* — ${found.name} · ${found.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
+        await notifyPartnerOps(`:moneybag: *입금 확인* — ${found.name} · ${found.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
         return NextResponse.json({ ok: true, created: 0, paid: 1, skipped: [], draft: false });
       }
       const at = `${paid_on}T00:00:00.000Z`;
       const list = readDraft<TaxInvoice[]>(KEY, seedInvoices).map((i) => (i.id === found.id ? { ...i, paid_at: at } : i));
       writeDraft(KEY, list);
       await syncPaid(only, at, actor ?? requested_by ?? "unknown");
-      await notifyAstro(`:moneybag: *입금 확인* — ${found.name} · ${found.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
+      await notifyPartnerOps(`:moneybag: *입금 확인* — ${found.name} · ${found.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
       return NextResponse.json({ ok: true, created: 0, paid: 1, skipped: [], draft: true });
     }
   }
@@ -143,9 +143,9 @@ export async function POST(req: NextRequest) {
     }
     if (saved.length) {
       if (at) {
-        for (const c of saved) await notifyAstro(`:moneybag: *입금 확인* — ${c.name} · ${c.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
+        for (const c of saved) await notifyPartnerOps(`:moneybag: *입금 확인* — ${c.name} · ${c.total.toLocaleString()}원 · ${paid_on} · ${actor ?? requested_by ?? ""}`);
       } else {
-        await notifyAstro(
+        await notifyPartnerOps(
           `:page_facing_up: *세금계산서 품의 ${saved.length}건* — ${label} 월납 · ${actor ?? requested_by ?? ""}\n${saved.map((c) => `· ${c.name} ${c.total.toLocaleString()}원`).join("\n")}`
         );
       }
@@ -157,9 +157,9 @@ export async function POST(req: NextRequest) {
     writeDraft(KEY, [...created, ...existing]);
     if (at) {
       for (const c of created) await syncPaid(c.restaurant_id, at, actor ?? requested_by ?? "unknown");
-      await notifyAstro(`:moneybag: *입금 확인* — ${created.map((c) => `${c.name} ${c.total.toLocaleString()}원`).join(", ")} · ${paid_on} · ${actor ?? requested_by ?? ""}`);
+      await notifyPartnerOps(`:moneybag: *입금 확인* — ${created.map((c) => `${c.name} ${c.total.toLocaleString()}원`).join(", ")} · ${paid_on} · ${actor ?? requested_by ?? ""}`);
     } else {
-      await notifyAstro(
+      await notifyPartnerOps(
         `:page_facing_up: *세금계산서 품의 ${created.length}건* — ${label} 월납 · ${actor ?? requested_by ?? ""}\n${created.map((c) => `· ${c.name} ${c.total.toLocaleString()}원`).join("\n")}`
       );
     }

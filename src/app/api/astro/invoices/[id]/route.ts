@@ -3,7 +3,7 @@ import { actorName, isAdminActor, requireTool } from "@/lib/draft/guard";
 import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { emptyStoreOps, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
-import { notifyAstro } from "@/lib/slack";
+import { notifyPartnerOps } from "@/lib/slack";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       if (!r.ok) return NextResponse.json(r.data ?? { detail: "처리하지 못했습니다." }, { status: r.status });
       const after = r.data!.invoice;
       const msg = slackFor(b.action, before, after, (await actorName()) ?? b.by ?? "unknown");
-      if (msg) await notifyAstro(msg);
+      if (msg) await notifyPartnerOps(msg);
       return NextResponse.json({ invoice: after, draft: false });
     }
   }
@@ -135,7 +135,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   const updated = patchDraftItem<TaxInvoice>(KEY, seedInvoices, id, patch);
-  if (slack) await notifyAstro(slack);
+  if (slack) await notifyPartnerOps(slack);
   return NextResponse.json({ invoice: updated, draft: true });
 }
 
