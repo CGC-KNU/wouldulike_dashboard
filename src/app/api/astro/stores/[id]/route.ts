@@ -3,7 +3,7 @@ import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedStoreOps } from "@/lib/draft/seed";
 import { STORE_OPS_EDITABLE, emptyStoreOps, type StoreOps } from "@/lib/draft/types";
 import { actorName, requireTool } from "@/lib/draft/guard";
-import { notifyAstro } from "@/lib/slack";
+import { notifyAstro, notifyPartnerOps } from "@/lib/slack";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /** 매장 운영 필드 조회·수정. 수정자와 시각을 반드시 같이 남긴다 (시트가 못 남기던 것). */
@@ -85,15 +85,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
  * 매장 이름은 여기 없으므로(운영 행은 id 만 안다) id 를 적고, 화면 링크를 붙인다.
  */
 async function notifyStoreChange(after: StoreOps, before: StoreOps | null, body: Partial<StoreOps>, who: string) {
-  const lines: string[] = [];
-  if (body.billing === "PAID" && before?.billing !== "PAID") lines.push(":white_check_mark: 입금 확인");
-  if (body.kit_delivered === true && before?.kit_delivered !== true) lines.push(":package: 비치물 전달 완료");
-  if (body.contract_started_on && body.contract_started_on !== before?.contract_started_on) lines.push(`:handshake: 계약 시작일 ${body.contract_started_on}`);
-  if (body.billing_start_period && body.billing_start_period !== before?.billing_start_period) lines.push(`:calendar: 청구 시작 월 ${body.billing_start_period}`);
-  if (body.campus && body.campus !== before?.campus) lines.push(`:round_pushpin: 캠퍼스 ${before?.campus ?? "미지정"} → ${body.campus}`);
-  if (lines.length === 0) return;
+  // 돈 이야기와 영업 이야기를 갈라 보낸다 (민열님 0915).
+  // #sat-astro 는 후보를 쫓는 채널이라 단계 알림이 하루에도 여러 번 흐른다.
+  // 입금·청구가 그 사이에 섞이면 묻히고, 보는 사람도 다르다.
+  const money: string[] = [];
+  const sales: string[] = [];
+  if (body.billing === "PAID" && before?.billing !== "PAID") money.push(":white_check_mark: 입금 확인");
+  if (body.billing_start_period && body.billing_start_period !== before?.billing_start_period) money.push(`:calendar: 청구 시작 월 ${body.billing_start_period}`);
+  if (body.kit_delivered === true && before?.kit_delivered !== true) sales.push(":package: 비치물 전달 완료");
+  if (body.contract_started_on && body.contract_started_on !== before?.contract_started_on) sales.push(`:handshake: 계약 시작일 ${body.contract_started_on}`);
+  if (body.campus && body.campus !== before?.campus) sales.push(`:round_pushpin: 캠퍼스 ${before?.campus ?? "미지정"} → ${body.campus}`);
+  if (money.length === 0 && sales.length === 0) return;
 
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   const link = base ? ` <${base}/dashboard/admin?tab=astro-ops&open=${after.id}|열기>` : "";
-  await notifyAstro(`:office: *파트너 매장 ${after.id}* — ${lines.join(" · ")} · ${who}${link}`);
+  const head = `:office: *파트너 매장 ${after.id}*`;
+  if (money.length) await notifyPartnerOps(`${head} — ${money.join(" · ")} · ${who}${link}`);
+  if (sales.length) await notifyAstro(`${head} — ${sales.join(" · ")} · ${who}${link}`);
 }
