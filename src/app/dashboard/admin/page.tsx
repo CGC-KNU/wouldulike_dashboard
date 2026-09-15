@@ -532,6 +532,7 @@ interface PushNotification {
   title: string;
   body: string;
   content: string;
+  deep_link: string | null;
   scheduled_time: string;
   sent: boolean;
   sent_at: string | null;
@@ -1170,6 +1171,7 @@ function MarketingTab() {
   // 폼 상태
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [deepLink, setDeepLink] = useState("");
   const [scheduledTime, setScheduledTime] = useState(nowKSTInput);
   const [testOnly, setTestOnly] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -1228,13 +1230,20 @@ function MarketingTab() {
       const res = await fetch("/api/dashboard/admin/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, body, scheduled_time: utcIso, test_only: testOnly }),
+        body: JSON.stringify({
+          title,
+          body,
+          deep_link: deepLink.trim() || null,
+          scheduled_time: utcIso,
+          test_only: testOnly,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail ?? "생성 실패");
       setNotifications((prev) => [data, ...prev]);
       setTitle("");
       setBody("");
+      setDeepLink("");
       setScheduledTime(nowKSTInput());
     } catch (e: unknown) {
       setFormErr(e instanceof Error ? e.message : "생성 실패");
@@ -1366,6 +1375,17 @@ function MarketingTab() {
         </div>
 
         <div>
+          <label className="text-xs text-gray-400 mb-1 block">딥링크 (선택)</label>
+          <input
+            value={deepLink}
+            onChange={(e) => setDeepLink(e.target.value)}
+            placeholder="예: wouldulike://restaurant/123 — 비워두면 앱 기본 화면으로 접속됩니다"
+            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
+          />
+          <p className="text-[10px] text-gray-400 mt-1">알림을 탭했을 때 이동할 화면입니다. 설정하지 않으면 앱만 실행됩니다.</p>
+        </div>
+
+        <div>
           <label className="text-xs text-gray-400 mb-1 block">발송 예약 시간 (KST)</label>
           <input
             type="datetime-local"
@@ -1422,6 +1442,9 @@ function MarketingTab() {
                     </div>
                     <p className="text-sm font-semibold text-gray-800 truncate">{n.title}</p>
                     {n.body && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>}
+                    {n.deep_link && (
+                      <p className="text-[10px] text-periwinkle mt-0.5 truncate">🔗 {n.deep_link}</p>
+                    )}
                     <p className="text-[10px] text-gray-400 mt-1">
                       예약: {fmtKST(n.scheduled_time)}
                       {n.sent_at && ` · 발송: ${fmtKST(n.sent_at)}`}
