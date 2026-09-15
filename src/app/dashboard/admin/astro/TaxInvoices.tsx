@@ -25,7 +25,7 @@ const STEPS: TaxInvoiceStatus[] = ["PENDING", "APPROVED", "ISSUING", "ISSUED"];
 const won = (n: number) => `${n.toLocaleString()}원`;
 const thisPeriod = () => new Date().toISOString().slice(0, 7);
 
-export default function TaxInvoices({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
+export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; isAdmin: boolean; onGo?: (target: string) => void }) {
   const [items, setItems] = useState<TaxInvoice[]>([]);
   const [issuer, setIssuer] = useState<IssuerSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -181,7 +181,7 @@ export default function TaxInvoices({ actor, isAdmin }: { actor: string; isAdmin
         )}
       </Card>
 
-      {open && <InvoicePanel inv={open} issuer={issuer} actor={actor} isAdmin={isAdmin} onClose={() => setOpenId(null)} act={act} />}
+      {open && <InvoicePanel inv={open} issuer={issuer} actor={actor} isAdmin={isAdmin} onClose={() => setOpenId(null)} act={act} onGo={onGo} />}
       {settings && issuer && <IssuerPanel issuer={issuer} isAdmin={isAdmin} onClose={() => setSettings(false)} onSaved={load} />}
     </>
   );
@@ -189,7 +189,7 @@ export default function TaxInvoices({ actor, isAdmin }: { actor: string; isAdmin
 
 /* ═══════════ 상세 — 세발 ?id=N 화면 ═══════════ */
 
-function InvoicePanel({ inv, issuer, actor, isAdmin, onClose, act }: { inv: TaxInvoice; issuer: IssuerSettings | null; actor: string; isAdmin: boolean; onClose: () => void; act: (id: string, body: Record<string, unknown>) => Promise<boolean> }) {
+function InvoicePanel({ inv, issuer, actor, isAdmin, onClose, act, onGo }: { inv: TaxInvoice; issuer: IssuerSettings | null; actor: string; isAdmin: boolean; onClose: () => void; act: (id: string, body: Record<string, unknown>) => Promise<boolean>; onGo?: (target: string) => void }) {
   const [reason, setReason] = useState("");
   const [nts, setNts] = useState("");
   const [url, setUrl] = useState("");
@@ -250,7 +250,17 @@ function InvoicePanel({ inv, issuer, actor, isAdmin, onClose, act }: { inv: TaxI
             <div key={k} className="flex justify-between gap-4 px-3 py-2"><dt className="text-gray-500 shrink-0">{k}</dt><dd className="text-gray-900 text-right">{v}</dd></div>
           ))}
         </dl>
-        {!inv.counterparty.biz_no && <p className="text-[12px] text-amber-700 mt-2">공급받는자 사업자번호가 없습니다. 매장 현황 → 매장 상세에서 적으면 다음 생성부터 들어갑니다.</p>}
+        {/* 발행 전 상대 정보는 스냅숏이 아니라 매장에 지금 적힌 값이다 — 매장 상세에서 고치면 여기도 따라온다.
+            이메일은 볼타가 **필수**로 요구해서, 비면 발행 자체가 거절된다 (0915). */}
+        {(!inv.counterparty.biz_no || !inv.counterparty.email) && !["ISSUED", "ISSUING", "RESULT_UNKNOWN"].includes(inv.status) && (
+          <p className="text-[12px] text-amber-700 mt-2">
+            공급받는자 {[!inv.counterparty.biz_no && "사업자등록번호", !inv.counterparty.email && "이메일"].filter(Boolean).join("·")}이(가) 없습니다.
+            {!inv.counterparty.email && " 이메일이 없으면 발행이 거절됩니다."}{" "}
+            {onGo
+              ? <button type="button" onClick={() => onGo(`astro-ops?open=${inv.restaurant_id}`)} className="font-semibold text-navy hover:underline">매장 상세에서 적기</button>
+              : "파트너 매장 → 매장 상세에서 적으면 바로 반영됩니다."}
+          </p>
+        )}
       </PanelSection>
 
       <PanelSection title="발행 처리 정보">
