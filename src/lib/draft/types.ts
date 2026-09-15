@@ -322,6 +322,10 @@ export interface IssuerSettings {
   bank_account: string;
   bank_holder: string;
   bolta_customer_key: string | null;
+  /** 서버에 볼타 열쇠가 있는가. '발행하기' 버튼은 설정 칸이 아니라 이 값으로 켜진다. */
+  bolta_ready?: boolean;
+  /** test_ 로 시작하는 키인가 — 실발행과 구분해서 화면에 적는다. */
+  bolta_test?: boolean;
   cert_expires_at: string | null; // 공동인증서 만료
   item_template: string; // "우주라이크 파트너 플랜 {period}분"
   approver: string; // 승인자 (대표)
