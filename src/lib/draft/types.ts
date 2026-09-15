@@ -86,6 +86,8 @@ export interface StoreOps {
   kit_delivered: boolean; // 포스터·QR 스티커 등 비치물 전달
   owner_name: string | null;
   owner_phone: string | null;
+  /** 세금계산서를 받을 주소. 볼타는 공급받는자 이메일이 **필수**라 이게 비면 발행이 거절된다 (0915). */
+  owner_email: string | null;
   biz_no: string | null; // 사업자등록번호
   monthly_fee: number | null;
   pay_cycle: PayCycle | null;
@@ -135,6 +137,7 @@ export function emptyStoreOps(id: number): StoreOps {
     kit_delivered: false,
     owner_name: null,
     owner_phone: null,
+    owner_email: null,
     biz_no: null,
     monthly_fee: null,
     pay_cycle: null,
@@ -168,7 +171,7 @@ export function emptyStoreOps(id: number): StoreOps {
 export const STORE_OPS_EDITABLE = [
   "campus", "semester_active", "vacation_active", "kit_delivered",
   "billing", "invoice", "quote_sent_at", "contract_returned_at",
-  "owner_name", "owner_phone", "biz_no",
+  "owner_name", "owner_phone", "owner_email", "biz_no",
   "monthly_fee", "pay_cycle", "contract_started_on", "contract_months", "billing_start_period", "map_url", "map_name",
   "district", "contract_signed_on", "contract_ends_on", "coupon_basic", "coupon_limited", "stamp_count", "stamp_reward",
   "exclusions", "extra_quote", "kit_note", "pin", "contract_original", "sheet_owner", "sheet_synced_at",

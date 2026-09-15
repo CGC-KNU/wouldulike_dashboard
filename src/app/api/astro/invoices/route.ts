@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
       tax_type: "TAXABLE",
       receipt_type: "CLAIM",
       write_date: now.slice(0, 10),
-      counterparty: { biz_no: o?.biz_no ?? null, ceo: o?.owner_name ?? null, email: null, phone: o?.owner_phone ?? null },
+      counterparty: { biz_no: o?.biz_no ?? null, ceo: o?.owner_name ?? null, email: o?.owner_email ?? null, phone: o?.owner_phone ?? null },
       status: "PENDING",
       requested_by: actor ?? requested_by ?? "unknown",
       requested_at: now,
