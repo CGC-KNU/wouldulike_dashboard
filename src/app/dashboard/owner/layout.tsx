@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import AdminViewBanner from "@/components/DevModeBanner";
 import { ViewModeProvider } from "@/contexts/ViewModeContext";
 import OwnerNavWrapper from "@/components/OwnerNavWrapper";
+
+/** 점주가 보는 화면. 내부 이름(Satellite)을 띄우지 않는다. */
+export const metadata: Metadata = { title: { absolute: "우주라이크 점주 대시보드" } };
 
 export default async function OwnerLayout({
   children,

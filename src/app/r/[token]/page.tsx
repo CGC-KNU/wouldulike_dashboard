@@ -40,10 +40,10 @@ async function load(token: string): Promise<{ r: StoreReport; preview: boolean }
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   const hit = await load(token);
-  if (!hit || hit.r.status === "REVOKED") return { title: "우주라이크 매장 리포트" };
+  if (!hit || hit.r.status === "REVOKED") return { title: { absolute: "우주라이크 매장 리포트" } };
   const { r } = hit;
   return {
-    title: `${r.snapshot.store.name} · 우주라이크 매장 리포트`,
+    title: { absolute: `${r.snapshot.store.name} · 우주라이크 매장 리포트` },
     description: r.summary,
     // 카톡 미리보기: 매장 제공 사진(게시물 커버)만. 없으면 앱 아이콘.
     openGraph: { title: `${r.snapshot.store.name} 인스타그램 홍보 성과`, description: r.summary, images: [r.snapshot.post.cover_url ?? "/brand/appicon.png"], type: "article" },

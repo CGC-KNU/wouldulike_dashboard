@@ -2687,6 +2687,16 @@ export default function AdminHomePage() {
   // 런처·사이드바 배지가 쓰는 전체 현황. 훅이라 조건부 return 앞에 둔다.
   const satStatus = useSatelliteStatus(Boolean(me));
 
+  /**
+   * 브라우저 탭 이름 = `Satellite | 지금 있는 자리` (민열님 0915).
+   * 툴은 주소가 아니라 화면 상태라 metadata 로는 못 정한다 — 여기서 직접 적는다.
+   * 런처에 있으면 '메인', 툴에 들어가 있으면 그 툴 이름.
+   */
+  useEffect(() => {
+    const here = selectedProduct ? PRODUCTS.find((p) => p.key === selectedProduct)?.name : null;
+    document.title = `Satellite | ${here ?? "메인"}`;
+  }, [selectedProduct]);
+
   if (!me) {
     return (
       <div className="px-4 pt-4 pb-20 max-w-2xl mx-auto">
