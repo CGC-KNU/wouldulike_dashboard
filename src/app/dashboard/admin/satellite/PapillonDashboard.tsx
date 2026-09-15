@@ -379,7 +379,7 @@ export default function PapillonDashboard() {
    */
   function openPlan(plan: ContentPlan) {
     const isMine =
-      viewerAccountId !== null && (plan.owner_id === viewerAccountId || plan.shoot_owner_id === viewerAccountId);
+      viewerAccountId !== null && ((plan.owner_id === viewerAccountId || (plan.owners ?? []).some((o) => o.account_id === viewerAccountId)) || plan.shoot_owner_id === viewerAccountId);
     if (!isMine && !isLead && plan.status === "draft") {
       alert("아직 작업 중입니다.\n\n담당자가 준비완료로 바꾸면 열람하고 피드백할 수 있습니다.");
       return;

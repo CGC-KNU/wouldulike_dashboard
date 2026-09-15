@@ -75,7 +75,7 @@ export default function PlanCalendar({
   onDropOnDate: (planId: number, dateStr: string) => void;
 }) {
   function actionLabel(p: ContentPlan): string {
-    const isMine = !!viewerAccountId && (p.owner_id === viewerAccountId || p.shoot_owner_id === viewerAccountId);
+    const isMine = !!viewerAccountId && ((p.owner_id === viewerAccountId || (p.owners ?? []).some((o) => o.account_id === viewerAccountId)) || p.shoot_owner_id === viewerAccountId);
     if (p.status === "published") return "성과 보기";
     if (isMine) return "작업하기";
     if (p.status === "draft" && !isLead) return "작업중";
