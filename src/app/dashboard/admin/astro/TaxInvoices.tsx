@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconAlertTriangle, IconCheck, IconExternalLink, IconFileInvoice, IconPlus, IconRefresh, IconSearch, IconSettings, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCertificate, IconCheck, IconExternalLink, IconFileInvoice, IconPlus, IconRefresh, IconSearch, IconSettings, IconX } from "@tabler/icons-react";
 import { TAX_STATUS_LABEL, type IssuerSettings, type TaxInvoice, type TaxInvoiceStatus } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notice, PageHeader, PanelSection, Select, Skeleton, SlideOver, StepTiles, Stepper, Table, Td, Textarea, Th, agoLabel, rowClickable, type ChipTone } from "../_shared/ui";
 
@@ -24,6 +24,58 @@ const TONE: Record<TaxInvoiceStatus, ChipTone> = {
 const STEPS: TaxInvoiceStatus[] = ["PENDING", "APPROVED", "ISSUING", "ISSUED"];
 const won = (n: number) => `${n.toLocaleString()}원`;
 const thisPeriod = () => new Date().toISOString().slice(0, 7);
+
+/**
+ * 공동인증서 상태 — 볼타가 갖고 있는 진실.
+ *
+ * 전에는 사람이 만료일을 받아 적는 칸이었다. 등록해 놓고도 화면은 '미등록'이라고 말했고,
+ * 멀쩡한 인증서를 다시 등록하러 갈 뻔했다 (민열님 0916). 이제 볼타에 물어서 그대로 보여 준다.
+ * **못 읽은 것과 없는 것을 섞지 않는다** — 그 둘을 섞으면 화면이 거짓말을 한다.
+ */
+interface CertState {
+  state: "REGISTERED" | "NOT_REGISTERED" | "NO_KEY" | "NO_ISSUER" | "UNREACHABLE";
+  detail?: string;
+  expires_at?: string | null;
+  issued_at?: string | null;
+  representative_name?: string;
+}
+
+function useCert(): { cert: CertState | undefined; reload: () => void } {
+  const [cert, setCert] = useState<CertState | undefined>(undefined);
+  const reload = useCallback(() => {
+    setCert(undefined);
+    fetch("/api/astro/invoices/settings/cert")
+      .then((r) => (r.ok ? r.json() : { state: "UNREACHABLE" }))
+      .then(setCert)
+      .catch(() => setCert({ state: "UNREACHABLE" }));
+  }, []);
+  useEffect(reload, [reload]);
+  return { cert, reload };
+}
+
+/** 만료까지 남은 날. 만료일이 없으면 모른다. */
+function certDaysLeft(c: CertState | undefined): number | null {
+  if (!c?.expires_at) return null;
+  return Math.floor((Date.parse(c.expires_at) - Date.now()) / 86_400_000);
+}
+
+/** 카드 한 줄에 들어갈 인증서 표기. 색이 곧 '지금 발행할 수 있나'다. */
+function CertLine({ cert }: { cert: CertState | undefined }) {
+  if (cert === undefined) return <span className="text-gray-400">공동인증서 확인 중…</span>;
+  const days = certDaysLeft(cert);
+  if (cert.state === "REGISTERED") {
+    const soon = days !== null && days < 30;
+    return (
+      <span className={soon ? "text-red-600 font-medium" : "text-emerald-700 font-medium"}>
+        공동인증서 등록됨{cert.expires_at ? ` · 만료 ${cert.expires_at.slice(0, 10)}` : ""}{days !== null ? ` (D-${days})` : ""}
+      </span>
+    );
+  }
+  if (cert.state === "NOT_REGISTERED") return <span className="text-amber-700 font-medium">공동인증서 미등록 — 발행되지 않습니다</span>;
+  if (cert.state === "NO_ISSUER") return <span className="text-amber-700 font-medium">볼타에 이 사업자로 등록된 발급자가 없습니다</span>;
+  // 못 읽은 것은 '없음'이 아니다 — 경고색을 쓰지 않는다
+  return <span className="text-gray-500">공동인증서 상태를 읽지 못했습니다</span>;
+}
 
 export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; isAdmin: boolean; onGo?: (target: string) => void }) {
   const [items, setItems] = useState<TaxInvoice[]>([]);
@@ -83,7 +135,7 @@ export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; i
   }, [inPeriod, status, search]);
   const periods = useMemo(() => [...new Set([thisPeriod(), ...items.map((i) => i.period)])].sort().reverse(), [items]);
   const open = items.find((i) => i.id === openId) ?? null;
-  const certDays = issuer?.cert_expires_at ? Math.floor((Date.parse(issuer.cert_expires_at) - Date.now()) / 86_400_000) : null;
+  const { cert, reload: reloadCert } = useCert();
 
   return (
     <>
@@ -121,7 +173,7 @@ export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; i
                 ? <span className={issuer.bolta_test ? "text-amber-700 font-medium" : "text-emerald-700 font-medium"}>볼타 연결됨{issuer.bolta_test ? " (테스트 키)" : ""}</span>
                 : <span className="text-amber-700 font-medium">볼타 열쇠 없음 — 서버에 BOLTA_API_KEY 필요</span>}
               {" · "}
-              {issuer?.cert_expires_at ? <span className={certDays !== null && certDays < 30 ? "text-red-600 font-medium" : ""}>공동인증서 만료 {issuer.cert_expires_at}{certDays !== null ? ` (D-${certDays})` : ""}</span> : <span className="text-amber-700 font-medium">공동인증서 미등록</span>}
+              <CertLine cert={cert} />
               {" · "}승인자 {issuer?.approver}
             </p>
           </div>
@@ -182,7 +234,7 @@ export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; i
       </Card>
 
       {open && <InvoicePanel inv={open} issuer={issuer} actor={actor} isAdmin={isAdmin} onClose={() => setOpenId(null)} act={act} onGo={onGo} />}
-      {settings && issuer && <IssuerPanel issuer={issuer} isAdmin={isAdmin} onClose={() => setSettings(false)} onSaved={load} />}
+      {settings && issuer && <IssuerPanel issuer={issuer} isAdmin={isAdmin} cert={cert} onReloadCert={reloadCert} onClose={() => setSettings(false)} onSaved={load} />}
     </>
   );
 }
@@ -301,8 +353,59 @@ function InvoicePanel({ inv, issuer, actor, isAdmin, onClose, act, onGo }: { inv
 
 /* ═══════════ 발행 주체 설정 — Console '세금계산서(볼타) 설정' ═══════════ */
 
-function IssuerPanel({ issuer, isAdmin, onClose, onSaved }: { issuer: IssuerSettings; isAdmin: boolean; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ ...issuer, bolta_customer_key: issuer.bolta_customer_key ?? "", cert_expires_at: issuer.cert_expires_at ?? "" });
+/**
+ * 인증서 블록 — 상태를 보여 주고, 등록·갱신 주소를 받아 온다.
+ *
+ * 주소는 한 번짜리라 여기서 열어 두고 링크로도 남긴다. 팝업이 막히는 브라우저가 있어서
+ * 자동으로 열리지 않아도 손으로 열 수 있어야 한다.
+ */
+function CertBlock({ cert, isAdmin, onReload }: { cert: CertState | undefined; isAdmin: boolean; onReload: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function getUrl() {
+    setBusy(true); setErr(null); setUrl(null);
+    try {
+      const res = await fetch("/api/astro/invoices/settings/cert", { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.url) { setErr(d.detail ?? "등록 주소를 받지 못했습니다."); return; }
+      setUrl(d.url);
+      window.open(d.url, "_blank", "noopener");
+    } catch {
+      setErr("서버에 연결하지 못했습니다.");
+    } finally { setBusy(false); }
+  }
+
+  const registered = cert?.state === "REGISTERED";
+  return (
+    <div className="rounded-xl border border-black/[0.07] px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="w-8 h-8 rounded-lg bg-navy/[0.07] text-navy flex items-center justify-center shrink-0"><IconCertificate size={17} aria-hidden="true" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold text-gray-900">공동인증서</p>
+          <p className="text-[12px] mt-0.5"><CertLine cert={cert} /></p>
+        </div>
+        <Button size="sm" variant="ghost" icon={<IconRefresh />} onClick={onReload} disabled={cert === undefined}>다시 확인</Button>
+        {isAdmin && cert && cert.state !== "NO_KEY" && (
+          <Button size="sm" variant={registered ? "secondary" : "primary"} onClick={getUrl} disabled={busy}>
+            {busy ? "주소 받는 중…" : registered ? "인증서 갱신" : "인증서 등록"}
+          </Button>
+        )}
+      </div>
+      {cert?.detail && cert.state !== "REGISTERED" && <p className="text-[12px] text-gray-500 mt-1.5">{cert.detail}</p>}
+      {url && (
+        <p className="text-[12px] text-gray-600 mt-2">
+          등록 창을 열었습니다. 안 열렸으면 <a href={url} target="_blank" rel="noreferrer" className="text-navy font-semibold hover:underline inline-flex items-center gap-0.5">여기로 <IconExternalLink size={12} aria-hidden="true" /></a>. 한 번만 쓸 수 있는 주소라 시간이 지나면 다시 받으세요. 올린 뒤 <span className="font-semibold">다시 확인</span>을 누르면 반영됩니다.
+        </p>
+      )}
+      {err && <p className="text-[12px] text-red-600 mt-1.5" role="alert">{err}</p>}
+    </div>
+  );
+}
+
+function IssuerPanel({ issuer, isAdmin, cert, onReloadCert, onClose, onSaved }: { issuer: IssuerSettings; isAdmin: boolean; cert: CertState | undefined; onReloadCert: () => void; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ ...issuer, bolta_customer_key: issuer.bolta_customer_key ?? "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
@@ -334,15 +437,13 @@ function IssuerPanel({ issuer, isAdmin, onClose, onSaved }: { issuer: IssuerSett
         <div className="mt-3"><Field label="주소"><Input value={f.address} onChange={set("address")} /></Field></div>
       </PanelSection>
       <PanelSection title="볼타 (전자세금계산서 API)">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="볼타 고객 키" hint="참고용 메모입니다. 발행 열쇠는 서버 환경변수(BOLTA_API_KEY)에 둡니다 — 화면에 두지 않습니다."><Input value={f.bolta_customer_key} onChange={set("bolta_customer_key")} placeholder="선택" /></Field>
-          <Field label="공동인증서 만료일" hint="만료 30일 전부터 빨갛게 표시"><Input value={f.cert_expires_at} onChange={set("cert_expires_at")} type="date" /></Field>
-        </div>
+        <Field label="볼타 고객 키" hint="참고용 메모입니다. 발행 열쇠는 서버 환경변수(BOLTA_API_KEY)에 둡니다 — 화면에 두지 않습니다."><Input value={f.bolta_customer_key} onChange={set("bolta_customer_key")} placeholder="선택" /></Field>
+        <div className="mt-3"><CertBlock cert={cert} isAdmin={isAdmin} onReload={onReloadCert} /></div>
         <div className="mt-3 rounded-xl bg-black/[0.03] px-3 py-2.5 text-[12px] text-gray-600 leading-relaxed">
           <p className="font-semibold text-gray-800 mb-1 inline-flex items-center gap-1"><IconAlertTriangle size={14} aria-hidden="true" /> 안내</p>
           <ul className="list-disc pl-4 space-y-0.5">
-            <li>발행 주체 1곳(코끼리)당 볼타 고객 1개를 등록합니다. 개인사업자 지원 여부·요금은 볼타에 확인이 필요합니다 (0830 분석 Q1).</li>
-            <li>공동인증서 등록은 볼타가 주는 5분 유효 URL 에서 합니다. 여기엔 만료일만 적습니다.</li>
+            <li>인증서를 한 번 등록해 두면 그 뒤 발행은 API 로 나갑니다. <span className="font-semibold text-gray-800">대표자가 매달 홈택스에 들어갈 필요가 없습니다</span> — 인증서를 갱신하는 해에 한 번만 필요합니다.</li>
+            <li>인증서와 그 비밀번호는 <span className="font-semibold text-gray-800">볼타 화면에서 대표자 본인이</span> 올립니다. 우리 서버는 만지지 않습니다.</li>
             <li>연결 전에는 홈택스에서 발행하고 각 건에 '발행 완료로 표시'(승인번호)를 합니다. 흐름은 같습니다.</li>
           </ul>
         </div>
