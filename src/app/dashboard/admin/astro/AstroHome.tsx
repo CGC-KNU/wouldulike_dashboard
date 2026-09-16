@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IconArrowRight, IconBrandSlack, IconExternalLink } from "@tabler/icons-react";
-import { LEAD_STAGES, isPaidTier, type Activity, type Lead, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
+import { LEAD_OPEN_STAGES, isPaidTier, type Activity, type Lead, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
 import { BLOCKER_KIND_LABEL, buildBlockers, monthlyFromPlan, type BlockerKind } from "@/lib/draft/blockers";
 import { SALES_SHEET, TOOLS, slackUrl } from "@/lib/satellite";
 import { Button, Card, Chip, Empty, Kpi, PageHeader, Skeleton, agoLabel, daysSince, focusRing, todayLocal, type ChipTone, periodLocal } from "../_shared/ui";
@@ -41,12 +41,13 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
   const paidIds = new Set((invoices ?? []).filter((i) => i.paid_at && !["CANCELED", "REJECTED"].includes(i.status)).map((i) => i.restaurant_id));
   const unpaid = paid.filter((s) => s.ops?.billing !== "EXEMPT" && (s.ops?.pay_cycle === "LUMP" ? s.ops?.billing !== "PAID" : !paidIds.has(s.restaurant_id)));
   const noReply = paid.filter((s) => s.ops?.invoice === "NO_REPLY");
-  const active = (leads ?? []).filter((l) => !["재컨택", "보류", "거절"].includes(l.stage));
-  const stale = active.filter((l) => l.stage !== "계약 완료" && (daysSince(l.last_touch_at) ?? 0) >= 7);
+  // 계약 완료는 후보에서 뺀다 — 칸반(LeadPipeline)과 같은 기준이어야 두 화면의 '진행 중'이 맞는다.
+  const active = (leads ?? []).filter((l) => !["재컨택", "보류", "거절", "계약 완료"].includes(l.stage));
+  const stale = active.filter((l) => (daysSince(l.last_touch_at) ?? 0) >= 7);
   const due = active.filter((l) => l.due).slice(0, 6);
   /** 단계별 후보 수와 **월 합계** — Pitchr 파이프라인이 단계마다 금액을 달아 놓은 것을 옮겼다.
    *  금액은 제안 플랜 글자에서 숫자를 읽은 것만 센다. 플랜 이름만 있고 숫자가 없으면 '금액 미정'으로 따로 센다. */
-  const byStage = LEAD_STAGES.map((st) => {
+  const byStage = LEAD_OPEN_STAGES.map((st) => {
     const list = active.filter((l) => l.stage === st);
     const fees = list.map((l) => monthlyFromPlan(l.proposed_plan, l.campus));
     return { stage: st, n: list.length, won: fees.reduce<number>((a, f) => a + (f ?? 0), 0), unknown: fees.filter((f) => f === null).length };

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { periodLocal } from "./ui";
-import { LEAD_STAGES } from "@/lib/draft/types";
+import { LEAD_OPEN_STAGES } from "@/lib/draft/types";
 
 /** 정가표 — 스팟 금액을 셀 때만 쓴다. 값을 적어 둔 건이면 그걸 우선한다(0원 = 무료도 적어 둔 값이다). */
 const SPOT_PRICE: Record<string, number> = { CARD: 100_000, CARD_SHOOT: 150_000, REELS: 150_000, REELS_SHOOT: 200_000 };
@@ -86,7 +86,7 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
             meetings: active.filter((l) => l.stage === "미팅 조율" || l.stage === "미팅 예정").length,
             stale: active.filter((l) => l.stage !== "계약 완료" && l.last_touch_at && Date.now() - Date.parse(l.last_touch_at) > 7 * 86_400_000).length,
             // 단계별 인원 — 어디에 몰려 있는지가 '진행 후보 86' 한 숫자보다 훨씬 많은 걸 말한다
-            funnel: LEAD_STAGES.map((st) => ({ stage: st, n: active.filter((l) => l.stage === st).length })),
+            funnel: LEAD_OPEN_STAGES.map((st) => ({ stage: st, n: active.filter((l) => l.stage === st).length })),
             side: ls.length - active.length,
             recent: [...active].sort((a, b) => (b.last_touch_at ?? b.created_at ?? "").localeCompare(a.last_touch_at ?? a.created_at ?? "")).slice(0, 5).map((l) => ({ id: l.id, name: l.name, stage: l.stage, owner: l.owner, at: l.last_touch_at ?? l.created_at ?? null })),
           };
