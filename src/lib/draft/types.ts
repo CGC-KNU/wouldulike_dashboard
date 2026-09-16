@@ -271,7 +271,7 @@ export interface SalesDoc {
 }
 
 /** 상호·사업자등록번호는 빠져 있다 — 사업자등록증 값이라 화면에서 안 고친다 (0915). */
-export const ISSUER_EDITABLE = ["ceo", "address", "email", "bank_name", "bank_account", "bank_holder", "bolta_customer_key", "cert_expires_at", "item_template", "approver", "slack_channel"] as const satisfies readonly (keyof IssuerSettings)[];
+export const ISSUER_EDITABLE = ["ceo", "address", "email", "bank_name", "bank_account", "bank_holder", "bolta_customer_key", "item_template", "approver", "slack_channel"] as const satisfies readonly (keyof IssuerSettings)[];
 
 export const DOC_EDITABLE = ["kind", "title", "version", "url", "when", "note"] as const satisfies readonly (keyof SalesDoc)[];
 
@@ -330,7 +330,8 @@ export interface IssuerSettings {
   bolta_ready?: boolean;
   /** test_ 로 시작하는 키인가 — 실발행과 구분해서 화면에 적는다. */
   bolta_test?: boolean;
-  cert_expires_at: string | null; // 공동인증서 만료
+  /** 공동인증서 만료 — 사람이 받아 적던 칸. 이제 볼타에 직접 묻는다(설정 → 공동인증서). 옛 값만 남아 있다. */
+  cert_expires_at: string | null;
   item_template: string; // "우주라이크 파트너 플랜 {period}분"
   approver: string; // 승인자 (대표)
   slack_channel: string;

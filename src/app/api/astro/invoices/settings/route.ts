@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest) {
 
   const cur = readDraft<IssuerSettings>(KEY, seedIssuer);
   const next = { ...cur };
-  for (const k of EDITABLE) if (k in b) (next as Record<string, unknown>)[k] = (b[k] as string) || (k === "bolta_customer_key" || k === "cert_expires_at" ? null : "");
+  for (const k of EDITABLE) if (k in b) (next as Record<string, unknown>)[k] = (b[k] as string) || (k === "bolta_customer_key" ? null : "");
   next.updated_at = new Date().toISOString();
   writeDraft(KEY, next);
   return NextResponse.json({ issuer: next, draft: true });
