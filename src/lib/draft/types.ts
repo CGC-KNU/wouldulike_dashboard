@@ -191,6 +191,10 @@ export const LEAD_EDITABLE = [
  * 앞 7개가 파이프라인(왼→오른쪽), 뒤 3개는 옆으로 빠진 상태(재컨택·보류·거절).
  */
 export const LEAD_STAGES = ["미컨택", "컨택 중", "미팅 조율", "미팅 예정", "미팅 완료", "구두 합의", "계약 완료"] as const;
+/** 파이프라인에 서는 단계 — **계약 완료는 빠진다.**
+ *  계약이 되면 후보가 아니라 파트너 매장이 된다(「제휴 매장으로 등록」). 후보 목록에 남겨 두면
+ *  '진행 중'이 계속 부풀고, 매장 목록과 후보 목록 양쪽에 같은 가게가 선다. (2026-09-16 팀 결정) */
+export const LEAD_OPEN_STAGES = ["미컨택", "컨택 중", "미팅 조율", "미팅 예정", "미팅 완료", "구두 합의"] as const;
 export const LEAD_SIDE_STAGES = ["재컨택", "보류", "거절"] as const;
 export type LeadStage = (typeof LEAD_STAGES)[number] | (typeof LEAD_SIDE_STAGES)[number];
 export const ALL_LEAD_STAGES: readonly LeadStage[] = [...LEAD_STAGES, ...LEAD_SIDE_STAGES];
