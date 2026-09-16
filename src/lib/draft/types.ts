@@ -271,7 +271,7 @@ export interface SalesDoc {
 }
 
 /** 상호·사업자등록번호는 빠져 있다 — 사업자등록증 값이라 화면에서 안 고친다 (0915). */
-export const ISSUER_EDITABLE = ["ceo", "address", "email", "bank_name", "bank_account", "bank_holder", "bolta_customer_key", "item_template", "approver", "slack_channel"] as const satisfies readonly (keyof IssuerSettings)[];
+export const ISSUER_EDITABLE = ["ceo", "address", "bank_name", "bank_account", "bank_holder", "bolta_customer_key", "item_template", "approver", "slack_channel"] as const satisfies readonly (keyof IssuerSettings)[];
 
 export const DOC_EDITABLE = ["kind", "title", "version", "url", "when", "note"] as const satisfies readonly (keyof SalesDoc)[];
 

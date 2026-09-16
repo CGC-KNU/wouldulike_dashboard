@@ -432,7 +432,9 @@ function IssuerPanel({ issuer, isAdmin, cert, onReloadCert, onClose, onSaved }: 
           <Field label="입금 은행" hint="계약 완료 안내 문자에 들어갑니다"><Input value={f.bank_name ?? ""} onChange={set("bank_name")} placeholder="토스뱅크" /></Field>
           <Field label="입금 계좌번호"><Input value={f.bank_account ?? ""} onChange={set("bank_account")} placeholder="1002-0000-0000" inputMode="numeric" /></Field>
           <Field label="예금주"><Input value={f.bank_holder ?? ""} onChange={set("bank_holder")} /></Field>
-          <Field label="담당 이메일"><Input value={f.email} onChange={set("email")} type="email" /></Field>
+          {/* 볼타는 공급자 담당자 이메일도 **필수**다. 오타 하나면 발행이 통째로 막히고,
+              바뀌는 값도 아니다 — 상호·사업자번호와 같이 고정한다 (민열님 0916). */}
+          <Field label="담당 이메일" hint="계산서 발행에 쓰이는 우리 쪽 주소 · 고정"><Input value={f.email} disabled /></Field>
         </div>
         <div className="mt-3"><Field label="주소"><Input value={f.address} onChange={set("address")} /></Field></div>
       </PanelSection>
