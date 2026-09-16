@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { IconUsers } from "@tabler/icons-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IconCalendarDue, IconUsers } from "@tabler/icons-react";
 
 import AssigneeMultiPicker from "./AssigneeMultiPicker";
 import { DeleteConfirmModal } from "./PlanTable";
@@ -22,6 +22,9 @@ import { ContentPlan, KanbanResponse, MEDIA_META, MediaType, SatelliteMember, Sh
  * "에디터" 탭으로 열리는 걸 우선 시도한다 — 본인 담당 건이 아니면 PlanEditor 자체의
  * 안전장치가 "콘텐츠 피드백" 탭으로 되돌린다(§7·§8).
  */
+/** 완료 칸에 기본으로 보여줄 개수 — 나머지는 "이전 완료 콘텐츠 보기" 필터 뒤로 숨긴다(마케팅팀 피드백). */
+const DONE_DEFAULT_LIMIT = 5;
+
 export default function ContentKanban({
   members,
   viewerAccountId,
@@ -29,6 +32,8 @@ export default function ContentKanban({
   today,
   onCreate,
   onDelete,
+  onChanged,
+  refreshToken,
 }: {
   members: SatelliteMember[];
   viewerAccountId: number | null;
@@ -36,6 +41,10 @@ export default function ContentKanban({
   today: string;
   onCreate: (body: Record<string, unknown>) => Promise<boolean>;
   onDelete: (id: number) => Promise<void>;
+  /** 칸반 밖(드래그 앤 드롭 등)에서 바뀐 내용을 캘린더 쪽에도 알린다 — §2-1 연동. */
+  onChanged?: () => void;
+  /** 캘린더 등 다른 화면에서 바뀐 값을 칸반에도 반영하기 위한 신호 — 값이 바뀔 때마다 재조회한다. */
+  refreshToken?: number;
 }) {
   const [data, setData] = useState<KanbanResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +55,12 @@ export default function ContentKanban({
   const [ownerTarget, setOwnerTarget] = useState<ContentPlan | null>(null);
   const [ownerDraft, setOwnerDraft] = useState<ShootOwner[]>([]);
   const [ownerSaving, setOwnerSaving] = useState(false);
+  /** 마감일 고치기 — 담당자 고치기와 같은 패턴, 삭제 후 재등록 없이 칸반에서 바로 바꾼다. */
+  const [deadlineTarget, setDeadlineTarget] = useState<ContentPlan | null>(null);
+  const [deadlineDraft, setDeadlineDraft] = useState("");
+  const [deadlineSaving, setDeadlineSaving] = useState(false);
+  /** 완료 칸 "이전 완료 콘텐츠 보기" — 기본은 최근 5개만, 누르면 전체(최근 2주) 표시. */
+  const [showAllDone, setShowAllDone] = useState(false);
 
   const [adding, setAdding] = useState(false);
   const [newDate, setNewDate] = useState(today);
@@ -79,6 +94,18 @@ export default function ContentKanban({
   useEffect(() => {
     load();
   }, [load]);
+
+  /** 캘린더에서 날짜를 드래그로 옮기는 등, 칸반 밖에서 생긴 변경을 조용히 반영한다(§2-1). */
+  const isFirstRefresh = useRef(true);
+  useEffect(() => {
+    if (refreshToken === undefined) return;
+    if (isFirstRefresh.current) {
+      isFirstRefresh.current = false;
+      return;
+    }
+    load({ soft: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshToken]);
 
   useEffect(() => {
     // 열람 전용 계정(리드라도 satellite_assignable=false)은 자기 자신으로 기본
@@ -140,8 +167,30 @@ export default function ContentKanban({
       }
       setOwnerTarget(null);
       load({ soft: true });
+      onChanged?.();
     } finally {
       setOwnerSaving(false);
+    }
+  }
+
+  async function saveDeadline() {
+    if (!deadlineTarget || deadlineSaving) return;
+    setDeadlineSaving(true);
+    try {
+      const res = await fetch(`/api/satellite/plans/${deadlineTarget.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deadline: deadlineDraft || null }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.detail ?? "마감일을 바꾸지 못했습니다.");
+        return;
+      }
+      setDeadlineTarget(null);
+      load({ soft: true });
+      onChanged?.();
+    } finally {
+      setDeadlineSaving(false);
     }
   }
 
@@ -164,6 +213,7 @@ export default function ContentKanban({
         return;
       }
       load({ soft: true });
+      onChanged?.();
     } catch {
       alert("네트워크 오류");
     }
@@ -173,6 +223,11 @@ export default function ContentKanban({
   function canDelete(p: ContentPlan): boolean {
     if (p.status === "published") return isLead;
     return isLead || (viewerAccountId !== null && ((p.owner_id === viewerAccountId || (p.owners ?? []).some((o) => o.account_id === viewerAccountId)) || p.shoot_owner_id === viewerAccountId));
+  }
+
+  /** 마감일 수정 — 백엔드 can_edit()과 동일(리드 또는 본인 담당, owners 배열도 본다). */
+  function canEditDeadline(p: ContentPlan): boolean {
+    return isLead || (viewerAccountId !== null && (p.owner_id === viewerAccountId || (p.owners ?? []).some((o) => o.account_id === viewerAccountId)));
   }
 
   const showInitialSpinner = loading && !data;
@@ -264,7 +319,15 @@ export default function ContentKanban({
 
         {data && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-gray-100">
-            {data.columns.map((col) => (
+            {data.columns.map((col) => {
+              // 완료 칸은 계속 쌓이면 목록이 길어지니 기본 5개만 — 최신순(백엔드가 이미
+              // scheduled_date·id 오름차순으로 주므로 뒤집기만 하면 최근 완료가 먼저 온다).
+              // 나머지는 "이전 완료 콘텐츠 보기" 필터를 눌러야 보인다(마케팅팀 피드백).
+              const isDone = col.key === "done";
+              const orderedCards = isDone ? [...col.cards].reverse() : col.cards;
+              const hiddenCount = isDone ? Math.max(0, orderedCards.length - DONE_DEFAULT_LIMIT) : 0;
+              const visibleCards = isDone && !showAllDone ? orderedCards.slice(0, DONE_DEFAULT_LIMIT) : orderedCards;
+              return (
               <div key={col.key} className="bg-white flex flex-col min-h-[240px]">
                 <div className="px-3 py-2.5 border-b border-gray-50 flex items-center justify-between">
                   <span className="text-xs font-bold text-gray-700">{col.label}</span>
@@ -284,13 +347,16 @@ export default function ContentKanban({
                   }}
                   className="flex-1 flex flex-col gap-1.5 p-2 overflow-y-auto"
                 >
-                  {col.cards.length === 0 && (
+                  {visibleCards.length === 0 && (
                     <p className="text-[10px] text-gray-300 text-center py-6">없음</p>
                   )}
-                  {col.cards.map((p) => {
+                  {visibleCards.map((p) => {
                     const c = ownerColor(p.owner_id);
                     const draggableHere = DRAGGABLE_STAGES.has(col.key);
                     const deletable = canDelete(p);
+                    const deadlineEditable = canEditDeadline(p);
+                    const actionCount = (isLead ? 1 : 0) + (deadlineEditable ? 1 : 0) + (deletable ? 1 : 0);
+                    const prClass = actionCount >= 3 ? "pr-20" : actionCount === 2 ? "pr-14" : actionCount === 1 ? "pr-7" : "";
                     return (
                       <div key={p.id} className="relative group">
                         <button
@@ -301,9 +367,7 @@ export default function ContentKanban({
                             e.dataTransfer.setData("text/plan-stage", col.key);
                           }}
                           onClick={() => setOpenPlanId(p.id)}
-                          className={`w-full text-left rounded-xl border border-gray-100 hover:border-periwinkle/40 hover:bg-periwinkle/5 transition-colors px-2.5 py-2 ${
-                            deletable ? "pr-7" : ""
-                          } ${draggableHere ? "cursor-grab active:cursor-grabbing" : ""}`}
+                          className={`w-full text-left rounded-xl border border-gray-100 hover:border-periwinkle/40 hover:bg-periwinkle/5 transition-colors px-2.5 py-2 ${prClass} ${draggableHere ? "cursor-grab active:cursor-grabbing" : ""}`}
                         >
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 shrink-0 ${c.chip}`}>
@@ -325,41 +389,68 @@ export default function ContentKanban({
                             )}
                           </div>
                         </button>
-                        {isLead && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOwnerTarget(p);
-                              setOwnerDraft(p.owners?.length ? p.owners : (p.owner_id || p.owner_name_override ? [{ account_id: p.owner_id, name: p.owner_name }] : []));
-                            }}
-                            aria-label="담당자 바꾸기"
-                            title="담당자 바꾸기"
-                            className={`absolute top-1.5 ${deletable ? "right-8" : "right-1.5"} w-6 h-6 flex items-center justify-center rounded-md text-gray-300 opacity-0 group-hover:opacity-100 hover:text-periwinkle hover:bg-periwinkle/10 transition-all`}
-                          >
-                            <IconUsers size={12} stroke={2.2} aria-hidden="true" />
-                          </button>
-                        )}
-                        {deletable && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteTarget(p);
-                            }}
-                            aria-label="삭제"
-                            title="삭제"
-                            className="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center rounded-md text-gray-300 opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all"
-                          >
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-                            </svg>
-                          </button>
+                        {actionCount > 0 && (
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            {isLead && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOwnerTarget(p);
+                                  setOwnerDraft(p.owners?.length ? p.owners : (p.owner_id || p.owner_name_override ? [{ account_id: p.owner_id, name: p.owner_name }] : []));
+                                }}
+                                aria-label="담당자 바꾸기"
+                                title="담당자 바꾸기"
+                                className="w-6 h-6 flex items-center justify-center rounded-md text-gray-300 hover:text-periwinkle hover:bg-periwinkle/10 transition-colors"
+                              >
+                                <IconUsers size={12} stroke={2.2} aria-hidden="true" />
+                              </button>
+                            )}
+                            {deadlineEditable && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeadlineTarget(p);
+                                  setDeadlineDraft(p.deadline ? p.deadline.slice(0, 10) : "");
+                                }}
+                                aria-label="마감일 바꾸기"
+                                title="마감일 바꾸기"
+                                className="w-6 h-6 flex items-center justify-center rounded-md text-gray-300 hover:text-amber-500 hover:bg-amber-50 transition-colors"
+                              >
+                                <IconCalendarDue size={13} stroke={2.2} aria-hidden="true" />
+                              </button>
+                            )}
+                            {deletable && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteTarget(p);
+                                }}
+                                aria-label="삭제"
+                                title="삭제"
+                                className="w-6 h-6 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     );
                   })}
+                  {isDone && hiddenCount > 0 && (
+                    <button
+                      onClick={() => setShowAllDone((v) => !v)}
+                      className="text-[10px] font-semibold text-periwinkle hover:text-navy text-center py-1.5 rounded-lg hover:bg-periwinkle/5 transition-colors"
+                    >
+                      {showAllDone ? "최근 5개만 보기" : `이전 완료 콘텐츠 ${hiddenCount}건 더 보기`}
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -399,6 +490,30 @@ export default function ContentKanban({
                 {ownerSaving ? "저장 중…" : "저장"}
               </button>
               <button onClick={() => setOwnerTarget(null)} className="text-xs font-semibold text-gray-500 px-3">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 마감일 바꾸기 — 업로드 예정일과 별개로, 삭제 후 재등록 없이 칸반에서 바로 (마케팅팀 피드백) */}
+      {deadlineTarget && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setDeadlineTarget(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-gray-900">마감일 바꾸기</h3>
+            <p className="text-xs text-gray-500 mt-0.5 mb-3 truncate">{deadlineTarget.topic || "(주제 미정)"}</p>
+            <input
+              type="date"
+              value={deadlineDraft}
+              onChange={(e) => setDeadlineDraft(e.target.value)}
+              className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-periwinkle"
+            />
+            <p className="text-[11px] text-gray-400 mt-2">업로드 예정일과 독립적인 값입니다. 비워 두면 자동 계산으로 되돌아갑니다.</p>
+            <div className="flex gap-2 mt-4">
+              <button onClick={saveDeadline} disabled={deadlineSaving}
+                className="flex-1 text-xs font-semibold text-white bg-navy rounded-lg py-2 disabled:opacity-50">
+                {deadlineSaving ? "저장 중…" : "저장"}
+              </button>
+              <button onClick={() => setDeadlineTarget(null)} className="text-xs font-semibold text-gray-500 px-3">취소</button>
             </div>
           </div>
         </div>

@@ -172,6 +172,8 @@ export default function PapillonDashboard() {
   const [pubStatus, setPubStatus] = useState<PublishStatus | null>(null);
   const [sectionOrder, setSectionOrder] = useState<MainSectionKey[]>(DEFAULT_MAIN_SECTION_ORDER);
   const [dismissTarget, setDismissTarget] = useState<PublishStatus["unresolved_failures"][number] | null>(null);
+  /** 캘린더에서 바뀐 값을 콘텐츠 칸반에도 알리기 위한 신호 (§2-1 캘린더↔칸반 연동) — 바뀔 때마다 칸반이 재조회한다. */
+  const [kanbanRefreshToken, setKanbanRefreshToken] = useState(0);
 
   useEffect(() => {
     setSectionOrder(loadMainSectionOrder());
@@ -296,6 +298,8 @@ export default function PapillonDashboard() {
       setData((prev) =>
         prev ? { ...prev, plans: prev.plans.map((p) => (p.id === id ? { ...p, ...d } : p)) } : prev
       );
+      // 캘린더 드래그(scheduled_date)·마감일 등 이 경로로 바뀐 값은 칸반도 같이 반영돼야 한다.
+      setKanbanRefreshToken((v) => v + 1);
       return true;
     } catch {
       alert("네트워크 오류");
@@ -337,6 +341,7 @@ export default function PapillonDashboard() {
         setPubStatus((prev) =>
           prev ? { ...prev, unresolved_failures: prev.unresolved_failures.filter((f) => f.plan_id !== id) } : prev
         );
+        setKanbanRefreshToken((v) => v + 1);
       } else {
         const d = await res.json().catch(() => ({}));
         const { detail, hint } = describe(res.status, d.detail ?? `HTTP ${res.status}`);
@@ -391,6 +396,7 @@ export default function PapillonDashboard() {
   async function afterEditorChange() {
     await loadPlans({ soft: true });
     loadPubStatus();
+    setKanbanRefreshToken((v) => v + 1);
   }
 
   const viewerAccountId = data?.viewer.account_id ?? null;
@@ -509,6 +515,8 @@ export default function PapillonDashboard() {
                   today={today}
                   onCreate={create}
                   onDelete={remove}
+                  onChanged={() => loadPlans({ soft: true })}
+                  refreshToken={kanbanRefreshToken}
                 />
               </MainSection>
             );

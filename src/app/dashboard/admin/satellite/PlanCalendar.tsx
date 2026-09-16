@@ -10,6 +10,7 @@ import {
   SatelliteMember,
   STATUS_META,
   Sponsorship,
+  fmtMD,
   ownerColor,
 } from "./types";
 
@@ -286,7 +287,9 @@ export default function PlanCalendar({
                             draggable
                             onDragStart={(e) => e.dataTransfer.setData("text/plan-id", String(p.id))}
                             onClick={() => onSelect(p)}
-                            title={`${p.owner_name} · ${p.topic || "(미정)"} · ${st.label} · ${actionLabel(p)}`}
+                            title={`${p.owner_name} · ${p.topic || "(미정)"} · ${st.label}${
+                              p.deadline && p.deadline.slice(0, 10) !== ds ? ` · 마감 ${fmtMD(p.deadline.slice(0, 10))}` : ""
+                            } · ${actionLabel(p)}`}
                             className={`group w-full text-left rounded-lg px-2 py-1.5 ${c.cell} border border-black/[0.04] hover:brightness-95 hover:ring-1 hover:ring-periwinkle/40 active:scale-[0.97] transition-all cursor-grab`}
                           >
                             <div className="flex items-center gap-1">
@@ -296,9 +299,17 @@ export default function PlanCalendar({
                             <p className="text-[10px] text-gray-500 truncate leading-tight mt-0.5">
                               {p.topic || "(미정)"}
                             </p>
-                            <span className={`inline-block mt-1 text-[9px] font-semibold rounded-full px-1.5 py-0.5 border ${st.cls}`}>
-                              {st.label}
-                            </span>
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              <span className={`inline-block text-[9px] font-semibold rounded-full px-1.5 py-0.5 border ${st.cls}`}>
+                                {st.label}
+                              </span>
+                              {/* 마감일이 업로드일과 다르면(칸반에서 직접 지정) 캘린더에도 같이 보인다 — §2-1 연동 */}
+                              {p.deadline && p.deadline.slice(0, 10) !== ds && (
+                                <span className="text-[9px] font-semibold text-amber-500">
+                                  마감 {fmtMD(p.deadline.slice(0, 10))}
+                                </span>
+                              )}
+                            </div>
                             <span className="hidden group-hover:block text-[9px] font-bold text-periwinkle mt-1">
                               {actionLabel(p)} →
                             </span>
@@ -382,7 +393,9 @@ export default function PlanCalendar({
                           draggable
                           onDragStart={(e) => e.dataTransfer.setData("text/plan-id", String(p.id))}
                           onClick={() => onSelect(p)}
-                          title={`${p.owner_name} · ${p.topic || "(미정)"} · ${st.label} · ${MEDIA_META[p.media_type].label} · ${actionLabel(p)}`}
+                          title={`${p.owner_name} · ${p.topic || "(미정)"} · ${st.label} · ${MEDIA_META[p.media_type].label}${
+                            p.deadline && p.deadline.slice(0, 10) !== ds ? ` · 마감 ${fmtMD(p.deadline.slice(0, 10))}` : ""
+                          } · ${actionLabel(p)}`}
                           className={`group w-full text-left rounded-lg px-1.5 py-1 ${c.cell} border border-black/[0.04] hover:brightness-95 hover:ring-1 hover:ring-periwinkle/40 active:scale-[0.97] transition-all cursor-grab`}
                         >
                           <div className="flex items-center gap-1">
@@ -395,6 +408,12 @@ export default function PlanCalendar({
                           <p className="text-[9px] text-gray-500 truncate leading-tight">
                             {p.topic || "(미정)"}
                           </p>
+                          {/* 마감일이 업로드일과 다르면(칸반에서 직접 지정) 캘린더에도 같이 보인다 — §2-1 연동 */}
+                          {p.deadline && p.deadline.slice(0, 10) !== ds && (
+                            <span className="text-[8px] font-semibold text-amber-500">
+                              마감 {fmtMD(p.deadline.slice(0, 10))}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
