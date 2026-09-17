@@ -10,7 +10,7 @@ import MessageComposer from "./MessageComposer";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 import QuickAdd from "./QuickAdd";
 import { SPOT_SIDE_STAGES, productOf, spotAmount, type SpotJob } from "@/lib/draft/spot";
-import { looseToISO } from "@/lib/draft/dates";
+import { looseToISO, looseToHHMM } from "@/lib/draft/dates";
 
 /**
  * 영업 일정 — 날짜가 있는 것은 전부 한 달 위에 놓는다 (민열님 0911 · 0914).
@@ -35,6 +35,11 @@ export type CalKind =
 
 export type CalEvent = {
   date: string; kind: CalKind; label: string; sub?: string; onClick?: () => void;
+  /**
+   * 시각 "HH:MM". **없으면 하루 종일 건이다** — 0시가 아니다.
+   * 미팅·촬영처럼 시각이 있는 것만 붙는다. 하루 목록은 이걸로 줄을 세운다 (민열님 0917).
+   */
+  at?: string;
   /** 문자 보내기에 필요한 값. 입금·미팅·계약 시작 항목에만 붙는다. */
   msg?: MsgContext;
 };
@@ -104,7 +109,9 @@ export function buildEvents(
     if (["재컨택", "보류", "거절", "계약 완료"].includes(l.stage)) continue;
     const msg: MsgContext = { name: l.name, targetType: "lead", targetId: l.id, owner: l.owner_name, phone: l.contact ?? l.phone, meetingAt: l.meeting_at, nextAction: l.next_action };
     const go = () => onLead(l.id);
-    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, sub: l.meeting_at ?? undefined, onClick: go, msg });
+    // 시각은 왼쪽 칸이 맡는다 — sub 에 같은 값을 또 쓰면 "2026-09-19 14:00" 이 두 번 보인다
+    const mtAt = looseToHHMM(l.meeting_at);
+    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, at: mtAt ?? undefined, sub: mtAt ? undefined : l.meeting_at ?? undefined, onClick: go, msg });
     const du = parseLoose(l.due, y); if (du) out.push({ date: du, kind: "due", label: l.name, sub: l.next_action ?? undefined, onClick: go, msg });
     const ct = parseLoose(l.contacted_at, y); if (ct) out.push({ date: ct, kind: "contacted", label: l.name, sub: l.channel ? `${l.channel} · ${l.stage}` : l.stage, onClick: go });
   }
@@ -160,9 +167,10 @@ export function buildEvents(
     const tail = [p?.label, amount === null ? null : amount === 0 ? "무료" : `${amount.toLocaleString()}원`].filter(Boolean).join(" · ");
     const msg: MsgContext = { name: sp.name, targetType: "lead", targetId: sp.id, owner: sp.owner_name, phone: sp.contact, meetingAt: sp.meeting_at, nextAction: sp.next_action };
 
-    const mt = parseLoose(sp.meeting_at, y); if (mt) out.push({ date: mt, kind: "spot_meeting", label: sp.name, sub: sp.meeting_at ?? tail, onClick: go, msg });
+    const mtAt = looseToHHMM(sp.meeting_at), shAt = looseToHHMM(sp.shoot_at);
+    const mt = parseLoose(sp.meeting_at, y); if (mt) out.push({ date: mt, kind: "spot_meeting", label: sp.name, at: mtAt ?? undefined, sub: (mtAt ? tail : sp.meeting_at ?? tail) || undefined, onClick: go, msg });
     const ps = ymd(sp.plan_sent_at); if (ps) out.push({ date: ps, kind: "spot_plan", label: sp.name, sub: tail || "기획안 발송", onClick: go });
-    const sh = parseLoose(sp.shoot_at, y); if (sh) out.push({ date: sh, kind: "spot_shoot", label: sp.name, sub: sp.shoot_at ?? tail, onClick: go });
+    const sh = parseLoose(sp.shoot_at, y); if (sh) out.push({ date: sh, kind: "spot_shoot", label: sp.name, at: shAt ?? undefined, sub: (shAt ? tail : sp.shoot_at ?? tail) || undefined, onClick: go });
     const du = parseLoose(sp.due, y); if (du) out.push({ date: du, kind: "spot_due", label: sp.name, sub: sp.next_action ?? tail, onClick: go, msg });
     const dl = ymd(sp.delivered_at); if (dl) out.push({ date: dl, kind: "spot_done", label: sp.name, sub: tail || "납품", onClick: go });
     // 스팟 입금도 청구의 '입금 완료'와 같은 칸에 찍는다 — 그날 들어온 돈은 한 줄에서 봐야 한다.
@@ -213,6 +221,19 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
   const shown = sel ?? firstDayWith;
   const shownList = shown ? byDay.get(shown) ?? [] : [];
 
+  /**
+   * 시각이 있는 것과 하루 종일인 것을 나눈다 (민열님 0917).
+   *
+   * 미팅이 일곱 건이면 그날의 동선은 **시간 순**으로 읽힌다 — 종류로 묶어 봐야 소용이 없다.
+   * 반대로 계약 시작·입금 예정·계산서 품의처럼 시각이 없는 것은 스물일곱 건씩 몰리므로
+   * 종류로 묶어 접어 두는 쪽이 낫다. 그래서 위는 시간표, 아래는 묶음이다.
+   */
+  const timed = useMemo(
+    () => shownList.filter((e) => e.at).sort((a, b) => a.at!.localeCompare(b.at!) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)),
+    [shownList]
+  );
+  const allDay = useMemo(() => shownList.filter((e) => !e.at), [shownList]);
+
   /** 한 종류가 이만큼 넘으면 접는다. 9/1 처럼 계약 시작이 27건 몰리는 날을 위한 것. */
   const FOLD = 6;
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -221,6 +242,27 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
   /** 날짜 칸의 '+' — 그 날짜로 미팅·기한·계약 시작을 바로 등록한다 (민열님 0914). */
   const [addFor, setAddFor] = useState<string | null>(null);
   useEffect(() => setExpanded({}), [ym]);
+
+  /** 한 줄에 붙는 보조 단추(미팅 자료·문자). 시간표와 묶음이 같은 것을 쓴다. */
+  const rowTail = (e: CalEvent, key: string) => (
+    <>
+      {(e.kind === "meeting" || e.kind === "spot_meeting") && (
+        <button type="button" aria-label={`${e.label} 미팅 자료`} title="계약서 · 혜택 등록서"
+          aria-pressed={docsFor === key}
+          onClick={() => setDocsFor(docsFor === key ? null : key)}
+          className={`shrink-0 w-7 h-7 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
+          <IconFileDownload size={15} aria-hidden="true" />
+        </button>
+      )}
+      {e.msg && SMS_KIND[e.kind] && (
+        <button type="button" aria-label={`${e.label} 문자 보내기`} title="문자 보내기"
+          onClick={() => setMsg({ ctx: { ...e.msg!, sender: actor }, ev: { kind: e.kind, past: e.date < today, tomorrow: isTomorrow(e.date, today) } })}
+          className={`shrink-0 w-7 h-7 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
+          <IconMessage2 size={15} aria-hidden="true" />
+        </button>
+      )}
+    </>
+  );
 
   const shift = (k: number) => { const d = new Date(y, m - 1 + k, 1); onMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
   const goToday = () => { const t = todayLocal(); onMonth(t.slice(0, 7)); setSel(t); };
@@ -345,7 +387,35 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
           </div>
         ) : (
           <div className="space-y-3 max-h-[22rem] overflow-y-auto pr-1">
-            {groupsOf(shownList).map((g) => (
+            {/* 시각이 있는 것 — 그날의 시간표. 왼쪽 칸이 시각, 점이 종류다. */}
+            {timed.length > 0 && (
+              <ul className="space-y-0.5">
+                {timed.map((e, i) => {
+                  const key = `${shown}:t:${i}`;
+                  return (
+                    <li key={key}>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={e.onClick} className={`flex-1 min-w-0 flex items-baseline gap-2 text-left py-1 px-1 rounded hover:bg-black/[0.03] ${focusRing}`}>
+                          <span className="shrink-0 w-[3.1rem] text-[12px] font-semibold text-gray-500 tabular-nums">{e.at}</span>
+                          <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${KIND[e.kind].dot}`} aria-hidden="true" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
+                            <span className="block text-[11px] text-gray-500 truncate">{[KIND[e.kind].label, e.sub].filter(Boolean).join(" · ")}</span>
+                          </span>
+                        </button>
+                        {rowTail(e, key)}
+                      </div>
+                      {docsFor === key && (
+                        <div className="mt-1.5 ml-2 rounded-lg bg-black/[0.03] p-2">
+                          <DocQuickLinks ids={DOC_SETS.meeting} label="미팅에 들고 갈 것" />
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {groupsOf(allDay).map((g) => (
               <div key={g.kind}>
                 <p className="flex items-baseline gap-1.5 mb-1"><span className={`w-1.5 h-1.5 rounded-full ${KIND[g.kind].dot}`} /><span className="text-[11px] font-semibold text-gray-600">{KIND[g.kind].label}</span><span className="text-[11px] text-gray-400 tabular-nums">{g.items.length}</span></p>
                 <ul className={`border-l-2 ${KIND[g.kind].bar} pl-2 space-y-0.5`}>
@@ -355,21 +425,7 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                         <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
                         {e.sub && <span className="block text-[11px] text-gray-500 truncate">{e.sub}</span>}
                       </button>
-                      {e.kind === "meeting" && (
-                        <button type="button" aria-label={`${e.label} 미팅 자료`} title="계약서 · 혜택 등록서"
-                          aria-pressed={docsFor === `${shown}:${g.kind}:${i}`}
-                          onClick={() => setDocsFor(docsFor === `${shown}:${g.kind}:${i}` ? null : `${shown}:${g.kind}:${i}`)}
-                          className={`shrink-0 w-7 h-7 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
-                          <IconFileDownload size={15} aria-hidden="true" />
-                        </button>
-                      )}
-                      {e.msg && SMS_KIND[e.kind] && (
-                        <button type="button" aria-label={`${e.label} 문자 보내기`} title="문자 보내기"
-                          onClick={() => setMsg({ ctx: { ...e.msg!, sender: actor }, ev: { kind: e.kind, past: e.date < today, tomorrow: isTomorrow(e.date, today) } })}
-                          className={`shrink-0 w-7 h-7 rounded-lg text-gray-400 hover:text-navy hover:bg-navy/[0.06] flex items-center justify-center ${focusRing}`}>
-                          <IconMessage2 size={15} aria-hidden="true" />
-                        </button>
-                      )}
+                      {rowTail(e, `${shown}:${g.kind}:${i}`)}
                     </li>
                   ))}
                 </ul>
