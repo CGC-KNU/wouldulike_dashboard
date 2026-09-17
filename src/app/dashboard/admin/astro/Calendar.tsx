@@ -8,6 +8,7 @@ import type { MsgContext } from "@/lib/draft/message";
 import { Input, focusRing, todayLocal } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
+import CampusMark from "./CampusMark";
 import QuickAdd from "./QuickAdd";
 import { SPOT_SIDE_STAGES, productOf, spotAmount, type SpotJob } from "@/lib/draft/spot";
 import { looseToISO, looseToHHMM } from "@/lib/draft/dates";
@@ -40,6 +41,11 @@ export type CalEvent = {
    * 미팅·촬영처럼 시각이 있는 것만 붙는다. 하루 목록은 이걸로 줄을 세운다 (민열님 0917).
    */
   at?: string;
+  /**
+   * 어느 캠퍼스 건인지. 하루에 경북대·영남대 미팅이 섞이면 **이름만으로는 안 갈린다** (민열님 0917).
+   * 스팟 제작은 캠퍼스로 나누지 않으므로(0914) 비어 있다.
+   */
+  campus?: string | null;
   /** 문자 보내기에 필요한 값. 입금·미팅·계약 시작 항목에만 붙는다. */
   msg?: MsgContext;
 };
@@ -108,12 +114,12 @@ export function buildEvents(
   for (const l of leads) {
     if (["재컨택", "보류", "거절", "계약 완료"].includes(l.stage)) continue;
     const msg: MsgContext = { name: l.name, targetType: "lead", targetId: l.id, owner: l.owner_name, phone: l.contact ?? l.phone, meetingAt: l.meeting_at, nextAction: l.next_action };
-    const go = () => onLead(l.id);
+    const go = () => onLead(l.id), cp = l.campus ?? null;
     // 시각은 왼쪽 칸이 맡는다 — sub 에 같은 값을 또 쓰면 "2026-09-19 14:00" 이 두 번 보인다
     const mtAt = looseToHHMM(l.meeting_at);
-    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, at: mtAt ?? undefined, sub: mtAt ? undefined : l.meeting_at ?? undefined, onClick: go, msg });
-    const du = parseLoose(l.due, y); if (du) out.push({ date: du, kind: "due", label: l.name, sub: l.next_action ?? undefined, onClick: go, msg });
-    const ct = parseLoose(l.contacted_at, y); if (ct) out.push({ date: ct, kind: "contacted", label: l.name, sub: l.channel ? `${l.channel} · ${l.stage}` : l.stage, onClick: go });
+    const mt = parseLoose(l.meeting_at, y); if (mt) out.push({ date: mt, kind: "meeting", label: l.name, campus: cp, at: mtAt ?? undefined, sub: mtAt ? undefined : l.meeting_at ?? undefined, onClick: go, msg });
+    const du = parseLoose(l.due, y); if (du) out.push({ date: du, kind: "due", label: l.name, campus: cp, sub: l.next_action ?? undefined, onClick: go, msg });
+    const ct = parseLoose(l.contacted_at, y); if (ct) out.push({ date: ct, kind: "contacted", label: l.name, campus: cp, sub: l.channel ? `${l.channel} · ${l.stage}` : l.stage, onClick: go });
   }
 
   // ── 파트너 매장 — 견적 · 회수 · 체결 · 시작 · 종료 · 입금 예정
@@ -121,14 +127,14 @@ export function buildEvents(
     if (!s.is_affiliate || s.ops?.is_test) continue;
     const o = s.ops;
     const start = parseLoose(o?.contract_started_on, y);
-    const go = () => onStore(s.restaurant_id);
+    const go = () => onStore(s.restaurant_id), cp = o?.campus ?? null;
     const base: MsgContext = { name: s.name, targetType: "store", targetId: String(s.restaurant_id), owner: o?.owner_name, phone: o?.owner_phone, fee: o?.monthly_fee, period: ym };
 
-    const q = ymd(o?.quote_sent_at); if (q) out.push({ date: q, kind: "quote", label: s.name, sub: o?.extra_quote ? `별도 견적: ${o.extra_quote}` : "견적서 발송", onClick: go });
-    const r = ymd(o?.contract_returned_at); if (r) out.push({ date: r, kind: "returned", label: s.name, sub: o?.contract_original ? `원본 ${o.contract_original}` : "계약서 회수", onClick: go });
-    const sg = parseLoose(o?.contract_signed_on, y); if (sg) out.push({ date: sg, kind: "signed", label: s.name, sub: o?.contract_months ? `${o.contract_months}개월 계약` : "계약 체결", onClick: go });
-    if (start) out.push({ date: start, kind: "contract", label: s.name, sub: "파트너 계약 시작", onClick: go, msg: base });
-    const end = parseLoose(o?.contract_ends_on, y); if (end) out.push({ date: end, kind: "contract_end", label: s.name, sub: "계약 종료 — 갱신 이야기를 꺼낼 때", onClick: go });
+    const q = ymd(o?.quote_sent_at); if (q) out.push({ date: q, kind: "quote", label: s.name, campus: cp, sub: o?.extra_quote ? `별도 견적: ${o.extra_quote}` : "견적서 발송", onClick: go });
+    const r = ymd(o?.contract_returned_at); if (r) out.push({ date: r, kind: "returned", label: s.name, campus: cp, sub: o?.contract_original ? `원본 ${o.contract_original}` : "계약서 회수", onClick: go });
+    const sg = parseLoose(o?.contract_signed_on, y); if (sg) out.push({ date: sg, kind: "signed", label: s.name, campus: cp, sub: o?.contract_months ? `${o.contract_months}개월 계약` : "계약 체결", onClick: go });
+    if (start) out.push({ date: start, kind: "contract", label: s.name, campus: cp, sub: "파트너 계약 시작", onClick: go, msg: base });
+    const end = parseLoose(o?.contract_ends_on, y); if (end) out.push({ date: end, kind: "contract_end", label: s.name, campus: cp, sub: "계약 종료 — 갱신 이야기를 꺼낼 때", onClick: go });
 
     if (isPaidTier(s.tier) && o?.pay_cycle !== "LUMP" && o?.billing !== "EXEMPT") {
       const billingStart = o?.billing_start_period ?? (start ? start.slice(0, 7) : null);
@@ -139,21 +145,24 @@ export function buildEvents(
       const day = start ? Number(start.slice(8, 10)) : 1;
       const last = new Date(y, m, 0).getDate();
       const d = `${ym}-${String(Math.min(day, last)).padStart(2, "0")}`;
-      out.push({ date: d, kind: "payment", label: s.name, sub: o?.monthly_fee ? `${o.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: go, msg: { ...base, dateLabel: `${Number(d.slice(5, 7))}/${Number(d.slice(8))}` } });
+      out.push({ date: d, kind: "payment", label: s.name, campus: cp, sub: o?.monthly_fee ? `${o.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: go, msg: { ...base, dateLabel: `${Number(d.slice(5, 7))}/${Number(d.slice(8))}` } });
     }
   }
+
+  // 계산서와 스팟은 캠퍼스를 스스로 갖고 있지 않다 — 그 매장에서 빌려 온다.
+  const campusOf = new Map(stores.map((s) => [s.restaurant_id, s.ops?.campus ?? null]));
 
   // ── 세금계산서 — 실제로 일어난 날. 어느 달 것인지(period)가 아니라 **그 일이 있었던 날**에 찍는다.
   for (const inv of invoices) {
     if (["CANCELED", "REJECTED"].includes(inv.status)) continue;
-    const go = onTax ?? (() => onStore(inv.restaurant_id));
+    const go = onTax ?? (() => onStore(inv.restaurant_id)), cp = campusOf.get(inv.restaurant_id) ?? null;
     const won = `${inv.total.toLocaleString()}원`;
     const per = `${Number(inv.period.slice(5))}월분`;
     const msg: MsgContext = { name: inv.name, targetType: "store", targetId: String(inv.restaurant_id), fee: inv.total, period: inv.period };
-    const pd = ymd(inv.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: inv.name, sub: `${won} · ${per} 입금`, onClick: go, msg });
-    const isd = ymd(inv.issued_at); if (isd) out.push({ date: isd, kind: "issued", label: inv.name, sub: inv.nts_no ? `승인번호 ${inv.nts_no}` : `${won} · ${per}`, onClick: go });
-    const rq = ymd(inv.requested_at); if (rq) out.push({ date: rq, kind: "requested", label: inv.name, sub: `${won} · ${per} 품의`, onClick: go });
-    const ap = ymd(inv.approved_at); if (ap) out.push({ date: ap, kind: "approved", label: inv.name, sub: inv.approved_by ? `승인 ${inv.approved_by}` : `${won} · ${per}`, onClick: go });
+    const pd = ymd(inv.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: inv.name, campus: cp, sub: `${won} · ${per} 입금`, onClick: go, msg });
+    const isd = ymd(inv.issued_at); if (isd) out.push({ date: isd, kind: "issued", label: inv.name, campus: cp, sub: inv.nts_no ? `승인번호 ${inv.nts_no}` : `${won} · ${per}`, onClick: go });
+    const rq = ymd(inv.requested_at); if (rq) out.push({ date: rq, kind: "requested", label: inv.name, campus: cp, sub: `${won} · ${per} 품의`, onClick: go });
+    const ap = ymd(inv.approved_at); if (ap) out.push({ date: ap, kind: "approved", label: inv.name, campus: cp, sub: inv.approved_by ? `승인 ${inv.approved_by}` : `${won} · ${per}`, onClick: go });
   }
 
   // ── 스팟 제작 — 미팅 · 기획안 발송 · 촬영 · 납품 기한 · 납품 (민열님 0914)
@@ -161,6 +170,8 @@ export function buildEvents(
   for (const sp of spots) {
     if (SPOT_SIDE_STAGES.includes(sp.stage as (typeof SPOT_SIDE_STAGES)[number])) continue;
     const go = onSpot ? () => onSpot(sp.id) : undefined;
+    // 스팟 보드는 캠퍼스로 나누지 않지만(0914), 값이 적혀 있거나 매장이 연결돼 있으면 달력에서는 보여 준다
+    const cp = sp.campus ?? (sp.restaurant_id ? campusOf.get(sp.restaurant_id) ?? null : null);
     const p = productOf(sp.product);
     const amount = spotAmount(sp);
     // 0 원은 무료로 준 건이다 — 금액이 없는 것과 다르다 (0914)
@@ -168,13 +179,13 @@ export function buildEvents(
     const msg: MsgContext = { name: sp.name, targetType: "lead", targetId: sp.id, owner: sp.owner_name, phone: sp.contact, meetingAt: sp.meeting_at, nextAction: sp.next_action };
 
     const mtAt = looseToHHMM(sp.meeting_at), shAt = looseToHHMM(sp.shoot_at);
-    const mt = parseLoose(sp.meeting_at, y); if (mt) out.push({ date: mt, kind: "spot_meeting", label: sp.name, at: mtAt ?? undefined, sub: (mtAt ? tail : sp.meeting_at ?? tail) || undefined, onClick: go, msg });
-    const ps = ymd(sp.plan_sent_at); if (ps) out.push({ date: ps, kind: "spot_plan", label: sp.name, sub: tail || "기획안 발송", onClick: go });
-    const sh = parseLoose(sp.shoot_at, y); if (sh) out.push({ date: sh, kind: "spot_shoot", label: sp.name, at: shAt ?? undefined, sub: (shAt ? tail : sp.shoot_at ?? tail) || undefined, onClick: go });
-    const du = parseLoose(sp.due, y); if (du) out.push({ date: du, kind: "spot_due", label: sp.name, sub: sp.next_action ?? tail, onClick: go, msg });
-    const dl = ymd(sp.delivered_at); if (dl) out.push({ date: dl, kind: "spot_done", label: sp.name, sub: tail || "납품", onClick: go });
+    const mt = parseLoose(sp.meeting_at, y); if (mt) out.push({ date: mt, kind: "spot_meeting", label: sp.name, campus: cp, at: mtAt ?? undefined, sub: (mtAt ? tail : sp.meeting_at ?? tail) || undefined, onClick: go, msg });
+    const ps = ymd(sp.plan_sent_at); if (ps) out.push({ date: ps, kind: "spot_plan", label: sp.name, campus: cp, sub: tail || "기획안 발송", onClick: go });
+    const sh = parseLoose(sp.shoot_at, y); if (sh) out.push({ date: sh, kind: "spot_shoot", label: sp.name, campus: cp, at: shAt ?? undefined, sub: (shAt ? tail : sp.shoot_at ?? tail) || undefined, onClick: go });
+    const du = parseLoose(sp.due, y); if (du) out.push({ date: du, kind: "spot_due", label: sp.name, campus: cp, sub: sp.next_action ?? tail, onClick: go, msg });
+    const dl = ymd(sp.delivered_at); if (dl) out.push({ date: dl, kind: "spot_done", label: sp.name, campus: cp, sub: tail || "납품", onClick: go });
     // 스팟 입금도 청구의 '입금 완료'와 같은 칸에 찍는다 — 그날 들어온 돈은 한 줄에서 봐야 한다.
-    const pd = ymd(sp.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: sp.name, sub: `${amount ? `${amount.toLocaleString()}원 · ` : ""}스팟 입금`, onClick: go });
+    const pd = ymd(sp.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: sp.name, campus: cp, sub: `${amount ? `${amount.toLocaleString()}원 · ` : ""}스팟 입금`, onClick: go });
   }
 
   return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
@@ -399,7 +410,11 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                           <span className="shrink-0 w-[3.1rem] text-[12px] font-semibold text-gray-500 tabular-nums">{e.at}</span>
                           <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${KIND[e.kind].dot}`} aria-hidden="true" />
                           <span className="min-w-0 flex-1">
-                            <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
+                            {/* 캠퍼스 표식 — 하루에 경북대·영남대가 섞이면 이름만으로는 안 갈린다 (민열님 0917) */}
+                            <span className="flex items-center gap-1.5 min-w-0">
+                              <CampusMark campus={e.campus} size={14} />
+                              <span className="text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
+                            </span>
                             <span className="block text-[11px] text-gray-500 truncate">{[KIND[e.kind].label, e.sub].filter(Boolean).join(" · ")}</span>
                           </span>
                         </button>
@@ -422,7 +437,10 @@ export default function Calendar({ events: allEvents, ym, onMonth, actor, onLogg
                   {(expanded[`${shown}:${g.kind}`] ? g.items : g.items.slice(0, FOLD)).map((e, i) => (
                     <li key={i} className="flex items-center gap-1">
                       <button type="button" onClick={e.onClick} className={`flex-1 min-w-0 text-left py-1 px-1 rounded hover:bg-black/[0.03] ${focusRing}`}>
-                        <span className="block text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <CampusMark campus={e.campus} size={14} />
+                          <span className="text-[13px] font-medium text-gray-900 truncate">{e.label}</span>
+                        </span>
                         {e.sub && <span className="block text-[11px] text-gray-500 truncate">{e.sub}</span>}
                       </button>
                       {rowTail(e, `${shown}:${g.kind}:${i}`)}
