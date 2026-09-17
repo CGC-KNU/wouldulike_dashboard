@@ -445,7 +445,13 @@ export interface ReportMetric {
   window_days: number | null;
   hidden: boolean;
   delta_pct: number | null;
+  /** 어디서 온 숫자인가 — 출처 배지. graph = 인스타그램 Graph API, app = 우리 DB, sheet = 수기 시트. 0917 이전 스냅샷엔 없다. */
+  source?: ReportMetricSource;
 }
+export type ReportMetricSource = "graph" | "app" | "sheet";
+
+/** 판정 한 마디의 색 — good 평소보다 높음 · warn 평소보다 낮음 · gray 판정 안 함/범위 안 */
+export type VerdictTone = "good" | "warn" | "gray";
 
 export interface ReportProposal {
   rule: string; // P1..P9
@@ -455,6 +461,13 @@ export interface ReportProposal {
   approved: boolean;
   edited_by: string | null;
   edited_at: string | null;
+  /**
+   * 근거 — 서버가 만드는 읽기 전용 칸. 숫자를 text 에 넣으면 승인 가드가 "스냅샷에 없는 수치"로 막을 수 있어 따로 둔다.
+   * reportAllText 가 title·text 만 읽으므로 가드 대상이 아니다. 0917 이전 제안엔 없다.
+   */
+  signal?: string;
+  reading?: string;
+  tone?: VerdictTone;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { ReportMetric, ReportProposal, ReportSnapshot } from "./types";
+import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, VerdictTone } from "./types";
 
 /**
  * 매장 리포트의 순수 함수들 — 비교(벤치마크) · 해석 문장 · 제안 · 금지 표현.
@@ -28,6 +28,26 @@ export function approx(n: number): string {
 export function comparable(m: ReportMetric): boolean {
   return !m.hidden && m.n >= MIN_COHORT && m.median !== null;
 }
+
+/**
+ * 지표 판정 한 마디 — 목록 · 게시물 패널 · 리포트 편집이 같이 부른다(따로 쓰면 같은 상태를 다른 말로 부른다).
+ * p10·p90 은 숫자로 보여 주지 않고 **경계선**으로 쓴다 — 점주에게 "p90 480" 은 뜻이 없고 "평소보다 높음" 은 있다.
+ * 경계가 없으면 가운데 값 대비 % 로 말한다. 문구에 들어가는 숫자는 n 과 delta_pct 뿐이다.
+ */
+export function verdict(m: ReportMetric): { tone: VerdictTone; text: string } {
+  if (!comparable(m)) return m.hidden || m.n < MIN_COHORT ? { tone: "gray", text: `표본 부족 (n=${m.n})` } : { tone: "gray", text: "비교 기준 없음" };
+  // comparable 이어도 기준(D7/누적)이 어긋나거나 가운데 값이 0 이면 metricsOf 가 delta 를 비워 둔다 — 비교하지 않는다
+  if (m.delta_pct === null) return { tone: "gray", text: "비교 기준 없음" };
+  if (m.p90 !== null && m.value > m.p90) return { tone: "good", text: `평소보다 높음 (n=${m.n})` };
+  if (m.p10 !== null && m.value < m.p10) return { tone: "warn", text: `평소보다 낮음 (n=${m.n})` };
+  if (m.p10 === null || m.p90 === null) return { tone: m.delta_pct >= 0 ? "good" : "warn", text: `평소 대비 ${m.delta_pct >= 0 ? "+" : ""}${m.delta_pct}% (n=${m.n})` };
+  return { tone: "gray", text: `평소 범위 안 (n=${m.n})` };
+}
+
+export const VERDICT_CLASS: Record<VerdictTone, string> = { good: "text-emerald-700", warn: "text-red-600", gray: "text-gray-400" };
+
+/** 출처 배지 — 앱 지표 화면의 DB 배지와 같은 색·이름 */
+export const METRIC_SOURCE: Record<ReportMetricSource, { label: string; tone: "blue" | "navy" | "gray" }> = { graph: { label: "인스타", tone: "blue" }, app: { label: "DB", tone: "navy" }, sheet: { label: "시트", tone: "gray" } };
 
 /** 해석 문장 — 애딧 "지면 비교" 아래 한 줄. 근거 없으면 그렇다고 말한다. */
 export function interpret(m: ReportMetric): string {
@@ -94,33 +114,49 @@ export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D1
 
 /* ═══════════ 다음 제안 — 조건 → 템플릿 (사람 승인 전엔 안 나간다) ═══════════ */
 
-const RULES: { rule: string; title: string; when: (s: ReportSnapshot) => boolean; text: (s: ReportSnapshot) => string }[] = [
+type Basis = Required<Pick<ReportProposal, "signal" | "reading" | "tone">>;
+
+/** 근거 줄의 "지표 값 · 평소 가운데 값" 조각. 비교군만 "약". */
+function sig(s: ReportSnapshot, key: string): string {
+  const m = s.metrics.find((x) => x.key === key);
+  if (!m) return "";
+  return `${METRIC_LABEL[key] ?? key} ${m.value.toLocaleString()}${m.median !== null ? ` · 평소 가운데 값 ${approx(m.median)}` : ""}`;
+}
+/** 해석은 규칙이 실제로 본 기준(가운데 값의 배수)으로 말한다 — verdict()의 p10·p90 경계와 섞으면 "범위 안 · 1.3배 이상" 처럼 서로 어긋난다. */
+const above = (s: ReportSnapshot, key: string, x: number) => { const m = s.metrics.find((v) => v.key === key); return m ? `${METRIC_LABEL[key] ?? key} 가운데 값의 ${x}배 이상 (n=${m.n})` : ""; };
+
+const RULES: { rule: string; title: string; when: (s: ReportSnapshot) => boolean; text: (s: ReportSnapshot) => string; basis: (s: ReportSnapshot) => Basis }[] = [
   {
     rule: "P1", title: "매장 안 QR 안내물",
     when: (s) => { const m = s.metrics.find((x) => x.key === "saved"); return Boolean(m && comparable(m) && m.value >= (m.median as number) * 1.2 && s.app && s.app.coupon_redeemed === 0); },
     // 인스타 지표와 앱 지표를 한 문장에서 잇지 않는다(인과 금지). 문장을 끊는다.
     text: () => "이번 게시물은 저장이 평소보다 많았습니다. 한편 이번 달 앱 쿠폰 사용은 아직 없습니다. 계산대 QR 안내물 위치를 한 번 보시면 좋겠습니다.",
+    basis: (s) => ({ signal: `${sig(s, "saved")} / 이번 달 쿠폰 사용 ${s.app?.coupon_redeemed ?? 0}`, reading: `${above(s, "saved", 1.2)} · 앱 쿠폰 사용 없음 (병렬 서술, 인과 아님)`, tone: "good" }),
   },
   {
     rule: "P2", title: "캡션 첫 줄에 매장명·위치",
     when: (s) => { const r = s.metrics.find((x) => x.key === "reach"); const p = s.metrics.find((x) => x.key === "profile_visits"); return Boolean(r && p && comparable(r) && comparable(p) && r.value >= (r.median as number) && p.value < (p.median as number) * 0.8); },
     text: () => "많이 보긴 했는데 저희 계정까지 들어온 분이 적었습니다. 다음 편은 첫 줄에 매장명과 위치를 넣어 보겠습니다.",
+    basis: (s) => ({ signal: `${sig(s, "reach")} / ${sig(s, "profile_visits")}`, reading: "도달은 가운데 값 이상, 프로필 방문은 가운데 값의 80% 아래", tone: "warn" }),
   },
   {
     rule: "P3", title: "모임·단체 소구",
     when: (s) => { const m = s.metrics.find((x) => x.key === "shares"); return Boolean(m && comparable(m) && m.value >= (m.median as number) * 1.3); },
     text: () => "공유는 '여기 가자'고 친구에게 보낸 수입니다. 3~4인 세트 메뉴를 한정 쿠폰으로 걸면 이 흐름을 받을 수 있습니다.",
+    basis: (s) => ({ signal: sig(s, "shares"), reading: above(s, "shares", 1.3), tone: "good" }),
   },
   {
     rule: "P4", title: "촬영 재진행",
     when: (s) => { const r = s.metrics.find((x) => x.key === "reach"); const v = s.metrics.find((x) => x.key === "saved"); return Boolean(r && v && comparable(r) && comparable(v) && r.value < (r.median as number) * 0.8 && v.value < (v.median as number) * 0.8); },
     // 효과 암시·지출 권유를 분리한다 — 나쁜 달에 "찍으면 좋아진다"는 근거 없는 약속을 하지 않는다.
     text: () => "이번 편은 평소보다 적게 나갔습니다. 사진을 새로 찍는 것도 방법인데, 원하시면 촬영 일정과 견적을 따로 드리겠습니다.",
+    basis: (s) => ({ signal: `${sig(s, "reach")} / ${sig(s, "saved")}`, reading: "도달·저장 모두 가운데 값의 80% 아래", tone: "warn" }),
   },
   {
     rule: "P6", title: "스탬프 목표 개수 조정",
     when: (s) => Boolean(s.app && s.app.stamp_earned > 0 && s.app.revisit === 0),
     text: () => "스탬프는 모이고 있는데 아직 재방문으로 이어진 분이 없습니다. 목표 개수를 낮추면 첫 보상이 나옵니다.",
+    basis: (s) => ({ signal: `이번 달 스탬프 적립 ${s.app?.stamp_earned ?? 0} / 재방문 ${s.app?.revisit ?? 0}`, reading: "스탬프는 쌓이는데 재방문 0", tone: "gray" }),
   },
 ];
 
@@ -129,7 +165,7 @@ const RULES: { rule: string; title: string; when: (s: ReportSnapshot) => boolean
  * 중앙값 기반 규칙(P1~P4)은 벤치마크와 **같은 표본 게이트**를 탄다 — `comparable()` 이 false 인 지표로는 제안이 생기지 않는다(when 안에서 검사).
  */
 export function propose(s: ReportSnapshot, usedRules: string[] = []): ReportProposal[] {
-  return RULES.filter((r) => !usedRules.includes(r.rule) && r.when(s)).slice(0, 2).map((r) => ({ rule: r.rule, title: r.title, generated_text: r.text(s), text: r.text(s), approved: false, edited_by: null, edited_at: null }));
+  return RULES.filter((r) => !usedRules.includes(r.rule) && r.when(s)).slice(0, 2).map((r) => ({ rule: r.rule, title: r.title, generated_text: r.text(s), text: r.text(s), approved: false, edited_by: null, edited_at: null, ...r.basis(s) }));
 }
 
 /* ═══════════ 금지 표현 — 승인 시점 서버 검사, 걸리면 발행 차단 ═══════════ */

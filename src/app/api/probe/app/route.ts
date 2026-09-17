@@ -14,6 +14,12 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
  */
 
 export type Source = "backend" | "push" | "ga4" | "firebase";
+/**
+ * 연결 상태 3단계. connected = 값이 들어온다 · app_fix = 앱 이벤트 수정·배포가 먼저 · pending = 연결 전.
+ * "연결됨/연결 전" 둘로는 "BigQuery 에는 있는데 쿼리가 안 붙음"과 "앱에 이벤트가 없음"을 가를 수 없다.
+ * 배지는 값과 같은 배포에서만 connected 로 올린다 — 값이 비었는데 배지만 초록이면 "채워진 지표 0 / 17" 과 다른 말을 한다.
+ */
+export type SourceStatus = "connected" | "app_fix" | "pending";
 
 export interface AppMetric {
   key: string;
@@ -22,6 +28,7 @@ export interface AppMetric {
   unit?: string;
   source: Source;
   note?: string;
+  status?: SourceStatus; // 칸 단위 예외 — 출처와 별개로 앱 수정이 먼저인 칸
 }
 
 export interface AppMetricGroup {
@@ -54,9 +61,9 @@ export async function GET() {
       description: "얼마나 많은 학생이 앱을 켜고, 돌아오는가.",
       metrics: [
         { key: "signups_month", label: "이번 달 가입", value: n("signups_this_month"), unit: "명", source: "backend" },
-        { key: "wau", label: "주간 활성(WAU)", value: null, unit: "명", source: "ga4" },
+        { key: "wau", label: "주간 활성(WAU)", value: null, unit: "명", source: "ga4", note: "BigQuery 원본 — 최근 7일 고유 사용자. 쿼리 연결 전" },
         { key: "dau_wau", label: "DAU/WAU", value: null, unit: "%", source: "ga4", note: "끈적함. 20% 넘으면 습관이 붙은 것" },
-        { key: "retention_w1", label: "가입 1주 후 복귀", value: null, unit: "%", source: "firebase" },
+        { key: "retention_w1", label: "가입 1주 후 복귀", value: null, unit: "%", source: "firebase", note: "first_open 코호트의 7일 뒤 재방문. BigQuery 쿼리 연결 전" },
       ],
     },
     {
@@ -64,8 +71,8 @@ export async function GET() {
       title: "전환 퍼널",
       description: "앱을 켠 사람이 실제로 매장에서 쓰기까지.",
       metrics: [
-        { key: "open_to_store", label: "앱 열기 → 매장 상세", value: null, unit: "%", source: "ga4" },
-        { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend" },
+        { key: "open_to_store", label: "앱 열기 → 매장 상세", value: null, unit: "%", source: "ga4", note: "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
+        { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend", note: "분모(매장 상세 열람)는 앱 이벤트 숫자 — DB 와 BigQuery 를 합쳐야 한다" },
         { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend" },
         { key: "coupon_used", label: "쿠폰 사용", value: n("coupon_redeemed_this_month"), unit: "건", source: "backend" },
         { key: "coupon_rate", label: "발급 → 사용", value: null, unit: "%", source: "backend", note: "이 숫자가 배너 A/B 의 주요 지표다 (Castor)" },
@@ -88,26 +95,24 @@ export async function GET() {
       description: "보낸 알림이 사람을 앱으로 데려오는가. 09-09 '알림 보내도 접속률이 낮다'의 답이 여기 있어야 한다.",
       metrics: [
         { key: "push_sent", label: "푸시 발송", value: null, unit: "건", source: "push" },
-        { key: "push_open", label: "푸시 → 앱 열기", value: null, unit: "%", source: "push" },
-        { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4" },
-        { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: null, unit: "%", source: "backend" },
+        { key: "push_open", label: "푸시 → 앱 열기", value: null, unit: "%", source: "push", status: "app_fix", note: "notification_open 은 Firebase 예약어라 0건. 앱에서 push_open 으로 바꾼 배포 이후부터" },
+        { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix", note: "배너 노출 이벤트가 없다(0건). 노출 이벤트 배포가 먼저" },
+        { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: null, unit: "%", source: "backend", note: "클릭은 앱 이벤트, 사용은 DB — 둘을 합쳐야 한다" },
       ],
     },
   ];
 
-  const sources = (Object.keys(SOURCE_LABEL) as Source[]).map((k) => ({
-    key: k,
-    label: SOURCE_LABEL[k],
-    connected: k === "backend" ? s !== null : false,
-    hint:
-      k === "backend"
-        ? "쿠폰·스탬프·가입은 이미 DB 에 있다. 집계 엔드포인트 하나면 된다."
-        : k === "push"
-          ? "notifications 테이블에 발송 기록이 있다. 열림(open) 이벤트만 앱에서 찍으면 된다."
-          : k === "ga4"
-            ? "앱에 GA4 SDK 를 넣고 화면 이벤트를 보내면 세션·퍼널이 나온다. 민열님 '추후 연동 예정'."
-            : "Firebase Analytics 는 GA4 와 같은 스트림이다. 리텐션 리포트는 여기서 읽는다.",
-  }));
+  const SOURCE_HINT: Record<Source, string> = {
+    backend: "쿠폰·스탬프·가입은 이미 DB 에 있다. 집계 엔드포인트 하나면 된다. 「발급 → 사용」이 배너 A/B 주요 지표라 먼저.",
+    push: "발송 건수는 notifications 테이블 집계로 나온다. 열기(open)는 앱 수정 대기 — 위 「푸시 → 앱 열기」 칸.",
+    ga4: "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. WAU · DAU/WAU · 앱 열기 → 매장 상세는 쿼리만 붙이면 된다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저. 값과 배지는 같은 배포에.",
+    firebase: "GA4 와 같은 스트림이라 같은 BigQuery 에 있다. 가입 1주 후 복귀는 first_open 코호트 쿼리로 읽는다.",
+  };
+  const sources = (Object.keys(SOURCE_LABEL) as Source[]).map((k) => {
+    const connected = k === "backend" ? s !== null : false;
+    const status: SourceStatus = connected ? "connected" : "pending";
+    return { key: k, label: SOURCE_LABEL[k], connected, status, hint: SOURCE_HINT[k] };
+  });
 
   return NextResponse.json({
     groups,

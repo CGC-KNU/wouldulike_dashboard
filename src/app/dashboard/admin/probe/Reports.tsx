@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconLink, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, checkText, reportAllText } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, reportAllText, verdict } from "@/lib/draft/report";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, rowClickable, type ChipTone } from "../_shared/ui";
@@ -103,7 +103,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
             <tbody>
               {visiblePosts.map((p) => {
                 const m = (k: string) => p.metrics.find((x) => x.key === k);
-                const cell = (k: string) => { const x = m(k); return x ? <><span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span>{x.delta_pct !== null ? <span className={`block text-[11px] ${x.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>평소 대비 {x.delta_pct >= 0 ? "+" : ""}{x.delta_pct}%</span> : <span className="block text-[11px] text-gray-400">{x.hidden || x.n < 5 ? `표본 ${x.n}` : ""}</span>}</> : <span className="text-gray-300">-</span>; };
+                const cell = (k: string) => { const x = m(k); return x ? <><span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span><Verdict m={x} /></> : <span className="text-gray-300">-</span>; };
                 const k = postKey(p);
                 return (
                   <tr key={k} className={rowClickable} onClick={() => setOpenPost(k)}>
@@ -156,7 +156,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       </Card>
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-        비교는 우리 채널 평소 게시물의 <b>가운데 값</b> 기준이고 표본이 5건 미만이면 비교하지 않습니다. 링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
+        비교는 우리 채널 평소 게시물의 <b>가운데 값</b> 기준이고 표본이 5건 미만이면 비교하지 않습니다. 평소 게시물의 아래 10%·위 10% 선을 넘으면 「평소보다 낮음·높음」, 그 사이면 「평소 범위 안」이라고 씁니다. 링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
         {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-navy font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
       </p>
 
@@ -164,6 +164,18 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       {open && <ReportEditor r={open} onClose={() => setOpenId(null)} onChanged={load} />}
     </>
   );
+}
+
+/** 지표 판정 한 마디 — 목록 · 패널 · 편집이 같은 함수·같은 말 */
+function Verdict({ m }: { m: ReportMetric }) {
+  const v = verdict(m);
+  return <span className={`block text-[11px] ${VERDICT_CLASS[v.tone]}`}>{v.text}</span>;
+}
+
+/** 제안 근거 — 서버가 만든 읽기 전용 칸(승인 가드 대상 밖). 정합성 점검 항목 아랫줄과 같은 모양. */
+function ProposalBasis({ p }: { p?: StoreReport["proposals"][number] }) {
+  if (!p || !(p.signal || p.reading)) return null;
+  return <p className={`text-[12px] mt-1.5 ${VERDICT_CLASS[p.tone ?? "gray"]}`}>신호: {p.signal || "—"}{p.reading ? ` · 해석: ${p.reading}` : ""}</p>;
 }
 
 /** 게시물 상세 — 지표 · 카톡용 텍스트(링크 대신 문자로 보낼 때) · 만들기 */
@@ -188,7 +200,7 @@ function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: 
               <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2">
                 <p className="text-[11px] text-gray-500">{M_LABEL[m.key] ?? m.key}</p>
                 <p className="text-[18px] font-bold tabular-nums text-gray-900 leading-tight">{m.value.toLocaleString()}</p>
-                <p className={`text-[11px] ${m.delta_pct === null ? "text-gray-400" : m.delta_pct >= 0 ? "text-emerald-700" : "text-red-600"}`}>{m.delta_pct === null ? (m.hidden || m.n < 5 ? `표본 부족 (n=${m.n})` : "비교 기준 없음") : `평소 대비 ${m.delta_pct >= 0 ? "+" : ""}${m.delta_pct}% (n=${m.n})`}</p>
+                <Verdict m={m} />
               </div>
             ))}
           </div>
@@ -260,7 +272,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title="스냅샷 (읽기 전용)">
         <div className="grid grid-cols-3 gap-2">
           {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
-            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="text-[11px] text-gray-500">{METRIC_LABEL[m.key]}</p><p className="text-[16px] font-bold tabular-nums">{m.value.toLocaleString()}</p><p className="text-[11px] text-gray-400">{m.delta_pct !== null ? `중앙값 대비 ${m.delta_pct >= 0 ? "+" : ""}${m.delta_pct}% (n=${m.n})` : m.hidden || m.n < 5 ? `표본 부족 (n=${m.n})` : "기준 없음"}</p></div>
+            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{m.value.toLocaleString()}</p><Verdict m={m} /></div>
           ))}
           {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
         </div>
@@ -281,6 +293,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
               <li key={p.rule} className="rounded-lg border border-gray-200 p-3">
                 <label className="flex items-center gap-2 text-[13px] font-semibold text-gray-900 cursor-pointer"><input type="checkbox" checked={p.approved} disabled={!editable} onChange={(e) => setProps((ps) => ps.map((x, k) => (k === i ? { ...x, approved: e.target.checked } : x)))} className="w-4 h-4 accent-[#050072]" />{p.title}<span className="text-[11px] text-gray-400 font-normal">{p.rule}</span></label>
                 <Textarea rows={2} value={p.text} disabled={!editable} onChange={(e) => setProps((ps) => ps.map((x, k) => (k === i ? { ...x, text: e.target.value } : x)))} className="mt-2" />
+                <ProposalBasis p={r.proposals.find((x) => x.rule === p.rule)} />
               </li>
             ))}
           </ul>

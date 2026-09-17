@@ -14,11 +14,12 @@ import { Button, Card, Chip, DraftBadge, Kpi, Notice, PageHeader, Skeleton, Tabl
  */
 
 type Source = "backend" | "push" | "ga4" | "firebase";
-interface Metric { key: string; label: string; value: number | null; unit?: string; source: Source; note?: string }
+type SourceStatus = "connected" | "app_fix" | "pending";
+interface Metric { key: string; label: string; value: number | null; unit?: string; source: Source; note?: string; status?: SourceStatus }
 interface Group { key: string; title: string; description: string; metrics: Metric[] }
 interface Payload {
   groups: Group[];
-  sources: { key: Source; label: string; connected: boolean; hint: string }[];
+  sources: { key: Source; label: string; connected: boolean; status?: SourceStatus; hint: string }[];
   generated_at: string;
   draft?: boolean;
   draft_note?: string;
@@ -26,6 +27,14 @@ interface Payload {
 
 const SOURCE_TONE: Record<Source, ChipTone> = { backend: "navy", push: "blue", ga4: "amber", firebase: "amber" };
 const SOURCE_SHORT: Record<Source, string> = { backend: "DB", push: "푸시", ga4: "GA4", firebase: "Firebase" };
+
+/** 출처 상태 칩 — 연결됨 · 앱 수정 대기 · 연결 전. 홈 사이드 카드도 같이 쓴다. status 가 없는 옛 응답은 connected 로 판단. */
+export function SourceStatusChip({ s }: { s: { connected: boolean; status?: SourceStatus } }) {
+  const st = s.status ?? (s.connected ? "connected" : "pending");
+  if (st === "connected") return <Chip tone="green" dot>연결됨</Chip>;
+  if (st === "app_fix") return <Chip tone="amber">앱 수정 대기</Chip>;
+  return <Chip tone="gray">연결 전</Chip>;
+}
 
 export default function AppMetrics() {
   const [data, setData] = useState<Payload | null>(null);
@@ -61,7 +70,7 @@ export default function AppMetrics() {
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="채워진 지표" value={loading ? "-" : `${filled} / ${total}`} hint="출처가 연결된 칸" />
         <Kpi label="연결된 출처" value={loading ? "-" : `${connected} / ${data?.sources.length ?? 4}`} hint="DB · 푸시 · GA4 · Firebase" />
-        <Kpi label="다음 연결" value={loading ? "-" : "GA4"} hint="세션 · 퍼널 · 리텐션이 살아난다" />
+        <Kpi label="다음 연결" value={loading ? "-" : "BigQuery"} hint="GA4 원본 쿼리로 4칸 · 2칸은 앱 수정 대기" />
         <Kpi label="주요 지표 후보" value={loading ? "-" : "발급 → 사용"} hint="배너 A/B 의 판정 기준 (Castor)" />
       </div>
 
@@ -86,6 +95,7 @@ export default function AppMetrics() {
                       <span className="block text-[13px] text-gray-800">{m.label}</span>
                       {m.note && <span className="block text-[12px] text-gray-500 mt-0.5">{m.note}</span>}
                     </dt>
+                    {m.status === "app_fix" && <Chip tone="amber">앱 수정 대기</Chip>}
                     <Chip tone={SOURCE_TONE[m.source]}>{SOURCE_SHORT[m.source]}</Chip>
                     <dd className={`w-24 text-right text-[16px] font-bold tabular-nums ${m.value === null ? "text-gray-300" : "text-gray-900"}`}>
                       {m.value === null ? "-" : m.value.toLocaleString()}
@@ -113,7 +123,7 @@ export default function AppMetrics() {
               {data.sources.map((s) => (
                 <tr key={s.key}>
                   <Td><span className="font-semibold text-gray-900">{s.label}</span></Td>
-                  <Td>{s.connected ? <Chip tone="green" dot>연결됨</Chip> : <Chip tone="gray">연결 전</Chip>}</Td>
+                  <Td><SourceStatusChip s={s} /></Td>
                   <Td className="text-gray-600">{s.hint}</Td>
                 </tr>
               ))}
@@ -123,7 +133,8 @@ export default function AppMetrics() {
       )}
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-        GA4 를 붙일 때 화면 이벤트 이름은 Castor 의 화면 ID(<code className="bg-gray-100 px-1 rounded">dashboard.admin</code> 식)와 맞춥니다.
+        GA4 는 3월부터 앱 이벤트를 받고 있고 BigQuery(<code className="bg-gray-100 px-1 rounded">wouldulike-efe19.analytics_494806625</code>)에 쌓입니다.
+        칸을 채울 때 화면 이벤트 이름은 Castor 의 화면 ID(<code className="bg-gray-100 px-1 rounded">dashboard.admin</code> 식)와 맞춥니다.
         그래야 Castor 가 만든 실험을 Probe 가 같은 이름으로 읽습니다.
         <a href="https://support.google.com/analytics/answer/9304153" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 ml-2 text-navy font-medium">
           GA4 앱 설정 <IconExternalLink size={12} aria-hidden="true" />

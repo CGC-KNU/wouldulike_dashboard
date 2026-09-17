@@ -12,6 +12,7 @@ import { MIN_COHORT } from "./report";
 
 interface StatsEnvelope { stats?: { revisit_this_month?: number; loyal_total?: number; coupon_redeemed_this_month?: number; stamp_earned_this_month?: number } }
 
+/** Papillon 성과는 전부 인스타그램 Graph API 값이다 — 출처 배지는 graph. */
 export function metricsOf(p: PostPerformance | null): ReportMetric[] {
   if (!p?.available || !p.metrics) return [];
   return Object.entries(p.metrics).map(([key, m]) => {
@@ -22,7 +23,7 @@ export function metricsOf(p: PostPerformance | null): ReportMetric[] {
     // 게시물 기준(D7/누적)과 코호트 기준이 다르면 비교가 불공정하다 — 비교하지 않는다 (2라운드 비교 게이트).
     const basisOk = !c?.basis || c.basis === "none" || !p.basis || c.basis === p.basis;
     const ok = !hidden && basisOk && n >= MIN_COHORT && median !== null && median > 0;
-    return { key, value: m.value, median, p10: c?.p10 ?? null, p90: c?.p90 ?? null, n, window_days: c?.window_days ?? null, hidden, delta_pct: ok ? Math.round(((m.value - (median as number)) / (median as number)) * 100) : null };
+    return { key, value: m.value, median, p10: c?.p10 ?? null, p90: c?.p90 ?? null, n, window_days: c?.window_days ?? null, hidden, delta_pct: ok ? Math.round(((m.value - (median as number)) / (median as number)) * 100) : null, source: "graph" };
   });
 }
 
