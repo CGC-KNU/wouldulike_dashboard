@@ -6,6 +6,8 @@ type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 
 interface Me {
   display_name: string;
+  /** 대외 직함 (PO·CEO / TL·CTO / ML). 권한(department)과 다른 축이라 따로 온다. */
+  title?: string;
   username: string;
   department: Department;
   department_label: string;
@@ -60,7 +62,8 @@ export default function AdminHeader() {
         {/* 뷰 전환 — 애딧의 '광고주 전환 / 파트너 전환' 자리. 지금 어느 눈으로 보고 있는지가 늘 보인다. */}
         <div className="inline-flex items-center p-[3px] rounded-full bg-white/10" role="group" aria-label="보기 전환">
           <a href="/dashboard/owner" className="px-2.5 py-1 rounded-full text-[12px] font-semibold text-white/70 hover:text-white transition-colors">파트너</a>
-          <span aria-current="page" className="px-2.5 py-1 rounded-full text-[12px] font-bold bg-white text-navy shadow-sm">관리자</span>
+          {/* 지금 자리 = 그 사람의 직함. 없으면 직무 이름으로 돌아간다 (민열님 0918) */}
+          <span aria-current="page" title="관리자 화면" className="px-2.5 py-1 rounded-full text-[12px] font-bold bg-white text-navy shadow-sm whitespace-nowrap">{me?.title || me?.department_label || "관리자"}</span>
         </div>
 
         {me && (
