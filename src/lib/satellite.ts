@@ -6,7 +6,7 @@
  * 채널 ID 를 아는 곳은 ID 를 우선한다. 지금은 초안이라 링크만 두고, 실제 연동(알림·수집)은 뒤에 붙인다.
  */
 
-export type ToolKey = "papillon" | "astro" | "aether" | "probe" | "castor" | "libra";
+export type ToolKey = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | "libra";
 
 export interface ToolMeta {
   key: ToolKey;
@@ -49,7 +49,7 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     name: "Probe",
     subtitle: "데이터",
     description: "매장 지표 · 앱 지표 · 데이터 정합성 점검",
-    users: "민찬 · 민구",
+    users: "민찬",
     slack: { channel: "sat-probe" },
     icon: "/satellite/probe.svg",
     status: "draft",
@@ -63,6 +63,18 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     slack: { channel: "sat-castor" },
     icon: "/satellite/castor.svg",
     status: "hold",
+  },
+  // 0919 민열님: 6번째 자리는 툴이 아니라 회사 — ABOUT WOULDULIKE. 팀 내부용.
+  // Atlas 는 지금 서 있는 곳(조직·미션·연혁), Polaris 는 가는 곳(메인의 우주선).
+  atlas: {
+    key: "atlas",
+    name: "Atlas",
+    subtitle: "About",
+    description: "조직도 · 미션 · Satellite · 연혁 — ABOUT WOULDULIKE",
+    users: "전원",
+    slack: { channel: "garage", id: "C0BUFD89S3S" },
+    icon: "/satellite/atlas.svg",
+    status: "live",
   },
   aether: {
     key: "aether",
@@ -87,7 +99,7 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
 };
 
 /** 런처에 보이는 순서. 제작 순서(Papillon→Astro→Probe→Castor)와 같다. */
-export const TOOL_ORDER: ToolKey[] = ["papillon", "astro", "probe", "castor", "aether", "libra"];
+export const TOOL_ORDER: ToolKey[] = ["papillon", "astro", "probe", "castor", "atlas", "aether", "libra"];
 
 export function slackUrl(t: ToolMeta): string {
   return t.slack.id
