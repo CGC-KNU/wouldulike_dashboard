@@ -76,9 +76,16 @@ export async function GET() {
   const uniquePlans = [...new Map(matched.map((m) => [m.plan.id, m.plan])).values()].slice(0, 30);
   const perf = new Map<number, PostPerformance | null>();
   await Promise.all(uniquePlans.map(async (p) => perf.set(p.id, await fetchPerformance(p.id))));
-  // 앱 지표는 매장마다 한 번 (게시물 수와 무관)
+  // 앱 지표는 전 매장을 한 번에 받는다 (백엔드 #37). 옛 백엔드면 매장마다 한 번씩.
   const stats = new Map<number, StatsEnvelope["stats"] | null>();
-  await Promise.all([...new Set(matched.map((m) => m.r.restaurant_id))].map(async (id) => stats.set(id, (await fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${id}`))?.stats ?? null)));
+  const ids = [...new Set(matched.map((m) => m.r.restaurant_id))];
+  const bulk = await fetchBackendJson<{ stats?: Record<string, StatsEnvelope["stats"]> }>("/api/dashboard/stats/bulk/");
+  if (bulk?.stats) {
+    // 집계가 성공했으면 줄이 없는 매장은 활동 0 이다 — 모름이 아니다
+    for (const id of ids) stats.set(id, bulk.stats[String(id)] ?? {});
+  } else {
+    await Promise.all(ids.map(async (id) => stats.set(id, (await fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${id}`))?.stats ?? null)));
+  }
   const reports = readDraft<StoreReport[]>("probe_reports", () => []);
   const month = new Date().toISOString().slice(0, 7);
 

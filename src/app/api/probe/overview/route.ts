@@ -55,25 +55,34 @@ export async function GET() {
   );
   const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
 
-  const stores: StoreMetric[] = await mapLimit(restaurants, 6, async (r) => {
-    const env = await fetchBackendJson<StatsEnvelope>(
-      "/api/dashboard/stats/",
-      `restaurant_id=${r.restaurant_id}`
-    );
-    // 봉투는 왔는데 stats 가 없으면 그것도 '모름'이다 — 0 으로 세면 안 된다
-    const stats = env?.stats ?? null;
-    return {
-      restaurant_id: r.restaurant_id,
-      name: r.name,
-      tier: (r.tier as PlanTier | null) ?? null,
-      is_affiliate: r.is_affiliate !== false,
-      revisit_this_month: stats?.revisit_this_month ?? 0,
-      loyal_total: stats?.loyal_total ?? 0,
-      coupon_redeemed_this_month: stats?.coupon_redeemed_this_month ?? 0,
-      stamp_earned_this_month: stats?.stamp_earned_this_month ?? 0,
-      unavailable: stats === null,
-    };
+  /** 매장 하나를 지표 줄로. `stats` 가 null 이면 '모름'이다 — 0 으로 세면 안 된다. */
+  const toMetric = (r: BackendRestaurant, stats: StatsEnvelope["stats"] | null): StoreMetric => ({
+    restaurant_id: r.restaurant_id,
+    name: r.name,
+    tier: (r.tier as PlanTier | null) ?? null,
+    is_affiliate: r.is_affiliate !== false,
+    revisit_this_month: stats?.revisit_this_month ?? 0,
+    loyal_total: stats?.loyal_total ?? 0,
+    coupon_redeemed_this_month: stats?.coupon_redeemed_this_month ?? 0,
+    stamp_earned_this_month: stats?.stamp_earned_this_month ?? 0,
+    unavailable: stats === null,
   });
+
+  /**
+   * 전 매장 지표는 한 번에 받는다 (백엔드 #37). 예전에는 매장마다 `/stats/` 를 불러 34번을 때렸고
+   * 응답이 25초를 넘겨 화면이 '읽지 못했습니다'로 떨어졌다. 집계가 성공하면 **줄이 없는 매장은
+   * 활동이 0인 것**이지 모름이 아니다. 옛 백엔드(404)면 예전 방식으로 내려간다.
+   */
+  const bulk = await fetchBackendJson<{ stats?: Record<string, StatsEnvelope["stats"]> }>(
+    "/api/dashboard/stats/bulk/"
+  );
+  const bulkStats = bulk?.stats ?? null;
+
+  const stores: StoreMetric[] = bulkStats
+    ? restaurants.map((r) => toMetric(r, bulkStats[String(r.restaurant_id)] ?? {}))
+    : await mapLimit(restaurants, 6, async (r) =>
+        toMetric(r, (await fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${r.restaurant_id}`))?.stats ?? null)
+      );
 
   const live = stores.filter((s) => !s.unavailable);
   const totals = {
