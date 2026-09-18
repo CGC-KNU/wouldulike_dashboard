@@ -63,8 +63,8 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpi("파트너 매장", d.loading ? "…" : d.failed.stores ? "—" : `${i.stores.total}곳`, d.failed.stores ? "매장 목록을 읽지 못했습니다 — 0 이 아니라 모름" : `유료 ${i.stores.paid} · 무료 ${i.stores.total - i.stores.paid}`, <Delta pct={rows[0].pct} note={rows[0].note} />, "Astro", i.stores.total ? (i.stores.paid / i.stores.total) * 100 : 0, "astro-ops")}
         {kpi(`${month}월 수익`, d.loading ? "…" : d.failed.invoices ? "—" : `${won(i.revenue.paid)}원`, d.failed.invoices ? "계산서 목록을 읽지 못했습니다 — 0 이 아니라 모름" : `청구 ${won(i.revenue.billed)} · 미수 ${won(Math.max(0, i.revenue.billed - i.revenue.paid))}`, <span className={`text-[11.5px] font-semibold ${d.unpaid ? "text-red-600" : "text-gray-400"}`}>{d.unpaid ? `미입금 ${d.unpaid}곳` : "회수 완료"}</span>, `회수 ${paidPct}%`, paidPct, "astro-billing")}
-        {kpi("주간 활성 (WAU)", i.app.wau === undefined ? "—" : `${i.app.wau}명`, i.app.dauWau === undefined ? "Probe 연결 전" : `DAU/WAU ${i.app.dauWau}% · 20% 넘으면 습관`, <span className="text-[11.5px] text-gray-400">{i.app.openToStore !== undefined ? `앱→매장 ${i.app.openToStore}%` : ""}</span>, i.app.wau === undefined ? "연결 전" : "GA4", i.app.dauWau, "probe-app")}
-        {kpi("쿠폰·스탬프 전환율", i.coupon.rate === undefined ? "—" : `${i.coupon.rate}%`, i.coupon.rate === undefined ? "발급 → 사용 · Probe 집계 붙으면 자동" : "발급 → 사용", <span className="text-[11.5px] text-gray-400">{i.coupon.rate === undefined ? "민찬 설계 중" : ""}</span>, i.coupon.rate === undefined ? "연결 전" : "Probe", i.coupon.rate, "probe-metrics")}
+        {kpi("주간 활성 (WAU)", d.probeLoading ? "…" : i.app.wau === undefined ? "—" : `${i.app.wau}명`, i.app.dauWau === undefined ? "Probe 연결 전" : `DAU/WAU ${i.app.dauWau}% · 20% 넘으면 습관`, <span className="text-[11.5px] text-gray-400">{i.app.openToStore !== undefined ? `앱→매장 ${i.app.openToStore}%` : ""}</span>, i.app.wau === undefined ? "연결 전" : "GA4", i.app.dauWau, "probe-app")}
+        {kpi("쿠폰·스탬프 전환율", d.probeLoading ? "…" : i.coupon.rate === undefined ? "—" : `${i.coupon.rate}%`, i.coupon.rate === undefined ? "발급 → 사용 · Probe 집계 붙으면 자동" : "발급 → 사용", <span className="text-[11.5px] text-gray-400">{i.coupon.rate === undefined ? "민찬 설계 중" : ""}</span>, i.coupon.rate === undefined ? "연결 전" : "Probe", i.coupon.rate, "probe-metrics")}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
@@ -132,7 +132,7 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
         {/* 최근 게시물 · 인사이트 */}
         <div className={`${card} p-4`}>
           <div className="flex items-baseline justify-between mb-2"><span className="text-[13px] font-semibold text-gray-900">최근 게시물 · 인사이트</span><button type="button" onClick={() => onGo?.("probe-reports")} className={`text-[12px] font-medium text-navy hover:underline rounded ${focusRing}`}>Probe 인사이트 →</button></div>
-          {d.loading ? <p className="text-[12px] text-gray-400">읽는 중…</p> : d.failed.insights ? <p className="text-[12px] text-gray-400">Papillon 게시물을 읽지 못했습니다 — 새로고침하면 다시 읽습니다.</p> : d.posts.length === 0 ? <p className="text-[12px] text-gray-400">최근 3개월 안에 매장이 나온 게시물이 없습니다.</p> : (
+          {d.probeLoading ? <p className="text-[12px] text-gray-400">읽는 중…</p> : d.failed.insights ? <p className="text-[12px] text-gray-400">Papillon 게시물을 읽지 못했습니다 — 새로고침하면 다시 읽습니다.</p> : d.posts.length === 0 ? <p className="text-[12px] text-gray-400">최근 3개월 안에 매장이 나온 게시물이 없습니다.</p> : (
             <ul className="divide-y divide-black/[0.05]">
               {d.posts.map((p) => (
                 <li key={`${p.plan_id}-${p.restaurant_id}`} className="flex items-center gap-2 py-2">
@@ -149,7 +149,7 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
         {/* 상위 사용 매장 */}
         <div className={`${card} p-4`}>
           <div className="flex items-baseline justify-between mb-2"><span className="text-[13px] font-semibold text-gray-900">상위 사용 매장 <span className="text-[11px] font-medium text-gray-400 ml-1">{month}월</span></span><button type="button" onClick={() => onGo?.("probe-metrics")} className={`text-[12px] font-medium text-navy hover:underline rounded ${focusRing}`}>Probe 매장 지표 →</button></div>
-          {d.topStores === undefined ? <p className="text-[12px] text-gray-400">{d.loading ? "읽는 중…" : "매장 지표를 읽지 못했습니다 — 0 이 아니라 모름입니다."}</p> : d.topStores.length === 0 ? <p className="text-[12px] text-gray-400">이번 달 사용 기록이 있는 매장이 아직 없습니다.</p> : (
+          {d.topStores === undefined ? <p className="text-[12px] text-gray-400">{d.probeLoading ? "읽는 중…" : "매장 지표를 읽지 못했습니다 — 0 이 아니라 모름입니다."}</p> : d.topStores.length === 0 ? <p className="text-[12px] text-gray-400">이번 달 사용 기록이 있는 매장이 아직 없습니다.</p> : (
             <ul className="divide-y divide-black/[0.05]">
               {d.topStores.map((s) => (
                 <li key={s.restaurant_id}><button type="button" onClick={() => onGo?.(`probe-reports?open=${s.restaurant_id}`)} className={`w-full flex items-center gap-2 py-2 text-left rounded ${focusRing}`}>

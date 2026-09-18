@@ -35,6 +35,8 @@ export interface PolarisData {
   unpaid: number;
   campuses: { campus: string; n: number }[];
   loading: boolean;
+  /** Probe 쪽(앱 지표·매장 지표·게시물)만 아직 읽는 중. 위쪽 매장·수익은 먼저 그린다. */
+  probeLoading: boolean;
   /** 원자료를 못 읽은 곳. true 면 그 칸의 숫자는 0 이 아니라 모름이다. */
   failed: { stores: boolean; invoices: boolean; insights: boolean };
 }
@@ -57,7 +59,7 @@ export function usePolaris(enabled = true): PolarisData {
   const prev = periodLocal(-1);
   const [d, setD] = useState<PolarisData>({
     input: { stores: { total: 0, paid: 0, totalAgo: {}, paidAgo: {} }, revenue: { paid: 0, billed: 0 }, app: {}, reach: {}, coupon: {} },
-    period, posts: [], topStores: undefined, unpaid: 0, campuses: [], loading: true,
+    period, posts: [], topStores: undefined, unpaid: 0, campuses: [], loading: true, probeLoading: true,
     failed: { stores: false, invoices: false, insights: false },
   });
 
@@ -66,10 +68,15 @@ export function usePolaris(enabled = true): PolarisData {
     let alive = true;
     const j = (u: string) => fetchJson<Record<string, unknown>>(u);
 
-    Promise.all([
-      j("/api/astro/stores"), j(`/api/astro/invoices?period=${period}`), j(`/api/astro/invoices?period=${prev}`),
-      j("/api/probe/app"), j("/api/probe/overview"), j("/api/probe/insights"),
-    ]).then(([stores, inv, invPrev, app, overview, ins]) => {
+    /**
+     * **한 번에 다 기다리지 않는다** (0919). Promise.all 로 여섯을 묶었더니 제일 느린 Probe 한 곳(8~13초)이
+     * 매장·수익까지 붙잡아 화면 위쪽이 1분 가까이 '…' 였다. 지금은 두 판으로 나눈다:
+     * 1판 Astro(매장·계산서) → 바로 그린다. 2판 Probe(앱·매장 지표·게시물) → 오는 대로 얹는다.
+     */
+    const astro = Promise.all([j("/api/astro/stores"), j(`/api/astro/invoices?period=${period}`), j(`/api/astro/invoices?period=${prev}`)]);
+    const probe = Promise.all([j("/api/probe/app"), j("/api/probe/overview"), j("/api/probe/insights")]);
+
+    astro.then(([stores, inv, invPrev]) => {
       if (!alive) return;
       const rows = ((stores?.stores ?? []) as StoreRow[]).filter((s) => s.is_affiliate && !s.ops?.is_test);
       const paidRows = rows.filter((s) => s.tier === "BOOST" || s.tier === "CONTENT");
@@ -82,6 +89,30 @@ export function usePolaris(enabled = true): PolarisData {
       const prevInv = live((invPrev?.invoices ?? []) as TaxInvoice[]);
       const sum = (list: TaxInvoice[], paidOnly: boolean) => list.filter((i) => !paidOnly || i.paid_at).reduce((a, i) => a + (i.total ?? 0), 0);
 
+      const campusMap = new Map<string, number>();
+      for (const s of rows) { const c = s.ops?.campus ?? "경북대"; campusMap.set(c, (campusMap.get(c) ?? 0) + 1); }
+
+      const paidIds = new Set(thisInv.filter((i) => i.paid_at).map((i) => i.restaurant_id));
+      const unpaid = paidRows.filter((s) => s.ops?.billing !== "EXEMPT" && (s.ops?.pay_cycle === "LUMP" ? s.ops?.billing !== "PAID" : !paidIds.has(s.restaurant_id))).length;
+
+      setD((old) => ({
+        ...old,
+        input: {
+          ...old.input,
+          stores: { total: rows.length, paid: paidRows.length,
+            totalAgo: { week: countAsOf(rows, weekAgo, false), month: countAsOf(rows, monthStart, false) },
+            paidAgo: { week: countAsOf(rows, weekAgo, true), month: countAsOf(rows, monthStart, true) } },
+          revenue: { paid: sum(thisInv, true), billed: sum(thisInv, false), paidPrevMonth: invPrev ? sum(prevInv, true) : undefined },
+        },
+        unpaid,
+        campuses: [...campusMap].map(([campus, n]) => ({ campus, n })).sort((a, b) => b.n - a.n),
+        loading: false,
+        failed: { ...old.failed, stores: stores === null, invoices: inv === null },
+      }));
+    });
+
+    probe.then(([app, overview, ins]) => {
+      if (!alive) return;
       // 앱 지표 — probe/app 의 그룹/메트릭에서 키로 뽑는다. 값이 null 이면 undefined(연결 전).
       const metrics = new Map<string, number | null>();
       for (const g of (app?.groups ?? []) as { metrics: { key: string; value: number | null }[] }[]) for (const m of g.metrics) metrics.set(m.key, m.value);
@@ -97,27 +128,17 @@ export function usePolaris(enabled = true): PolarisData {
         .sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? "")).slice(0, 4)
         .map((x) => ({ restaurant_id: x.restaurant_id, store: x.store, topic: x.topic, posted_at: x.posted_at, permalink: x.permalink, checkpoint: x.checkpoint, plan_id: x.plan_id, hasReport: Boolean(x.report || x.sent_report) }));
 
-      const campusMap = new Map<string, number>();
-      for (const s of rows) { const c = s.ops?.campus ?? "경북대"; campusMap.set(c, (campusMap.get(c) ?? 0) + 1); }
-
-      const paidIds = new Set(thisInv.filter((i) => i.paid_at).map((i) => i.restaurant_id));
-      const unpaid = paidRows.filter((s) => s.ops?.billing !== "EXEMPT" && (s.ops?.pay_cycle === "LUMP" ? s.ops?.billing !== "PAID" : !paidIds.has(s.restaurant_id))).length;
-
-      setD({
+      setD((old) => ({
+        ...old,
         input: {
-          stores: { total: rows.length, paid: paidRows.length,
-            totalAgo: { week: countAsOf(rows, weekAgo, false), month: countAsOf(rows, monthStart, false) },
-            paidAgo: { week: countAsOf(rows, weekAgo, true), month: countAsOf(rows, monthStart, true) } },
-          revenue: { paid: sum(thisInv, true), billed: sum(thisInv, false), paidPrevMonth: invPrev ? sum(prevInv, true) : undefined },
+          ...old.input,
           app: { wau: num("wau"), dauWau: num("dau_wau"), openToStore: num("open_to_store"), retentionW1: num("retention_w1"), wauPrevWeek: undefined },
-          reach: {},
           coupon: { rate: num("coupon_rate") },
         },
-        period, posts, topStores, unpaid,
-        campuses: [...campusMap].map(([campus, n]) => ({ campus, n })).sort((a, b) => b.n - a.n),
-        loading: false,
-        failed: { stores: stores === null, invoices: inv === null, insights: ins === null },
-      });
+        posts, topStores,
+        probeLoading: false,
+        failed: { ...old.failed, insights: ins === null },
+      }));
     });
     return () => { alive = false; };
   }, [enabled, period, prev]);
