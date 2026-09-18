@@ -1,177 +1,52 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { decodeJwt } from "@/lib/jwt";
-import HomeContent from "./HomeContent";
+import PartnerHome, { type PartnerHomeData } from "./PartnerHome";
 
-/* ─── 타입 ────────────────────────────────────────── */
-interface Stats {
-  revisit_this_month: number;
-  loyal_total: number;
-  wishlist_count: number;
-  restaurant_name: string;
-  tier: string;
-}
+/**
+ * 파트너 뷰 첫 화면 (민열님 0919). 폼이 아니라 **숫자와 "우주라이크가 한 일"** 이 먼저다.
+ * 원자료는 백엔드 /api/astro/partner/home/ 한 벌. 점주 토큰이면 자기 매장, 관리자면 ?rid.
+ */
 
-interface CampaignApp {
-  id: number;
-  week_start: string;
-  week_end: string;
-  campaign_type: string;
-  status: string;
-  admin_notes: string;
-  coupon_title: string;
-  campaign_description: string;
-}
-
-interface NotifSchedule {
-  id: number;
-  date: string;
-  slot: "noon" | "evening";
-  content: string;
-  scheduled_datetime: string;
-  sent: boolean;
-  sent_at: string | null;
-}
-
-interface CouponBenefit {
-  id: number;
-  coupon_type_code: string;
-  benefit_json: Record<string, unknown>;
-  title: string;
-  subtitle: string;
-  notes: string;
-  active: boolean;
-}
-
-interface PromoFiles {
-  poster_url: string;
-  qr_url: string;
-}
-
-/* ─── 데이터 패치 ──────────────────────────────────── */
-async function fetchStats(token: string, rid?: string): Promise<Stats | null> {
+async function fetchHome(token: string, rid?: string): Promise<PartnerHomeData | null> {
   try {
-    const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/stats/`);
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/astro/partner/home/`);
     if (rid) url.searchParams.set("restaurant_id", rid);
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     if (!res.ok) return null;
-    const data = await res.json();
-    return {
-      revisit_this_month: data.stats?.revisit_this_month ?? 0,
-      loyal_total:        data.stats?.loyal_total        ?? 0,
-      wishlist_count:     data.stats?.wishlist_count     ?? 0,
-      restaurant_name:    data.restaurant_name           ?? "",
-      tier:               data.tier                      ?? "FREE",
-    };
+    return (await res.json()) as PartnerHomeData;
   } catch { return null; }
 }
 
-async function fetchCampaigns(token: string): Promise<CampaignApp[]> {
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/owner/campaigns/`,
-      { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch { return []; }
-}
-
-async function fetchNotifications(token: string): Promise<NotifSchedule[]> {
-  const today = new Date();
-  const fetchMonth = async (year: number, month: number) => {
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/owner/notification-schedule/?year=${year}&month=${month}`,
-        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
-      );
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch { return []; }
-  };
-
-  const nextDate = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  const [cur, next] = await Promise.all([
-    fetchMonth(today.getFullYear(), today.getMonth() + 1),
-    fetchMonth(nextDate.getFullYear(), nextDate.getMonth() + 1),
-  ]);
-  return [...cur, ...next];
-}
-
-async function fetchPromoFiles(token: string, rid?: string): Promise<PromoFiles> {
+async function fetchPromoFiles(token: string, rid?: string): Promise<{ poster_url: string; qr_url: string }> {
   try {
     const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/promo-files/`);
     if (rid) url.searchParams.set("restaurant_id", rid);
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     if (!res.ok) return { poster_url: "", qr_url: "" };
     return await res.json();
   } catch { return { poster_url: "", qr_url: "" }; }
 }
 
-async function fetchCoupons(token: string, rid?: string): Promise<CouponBenefit[]> {
-  try {
-    const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/coupon-benefits/`);
-    if (rid) url.searchParams.set("restaurant_id", rid);
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch { return []; }
-}
-
-/* ─── 페이지 ─────────────────────────────────────────── */
-export default async function OwnerHomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ rid?: string }>;
-}) {
+export default async function OwnerHomePage({ searchParams }: { searchParams: Promise<{ rid?: string }> }) {
   const { rid } = await searchParams;
-  const cookieStore = await cookies();
-  const token = cookieStore.get("access_token")?.value ?? "";
+  const token = (await cookies()).get("access_token")?.value ?? "";
 
-  // 관리자 JWT인데 rid 없으면 admin 페이지로
-  try {
-    const payload = decodeJwt<{ is_admin?: boolean }>(token);
-    if (payload.is_admin && !rid) redirect("/dashboard/admin");
-  } catch { /* 무시 */ }
+  // 관리자 JWT 인데 rid 가 없으면 관리자 화면으로 — 볼 매장이 없다
+  let adminNoRid = false;
+  try { const p = decodeJwt<{ is_admin?: boolean }>(token); adminNoRid = Boolean(p.is_admin) && !rid; } catch { /* 무시 */ }
+  if (adminNoRid) redirect("/dashboard/admin");
 
-  const [stats, campaigns, notifications, coupons, promoFiles] = await Promise.all([
-    fetchStats(token, rid),
-    fetchCampaigns(token),
-    fetchNotifications(token),
-    fetchCoupons(token, rid),
-    fetchPromoFiles(token, rid),
-  ]);
+  const [home, promo] = await Promise.all([fetchHome(token, rid), fetchPromoFiles(token, rid)]);
 
-  if (!stats) {
+  if (!home) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-        <p className="text-gray-400 text-sm">식당 정보를 불러오지 못했습니다.</p>
+        <p className="text-[14px] font-semibold text-gray-700">매장 정보를 불러오지 못했습니다.</p>
+        <p className="text-[12.5px] text-gray-400 mt-1">잠시 뒤 다시 열어 보시고, 계속 안 되면 hello@wouldulike.kr 로 알려 주세요.</p>
       </div>
     );
   }
 
-  const ridParam = rid ? `?rid=${rid}` : "";
-
-  return (
-    <HomeContent
-      stats={stats}
-      campaigns={campaigns}
-      notifications={notifications}
-      coupons={coupons}
-      promoFiles={promoFiles}
-      ridParam={ridParam}
-    />
-  );
+  return <PartnerHome data={home} ridParam={rid ? `?rid=${rid}` : ""} promo={promo} />;
 }
