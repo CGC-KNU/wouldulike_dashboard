@@ -6,7 +6,7 @@ import { TOOLS, TOOL_ORDER, slackUrl, type ToolKey, type ToolMeta } from "@/lib/
 import { focusRing, periodLocal, agoLabel } from "./ui";
 import type { SatelliteStatus } from "./useSatelliteStatus";
 import WeekIssues from "./WeekIssues";
-import { greetingFor } from "./greeting";
+import { greetingFor, addressee } from "./greeting";
 
 /**
  * 세틀라이트 런처.
@@ -33,7 +33,7 @@ const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
 /** 세틀라이트 툴이 아니면서 런처에서 열어야 하는 제품(예: Drive — 파일 저장소). 카드 대신 하단 스트립. */
 export interface LauncherExtra { key: string; name: string; subtitle?: string; description?: string }
 
-export default function Launcher({ available, extras = [], userName, userTitle, onSelect, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; userTitle?: string | null; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
+export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
   const [pulse, setPulse] = useState<Pulse>({});
 
   useEffect(() => {
@@ -77,6 +77,7 @@ export default function Launcher({ available, extras = [], userName, userTitle, 
    * 자정이나 정각을 넘기는 순간 글자가 슬쩍 바뀌어 눈에 걸린다.
    */
   const [greet] = useState(() => greetingFor());
+  const who = addressee(username, userName);
 
   return (
     <div className="max-w-6xl mx-auto px-5 pt-10 pb-16">
@@ -88,7 +89,7 @@ export default function Launcher({ available, extras = [], userName, userTitle, 
             Satellite
           </p>
           <h1 className="text-[34px] md:text-[40px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.1] mt-1 text-balance">
-            {greet}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{userName}</span>님.
+            {greet}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{who.name}</span>{who.suffix}.
             {/* 직함은 이름 뒤 한 칸. 크기를 낮춰 이름이 먼저 읽히게 둔다 (민열님 0919). */}
             {userTitle && <span className="ml-2 align-middle text-[14px] md:text-[15px] font-bold text-navy/55 tracking-[-0.01em]">{userTitle}</span>}
           </h1>
