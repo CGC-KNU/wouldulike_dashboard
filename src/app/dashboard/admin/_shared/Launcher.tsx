@@ -8,6 +8,7 @@ import type { SatelliteStatus } from "./useSatelliteStatus";
 import WeekIssues from "./WeekIssues";
 import { greetingFor, addressee } from "./greeting";
 import Polaris from "./Polaris";
+import Satty from "./Satty";
 
 /**
  * 세틀라이트 런처.
@@ -78,6 +79,8 @@ export default function Launcher({ available, extras = [], userName, username = 
    * 자정이나 정각을 넘기는 순간 글자가 슬쩍 바뀌어 눈에 걸린다.
    */
   const [greet] = useState(() => greetingFor());
+  /** 이번 주 일정 건수 — WeekIssues 가 세어서 알려 준다. Satty 의 '피곤' 판정에 쓴다. */
+  const [weekCount, setWeekCount] = useState(0);
   const who = addressee(username, userName);
 
   return (
@@ -102,7 +105,7 @@ export default function Launcher({ available, extras = [], userName, username = 
           폰에서는 위아래로 선다. **이번 주가 위**다 — 무엇이 걸려 있는지 보고 툴을 고르는 순서다.
           툴 칸은 좁아진 만큼 한 줄에 둘씩 간다(넓은 화면에서만 셋). */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
-        <WeekIssues onGo={onGo} />
+        <WeekIssues onGo={onGo} onCount={setWeekCount} />
 
         <div className="min-w-0">
       {/* 툴 — **작게, 한눈에** (민열님 0914). 갤러리를 쓰면 카드가 커서 화면의 절반을 먹고
@@ -185,6 +188,9 @@ export default function Launcher({ available, extras = [], userName, username = 
       {/* Polaris 현황 판 — 후보 깔때기·당월 청구·스팟·최근 후보를 뺐다 (민열님 0919).
           남는 건 숫자로 성장을 말하는 것뿐이다. 부품과 계산은 Polaris.tsx · lib/polaris.ts 에 있다. */}
       <Polaris onGo={onGo} />
+
+      {/* Satty — 기능을 해치지 않는 여백(우하단)에 산다. 숫자가 좋으면 기뻐하고 막히면 지친다 (민열님 0919). */}
+      <Satty status={status} weekItems={weekCount} onGo={onGo} />
 
       <p className="text-[12px] text-gray-400 mt-6">Probe 는 아직 초안이라 화면의 &lsquo;초안 데이터&rsquo; 표시를 같이 보세요. Castor 는 Visual Engineer 합류 후 다시 봅니다.</p>
     </div>

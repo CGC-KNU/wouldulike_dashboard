@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IconCalendarWeek, IconChevronDown } from "@tabler/icons-react";
 import CampusMark from "../astro/CampusMark";
 import { focusRing, todayLocal } from "./ui";
@@ -38,8 +38,10 @@ const KIND_LABEL: Record<string, string> = {
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 const dow = (d: string) => DOW[new Date(`${d}T00:00:00`).getDay()];
 
-export default function WeekIssues({ onGo }: { onGo?: (target: string) => void }) {
+export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) => void; onCount?: (n: number) => void }) {
   const { from, to, items, campaigns, loading } = useWeekIssues();
+  // Satty 가 같은 숫자를 본다 — 두 번 읽지 않는다
+  useEffect(() => { if (!loading) onCount?.(items.length); }, [loading, items.length, onCount]);
   const today = todayLocal();
   const [openAll, setOpenAll] = useState(false);
 

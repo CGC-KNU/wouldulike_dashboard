@@ -42,3 +42,54 @@ body {
 
 /* Polaris 우주선 — 살짝 떠 있다. reduced-motion 이면 Tailwind motion-safe 가 꺼 준다. */
 @keyframes sat-hover { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
+
+/* ═══════════ Satty — 세틀라이트 위성 캐릭터 (0919) ═══════════
+   기분은 data-mood 로 바뀐다. 표정은 눈·입·팔 각도·안테나 속도로만 낸다 — 색은 안 바꾼다. */
+.satty-svg { transform-origin: 50% 60%; animation: satty-breathe 3.2s ease-in-out infinite; }
+@keyframes satty-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-3px) scale(1.025); } }
+.satty-beacon { animation: satty-beat 2.4s ease-in-out infinite; }
+@keyframes satty-beat { 0%, 100% { opacity: .5; } 50% { opacity: 1; filter: drop-shadow(0 0 5px #C7C9F7); } }
+.satty-wing { transition: transform .5s cubic-bezier(.16,1,.3,1); }
+.satty-wing-l { transform-origin: 46px 92px; } .satty-wing-r { transform-origin: 114px 92px; }
+.satty-pupil { transition: transform .22s ease-out, opacity .22s ease-out; transform-box: fill-box; transform-origin: center; }
+.satty-closed, .satty-smile-eye, .satty-sparks, .satty-zz { opacity: 0; transition: opacity .22s ease-out; }
+.satty-blush { transition: fill .3s; }
+.satty-mouth { transition: d .3s; }
+/* 숨쉬기 — 점눈이 세로로 납작해졌다 돌아온다. 눈꺼풀 그림 없이 자연스럽다. */
+@keyframes satty-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } }
+.satty[data-mood="idle"] .satty-pupil { animation: satty-blink 5.2s ease-in-out infinite; }
+/* 기쁨 */
+.satty[data-mood="happy"] .satty-wing-l { transform: rotate(-18deg) translateY(-6px); }
+.satty[data-mood="happy"] .satty-wing-r { transform: rotate(18deg) translateY(-6px); }
+.satty[data-mood="happy"] .satty-pupil { opacity: 0; }
+.satty[data-mood="happy"] .satty-smile-eye, .satty[data-mood="happy"] .satty-sparks { opacity: 1; }
+.satty[data-mood="happy"] .satty-blush { fill: #D6D7FC; }
+.satty[data-mood="happy"] .satty-mouth { d: path("M74 97q6 6 12 0"); }
+.satty[data-mood="happy"] .satty-svg { animation: satty-bounce 1.1s ease-in-out infinite; }
+@keyframes satty-bounce { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-8px) scale(1.03); } 60% { transform: translateY(-5px); } }
+.satty[data-mood="happy"] .satty-sparks { animation: satty-twinkle 1.1s ease-in-out infinite; }
+@keyframes satty-twinkle { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+/* 피곤 */
+.satty[data-mood="tired"] .satty-wing-l { transform: rotate(20deg) translateY(8px); }
+.satty[data-mood="tired"] .satty-wing-r { transform: rotate(-20deg) translateY(8px); }
+.satty[data-mood="tired"] .satty-pupil { transform: scaleY(.45); }
+.satty[data-mood="tired"] .satty-mouth { d: path("M77 100q3-2 6 0"); }
+.satty[data-mood="tired"] .satty-zz { opacity: 1; animation: satty-zz 2.4s ease-in-out infinite; }
+.satty[data-mood="tired"] .satty-svg { animation-duration: 4.6s; }
+.satty[data-mood="tired"] .satty-beacon { animation-duration: 4.6s; }
+@keyframes satty-zz { 0% { transform: translate(0, 0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(6px, -12px); opacity: 0; } }
+/* 주목 — 색이 아니라 속도로 */
+.satty[data-mood="alert"] .satty-pupil { transform: scale(1.22); }
+.satty[data-mood="alert"] .satty-beacon { animation-duration: .7s; fill: #8C8EF0; }
+.satty[data-mood="alert"] .satty-wing-l { transform: rotate(-6deg); } .satty[data-mood="alert"] .satty-wing-r { transform: rotate(6deg); }
+.satty[data-mood="alert"] .satty-mouth { d: path("M78 99h4"); }
+.satty[data-mood="alert"] .satty-svg { animation-duration: 1.6s; }
+/* 밤 — 점눈이 사라지고 감긴 아치가 남는다 */
+.satty[data-mood="sleep"] .satty-pupil { opacity: 0; transform: scaleY(.08); }
+.satty[data-mood="sleep"] .satty-closed { opacity: 1; }
+.satty[data-mood="sleep"] .satty-wing-l { transform: rotate(10deg) translateY(4px); } .satty[data-mood="sleep"] .satty-wing-r { transform: rotate(-10deg) translateY(4px); }
+.satty[data-mood="sleep"] .satty-zz { opacity: 1; animation: satty-zz 3.6s ease-in-out infinite; }
+.satty[data-mood="sleep"] .satty-beacon { animation-duration: 5s; }
+.satty[data-mood="sleep"] .satty-svg { animation-duration: 5.5s; }
+.satty[data-mood="sleep"] .satty-mouth { d: path("M78 100q2 2 4 0"); }
+@media (prefers-reduced-motion: reduce) { .satty-svg, .satty-beacon, .satty-sparks, .satty-zz, .satty-pupil { animation: none !important; } }
