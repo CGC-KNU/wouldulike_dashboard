@@ -51,3 +51,4 @@ graph.json
 
 # 계약서·제안서 PDF — 공개 레포에 올리지 않는다. 로컬 미리보기 전용, 운영은 드라이브/S3 링크
 public/astro-docs/
+.env*
