@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { periodLocal } from "./ui";
+import { fetchJson } from "./fetchJson";
 import type { StoreRow, TaxInvoice, StoreMetric } from "@/lib/draft/types";
 import type { PolarisInput } from "@/lib/polaris";
 
@@ -10,7 +11,7 @@ import type { PolarisInput } from "@/lib/polaris";
  *
  * 다섯 곳을 한 번씩 찌른다. 매장·계산서는 지금 있는 값, 앱 지표·매장 지표·인사이트는 Probe 다.
  * Probe 가 아직 못 주는 칸은 **undefined 로 둔다** — 0 이 아니다. 민찬이 붙이는 순간 채워진다.
- * 늦는 한 곳이 전체를 막지 않게 8초에서 끊는다 (useSatelliteStatus 와 같은 이유).
+ * 못 읽은 곳은 `failed` 에 표시한다 — 화면은 그 칸을 0 이 아니라 "읽지 못함"으로 그린다 (fetchJson 주석).
  */
 
 export interface RecentPost {
@@ -34,6 +35,8 @@ export interface PolarisData {
   unpaid: number;
   campuses: { campus: string; n: number }[];
   loading: boolean;
+  /** 원자료를 못 읽은 곳. true 면 그 칸의 숫자는 0 이 아니라 모름이다. */
+  failed: { stores: boolean; invoices: boolean; insights: boolean };
 }
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -55,12 +58,13 @@ export function usePolaris(enabled = true): PolarisData {
   const [d, setD] = useState<PolarisData>({
     input: { stores: { total: 0, paid: 0, totalAgo: {}, paidAgo: {} }, revenue: { paid: 0, billed: 0 }, app: {}, reach: {}, coupon: {} },
     period, posts: [], topStores: undefined, unpaid: 0, campuses: [], loading: true,
+    failed: { stores: false, invoices: false, insights: false },
   });
 
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    const j = (u: string) => fetch(u, { signal: AbortSignal.timeout(8000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const j = (u: string) => fetchJson<Record<string, unknown>>(u);
 
     Promise.all([
       j("/api/astro/stores"), j(`/api/astro/invoices?period=${period}`), j(`/api/astro/invoices?period=${prev}`),
@@ -112,6 +116,7 @@ export function usePolaris(enabled = true): PolarisData {
         period, posts, topStores, unpaid,
         campuses: [...campusMap].map(([campus, n]) => ({ campus, n })).sort((a, b) => b.n - a.n),
         loading: false,
+        failed: { stores: stores === null, invoices: inv === null, insights: ins === null },
       });
     });
     return () => { alive = false; };

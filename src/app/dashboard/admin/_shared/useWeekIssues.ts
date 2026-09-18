@@ -5,6 +5,7 @@ import { buildEvents, type CalEvent, type CalKind } from "../astro/Calendar";
 import type { Lead, StoreRow, TaxInvoice } from "@/lib/draft/types";
 import type { SpotJob } from "@/lib/draft/spot";
 import type { CampaignWeek } from "@/lib/draft/campaigns";
+import { fetchJson } from "./fetchJson";
 
 /**
  * 이번 주에 걸린 일 — 런처 왼쪽 칸 (민열님 0919).
@@ -42,6 +43,8 @@ export interface WeekIssues {
   /** 이번 주에 걸쳐 있는 캠페인 주간(마일리지 2배·한정쿠폰). */
   campaigns: CampaignWeek[];
   loading: boolean;
+  /** 매장·후보 목록을 못 읽었다 — "일정 없음"이 아니라 "모름"이다. */
+  failed: boolean;
 }
 
 const iso = (d: Date) =>
@@ -60,18 +63,15 @@ export function weekRange(base = new Date()): { from: string; to: string } {
 
 export function useWeekIssues(enabled = true): WeekIssues {
   const { from, to } = weekRange();
-  const [state, setState] = useState<{ items: WeekIssue[]; campaigns: CampaignWeek[]; loading: boolean }>({
-    items: [], campaigns: [], loading: true,
+  const [state, setState] = useState<{ items: WeekIssue[]; campaigns: CampaignWeek[]; loading: boolean; failed: boolean }>({
+    items: [], campaigns: [], loading: true, failed: false,
   });
 
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    // 늦는 한 곳 때문에 칸이 통째로 비지 않게 — 못 읽은 것은 조용히 빠진다
-    const j = (u: string) =>
-      fetch(u, { signal: AbortSignal.timeout(8000) })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
+    // 백엔드가 식어 있으면 첫 요청이 늦다 — 오래 기다리고 한 번 더 찌른다 (fetchJson 주석). 그래도 못 읽으면 failed.
+    const j = (u: string) => fetchJson<Record<string, unknown>>(u);
 
     Promise.all([
       j("/api/astro/stores"), j("/api/astro/leads"), j("/api/astro/spots"),
@@ -80,7 +80,7 @@ export function useWeekIssues(enabled = true): WeekIssues {
     ]).then(([stores, leads, spots, inv, camp, plans]) => {
       if (!alive) return;
 
-      const weeks: CampaignWeek[] = camp?.campaigns ?? [];
+      const weeks = (camp?.campaigns ?? []) as CampaignWeek[];
       const noop = () => {};
       const months = [...new Set([from.slice(0, 7), to.slice(0, 7)])];
       const events: CalEvent[] = months.flatMap((ym) =>
@@ -118,6 +118,7 @@ export function useWeekIssues(enabled = true): WeekIssues {
         items,
         campaigns: weeks.filter((w) => w.start <= to && w.end >= from),
         loading: false,
+        failed: stores === null || leads === null,
       });
     });
     return () => { alive = false; };

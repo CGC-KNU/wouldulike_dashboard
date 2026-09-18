@@ -39,7 +39,7 @@ const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 const dow = (d: string) => DOW[new Date(`${d}T00:00:00`).getDay()];
 
 export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) => void; onCount?: (n: number) => void }) {
-  const { from, to, items, campaigns, loading } = useWeekIssues();
+  const { from, to, items, campaigns, loading, failed } = useWeekIssues();
   // Satty 가 같은 숫자를 본다 — 두 번 읽지 않는다
   useEffect(() => { if (!loading) onCount?.(items.length); }, [loading, items.length, onCount]);
   const today = todayLocal();
@@ -83,7 +83,7 @@ export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) 
         </ul>
       ) : days.length === 0 ? (
         <p className="text-[12.5px] text-gray-500 leading-relaxed">
-          이번 주에 잡힌 일정이 없습니다. 후보의 미팅 일시, 매장의 계약 시작일, 콘텐츠 업로드 예정일을 적으면 여기에 모입니다.
+          {failed ? "매장·후보 목록을 읽지 못해 이번 주 일정을 셀 수 없습니다. 새로고침하면 다시 읽습니다." : "이번 주에 잡힌 일정이 없습니다. 후보의 미팅 일시, 매장의 계약 시작일, 콘텐츠 업로드 예정일을 적으면 여기에 모입니다."}
         </p>
       ) : (
         <>
