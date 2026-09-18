@@ -1804,19 +1804,32 @@ function AdminAccountsSection() {
 
   useEffect(() => { if (unlocked) loadAccounts(); }, [unlocked, loadAccounts]);
 
+  /**
+   * 2차 비밀번호 확인.
+   *
+   * 예전엔 try 가 없어서 **서버가 JSON 이 아닌 걸 돌려주면 버튼이 영원히 '확인 중'** 에
+   * 머물렀다 (민열님 0918: 한글 비밀번호가 백엔드에서 500 을 냈다). 무슨 일이 나든
+   * 버튼은 풀리고 사람이 읽을 말이 남아야 한다 — 멈춘 화면은 아무것도 알려 주지 않는다.
+   */
   async function verify2FA() {
     if (!secPw) { setVerifyErr("2차 비밀번호를 입력해주세요."); return; }
     setVerifying(true); setVerifyErr("");
-    const res = await fetch("/api/dashboard/admin/verify-secondary", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: secPw }),
-    });
-    const data = await res.json();
-    setVerifying(false);
-    if (data.valid) { setUnlocked(true); setSecPw(""); }
-    else if (data.not_set) setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
-    else setVerifyErr(data.detail ?? "인증 실패");
+    try {
+      const res = await fetch("/api/dashboard/admin/verify-secondary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: secPw }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!data) { setVerifyErr(`서버가 답을 제대로 주지 못했습니다 (${res.status}). 잠시 뒤 다시 시도해 주세요.`); return; }
+      if (data.valid) { setUnlocked(true); setSecPw(""); }
+      else if (data.not_set) setVerifyErr("2차 비밀번호가 설정되지 않았습니다. 서버 환경변수 ADMIN_SECONDARY_PASSWORD를 설정해주세요.");
+      else setVerifyErr(data.detail ?? "인증 실패");
+    } catch {
+      setVerifyErr("서버에 연결하지 못했습니다.");
+    } finally {
+      setVerifying(false);
+    }
   }
 
   async function create() {
