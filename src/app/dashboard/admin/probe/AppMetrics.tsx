@@ -70,9 +70,11 @@ export default function AppMetrics() {
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="채워진 지표" value={loading ? "-" : `${filled} / ${total}`} hint="출처가 연결된 칸" />
         <Kpi label="연결된 출처" value={loading ? "-" : `${connected} / ${data?.sources.length ?? 4}`} hint="DB · 푸시 · GA4 · Firebase" />
-        {data?.sources.find((s) => s.key === "ga4")?.connected
-          ? <Kpi label="다음 연결" value={loading ? "-" : "DB 집계"} hint="백엔드 엔드포인트 하나면 11칸 · 2칸은 앱 수정 대기" />
-          : <Kpi label="다음 연결" value={loading ? "-" : "BigQuery"} hint="GA4 원본 쿼리로 4칸 · 2칸은 앱 수정 대기" />}
+        {!data?.sources.find((s) => s.key === "ga4")?.connected
+          ? <Kpi label="다음 연결" value={loading ? "-" : "BigQuery"} hint="GA4 원본 쿼리로 4칸 · 2칸은 앱 수정 대기" />
+          : !data?.sources.find((s) => s.key === "backend")?.connected
+            ? <Kpi label="다음 연결" value={loading ? "-" : "DB 집계"} hint="백엔드 app-stats 배포로 9칸 · 2칸은 앱 수정 대기" />
+            : <Kpi label="다음 연결" value={loading ? "-" : "DB × 앱 이벤트"} hint="사용자 단위로 합치면 2칸 · 2칸은 앱 수정 대기" />}
         <Kpi label="주요 지표 후보" value={loading ? "-" : "발급 → 사용"} hint="배너 A/B 의 판정 기준 (Castor)" />
       </div>
 
