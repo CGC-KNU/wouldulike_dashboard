@@ -6,6 +6,7 @@ import type { Lead, StoreRow, TaxInvoice } from "@/lib/draft/types";
 import type { SpotJob } from "@/lib/draft/spot";
 import { Button, Card, DraftBadge, Kpi, PageHeader, Skeleton, periodLocal } from "../_shared/ui";
 import Calendar, { buildEvents } from "./Calendar";
+import type { CampaignWeek } from "@/lib/draft/campaigns";
 
 /**
  * Astro · 일정 — 사이드바 탭 (홈과 파트너 매장 사이, 민열님 0911).
@@ -21,6 +22,8 @@ export default function CalendarPage({ actor, onGo }: { actor: string; onGo: (ta
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [invoices, setInvoices] = useState<TaxInvoice[] | null>(null);
   const [spots, setSpots] = useState<SpotJob[] | null>(null);
+  /** 마일리지 2배 · 한정쿠폰 주간. 고정 일정이라 백엔드가 표를 그대로 준다. */
+  const [weeks, setWeeks] = useState<CampaignWeek[]>([]);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
   const [ym, setYm] = useState(periodLocal());
 
@@ -30,6 +33,7 @@ export default function CalendarPage({ actor, onGo }: { actor: string; onGo: (ta
     j("/api/astro/leads").then((d) => setLeads(d?.leads ?? []));
     j("/api/astro/invoices").then((d) => setInvoices(d?.invoices ?? []));
     j("/api/astro/spots").then((d) => setSpots(d?.spots ?? []));
+    j("/api/astro/campaigns").then((d) => setWeeks(d?.campaigns ?? []));
   }, []);
   useEffect(load, [load]);
 
@@ -43,8 +47,9 @@ export default function CalendarPage({ actor, onGo }: { actor: string; onGo: (ta
       () => onGo("astro-billing"),
       spots ?? [],
       (id) => onGo(`astro-spots?open=${id}`),
+      weeks,
     ),
-    [stores, leads, invoices, spots, ym, onGo]
+    [stores, leads, invoices, spots, weeks, ym, onGo]
   );
   const n = (k: string) => events.filter((e) => e.kind === k).length;
   // 아직 안 들어온 돈 + 이미 들어온 돈. 둘을 합쳐야 '이 달에 받을 돈'이 된다.

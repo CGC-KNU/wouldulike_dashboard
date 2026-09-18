@@ -12,6 +12,7 @@ import CampusMark from "./CampusMark";
 import QuickAdd from "./QuickAdd";
 import { SPOT_SIDE_STAGES, productOf, spotAmount, type SpotJob } from "@/lib/draft/spot";
 import { looseToISO, looseToHHMM } from "@/lib/draft/dates";
+import { daysInMonth, spanLabel, type CampaignWeek } from "@/lib/draft/campaigns";
 
 /**
  * 영업 일정 — 날짜가 있는 것은 전부 한 달 위에 놓는다 (민열님 0911 · 0914).
@@ -32,7 +33,8 @@ export type CalKind =
   | "contacted" | "meeting" | "due"
   | "quote" | "returned" | "signed" | "contract" | "contract_end"
   | "payment" | "paid" | "issued" | "requested" | "approved"
-  | "spot_meeting" | "spot_shoot" | "spot_plan" | "spot_due" | "spot_done";
+  | "spot_meeting" | "spot_shoot" | "spot_plan" | "spot_due" | "spot_done"
+  | "mileage_2x" | "coupon_week";
 
 export type CalEvent = {
   date: string; kind: CalKind; label: string; sub?: string; onClick?: () => void;
@@ -70,8 +72,13 @@ const KIND: Record<CalKind, { label: string; dot: string; chip: string; bar: str
   spot_shoot:   { label: "촬영",        dot: "bg-orange-500",    chip: "bg-orange-50 text-orange-800",  bar: "border-l-orange-500",  from: "스팟" },
   spot_due:     { label: "납품 기한",    dot: "bg-yellow-600",    chip: "bg-yellow-50 text-yellow-800",  bar: "border-l-yellow-600",  from: "스팟" },
   spot_done:    { label: "납품",        dot: "bg-lime-600",      chip: "bg-lime-50 text-lime-800",      bar: "border-l-lime-600",    from: "스팟" },
+  // 앱 캠페인 주간 — 사람이 하는 일이 아니라 '그 주에 일어나는 일' 이라 색을 따로 준다 (민열님 0918)
+  mileage_2x:   { label: "마일리지 2배",  dot: "bg-amber-400",     chip: "bg-amber-50 text-amber-800",    bar: "border-l-amber-400",   from: "앱" },
+  coupon_week:  { label: "한정쿠폰",      dot: "bg-pink-400",      chip: "bg-pink-50 text-pink-800",      bar: "border-l-pink-400",    from: "앱" },
 };
 const ORDER: CalKind[] = [
+  // 캠페인 주간이 맨 앞이다 — 그 주에 무슨 일이 걸려 있는지가 먼저 보여야 한다
+  "mileage_2x", "coupon_week",
   "meeting", "due", "contacted",
   "spot_meeting", "spot_plan", "spot_shoot", "spot_due", "spot_done",
   "quote", "returned", "signed", "contract", "contract_end",
@@ -106,6 +113,7 @@ export function buildEvents(
   onTax?: () => void,
   spots: SpotJob[] = [],
   onSpot?: (id: string) => void,
+  campaignWeeks: CampaignWeek[] = [],
 ): CalEvent[] {
   const [y, m] = ym.split("-").map(Number);
   const out: CalEvent[] = [];
@@ -186,6 +194,19 @@ export function buildEvents(
     const dl = ymd(sp.delivered_at); if (dl) out.push({ date: dl, kind: "spot_done", label: sp.name, campus: cp, sub: tail || "납품", onClick: go });
     // 스팟 입금도 청구의 '입금 완료'와 같은 칸에 찍는다 — 그날 들어온 돈은 한 줄에서 봐야 한다.
     const pd = ymd(sp.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: sp.name, campus: cp, sub: `${amount ? `${amount.toLocaleString()}원 · ` : ""}스팟 입금`, onClick: go });
+  }
+
+  // ── 캠페인 주간 — 마일리지 2배 · 한정쿠폰 (고정 일정, 민열님 0918)
+  //
+  // 하루짜리가 아니라 **한 주 내내 걸려 있는 일**이라 그 주의 모든 날에 찍는다.
+  // 시작일에만 찍으면 수요일에 달력을 연 사람은 지금이 캠페인 주간인 줄 모른다.
+  for (const w of campaignWeeks) {
+    const span = spanLabel(w);
+    for (const day of daysInMonth(w, ym)) {
+      const n = Math.round((Date.parse(`T00:00:00`) - Date.parse(`T00:00:00`)) / 86_400_000) + 1;
+      const mark = day === w.start ? "시작" : day === w.end ? "종료" : `일차`;
+      out.push({ date: day, kind: w.kind, label: w.label, sub: ` · ` });
+    }
   }
 
   return out.filter((e) => e.date.startsWith(ym)).sort((a, b) => a.date.localeCompare(b.date) || ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
