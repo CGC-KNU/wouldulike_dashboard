@@ -2797,6 +2797,7 @@ export default function AdminHomePage() {
           available={availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => p.key as ToolKey)}
           extras={availableProducts.filter((p) => p.ready && p.key === "drive").map((p) => ({ key: p.key, name: p.name, subtitle: p.subtitle, description: p.description }))}
           userName={me.display_name || me.username}
+          username={me.username}
           userTitle={me.title}
           onSelect={(key) => selectProduct(key as Product)}
           status={satStatus}

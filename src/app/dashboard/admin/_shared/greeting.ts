@@ -76,3 +76,21 @@ export function greetingFor(now: Date = new Date()): string {
   if (h < 22) return pick(EVENING, seed);
   return pick(NIGHT, seed);
 }
+
+/**
+ * 부르는 말 — 이름 뒤에 붙는 것.
+ *
+ * 두 공동대표만 "노대표님 · 양대표님" 으로 부른다 (민열님 0919). 나머지는 이름 + 님.
+ * 성(姓)은 계정에 없어서 username 으로 가른다 — 표시 이름은 바뀔 수 있지만 계정 ID 는 안 바뀐다.
+ * 그래서 화면에 나오는 건 "노대표님" 처럼 성+직위 한 덩어리이고, 이름은 그 뒤에 숨는다.
+ */
+const HONORIFIC: Record<string, string> = {
+  jaemin: "노대표님",
+  minyeol: "양대표님",
+};
+
+/** { name: 화면에 굵게 나올 말, suffix: 그 뒤 } — 일반 팀원은 { "민찬", "님" }, 대표는 { "노대표님", "" } */
+export function addressee(username: string, displayName: string): { name: string; suffix: string } {
+  const h = HONORIFIC[username];
+  return h ? { name: h, suffix: "" } : { name: displayName, suffix: "님" };
+}
