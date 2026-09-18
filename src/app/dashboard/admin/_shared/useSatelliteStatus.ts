@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { periodLocal } from "./ui";
+import { fetchJson } from "./fetchJson";
 import { LEAD_OPEN_STAGES } from "@/lib/draft/types";
 
 /** 정가표 — 스팟 금액을 셀 때만 쓴다. 값을 적어 둔 건이면 그걸 우선한다(0원 = 무료도 적어 둔 값이다). */
@@ -36,10 +37,8 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
      * 실제로 그래서 현황 판이 통째로 안 나왔다 (0914). 응답이 8초를 넘기면 그 칸만 포기하고
      * 나머지로 그린다. 못 읽은 칸은 `undefined` 로 남아 화면에 "—" 로 뜬다 — 0 을 지어내지 않는다.
      */
-    const j = (u: string) =>
-      fetch(u, { signal: AbortSignal.timeout(25000) }) // 식은 백엔드 첫 응답이 8초를 넘긴다 (fetchJson 주석)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
+    // 런처의 다른 훅과 같은 주소를 겹쳐 부르지 않게 fetchJson 을 같이 쓴다 (겹침·동시 3개·재시도 — 그 파일 주석)
+    const j = (u: string) => fetchJson<Record<string, any>>(u); // eslint-disable-line @typescript-eslint/no-explicit-any
     const period = periodLocal();
     Promise.all([j("/api/astro/stores"), j("/api/astro/leads"), j(`/api/astro/invoices?period=${period}`), j("/api/probe/reports"), j("/api/probe/quality"), j("/api/probe/insights"), j("/api/probe/mileage"), j("/api/astro/activities"), j("/api/astro/spots")]).then(
       ([stores, leads, inv, reps, quality, ins, mil, acts, spots]) => {

@@ -52,10 +52,24 @@ export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) 
     byDay.get(it.date)!.push(it);
   }
   const days = [...byDay.keys()].sort();
-  // 지난 날은 뒤로 미루지 않는다(순서가 곧 한 주다). 다만 폰에서는 오늘 이후만 먼저 편다.
+  // 접힌 상태에서는 **줄 수**로 자른다 (민열님 0919: 미팅이 열몇 개 잡힌 날은 한 날만으로도 아래 리브라·현황 판이
+  // 밀려 내려간다). 오늘부터 세어 8줄까지만 펴고, 지난 날은 접힌 상태에서 뺀다. 펴면 한 주 전체, 다시 접을 수 있다.
+  const LIMIT = 8;
   const upcoming = days.filter((d) => d >= today);
-  const shown = openAll ? days : days.slice(0, Math.max(3, upcoming.length ? days.indexOf(upcoming[0]) + 3 : 3));
-  const hidden = days.length - shown.length;
+  const shownRows = new Map<string, WeekIssue[]>();
+  if (openAll) {
+    for (const d of days) shownRows.set(d, byDay.get(d)!);
+  } else {
+    let left = LIMIT;
+    for (const d of (upcoming.length ? upcoming : days)) {
+      if (left <= 0) break;
+      const list = byDay.get(d)!.slice(0, left);
+      shownRows.set(d, list);
+      left -= list.length;
+    }
+  }
+  const shown = [...shownRows.keys()];
+  const hidden = items.length - [...shownRows.values()].reduce((a, l) => a + l.length, 0);
 
   return (
     <section
@@ -89,7 +103,7 @@ export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) 
         <>
           <ul className="space-y-2.5">
             {shown.map((d) => {
-              const list = byDay.get(d)!;
+              const list = shownRows.get(d)!;
               const isToday = d === today;
               const past = d < today;
               return (
@@ -123,7 +137,13 @@ export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) 
           {hidden > 0 && (
             <button type="button" onClick={() => setOpenAll(true)}
               className={`mt-2.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-navy hover:underline rounded ${focusRing}`}>
-              <IconChevronDown size={13} aria-hidden="true" />{hidden}일 더 보기
+              <IconChevronDown size={13} aria-hidden="true" />{hidden}건 더 보기
+            </button>
+          )}
+          {openAll && items.length > LIMIT && (
+            <button type="button" onClick={() => setOpenAll(false)}
+              className={`mt-2.5 inline-flex items-center gap-1 text-[11.5px] font-semibold text-gray-500 hover:underline rounded ${focusRing}`}>
+              <IconChevronDown size={13} className="rotate-180" aria-hidden="true" />접기
             </button>
           )}
         </>
