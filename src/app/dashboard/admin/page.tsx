@@ -30,6 +30,8 @@ import Launcher from "./_shared/Launcher";
 import CommandPalette from "./_shared/CommandPalette";
 import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
 import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
+import { useWeekIssues } from "./_shared/useWeekIssues";
+import Satty from "./_shared/Satty";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 /* ─── 타입 ─── */
@@ -2763,6 +2765,8 @@ export default function AdminHomePage() {
 
   // 런처·사이드바 배지가 쓰는 전체 현황. 훅이라 조건부 return 앞에 둔다.
   const satStatus = useSatelliteStatus(Boolean(me));
+  // 툴 안 Satty(도크 옆 축소판)의 '피곤' 판정에 쓴다 — 런처의 WeekIssues 와 같은 셈.
+  const weekIssues = useWeekIssues(Boolean(me));
 
   /**
    * 브라우저 탭 이름 = `Satellite | 지금 있는 자리` (민열님 0915).
@@ -2879,6 +2883,9 @@ export default function AdminHomePage() {
           Papillon 은 PapillonShell, Aether 는 ProductShell 을 거치는데 둘 다 안에서 ToolShell 을 부른다.
           화면 구성과 기능은 그대로고 메뉴 생김새만 통일했다. */}
       {activeTab === "satellite" && <PapillonShell onBack={showProductPicker ? backToProducts : undefined} />}
+
+      {/* Satty 축소판 — 툴 안에서도 같이 산다. 도크 옆(폰에서는 도크 위)에 36px. 런처와 같은 기분 규칙 (민열님 0919). */}
+      {showProductPicker && <Satty size="sm" status={satStatus} weekItems={weekIssues.items.length} onGo={go} />}
 
       {/* 0913 민열님: 파피용·에테르에서도 하단 도크가 떠야 한다. 셸(화면 생김새)은 그대로 두고
           떠 있는 도크만 따로 얹는다 — ToolShell 을 쓰는 Astro·Probe·Castor 는 셸 안에서 이미 그린다. */}
