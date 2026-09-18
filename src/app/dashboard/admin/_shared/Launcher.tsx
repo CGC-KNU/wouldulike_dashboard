@@ -5,6 +5,8 @@ import { IconArrowUpRight, IconBrandSlack, IconFolder, IconMessageChatbot } from
 import { TOOLS, TOOL_ORDER, slackUrl, type ToolKey, type ToolMeta } from "@/lib/satellite";
 import { focusRing, periodLocal, agoLabel } from "./ui";
 import type { SatelliteStatus } from "./useSatelliteStatus";
+import WeekIssues from "./WeekIssues";
+import { greetingFor } from "./greeting";
 
 /**
  * 세틀라이트 런처.
@@ -31,7 +33,7 @@ const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
 /** 세틀라이트 툴이 아니면서 런처에서 열어야 하는 제품(예: Drive — 파일 저장소). 카드 대신 하단 스트립. */
 export interface LauncherExtra { key: string; name: string; subtitle?: string; description?: string }
 
-export default function Launcher({ available, extras = [], userName, onSelect, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
+export default function Launcher({ available, extras = [], userName, userTitle, onSelect, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; userTitle?: string | null; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
   const [pulse, setPulse] = useState<Pulse>({});
 
   useEffect(() => {
@@ -70,11 +72,14 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
 
   const tools = TOOL_ORDER.map((k) => TOOLS[k]).filter((t) => t.status !== "external" && available.includes(t.key));
   const libra = TOOLS.libra;
-  const hour = new Date().getHours();
-  const greet = hour < 12 ? "좋은 아침이에요" : hour < 18 ? "좋은 오후예요" : "수고 많았어요";
+  /**
+   * 인사말은 **처음 그릴 때 한 번만** 정한다 (민열님 0919). 다시 그릴 때마다 계산하면
+   * 자정이나 정각을 넘기는 순간 글자가 슬쩍 바뀌어 눈에 걸린다.
+   */
+  const [greet] = useState(() => greetingFor());
 
   return (
-    <div className="max-w-5xl mx-auto px-5 pt-10 pb-16">
+    <div className="max-w-6xl mx-auto px-5 pt-10 pb-16">
       <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[13px] font-semibold text-navy tracking-wide inline-flex items-center gap-1.5">
@@ -84,15 +89,24 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
           </p>
           <h1 className="text-[34px] md:text-[40px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.1] mt-1 text-balance">
             {greet}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{userName}</span>님.
+            {/* 직함은 이름 뒤 한 칸. 크기를 낮춰 이름이 먼저 읽히게 둔다 (민열님 0919). */}
+            {userTitle && <span className="ml-2 align-middle text-[14px] md:text-[15px] font-bold text-navy/55 tracking-[-0.01em]">{userTitle}</span>}
           </h1>
           <p className="text-[15px] text-gray-500 mt-2">오늘 볼 도구를 고르세요. 카드의 숫자는 <span className="text-gray-700 font-medium">지금 막힌 일</span>입니다.</p>
         </div>
       </header>
 
+      {/* 왼쪽 이번 주 · 오른쪽 툴 (민열님 0919).
+          폰에서는 위아래로 선다. **이번 주가 위**다 — 무엇이 걸려 있는지 보고 툴을 고르는 순서다.
+          툴 칸은 좁아진 만큼 한 줄에 둘씩 간다(넓은 화면에서만 셋). */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
+        <WeekIssues onGo={onGo} />
+
+        <div className="min-w-0">
       {/* 툴 — **작게, 한눈에** (민열님 0914). 갤러리를 쓰면 카드가 커서 화면의 절반을 먹고
           여섯 개 중 셋만 보였다. 여기는 자리를 줄이고 아래 현황에 자리를 넘긴다.
           카드에 남는 숫자는 **지금 막힌 것**뿐이다 — 총량은 아래 현황이 맡는다. */}
-      <ul aria-label="툴" className="sat-stagger grid grid-cols-2 md:grid-cols-3 gap-2.5">
+      <ul aria-label="툴" className="sat-stagger grid grid-cols-2 xl:grid-cols-3 gap-2.5">
         {tools.map((t) => {
           const st = STATUS[t.status];
           const p = pulse[t.key as keyof Pulse];
@@ -127,7 +141,7 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
 
       {/* 세틀라이트 밖 제품(Drive 등) — 권한과 무관하게 모두가 여는 것이라 카드가 아니라 줄로. */}
       {extras.length > 0 && (
-        <ul aria-label="그 밖의 제품" className="mt-5 grid grid-cols-1 gap-2">
+        <ul aria-label="그 밖의 제품" className="mt-2.5 grid grid-cols-1 gap-2">
           {/* grid-cols-1 이 있어야 한다. 칸을 안 정하면 트랙이 내용 폭(max-content)으로 늘어나
               폰에서 스트립이 화면 밖으로 나간다 — 390px 에서 24px 넘쳤다 (0914). */}
           {extras.map((e) => (
@@ -144,6 +158,9 @@ export default function Launcher({ available, extras = [], userName, onSelect, s
           ))}
         </ul>
       )}
+
+        </div>
+      </div>
 
       {/* Libra — 고르는 툴이 아니라 전체를 받치는 층. 그래서 카드가 아니라 스트립이다. */}
       <section aria-label="Libra" className="mt-6 rounded-[22px] border border-libra/30 bg-[linear-gradient(135deg,rgba(43,190,155,0.10),rgba(127,233,203,0.16))] backdrop-blur px-5 py-4 flex flex-wrap items-center gap-4">

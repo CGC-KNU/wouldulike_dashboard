@@ -89,6 +89,8 @@ interface AdminMe {
   department: Department;
   department_label: string;
   satellite_role: SatelliteRole;
+  /** 대외 직함 (PO·CEO). 없으면 표시하지 않는다. */
+  title?: string | null;
   is_superadmin: boolean;
   is_admin: boolean;
   is_marketing: boolean;
@@ -2795,6 +2797,7 @@ export default function AdminHomePage() {
           available={availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => p.key as ToolKey)}
           extras={availableProducts.filter((p) => p.ready && p.key === "drive").map((p) => ({ key: p.key, name: p.name, subtitle: p.subtitle, description: p.description }))}
           userName={me.display_name || me.username}
+          userTitle={me.title}
           onSelect={(key) => selectProduct(key as Product)}
           status={satStatus}
           onGo={go}
