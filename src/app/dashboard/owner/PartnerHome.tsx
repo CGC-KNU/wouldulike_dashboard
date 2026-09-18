@@ -99,7 +99,7 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
           <ul className="divide-y divide-gray-100">
             {feed.slice(0, 6).map((f, i) => (
               <li key={i} className="flex items-center gap-2.5 py-2">
-                <span className="w-11 shrink-0 text-[11px] font-bold text-gray-500 tabular-nums">{md(f.date)}{f.end ? `~${md(f.end)}` : ""}</span>
+                <span className="w-[74px] shrink-0 text-[11px] font-bold text-gray-500 tabular-nums">{md(f.date)}{f.end ? `~${md(f.end)}` : ""}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13px] font-medium text-gray-900 truncate">{f.title}</span>
                   <span className="block text-[11px] text-gray-400">{KIND_LABEL[f.kind]}{f.by ? ` · ${f.by}` : ""}</span>

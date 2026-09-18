@@ -1,12 +1,18 @@
 import { cookies } from "next/headers";
+import { IconExternalLink } from "@tabler/icons-react";
+import { readDraft } from "@/lib/draft/store";
+import type { StoreReport } from "@/lib/draft/types";
 import type { PartnerHomeData } from "../PartnerHome";
 
 /**
  * 리포트 — 월간 A4 한 장 (파트너 뷰 탭, 민열님 0919).
  *
  * 리포트 본문은 Probe 가 만들고 공개 링크(/r/<token>)로 카톡으로 보낸다. 점주가 여기서 볼 수 있는 건
- * **첫 리포트까지 얼마나 남았는지**와, 받은 리포트 링크다. 리포트 목록 API 가 점주 토큰으로 열리면
- * 그때 이 화면에 목록이 붙는다 — 지금은 지어내지 않는다.
+ * **첫 리포트까지 얼마나 남았는지**와, 받은 리포트 링크다.
+ *
+ * 목록은 Probe 가 쓰는 초안 저장소(`probe_reports`)를 **같은 프로세스에서 직접** 읽는다 — 점주 토큰용 API 를
+ * 따로 만들지 않아도 된다. 보이는 건 이 매장 것 중 링크가 발급된(LINKED·SENT) 리포트뿐이다. 초안·승인 대기는
+ * 점주에게 안 보인다. 저장소가 백엔드 테이블로 옮겨 가면 이 읽기만 바꾼다.
  */
 export default async function OwnerReportsPage({ searchParams }: { searchParams: Promise<{ rid?: string }> }) {
   const { rid } = await searchParams;
@@ -18,6 +24,12 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     if (res.ok) data = (await res.json()) as PartnerHomeData;
   } catch { data = null; }
+
+  const rid_n = data?.store.restaurant_id;
+  const reports = rid_n == null ? [] : readDraft<StoreReport[]>("probe_reports", () => [])
+    .filter((r) => r.restaurant_id === rid_n && (r.status === "LINKED" || r.status === "SENT") && r.token)
+    .sort((a, b) => (b.sent_at ?? b.linked_at ?? b.created_at).localeCompare(a.sent_at ?? a.linked_at ?? a.created_at));
+  const ymd = (iso: string) => `${iso.slice(0, 4)}.${iso.slice(5, 7)}.${iso.slice(8, 10)}`;
 
   const days = data?.store.contract_days ?? null;
   const left = days === null ? null : Math.max(0, 30 - days);
@@ -44,6 +56,25 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
           </>
         )}
       </div>
+
+      {reports.length > 0 && (
+        <div className="bg-white rounded-[18px] border border-gray-200 overflow-hidden">
+          <p className="text-[13px] font-bold text-gray-900 px-4 pt-4 pb-2">받은 리포트 {reports.length}건</p>
+          <ul className="divide-y divide-gray-100">
+            {reports.map((r) => (
+              <li key={r.id}>
+                <a href={`/r/${r.token}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13.5px] font-medium text-gray-900 truncate">{r.title}</span>
+                    <span className="block text-[11px] text-gray-400">{ymd(r.sent_at ?? r.linked_at ?? r.created_at)} · {r.summary}</span>
+                  </span>
+                  <IconExternalLink size={16} className="shrink-0 text-gray-400" aria-hidden="true" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {s && (
         <div className="bg-white rounded-[18px] border border-gray-200 p-4">

@@ -182,7 +182,7 @@ export default function ToolShell({
 
         <nav aria-label={`${product.name} 메뉴`} className="p-2">
           {/* 좁은 화면에서는 탭이 가로줄이 된다 — 오른쪽에 더 있다는 그늘을 둔다 (0914) */}
-          <ul className="flex md:flex-col gap-0.5 overflow-x-auto md:overflow-visible bg-[linear-gradient(to_right,white,white),linear-gradient(to_right,white,white),linear-gradient(to_right,rgba(16,24,40,0.10),rgba(16,24,40,0)),linear-gradient(to_left,rgba(16,24,40,0.10),rgba(16,24,40,0))] bg-[length:22px_100%,22px_100%,14px_100%,14px_100%] bg-[position:left_center,right_center,left_center,right_center] bg-no-repeat [background-attachment:local,local,scroll,scroll] md:bg-none">
+          <ul className="flex md:flex-col gap-0.5 overflow-x-auto md:overflow-visible bg-[linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgba(16,24,40,0.10),rgba(16,24,40,0)),linear-gradient(to_left,rgba(16,24,40,0.10),rgba(16,24,40,0))] bg-[length:22px_100%,22px_100%,14px_100%,14px_100%] bg-[position:left_center,right_center,left_center,right_center] bg-no-repeat [background-attachment:local,local,scroll,scroll] md:bg-none">
             {navItems.map((n) => {
               const Icon = NAV_ICON[n.key] ?? IconLayoutGrid;
               const on = activeKey === n.key;
