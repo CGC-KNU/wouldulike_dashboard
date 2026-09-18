@@ -10,6 +10,7 @@ import SpotBoard from "./astro/SpotBoard";
 import ProbeHome from "./probe/ProbeHome";
 import AppMetrics from "./probe/AppMetrics";
 import CastorHome from "./castor/CastorHome";
+import Atlas from "./atlas/Atlas";
 import ContentTab from "./ContentTab";
 import DriveScreen from "./DriveScreen";
 import ImageUploader from "@/components/ImageUploader";
@@ -71,7 +72,11 @@ type Tab =
   // Castor(앱 구조·여정)
   | "castor-home"
   | "castor-map"
-  | "castor-experiments";
+  | "castor-experiments"
+  | "atlas-team"
+  | "atlas-mission"
+  | "atlas-tools"
+  | "atlas-history";
 
 type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 type SatelliteRole = "LEAD" | "MEMBER";
@@ -2542,6 +2547,12 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "castor-home", label: "홈", icon: "⌂", allow: (me) => me.is_admin || me.is_superadmin },
   { key: "castor-map", label: "화면 지도", icon: "◫", allow: (me) => me.is_admin || me.is_superadmin },
   { key: "castor-experiments", label: "A/B 후보", icon: "⇄", allow: (me) => me.is_admin || me.is_superadmin },
+
+  // ── Atlas — ABOUT WOULDULIKE. 팀 내부용이라 로그인한 구성원 누구나 (민열님 0919).
+  { key: "atlas-team", label: "조직도", icon: "◉", allow: () => true },
+  { key: "atlas-mission", label: "미션 · Polaris", icon: "★", allow: () => true },
+  { key: "atlas-tools", label: "Satellite", icon: "▦", allow: () => true },
+  { key: "atlas-history", label: "연혁", icon: "⌛", allow: () => true },
 ];
 
 /**
@@ -2554,7 +2565,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
  * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "drive";
+type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | "drive";
 
 const PRODUCTS: {
   key: Product;
@@ -2605,6 +2616,14 @@ const PRODUCTS: {
     subtitle: "앱 구조 · 여정",
     description: "화면 지도 · 블록 배치 · A/B 후보",
     tabs: ["castor-home", "castor-map", "castor-experiments"],
+    ready: true,
+  },
+  {
+    key: "atlas",
+    name: "Atlas",
+    subtitle: "ABOUT WOULDULIKE",
+    description: "조직도 · 미션 · Satellite · 연혁",
+    tabs: ["atlas-team", "atlas-mission", "atlas-tools", "atlas-history"],
     ready: true,
   },
   {
@@ -2894,7 +2913,7 @@ export default function AdminHomePage() {
 
       {activeTab &&
         activeTab !== "satellite" &&
-        (selectedProduct === "astro" || selectedProduct === "probe" || selectedProduct === "castor") && (
+        (selectedProduct === "astro" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
         <ToolShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
           navItems={productTabs.map((t) => ({ key: t.key, label: t.label }))}
@@ -2903,7 +2922,7 @@ export default function AdminHomePage() {
           onBack={showProductPicker ? backToProducts : undefined}
           badges={navBadges(satStatus)}
           user={{ name: me.display_name || me.username, role: me.department_label }}
-          /* 도크는 ToolShell 을 쓰는 Astro·Probe·Castor 안에서만. Papillon·Aether 화면은 그대로 둔다(0913 재민님 복원 존중). */
+          /* 도크는 ToolShell 을 쓰는 Astro·Probe·Castor·Atlas 안에서만. Papillon·Aether 화면은 그대로 둔다(0913 재민님 복원 존중). */
           dock={showProductPicker ? {
             /* 0913 민열님: 도크에 Papillon·Aether 도 뜨게. 도크는 '툴 갈아타기'용이라 세틀라이트 다섯이 다 있어야 한다.
                (Drive 는 세틀라이트 툴이 아니라 런처에서만 연다.) 눌러서 넘어간 화면은 각자의 셸을 그대로 쓴다. */
@@ -2937,6 +2956,9 @@ export default function AdminHomePage() {
 
           {/* Castor: 앱 구조·여정. 지도에서 만든 배치를 A/B 탭으로 그대로 넘긴다. */}
           {activeTab === "castor-home" && <CastorHome onGo={(t) => setActiveTab(t as Tab)} />}
+          {(activeTab === "atlas-team" || activeTab === "atlas-mission" || activeTab === "atlas-tools" || activeTab === "atlas-history") && (
+            <Atlas tab={activeTab} onGo={(t) => { if (t === "launcher") backToProducts(); else if (PRODUCTS.some((p) => p.key === t)) selectProduct(t as Product); else go(t); }} />
+          )}
           {activeTab === "castor-map" && (
             <CastorMap
               onDraftVariant={(screen, blocks) => {
