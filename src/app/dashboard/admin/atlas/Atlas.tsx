@@ -22,7 +22,7 @@ function PersonRow({ p, lead = false }: { p: Person; lead?: boolean }) {
     <li className="flex items-center gap-2.5 py-2 first:pt-0 last:pb-0">
       <span className={`w-8 h-8 rounded-full grid place-items-center text-[12px] font-bold shrink-0 ${lead ? "bg-navy text-white" : "bg-navy/[0.07] text-navy"}`} aria-hidden="true">{initial(p.name)}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-semibold text-gray-900 leading-tight">{p.name} <span className="text-[11px] font-bold text-navy/70 ml-1">{p.title}</span></span>
+        <span className="block text-[13px] font-semibold text-gray-900 leading-tight">{p.name} <span className="text-[11px] font-bold text-gray-500 ml-1">{p.title}</span></span>
         <span className="block text-[11.5px] text-gray-500 truncate">{p.role}{p.duty ? ` · ${p.duty}` : ""}</span>
       </span>
       {p.slack && (
