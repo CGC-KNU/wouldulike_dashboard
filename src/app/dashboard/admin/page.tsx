@@ -1575,6 +1575,8 @@ interface AdminAccountItem {
   username: string;
   kakao_id: number | null;
   display_name: string;
+  /** 대외 직함 (PO·CEO). 권한(department)과 다른 축이다 — 상단 바에 이게 뜬다. */
+  title: string;
   department: Department;
   department_label: string;
   satellite_role: SatelliteRole;
@@ -1618,17 +1620,25 @@ function AccountRow({
   remove: (username: string) => Promise<void>;
 }) {
   const [name, setName] = useState(a.display_name);
+  const [title, setTitle] = useState(a.title ?? "");
   const [kakao, setKakao] = useState(a.kakao_id != null ? String(a.kakao_id) : "");
 
   useEffect(() => {
     setName(a.display_name);
+    setTitle(a.title ?? "");
     setKakao(a.kakao_id != null ? String(a.kakao_id) : "");
-  }, [a.display_name, a.kakao_id]);
+  }, [a.display_name, a.title, a.kakao_id]);
 
   async function saveName() {
     const next = name.trim();
     if (next === (a.display_name || "")) return;
     await patchAccount(a.username, { display_name: next });
+  }
+
+  async function saveTitle() {
+    const next = title.trim();
+    if (next === (a.title ?? "")) return;
+    await patchAccount(a.username, { title: next });
   }
 
   async function saveKakao() {
@@ -1648,6 +1658,16 @@ function AccountRow({
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
           placeholder="팀원명"
           className="text-sm font-semibold text-gray-800 border border-gray-200 rounded-lg px-2 py-1 w-[140px] focus:outline-none focus:border-periwinkle"
+        />
+        {/* 직함 — 상단 바의 관리자 자리에 이 값이 뜬다. 비우면 직무 이름으로 돌아간다. */}
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={saveTitle}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          placeholder="직함 (예: PO·CEO)"
+          title="상단 바에 표시되는 대외 직함입니다"
+          className="text-[12px] text-gray-700 border border-gray-200 rounded-lg px-2 py-1 w-[120px] focus:outline-none focus:border-periwinkle"
         />
         <span className="text-[11px] text-gray-400">{a.username}</span>
         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${DEPT_CHIP[a.department]}`}>
