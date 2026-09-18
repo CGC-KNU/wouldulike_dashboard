@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
+import { credentialsFromEnv, readGa4AppMetrics, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 
 /**
  * Probe · 앱 지표.
@@ -11,6 +13,9 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
  *
  * 연결되는 순서(권장): ① 백엔드 이벤트(가입·쿠폰 발급/사용·스탬프 — 이미 DB 에 있다)
  * ② 푸시 발송/도달(백엔드 notifications) ③ GA4/Firebase(세션·화면 흐름·리텐션).
+ *
+ * GA4/Firebase 4칸은 BigQuery 에서 읽는다(`GCP_SA_KEY` 가 있을 때만). 확정 테이블이 하루 한 번 늘어나므로
+ * 6시간 캐시한다. 키가 없거나 조회가 실패하면 캐시하지 않고 칸을 비운 채 "연결 전"으로 둔다.
  */
 
 export type Source = "backend" | "push" | "ga4" | "firebase";
@@ -45,6 +50,29 @@ const SOURCE_LABEL: Record<Source, string> = {
   firebase: "Firebase",
 };
 
+// 성공만 캐시된다 — 실패는 throw 로 빠져나가 캐시에 남지 않는다
+const cachedGa4 = unstable_cache(
+  async (): Promise<Ga4AppMetrics> => {
+    const r = await readGa4AppMetrics();
+    if (!r.ok) throw new Error(r.detail ?? r.reason);
+    return r.data;
+  },
+  ["probe-app-ga4-v1"],
+  { revalidate: 6 * 60 * 60 }
+);
+
+async function ga4(): Promise<{ data: Ga4AppMetrics | null; error: string | null }> {
+  try {
+    if (!credentialsFromEnv()) return { data: null, error: null };
+    return { data: await cachedGa4(), error: null };
+  } catch (e) {
+    console.error("[probe/app] BigQuery 조회 실패", e);
+    return { data: null, error: e instanceof Error ? e.message.slice(0, 120) : "알 수 없는 오류" };
+  }
+}
+
+const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
+
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -53,6 +81,8 @@ export async function GET() {
   const stats = await fetchBackendJson<{ stats?: Record<string, number> }>("/api/dashboard/stats/");
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? s[k] : null);
+  const { data: g, error: gErr } = await ga4();
+  const week = g ? `${md(g.week.from)}~${md(g.week.to)}` : "";
 
   const groups: AppMetricGroup[] = [
     {
@@ -61,9 +91,9 @@ export async function GET() {
       description: "얼마나 많은 학생이 앱을 켜고, 돌아오는가.",
       metrics: [
         { key: "signups_month", label: "이번 달 가입", value: n("signups_this_month"), unit: "명", source: "backend" },
-        { key: "wau", label: "주간 활성(WAU)", value: null, unit: "명", source: "ga4", note: "BigQuery 원본 — 최근 7일 고유 사용자. 쿼리 연결 전" },
-        { key: "dau_wau", label: "DAU/WAU", value: null, unit: "%", source: "ga4", note: "끈적함. 20% 넘으면 습관이 붙은 것" },
-        { key: "retention_w1", label: "가입 1주 후 복귀", value: null, unit: "%", source: "firebase", note: "first_open 코호트의 7일 뒤 재방문. BigQuery 쿼리 연결 전" },
+        { key: "wau", label: "주간 활성(WAU)", value: g?.wau ?? null, unit: "명", source: "ga4", note: g ? `${week} 앱을 켠 기기 수. 재설치하면 새로 센다` : "BigQuery 원본 — 최근 7일 고유 사용자. 쿼리 연결 전" },
+        { key: "dau_wau", label: "DAU/WAU", value: g?.dau_wau ?? null, unit: "%", source: "ga4", note: "끈적함. 20% 넘으면 습관이 붙은 것" },
+        { key: "retention_w1", label: "가입 1주 후 복귀", value: g?.retention_w1 ?? null, unit: "%", source: "firebase", note: g ? `${md(g.cohort.from)}~${md(g.cohort.to)} 첫 실행 ${g.cohort.users.toLocaleString()}대 중 7~13일째 다시 켠 비율` : "first_open 코호트의 7일 뒤 재방문. BigQuery 쿼리 연결 전" },
       ],
     },
     {
@@ -71,7 +101,7 @@ export async function GET() {
       title: "전환 퍼널",
       description: "앱을 켠 사람이 실제로 매장에서 쓰기까지.",
       metrics: [
-        { key: "open_to_store", label: "앱 열기 → 매장 상세", value: null, unit: "%", source: "ga4", note: "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
+        { key: "open_to_store", label: "앱 열기 → 매장 상세", value: g?.open_to_store ?? null, unit: "%", source: "ga4", note: g ? `${week} 세션 ${g.sessions.toLocaleString()}개 중 매장 상세를 연 비율` : "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
         { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend", note: "분모(매장 상세 열람)는 앱 이벤트 숫자 — DB 와 BigQuery 를 합쳐야 한다" },
         { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend" },
         { key: "coupon_used", label: "쿠폰 사용", value: n("coupon_redeemed_this_month"), unit: "건", source: "backend" },
@@ -105,13 +135,20 @@ export async function GET() {
   const SOURCE_HINT: Record<Source, string> = {
     backend: "쿠폰·스탬프·가입은 이미 DB 에 있다. 집계 엔드포인트 하나면 된다. 「발급 → 사용」이 배너 A/B 주요 지표라 먼저.",
     push: "발송 건수는 notifications 테이블 집계로 나온다. 열기(open)는 앱 수정 대기 — 위 「푸시 → 앱 열기」 칸.",
-    ga4: "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. WAU · DAU/WAU · 앱 열기 → 매장 상세는 쿼리만 붙이면 된다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저. 값과 배지는 같은 배포에.",
-    firebase: "GA4 와 같은 스트림이라 같은 BigQuery 에 있다. 가입 1주 후 복귀는 first_open 코호트 쿼리로 읽는다.",
+    ga4: g
+      ? `BigQuery 확정 테이블(${md(g.through)}까지)에서 6시간마다 읽는다. 기기 단위라 재설치하면 새 사용자로 센다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저.`
+      : "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. WAU · DAU/WAU · 앱 열기 → 매장 상세는 쿼리만 붙이면 된다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저. 값과 배지는 같은 배포에.",
+    firebase: g
+      ? "GA4 와 같은 스트림이라 같은 BigQuery 에서 읽는다. 가입 1주 후 복귀 = first_open 코호트의 7~13일째 재방문."
+      : "GA4 와 같은 스트림이라 같은 BigQuery 에 있다. 가입 1주 후 복귀는 first_open 코호트 쿼리로 읽는다.",
   };
+  // 배지는 값이 실제로 들어온 칸이 있을 때만 올린다
+  const live: Record<Source, boolean> = { backend: s !== null, push: false, ga4: g?.wau != null, firebase: g?.retention_w1 != null };
   const sources = (Object.keys(SOURCE_LABEL) as Source[]).map((k) => {
-    const connected = k === "backend" ? s !== null : false;
+    const connected = live[k];
     const status: SourceStatus = connected ? "connected" : "pending";
-    return { key: k, label: SOURCE_LABEL[k], connected, status, hint: SOURCE_HINT[k] };
+    const failed = gErr && (k === "ga4" || k === "firebase") ? ` (BigQuery 조회 실패: ${gErr})` : "";
+    return { key: k, label: SOURCE_LABEL[k], connected, status, hint: SOURCE_HINT[k] + failed };
   });
 
   return NextResponse.json({
