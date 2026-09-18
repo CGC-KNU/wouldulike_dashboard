@@ -15,6 +15,8 @@
  * null 을 받은 쪽은 0 이 아니라 "읽지 못함"으로 그린다.
  */
 const CACHE_MS = 30000;
+/** 실패도 잠깐은 기억한다 — 401·503 이 0.1초 만에 돌아오면 다음 훅이 곧바로 같은 주소를 또 찌른다 (0919 실측). */
+const FAIL_CACHE_MS = 5000;
 const MAX_INFLIGHT = 3;
 
 const inflight = new Map<string, Promise<unknown>>();
@@ -50,12 +52,12 @@ async function once(url: string, timeout: number, retries: number): Promise<unkn
 export function fetchJson<T = unknown>(url: string, opts: { timeout?: number; retries?: number; fresh?: boolean } = {}): Promise<T | null> {
   if (!opts.fresh) {
     const hit = cache.get(url);
-    if (hit && Date.now() - hit.at < CACHE_MS) return Promise.resolve(hit.value as T | null);
+    if (hit && Date.now() - hit.at < (hit.value === null ? FAIL_CACHE_MS : CACHE_MS)) return Promise.resolve(hit.value as T | null);
     const going = inflight.get(url);
     if (going) return going as Promise<T | null>;
   }
   const p = once(url, opts.timeout ?? 25000, opts.retries ?? 1).then((v) => {
-    if (v !== null) cache.set(url, { at: Date.now(), value: v });
+    cache.set(url, { at: Date.now(), value: v });
     inflight.delete(url);
     return v as T | null;
   });
