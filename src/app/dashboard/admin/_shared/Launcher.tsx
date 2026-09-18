@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { IconArrowUpRight, IconBrandSlack, IconFolder, IconMessageChatbot } from "@tabler/icons-react";
 import { TOOLS, TOOL_ORDER, slackUrl, type ToolKey, type ToolMeta } from "@/lib/satellite";
-import { focusRing, periodLocal, agoLabel } from "./ui";
+import { focusRing, periodLocal } from "./ui";
 import type { SatelliteStatus } from "./useSatelliteStatus";
 import WeekIssues from "./WeekIssues";
 import { greetingFor, addressee } from "./greeting";
+import Polaris from "./Polaris";
 
 /**
  * 세틀라이트 런처.
@@ -181,192 +182,11 @@ export default function Launcher({ available, extras = [], userName, username = 
         <span className="hidden md:inline-flex items-center gap-1 text-[12px] text-gray-400"><IconMessageChatbot size={14} aria-hidden="true" /> 웹 화면 없음</span>
       </section>
 
-      {/* 현황 — 화면의 주인 자리 (민열님 0914: "하단 대시보드가 더 잘 보이게, 시각화").
-          숫자만 네 개 늘어놓으면 어디가 문제인지 안 보인다. 각 숫자에 **그 숫자가 어떻게 생겼는지**를 붙인다.
-          그림은 전부 지금 있는 값으로 그린다 — 새 API 도, 지어낸 값도 없다. */}
-      {status && (
-        <section aria-label="현황" className="mt-8">
-          <div className="flex items-baseline gap-2 mb-3">
-            <h2 className="text-[15px] font-bold text-gray-900 tracking-[-0.015em]">현황</h2>
-            <span className="text-[12px] text-gray-400">{Number((status.billing?.period ?? periodLocal()).slice(5))}월 · 각 판을 누르면 그 화면으로</span>
-          </div>
-
-          <div className="sat-stagger grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {/* ── 후보 파이프라인 — '진행 후보 86' 하나로는 어디 막혔는지 모른다 */}
-            <Panel title="파트너 후보" total={status.leads?.active} unit="명"
-              note={status.leads ? `미팅 잡힘 ${status.leads.meetings} · 7일 이상 멈춤 ${status.leads.stale}` : undefined}
-              alert={Boolean(status.leads?.stale)} onClick={() => onGo?.("astro-leads")}>
-              <Funnel rows={status.leads?.funnel ?? []} />
-            </Panel>
-
-            {/* ── 이번 달 청구 — 건수와 금액을 같이. 들어온 만큼 채워진다 */}
-            <Panel title={`${Number((status.billing?.period ?? periodLocal()).slice(5))}월 청구`}
-              total={status.billing?.amount.billed} unit="원" money
-              note={status.billing ? `${status.billing.billed}건 중 입금 ${status.billing.paid} · 미확인 ${status.billing.unpaid}` : undefined}
-              alert={Boolean(status.billing?.unpaid)} onClick={() => onGo?.("astro-billing")}>
-              <Meter done={status.billing?.amount.paid ?? 0} all={status.billing?.amount.billed ?? 0}
-                doneLabel="입금됨" restLabel="아직" />
-            </Panel>
-
-            {/* ── 매장 — 캠퍼스마다 어디까지 왔는지. 총량 하나로는 상권 진행이 안 보인다 */}
-            <Panel title="파트너 매장" total={status.stores?.total} unit="곳"
-              note={status.stores ? `유료 ${status.stores.paid} · 무료 ${status.stores.total - status.stores.paid}` : undefined}
-              onClick={() => onGo?.("astro-ops")}>
-              <Campuses rows={status.stores?.byCampus ?? []} />
-              <Spark weeks={status.stores?.weeks ?? []} label="최근 8주 계약 시작" />
-            </Panel>
-
-            {/* ── 스팟 제작 — 계약이 끝이 아니라 촬영·편집·납품이 뒤에 붙는다 */}
-            <Panel title="스팟 제작" total={status.spots?.live} unit="건"
-              note={status.spots ? `계약 이후 ${status.spots.contracted} · 받을 돈 ${status.spots.unpaidAmount.toLocaleString()}원` : undefined}
-              onClick={() => onGo?.("astro-spots")}>
-              <Stages rows={status.spots?.stages ?? []} />
-            </Panel>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
-            <Recent title="최근 파트너" more={() => onGo?.("astro-ops")} empty="아직 없습니다" rows={(status.stores?.recent ?? []).map((r) => ({ key: String(r.id), a: r.name, b: [r.campus, r.tier].filter(Boolean).join(" · "), c: r.signed ? `계약 ${r.signed.slice(5).replace("-", "/")}` : agoLabel(r.updated), onClick: () => onGo?.(`astro-ops?open=${r.id}`) }))} />
-            <Recent title="최근 후보 움직임" more={() => onGo?.("astro-leads")} empty="아직 없습니다" rows={(status.leads?.recent ?? []).map((r) => ({ key: r.id, a: r.name, b: r.owner ?? "", c: r.stage, onClick: () => onGo?.(`astro-leads?open=${r.id}`) }))} />
-            <Recent title="이번 달 정산" more={() => onGo?.("astro-billing")} empty="이번 달 청구가 없습니다" rows={(status.billing?.rows ?? []).map((r) => ({ key: r.id, a: r.name, b: `${r.total.toLocaleString()}원`, c: r.paid_at ? "입금 확인" : r.status === "ISSUED" ? "발행 · 대기" : "품의", tone: r.paid_at ? "green" : r.status === "PENDING" ? "amber" : "blue", onClick: () => onGo?.("astro-billing") }))} />
-          </div>
-        </section>
-      )}
+      {/* Polaris 현황 판 — 후보 깔때기·당월 청구·스팟·최근 후보를 뺐다 (민열님 0919).
+          남는 건 숫자로 성장을 말하는 것뿐이다. 부품과 계산은 Polaris.tsx · lib/polaris.ts 에 있다. */}
+      <Polaris onGo={onGo} />
 
       <p className="text-[12px] text-gray-400 mt-6">Probe 는 아직 초안이라 화면의 &lsquo;초안 데이터&rsquo; 표시를 같이 보세요. Castor 는 Visual Engineer 합류 후 다시 봅니다.</p>
-    </div>
-  );
-}
-
-/* ═══════════ 현황 판 부품 — 라이브러리 없이 CSS 와 SVG 로만 ═══════════ */
-
-/** 판 하나. 큰 숫자 하나 + 한 줄 설명 + 그림. 누르면 그 화면으로 간다. */
-function Panel({ title, total, unit, note, alert, onClick, children }: {
-  title: string; total?: number; unit?: string; note?: string; alert?: boolean; money?: boolean;
-  onClick?: () => void; children: React.ReactNode;
-}) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`text-left bg-white/85 backdrop-blur rounded-[18px] p-4 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04)] hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-26px_rgba(5,0,114,0.45)] transition-[transform,box-shadow] motion-reduce:transition-none ${focusRing}`}>
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="text-[13px] font-semibold text-gray-900">{title}</span>
-        <span className="text-[22px] font-bold text-gray-900 tabular-nums tracking-[-0.02em] leading-none ml-auto">
-          {total === undefined ? "—" : total.toLocaleString()}
-          {unit && <span className="text-[12px] font-semibold text-gray-400 ml-0.5">{unit}</span>}
-        </span>
-      </div>
-      {note && <p className={`text-[11.5px] mt-1 ${alert ? "text-red-600 font-semibold" : "text-gray-500"}`}>{note}</p>}
-      <div className="mt-3">{children}</div>
-    </button>
-  );
-}
-
-/**
- * 후보 퍼널. 단계마다 가로 막대 하나 — **가장 많은 단계를 100% 로 잡는다.**
- * 총원 대비로 그리면 막대가 전부 짧아져서 어디가 두꺼운지 안 보인다.
- */
-function Funnel({ rows }: { rows: { stage: string; n: number }[] }) {
-  const max = Math.max(1, ...rows.map((r) => r.n));
-  return (
-    <ul className="grid gap-[3px]">
-      {rows.map((r, i) => (
-        <li key={r.stage} className="grid grid-cols-[58px_1fr_26px] items-center gap-2">
-          <span className="text-[10.5px] text-gray-500 truncate">{r.stage}</span>
-          <span className="h-[7px] rounded-full bg-black/[0.05] overflow-hidden">
-            <span className="block h-full rounded-full transition-[width] duration-500"
-              style={{ width: `${(r.n / max) * 100}%`,
-                       background: `linear-gradient(90deg,#6366E0,#050072)`,
-                       opacity: 0.45 + (i / Math.max(1, rows.length - 1)) * 0.55 }} />
-          </span>
-          <span className={`text-[11px] tabular-nums text-right ${r.n ? "text-gray-700 font-semibold" : "text-gray-300"}`}>{r.n}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** 채움 막대. 이번 달 청구액 중 실제로 들어온 만큼. 0 원일 때 100% 로 보이지 않게 막는다. */
-function Meter({ done, all, doneLabel, restLabel }: { done: number; all: number; doneLabel: string; restLabel: string }) {
-  const pct = all > 0 ? Math.round((done / all) * 100) : 0;
-  return (
-    <div>
-      <div className="h-[10px] rounded-full bg-black/[0.05] overflow-hidden">
-        <div className="h-full rounded-full bg-[linear-gradient(90deg,#2BBE9B,#1C9C7E)] transition-[width] duration-700" style={{ width: `${pct}%` }} />
-      </div>
-      <div className="flex items-baseline justify-between mt-1.5 text-[11px]">
-        <span className="text-libra-deep font-semibold tabular-nums">{doneLabel} {done.toLocaleString()}원</span>
-        <span className="text-gray-400 tabular-nums">{restLabel} {Math.max(0, all - done).toLocaleString()}원 · {pct}%</span>
-      </div>
-    </div>
-  );
-}
-
-/** 캠퍼스별 유료/무료. 한 줄에 두 색을 붙여 놓아 어디가 돈이 되는 상권인지 바로 보인다. */
-function Campuses({ rows }: { rows: { campus: string; paid: number; free: number }[] }) {
-  const max = Math.max(1, ...rows.map((r) => r.paid + r.free));
-  return (
-    <ul className="grid gap-1.5">
-      {rows.map((r) => (
-        <li key={r.campus} className="grid grid-cols-[46px_1fr_auto] items-center gap-2">
-          <span className="text-[10.5px] text-gray-500 truncate">{r.campus}</span>
-          <span className="h-[7px] rounded-full bg-black/[0.05] overflow-hidden flex">
-            <span className="h-full bg-navy" style={{ width: `${(r.paid / max) * 100}%` }} />
-            <span className="h-full bg-periwinkle/35" style={{ width: `${(r.free / max) * 100}%` }} />
-          </span>
-          <span className="text-[11px] tabular-nums text-gray-500">
-            <b className="text-gray-900 font-semibold">{r.paid}</b>
-            <span className="text-gray-300"> / {r.paid + r.free}</span>
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** 8주 계약 시작 추이. 값이 전부 0 이면 그리지 않는다 — 빈 그래프는 없는 것보다 나쁘다. */
-function Spark({ weeks, label }: { weeks: number[]; label: string }) {
-  if (!weeks.length || weeks.every((n) => n === 0)) return null;
-  const max = Math.max(...weeks);
-  return (
-    <div className="mt-3 pt-3 border-t border-black/[0.05]">
-      <div className="flex items-end gap-[3px] h-[26px]" aria-hidden="true">
-        {weeks.map((n, i) => (
-          <span key={i} className="flex-1 rounded-t-[2px] bg-navy/70"
-            style={{ height: `${Math.max(8, (n / max) * 100)}%`, opacity: 0.35 + (i / (weeks.length - 1)) * 0.65 }} />
-        ))}
-      </div>
-      <p className="text-[10.5px] text-gray-400 mt-1.5">{label} · 합 {weeks.reduce((a, b) => a + b, 0)}곳</p>
-    </div>
-  );
-}
-
-/** 스팟 단계. 사람이 적어 막대보다 점이 읽기 쉽다 — 건수가 그대로 보인다. */
-function Stages({ rows }: { rows: { stage: string; n: number }[] }) {
-  const live = rows.some((r) => r.n > 0);
-  if (!live) return <p className="text-[11.5px] text-gray-400">진행 중인 제작 건이 없습니다.</p>;
-  return (
-    <ul className="flex flex-wrap gap-1.5">
-      {rows.map((r) => (
-        <li key={r.stage}
-          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] border ${r.n ? "border-navy/20 bg-navy/[0.05] text-gray-800 font-semibold" : "border-black/[0.06] text-gray-300"}`}>
-          {r.stage}<span className="tabular-nums">{r.n}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Recent({ title, more, empty, rows }: { title: string; more: () => void; empty: string; rows: { key: string; a: string; b: string; c: string; tone?: "green" | "amber" | "blue"; onClick?: () => void }[] }) {
-  const tone = { green: "bg-emerald-50 text-emerald-700", amber: "bg-amber-50 text-amber-800", blue: "bg-blue-50 text-blue-700" };
-  return (
-    <div className="bg-white/85 backdrop-blur rounded-[18px] border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04)] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.05]"><span className="text-[13px] font-semibold text-gray-900">{title}</span><button type="button" onClick={more} className={`text-[12px] font-medium text-navy hover:underline rounded ${focusRing}`}>전체 보기 →</button></div>
-      {rows.length === 0 ? <p className="px-4 py-5 text-[12px] text-gray-400">{empty}</p> : (
-        <ul className="divide-y divide-black/[0.05]">
-          {rows.map((r) => (
-            <li key={r.key}><button type="button" onClick={r.onClick} className={`w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-navy/[0.03] ${focusRing}`}><span className="flex-1 min-w-0"><span className="block text-[13px] font-medium text-gray-900 truncate">{r.a}</span>{r.b && <span className="block text-[11px] text-gray-400 truncate">{r.b}</span>}</span><span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${r.tone ? tone[r.tone] : "text-gray-500"}`}>{r.c}</span></button></li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

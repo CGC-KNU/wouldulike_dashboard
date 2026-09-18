@@ -39,3 +39,6 @@ body {
 .sat-stagger > *:nth-child(5) { animation-delay: 160ms } .sat-stagger > *:nth-child(6) { animation-delay: 200ms }
 .sat-stagger > *:nth-child(n+7) { animation-delay: 240ms }
 @media (prefers-reduced-motion: reduce) { .sat-stagger > * { animation: none } }
+
+/* Polaris 우주선 — 살짝 떠 있다. reduced-motion 이면 Tailwind motion-safe 가 꺼 준다. */
+@keyframes sat-hover { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
