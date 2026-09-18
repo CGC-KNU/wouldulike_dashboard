@@ -37,7 +37,7 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
      * 나머지로 그린다. 못 읽은 칸은 `undefined` 로 남아 화면에 "—" 로 뜬다 — 0 을 지어내지 않는다.
      */
     const j = (u: string) =>
-      fetch(u, { signal: AbortSignal.timeout(8000) })
+      fetch(u, { signal: AbortSignal.timeout(25000) }) // 식은 백엔드 첫 응답이 8초를 넘긴다 (fetchJson 주석)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
     const period = periodLocal();

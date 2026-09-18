@@ -78,7 +78,9 @@ export default function Launcher({ available, extras = [], userName, username = 
    * 인사말은 **처음 그릴 때 한 번만** 정한다 (민열님 0919). 다시 그릴 때마다 계산하면
    * 자정이나 정각을 넘기는 순간 글자가 슬쩍 바뀌어 눈에 걸린다.
    */
-  const [greet] = useState(() => greetingFor());
+  // 서버(Vercel, UTC)에서 만들면 밤에 "좋은 아침"이 나온다 — 브라우저 시계로 붙은 뒤 한 번 정한다 (0919).
+  const [greet, setGreet] = useState<string | null>(null);
+  useEffect(() => { setGreet(greetingFor()); }, []);
   /** 이번 주 일정 건수 — WeekIssues 가 세어서 알려 준다. Satty 의 '피곤' 판정에 쓴다. */
   const [weekCount, setWeekCount] = useState(0);
   const who = addressee(username, userName);
@@ -93,9 +95,9 @@ export default function Launcher({ available, extras = [], userName, username = 
             Satellite
           </p>
           <h1 className="text-[34px] md:text-[40px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.1] mt-1 text-balance">
-            {greet}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{who.name}</span>{who.suffix}.
+            {greet ?? "안녕하세요"}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{who.name}</span>{who.suffix}.
             {/* 직함은 이름 뒤 한 칸. 크기를 낮춰 이름이 먼저 읽히게 둔다 (민열님 0919). */}
-            {userTitle && <span className="ml-2 align-middle text-[14px] md:text-[15px] font-bold text-navy/55 tracking-[-0.01em]">{userTitle}</span>}
+            {userTitle && <span className="ml-2 align-middle text-[14px] md:text-[15px] font-bold text-gray-500 tracking-[-0.01em]">{userTitle}</span>}
           </h1>
           <p className="text-[15px] text-gray-500 mt-2">오늘 볼 도구를 고르세요. 카드의 숫자는 <span className="text-gray-700 font-medium">지금 막힌 일</span>입니다.</p>
         </div>
