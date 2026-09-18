@@ -73,7 +73,7 @@ export const GROUPS: Group[] = [
   },
 ];
 
-export const HEADCOUNT = 13; // 0907 신민구 탈퇴 후. 공석 1(Visual Engineer)
+export const HEADCOUNT = 14; // 민열님 정본 0919. Visual Engineer 는 충원 예정(위 open) — 14에 안 들어 있다
 
 /** 미션 — 팀모델 0807 정식 미션문. 랜딩·링크드인의 3단(발견·증명·확장)과 같은 논리. */
 export const MISSION = {
@@ -108,7 +108,7 @@ export const POLARIS = {
 
 export const FACTS: { k: string; v: string; note?: string }[] = [
   { k: "브랜드", v: "우주라이크 · WOULDULIKE · @w_ouldulike" },
-  { k: "설립", v: "2025년 11월 · 대구 북구", note: "랜딩 JSON-LD 는 2024 — 정본 확인 필요" },
+  { k: "설립", v: "2024년 6월 팀 결성 · 2025년 11월 사업자 개업", note: "대구 북구 · 민열님 정본 0919" },
   { k: "공동대표", v: "양민열 · 노재민" },
   { k: "형태", v: "개인사업자 (코끼리) · 법인 전환 2028.5 예정" },
   { k: "자본", v: "외부 조달 없음 · 자체 매출 운영" },
@@ -117,7 +117,8 @@ export const FACTS: { k: string; v: string; note?: string }[] = [
 ];
 
 export const TIMELINE: { when: string; what: string; planned?: boolean }[] = [
-  { when: "2025.11", what: "팀 결성 · 사업자 개업 (코끼리, 11/26)" },
+  { when: "2024.06", what: "팀 결성" },
+  { when: "2025.11", what: "사업자 개업 (코끼리, 11/26)" },
   { when: "2026 상반기", what: "맛집 매거진 개설 · 학생회 채널 배포망 · 앱 및 매장 콘솔 자체 개발" },
   { when: "2026.07", what: "파트너 식당 29곳 · 표준계약서 정비 · 첫 구독 매출" },
   { when: "2026.08.30", what: "14인 체계 확정 · 접촉 54 / 계약 21" },
