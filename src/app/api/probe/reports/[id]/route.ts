@@ -4,6 +4,7 @@ import { actorName, requireTool } from "@/lib/draft/guard";
 import { isPreview } from "@/lib/draft/previewStores";
 import { appendDraftItem, patchDraftItem, readDraft } from "@/lib/draft/store";
 import { checkText, reportAllText } from "@/lib/draft/report";
+import { templateMissing } from "@/lib/draft/reportTemplateData";
 import type { Activity, ReportProposal, StoreReport } from "@/lib/draft/types";
 
 const KEY = "probe_reports";
@@ -54,6 +55,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // 금지 표현·지어낸 숫자 — 경고가 아니라 차단
     const check = checkText(reportAllText(cur), cur.snapshot);
     if (!check.ok) return bad("발행할 수 없는 문장이 있습니다.", { problems: check.problems });
+    // 점주 화면(리포트 양식)의 필수 값 — 비면 양식이 빨간 칸을 띄운다. 성과를 못 읽은 스냅샷이 대부분이다.
+    const missing = templateMissing(cur);
+    if (missing.length) return bad("리포트에 꼭 들어가야 할 값이 비어 있습니다. 성과가 모인 뒤 갱신본을 만드세요.", { problems: missing.map((m) => `${m} 없음`) });
     const updated = patchDraftItem<StoreReport>(KEY, seed, id, { status: "APPROVED", approved_by: who, approved_at: now });
     return NextResponse.json({ report: updated, draft: true });
   }

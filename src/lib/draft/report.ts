@@ -16,6 +16,8 @@ export const METRIC_LABEL: Record<string, string> = { saved: "저장", reach: "�
 export const TILE_KEYS = ["views", "reach", "likes", "comments", "saved", "shares"] as const;
 export const HEADLINE_ORDER = ["saved", "reach", "views"] as const;
 export const MIN_COHORT = 5;
+/** 비교할 근거가 없을 때의 한 줄 요약 — 공개 양식에서는 제목으로 쓰지 않는다(뜻이 없는 문장이라). */
+export const DEFAULT_SUMMARY = "인스타그램 수치와 같은 기간 앱에서 일어난 일을 정리했습니다.";
 
 /** 비교군만 "약" 으로 반올림. 자기 수치는 그대로. */
 export function approx(n: number): string {

@@ -5,7 +5,7 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { fetchPapillonMonths } from "@/lib/draft/papillon";
 import { buildSnapshot } from "@/lib/draft/snapshot";
-import { cohortNote, interpret, propose, HEADLINE_ORDER, comparable } from "@/lib/draft/report";
+import { cohortNote, interpret, propose, HEADLINE_ORDER, comparable, DEFAULT_SUMMARY } from "@/lib/draft/report";
 import { seedStoreOps } from "@/lib/draft/seed";
 import type { BackendRestaurant, StoreOps, StoreReport } from "@/lib/draft/types";
 
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     id: `rep-${Date.now()}`,
     token: null, restaurant_id: store.restaurant_id, plan_id: plan.id, kind: "post", status: "DRAFT",
     title: `${store.name} 인스타그램 홍보 성과`,
-    summary: head && comparable(head) ? interpret(head) : "인스타그램 수치와 같은 기간 앱에서 일어난 일을 정리했습니다.",
+    summary: head && comparable(head) ? interpret(head) : DEFAULT_SUMMARY,
     interpretation: HEADLINE_ORDER.map((k) => snapshot.metrics.find((m) => m.key === k)).filter((m): m is NonNullable<typeof m> => Boolean(m)).slice(0, 2).map(interpret),
     snapshot, proposals: propose(snapshot, usedRules),
     created_by: actor, created_at: now, approved_by: null, approved_at: null, linked_at: null, sent_at: null, revoked_at: null,
