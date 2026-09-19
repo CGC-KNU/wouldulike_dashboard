@@ -60,7 +60,7 @@ const cachedGa4 = unstable_cache(
     if (!r.ok) throw new Error(r.detail ?? r.reason);
     return r.data;
   },
-  ["probe-app-ga4-v1"],
+  ["probe-app-ga4-v2"],
   { revalidate: 6 * 60 * 60 }
 );
 
@@ -130,25 +130,25 @@ export async function GET() {
       description: "보낸 알림이 사람을 앱으로 데려오는가. 09-09 '알림 보내도 접속률이 낮다'의 답이 여기 있어야 한다.",
       metrics: [
         { key: "push_sent", label: "푸시 발송", value: n("push_sent_this_month"), unit: "건", source: "push", note: s ? "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺐다" : undefined },
-        { key: "push_open", label: "푸시 → 앱 열기", value: null, unit: "%", source: "push", status: "app_fix", note: "notification_open 은 Firebase 예약어라 0건. 앱에서 push_open 으로 바꾼 배포 이후부터" },
+        { key: "push_open", label: "푸시 → 앱 열기", value: g?.push_open ?? null, unit: "%", source: "firebase", note: g ? `${md(g.push.from)}~${md(g.push.to)} 안드로이드 수신 ${g.push.received.toLocaleString()}건 중 ${g.push.opened_android}건 열림 (iOS 는 수신을 못 세 열기 ${g.push.opened_ios}건만)` : "Firebase 자동 이벤트(notification_receive/open) — BigQuery 쿼리 연결 전" },
         { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix", note: "배너 노출 이벤트가 없다(0건). 노출 이벤트 배포가 먼저" },
-        { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: null, unit: "%", source: "backend", note: "클릭은 앱 이벤트, 사용은 DB — 둘을 합쳐야 한다" },
+        { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: g?.banner_to_coupon ?? null, unit: "%", source: "ga4", note: g ? `${md(g.banner.from)}~${md(g.banner.to)} 배너를 누른 기기 ${g.banner.clicked}대 중 7일 안에 쿠폰을 쓴 ${g.banner.redeemed}대. 표본이 작다` : "배너 클릭 기기의 7일 내 coupon_redeemed — BigQuery 쿼리 연결 전" },
       ],
     },
   ];
 
   const SOURCE_HINT: Record<Source, string> = {
     backend: s
-      ? "백엔드 app-stats 에서 이번 달(KST) 합계를 읽는다. 「매장 상세 → 쿠폰」·「배너 클릭 → 쿠폰」은 앱 이벤트(BigQuery)와 DB 를 사용자 단위로 합쳐야 해서 아직 비어 있다."
+      ? "백엔드 app-stats 에서 이번 달(KST) 합계를 읽는다. 「매장 상세 → 쿠폰 발급」은 정의를 다시 정하는 중이라 비워 둔다 — 앱의 coupon_issued 는 자동 지급 쿠폰이 보일 때도 찍혀 매장을 보고 받은 쿠폰과 섞인다."
       : "쿠폰·스탬프·가입은 이미 DB 에 있다. 백엔드 /api/dashboard/admin/app-stats/ 가 배포되면 채워진다.",
     push: s
-      ? "발송 건수는 notifications 테이블에서 센다. 열기(open)는 앱 수정 대기 — 위 「푸시 → 앱 열기」 칸."
-      : "발송 건수는 notifications 테이블 집계로 나온다. 열기(open)는 앱 수정 대기 — 위 「푸시 → 앱 열기」 칸.",
+      ? "발송 건수는 notifications 테이블에서 센다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸."
+      : "발송 건수는 notifications 테이블 집계로 나온다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸.",
     ga4: g
       ? `BigQuery 확정 테이블(${md(g.through)}까지)에서 6시간마다 읽는다. 기기 단위라 재설치하면 새 사용자로 센다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저.`
       : "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. WAU · DAU/WAU · 앱 열기 → 매장 상세는 쿼리만 붙이면 된다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저. 값과 배지는 같은 배포에.",
     firebase: g
-      ? "GA4 와 같은 스트림이라 같은 BigQuery 에서 읽는다. 가입 1주 후 복귀 = first_open 코호트의 7~13일째 재방문."
+      ? "GA4 와 같은 스트림이라 같은 BigQuery 에서 읽는다. 가입 1주 후 복귀 = first_open 코호트의 7~13일째 재방문. 푸시 열기 = FCM 자동 이벤트, 수신은 안드로이드만 남아 비율도 안드로이드 기준."
       : "GA4 와 같은 스트림이라 같은 BigQuery 에 있다. 가입 1주 후 복귀는 first_open 코호트 쿼리로 읽는다.",
   };
   // 배지는 값이 실제로 들어온 칸이 있을 때만 올린다
