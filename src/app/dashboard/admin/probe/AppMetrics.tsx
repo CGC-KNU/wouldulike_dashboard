@@ -74,7 +74,7 @@ export default function AppMetrics() {
           ? <Kpi label="다음 연결" value={loading ? "-" : "BigQuery"} hint="GA4 원본 쿼리로 4칸 · 2칸은 앱 수정 대기" />
           : !data?.sources.find((s) => s.key === "backend")?.connected
             ? <Kpi label="다음 연결" value={loading ? "-" : "DB 집계"} hint="백엔드 app-stats 배포로 9칸 · 2칸은 앱 수정 대기" />
-            : <Kpi label="다음 연결" value={loading ? "-" : "DB × 앱 이벤트"} hint="사용자 단위로 합치면 2칸 · 2칸은 앱 수정 대기" />}
+            : <Kpi label="남은 칸" value={loading ? "-" : "정의 · 앱 수정"} hint="매장 상세 → 쿠폰은 정의 보류 · 배너 노출은 앱 이벤트 먼저" />}
         <Kpi label="주요 지표 후보" value={loading ? "-" : "발급 → 사용"} hint="배너 A/B 의 판정 기준 (Castor)" />
       </div>
 

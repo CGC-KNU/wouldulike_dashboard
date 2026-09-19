@@ -4,14 +4,18 @@ import { BigQuery } from "@google-cloud/bigquery";
  * Probe · 앱 지표 — GA4 원본(BigQuery export)에서 읽는 4칸.
  *
  * 앱은 3월부터 GA4 로 이벤트를 보내고 `wouldulike-efe19.analytics_494806625` 에 쌓인다(Event/P0 계측 보고).
- * 여기서 WAU · DAU/WAU · 앱 열기 → 매장 상세 · 가입 1주 후 복귀를 계산한다.
+ * 여기서 WAU · DAU/WAU · 앱 열기 → 매장 상세 · 가입 1주 후 복귀 · 푸시 → 앱 열기 · 배너 클릭 → 쿠폰 사용을 계산한다.
  *
  * 규칙 (Event/데이터 파이프라인 문서):
  *  - 확정 테이블 `events_YYYYMMDD` 만 읽는다. `events_intraday_*` 는 늦게 온 이벤트가 붙고 결국 지워져 값이 바뀐다.
  *  - 모든 쿼리에 `_TABLE_SUFFIX` 범위를 건다. 빠뜨리면 전 기간을 스캔해 비용이 튄다. 쿼리당 스캔 상한도 건다.
  *  - 활성 = SDK `user_engagement`(앱이 앞에 떠 있을 때), 세션 = SDK `ga_session_id`.
  *    앱 자체 세션(`app_session_start`, 30분 기준)과 섞지 않는다.
- *  - 이 앱은 setUserId 를 안 부른다 — 전부 기기 단위(`user_pseudo_id`). 재설치하면 다른 사람으로 센다.
+ *  - 출시된 앱은 setUserId 를 안 부른다(user_id 0건) — 전부 기기 단위(`user_pseudo_id`). 재설치하면 다른 사람으로 센다.
+ *    그래서 DB(쿠폰·가입)와 사용자 단위로 합칠 수 없고, 앱 이벤트끼리만 잇는다.
+ *  - 푸시는 Firebase 가 자동으로 남기는 `notification_receive/open` 을 쓴다(firebase_event_origin=fcm).
+ *    앱이 직접 남기려던 `notification_open` 은 예약어라 막혔지만 자동 이벤트는 따로 쌓인다.
+ *    수신은 안드로이드만 남는다(iOS 는 백그라운드 수신을 못 센다) — 비율은 안드로이드끼리만 낸다.
  *
  * Next 에 의존하지 않는다(캐시는 라우트가 건다). `scripts/probe-bq-check.mts` 가 같은 함수를 부른다.
  */
@@ -32,6 +36,12 @@ export interface Ga4AppMetrics {
   /** 첫 실행 코호트 중 7~13일째 다시 활성인 비율, % */
   retention_w1: number | null;
   cohort: { from: string; to: string; users: number };
+  /** 안드로이드 푸시 열기 ÷ 수신, % — 14일 창 */
+  push_open: number | null;
+  push: { from: string; to: string; received: number; opened_android: number; opened_ios: number };
+  /** 홈 배너를 누른 기기 중 7일 안에 쿠폰을 쓴 비율, % */
+  banner_to_coupon: number | null;
+  banner: { from: string; to: string; clicked: number; redeemed: number };
 }
 
 export type Ga4Read = { ok: true; data: Ga4AppMetrics } | { ok: false; reason: "no_key" | "error"; detail?: string };
@@ -122,6 +132,38 @@ export async function readGa4AppMetrics(env: Record<string, string | undefined> 
     { cStart, cEnd, rStart: shift(cStart, 7), end }
   );
 
+  // ④ 푸시 → 앱 열기 — 14일 창. 7일이면 수신이 백 건 남짓이라 하루 발송에 크게 흔들린다.
+  const pStart = shift(end, -13);
+  const [push] = await run<{ received: number; opened_android: number; opened_ios: number }>(
+    `SELECT COUNTIF(event_name = 'notification_receive' AND platform = 'ANDROID') AS received,
+            COUNTIF(event_name = 'notification_open' AND platform = 'ANDROID') AS opened_android,
+            COUNTIF(event_name = 'notification_open' AND platform = 'IOS') AS opened_ios
+     FROM ${events}
+     WHERE _TABLE_SUFFIX BETWEEN @pStart AND @end AND event_name IN ('notification_receive', 'notification_open')`,
+    { pStart, end }
+  );
+
+  // ⑤ 배너 클릭 → 쿠폰 사용 — 기기의 첫 배너 클릭 뒤 7일 안에 coupon_redeemed 가 있으면 전환.
+  //    모든 클릭이 7일을 다 채우도록 클릭 창을 end-34 ~ end-7 로 잡는다(클릭이 적어 4주치).
+  const bStart = shift(end, -34);
+  const bEnd = shift(end, -7);
+  const [ban] = await run<{ clicked: number; redeemed: number }>(
+    `WITH c AS (
+       SELECT user_pseudo_id, MIN(event_timestamp) AS t FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @bStart AND @bEnd AND event_name = 'home_banner_click'
+       GROUP BY user_pseudo_id
+     ), r AS (
+       SELECT user_pseudo_id, event_timestamp AS t FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @bStart AND @end AND event_name = 'coupon_redeemed'
+     )
+     SELECT COUNT(DISTINCT c.user_pseudo_id) AS clicked,
+            COUNT(DISTINCT IF(r.user_pseudo_id IS NULL, NULL, c.user_pseudo_id)) AS redeemed
+     FROM c LEFT JOIN r
+       ON r.user_pseudo_id = c.user_pseudo_id
+      AND r.t BETWEEN c.t AND c.t + 7 * 24 * 3600 * 1000000`,
+    { bStart, bEnd, end }
+  );
+
   const wau = Number(act?.wau ?? 0);
   const sessions = Number(ses?.sessions ?? 0);
   const cohort = Number(ret?.cohort ?? 0);
@@ -136,6 +178,15 @@ export async function readGa4AppMetrics(env: Record<string, string | undefined> 
       sessions,
       retention_w1: pct(Number(ret?.returned ?? 0), cohort),
       cohort: { from: dash(cStart), to: dash(cEnd), users: cohort },
+      push_open: pct(Number(push?.opened_android ?? 0), Number(push?.received ?? 0)),
+      push: {
+        from: dash(pStart), to: dash(end),
+        received: Number(push?.received ?? 0),
+        opened_android: Number(push?.opened_android ?? 0),
+        opened_ios: Number(push?.opened_ios ?? 0),
+      },
+      banner_to_coupon: pct(Number(ban?.redeemed ?? 0), Number(ban?.clicked ?? 0)),
+      banner: { from: dash(bStart), to: dash(bEnd), clicked: Number(ban?.clicked ?? 0), redeemed: Number(ban?.redeemed ?? 0) },
     },
   };
 }
