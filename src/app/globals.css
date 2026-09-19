@@ -120,6 +120,61 @@ body {
 .satty[data-mood="sleep"] .satty-zz { opacity: 1; animation: satty-zz 3.6s ease-in-out infinite; }
 .satty[data-mood="sleep"] .satty-beacon { animation-duration: 5s; }
 
+/* ── 세티 놀이방: 우주선 안 (민열님 0919) ───────────────────────────
+   업무 화면이 아니라서 여기만 어둡다. 다크 모드와 무관하게 늘 밤이다 — 창밖이 우주니까. */
+.playroom .pr-hull{position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgba(99,102,224,.20), transparent 62%),
+    radial-gradient(80% 50% at 50% 110%, rgba(43,190,155,.08), transparent 60%),
+    linear-gradient(180deg,#0E0E2E 0%,#08081C 55%,#0A0A22 100%);}
+/* 선체 패널 — 가로선 몇 개면 '안쪽'으로 읽힌다 */
+.playroom .pr-hull::after{content:"";position:absolute;inset:0;opacity:.5;
+  background:repeating-linear-gradient(180deg, rgba(255,255,255,.035) 0 1px, transparent 1px 84px);}
+.playroom .pr-stars{position:absolute;inset:0;pointer-events:none;opacity:.7;
+  background-image:
+    radial-gradient(1.6px 1.6px at 12% 18%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 74% 12%, #D8D9FF, transparent),
+    radial-gradient(1.4px 1.4px at 38% 62%, #fff, transparent),
+    radial-gradient(1px 1px at 88% 44%, #C7C9F7, transparent),
+    radial-gradient(1.3px 1.3px at 58% 86%, #fff, transparent),
+    radial-gradient(1px 1px at 24% 88%, #9B9DF4, transparent),
+    radial-gradient(1.1px 1.1px at 92% 74%, #fff, transparent);
+  animation:pr-drift 70s linear infinite;}
+@keyframes pr-drift{from{background-position:0 0,0 0,0 0,0 0,0 0,0 0,0 0}
+  to{background-position:0 -240px,0 -190px,0 -280px,0 -150px,0 -220px,0 -170px,0 -260px}}
+/* 창 — 세티가 이 앞에 뜬다 */
+.playroom .pr-port{position:absolute;width:min(330px,78%);aspect-ratio:1;border-radius:999px;
+  background:radial-gradient(circle at 34% 28%, #2C2D74 0%, #14143E 62%, #0C0C2A 100%);
+  box-shadow:inset 0 0 0 9px rgba(255,255,255,.055), inset 0 0 70px rgba(99,102,224,.30), 0 0 90px -24px rgba(99,102,224,.75);
+  overflow:hidden;}
+/* 창밖 행성 하나. 느리게 돈다 — 움직이는 게 하나는 있어야 '항해 중'으로 보인다 */
+.playroom .pr-port::after{content:"";position:absolute;left:58%;top:64%;width:52%;aspect-ratio:1;border-radius:999px;
+  background:radial-gradient(circle at 32% 30%, #7C7EF0, #3B3BA8 58%, #1E1E5E 100%);
+  box-shadow:inset -10px -8px 24px rgba(0,0,0,.45);
+  animation:pr-orbit 90s linear infinite;}
+@keyframes pr-orbit{from{transform:translate(0,0)}50%{transform:translate(-14px,-10px)}to{transform:translate(0,0)}}
+
+/* 놀이방 세티 — 런처 세티와 같은 얼굴, 규칙만 따로 (감싸는 .satty 가 없다) */
+.satty-room .eye-closed,.satty-room .eye-smile,.satty-room .pr-hearts,.satty-room .pr-crumbs,.satty-room .pr-zzz{opacity:0;transition:opacity .22s ease-out}
+.satty-room .satty-torso{animation:satty-breathe 3.4s ease-in-out infinite;transform-origin:50% 62%}
+.satty-room .wl{transform-origin:46px 92px}.satty-room .wr{transform-origin:114px 92px}
+.satty-room[data-mood="happy"] .eye-open{opacity:0}
+.satty-room[data-mood="happy"] .eye-smile{opacity:1}
+.satty-room[data-mood="happy"] .pr-hearts{opacity:1;animation:satty-heart 1.5s ease-out}
+.satty-room[data-mood="happy"] .satty-torso{animation:satty-bounce 1.05s ease-in-out infinite}
+.satty-room[data-mood="happy"] .wl{transform:rotate(-18deg) translateY(-6px)}
+.satty-room[data-mood="happy"] .wr{transform:rotate(18deg) translateY(-6px)}
+.satty-room[data-mood="eat"] .pr-crumbs{opacity:1;animation:pr-crumb .9s ease-out}
+@keyframes pr-crumb{from{transform:translateY(-10px);opacity:1}to{transform:translateY(10px);opacity:0}}
+.satty-room[data-mood="sleep"] .eye-open{opacity:0}
+.satty-room[data-mood="sleep"] .eye-closed{opacity:1}
+.satty-room[data-mood="sleep"] .pr-zzz{opacity:1;animation:satty-zz 3.2s ease-in-out infinite}
+.satty-room[data-mood="sleep"] .satty-torso{animation-duration:5.2s}
+.satty-room[data-mood="sad"] .eye-open{transform:scaleY(.55);transform-origin:center;transform-box:fill-box}
+.satty-room[data-mood="sad"] .wl{transform:rotate(18deg) translateY(7px)}
+.satty-room[data-mood="sad"] .wr{transform:rotate(-18deg) translateY(7px)}
+@media (prefers-reduced-motion:reduce){.playroom .pr-stars,.playroom .pr-port::after,.satty-room *{animation:none!important}}
+
 /* 쓰다듬기 — 세 번 두드리면 하트가 올라간다 (민열님 0919) */
 .satty-hearts { opacity: 0; }
 .satty[data-pet="1"] .satty-hearts { opacity: 1; animation: satty-heart 1.7s ease-out; }

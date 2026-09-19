@@ -35,7 +35,7 @@ const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
 /** 세틀라이트 툴이 아니면서 런처에서 열어야 하는 제품(예: Drive — 파일 저장소). 카드 대신 하단 스트립. */
 export interface LauncherExtra { key: string; name: string; subtitle?: string; description?: string }
 
-export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
+export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, onPlayroom, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onPlayroom?: () => void; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
   const [pulse, setPulse] = useState<Pulse>({});
 
   useEffect(() => {
@@ -164,6 +164,21 @@ export default function Launcher({ available, extras = [], userName, username = 
             </li>
           ))}
         </ul>
+      )}
+
+      {/* 세티랑 놀기 — 업무 툴이 아니라 쉬는 곳이다. 그래서 '가동 중' 배지가 없고, 얼굴이 아이콘이다 (민열님 0919). */}
+      {onPlayroom && (
+        <button type="button" onClick={onPlayroom}
+          className={`mt-2.5 w-full text-left rounded-[18px] border border-periwinkle/35 bg-[linear-gradient(90deg,rgba(99,102,224,0.08),rgba(255,255,255,0.6)_55%)] px-5 py-3.5 flex items-center gap-3 hover:border-periwinkle hover:-translate-y-0.5 transition-[transform,border-color] duration-150 ${focusRing}`}>
+          <span aria-hidden="true" className="w-9 h-9 rounded-[12px] shrink-0 bg-[linear-gradient(135deg,#7C7EF0,#2B28B8)] flex items-center justify-center shadow-[0_8px_18px_-10px_rgba(5,0,114,0.8)]">
+            <svg viewBox="0 0 160 160" className="w-6 h-6"><circle cx="80" cy="88" r="46" fill="#fff" opacity=".95" /><circle cx="66" cy="82" r="6" fill="#2B28B8" /><circle cx="94" cy="82" r="6" fill="#2B28B8" /><rect x="72" y="30" width="16" height="14" rx="6" fill="#fff" opacity=".95" /></svg>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-bold text-gray-900 tracking-[-0.01em]">세티랑 놀기<span className="ml-1.5 align-[1px] text-[10.5px] font-bold text-white bg-[#FF8FB1] rounded-full px-1.5 py-[1px]">NEW</span></span>
+            <span className="block text-[12px] text-gray-500 mt-0.5 truncate">밥 주고 놀아 주기 · 대화 · 잘 챙겨준 팀원 — 팀이 하나를 같이 키웁니다</span>
+          </span>
+          <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-navy shrink-0">들어가기 <IconArrowUpRight size={14} aria-hidden="true" /></span>
+        </button>
       )}
 
         </div>
