@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { IconExternalLink } from "@tabler/icons-react";
-import { readDraft } from "@/lib/draft/store";
-import type { StoreReport } from "@/lib/draft/types";
+import { listMyReports } from "@/lib/draft/reportStore";
 import type { PartnerHomeData } from "../PartnerHome";
 
 /**
@@ -10,9 +9,8 @@ import type { PartnerHomeData } from "../PartnerHome";
  * 리포트 본문은 Probe 가 만들고 공개 링크(/r/<token>)로 카톡으로 보낸다. 점주가 여기서 볼 수 있는 건
  * **첫 리포트까지 얼마나 남았는지**와, 받은 리포트 링크다.
  *
- * 목록은 Probe 가 쓰는 초안 저장소(`probe_reports`)를 **같은 프로세스에서 직접** 읽는다 — 점주 토큰용 API 를
- * 따로 만들지 않아도 된다. 보이는 건 이 매장 것 중 링크가 발급된(LINKED·SENT) 리포트뿐이다. 초안·승인 대기는
- * 점주에게 안 보인다. 저장소가 백엔드 테이블로 옮겨 가면 이 읽기만 바꾼다.
+ * 목록은 백엔드 `/api/probe/reports/mine/` — 이 매장 것 중 링크가 발급된(LINKED·SENT) 리포트뿐이다.
+ * 초안·승인 대기는 점주에게 안 보인다. 관리자가 파트너 뷰로 볼 때(?rid)는 그 매장 것.
  */
 export default async function OwnerReportsPage({ searchParams }: { searchParams: Promise<{ rid?: string }> }) {
   const { rid } = await searchParams;
@@ -26,8 +24,7 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
   } catch { data = null; }
 
   const rid_n = data?.store.restaurant_id;
-  const reports = rid_n == null ? [] : readDraft<StoreReport[]>("probe_reports", () => [])
-    .filter((r) => r.restaurant_id === rid_n && (r.status === "LINKED" || r.status === "SENT") && r.token)
+  const reports = (rid_n == null ? [] : await listMyReports(rid_n, Boolean(rid)))
     .sort((a, b) => (b.sent_at ?? b.linked_at ?? b.created_at).localeCompare(a.sent_at ?? a.linked_at ?? a.created_at));
   const ymd = (iso: string) => `${iso.slice(0, 4)}.${iso.slice(5, 7)}.${iso.slice(8, 10)}`;
 

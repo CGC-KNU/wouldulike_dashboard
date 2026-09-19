@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { readDraft } from "@/lib/draft/store";
+import { getReport, getReportByToken } from "@/lib/draft/reportStore";
 import { fillReportTemplate } from "@/lib/draft/reportTemplate";
 import type { StoreReport } from "@/lib/draft/types";
 
@@ -15,7 +15,6 @@ import type { StoreReport } from "@/lib/draft/types";
  *   ?download=1  미리보기에서 HTML 파일 한 장으로 내려받는다(열람 기록 스크립트·미리보기 띠 없음)
  */
 
-const seed = (): StoreReport[] => [];
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://wouldulike-dashboard.vercel.app";
 
 async function load(token: string): Promise<{ r: StoreReport; preview: boolean } | null> {
@@ -23,16 +22,14 @@ async function load(token: string): Promise<{ r: StoreReport; preview: boolean }
     if (token.startsWith("preview-")) {
       const has = (await cookies()).get("access_token")?.value;
       if (!has) return null;
-      const r = readDraft<StoreReport[]>("probe_reports", seed).find((x) => x.id === token.slice(8));
+      const r = await getReport(token.slice(8)).catch(() => null);
       return r ? { r, preview: true } : null;
     }
     return null;
   }
-  const r = readDraft<StoreReport[]>("probe_reports", seed).find((x) => x.token === token);
-  if (!r) return null;
-  if (r.status === "REVOKED") return { r, preview: false };
-  if (r.status !== "LINKED" && r.status !== "SENT") return null;
-  return { r, preview: false };
+  // 저장소가 공개 범위를 지킨다 — LINKED·SENT 는 본문, REVOKED 는 상태만, 그 외는 없음
+  const r = await getReportByToken(token).catch(() => null);
+  return r ? { r, preview: false } : null;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
