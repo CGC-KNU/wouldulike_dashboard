@@ -13,7 +13,10 @@ const safeJson = (d: unknown) => JSON.stringify(d, null, 2).replace(/</g, "\\u00
 const BLOCK = /(<script type="application\/json" id="report-data">)[\s\S]*?(<\/script>)/;
 
 export function fillReportTemplate(r: StoreReport, opts: { beaconToken?: string } = {}): string {
-  let html = REPORT_TEMPLATE_HTML.replace(BLOCK, (_m, open: string, close: string) => `${open}\n${safeJson(toTemplateData(r))}\n${close}`);
+  const data = toTemplateData(r);
+  let html = REPORT_TEMPLATE_HTML.replace(BLOCK, (_m, open: string, close: string) => `${open}\n${safeJson(data)}\n${close}`);
+  // 게시물 사진이 없으면 양식은 "게시물 이미지 / post.image" 자리표시를 크게 띄운다(자동화 점검용). 점주에게는 빈 칸이라 숨긴다.
+  if (!(data.post as { image?: string }).image) html = html.replace("</head>", "<style>.post .shot{display:none}</style>\n</head>");
   // 열람 1회 — 같은 브라우저 세션에서 한 번. 크롤러는 JS 를 안 돌려 자동으로 빠진다(예전 ViewBeacon 과 같은 규칙).
   if (opts.beaconToken && /^[0-9a-f]{40}$/.test(opts.beaconToken)) {
     const t = opts.beaconToken;
@@ -23,4 +26,15 @@ export function fillReportTemplate(r: StoreReport, opts: { beaconToken?: string 
     );
   }
   return html;
+}
+
+/**
+ * 양식의 진짜 <body> 바로 뒤에 끼운다. `/<body[^>]*>/` 로 찾으면 안 된다 — 양식 머리말 **주석 안에**
+ * `<body data-report-status="ok|error">` 라는 설명 글이 먼저 나와서, 거기(주석 속)에 들어가 화면에 안 보인다.
+ */
+const BODY_TAG = '<body data-report-status="loading">';
+export function insertAfterBody(html: string, fragment: string): string {
+  const i = html.indexOf(BODY_TAG);
+  if (i < 0) throw new Error("리포트 양식에서 <body> 를 찾지 못했습니다 — 양식이 바뀌었는지 확인하세요");
+  return html.slice(0, i + BODY_TAG.length) + "\n" + fragment + html.slice(i + BODY_TAG.length);
 }

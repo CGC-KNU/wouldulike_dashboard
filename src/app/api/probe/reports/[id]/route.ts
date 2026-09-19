@@ -91,11 +91,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ report: updated, url: `/r/${token}`, draft: draft() });
   }
   if (action === "sent") {
-    // 발급 ≠ 발송. 사람이 카톡으로 보낸 뒤 체크한다 — 이게 있어야 "보냈는데 안 열었다"와 "안 보냈다"가 갈린다.
-    if (cur.status !== "LINKED") return bad("링크를 발급한 리포트만 '보냈음'으로 표시할 수 있습니다.");
+    // 사람이 카톡으로 보낸 뒤 체크한다. 0920 부터는 링크 대신 PNG·HTML 파일로 보낸다 — 승인(APPROVED)에서 바로 보냄으로 간다.
+    if (cur.status !== "APPROVED" && cur.status !== "LINKED") return bad("승인한 리포트만 '보냈음'으로 표시할 수 있습니다.");
     const updated = await save(id, { status: "SENT", sent_at: now });
     if (updated instanceof NextResponse) return updated;
-    appendDraftItem<Activity>("astro_activities", () => [], { target_type: "store", target_id: String(cur.restaurant_id), kind: "카톡", body: `'${cur.snapshot.post.topic}' 게시물 리포트 링크 전송`, author: who, created_at: now });
+    appendDraftItem<Activity>("astro_activities", () => [], { target_type: "store", target_id: String(cur.restaurant_id), kind: "카톡", body: `'${cur.snapshot.post.topic}' 게시물 리포트 ${cur.token ? "링크" : "파일"} 카톡 전송`, author: who, created_at: now });
     return NextResponse.json({ report: updated, draft: draft() });
   }
   if (action === "revoke") {

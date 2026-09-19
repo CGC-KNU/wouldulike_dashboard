@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { getReport, getReportByToken } from "@/lib/draft/reportStore";
-import { fillReportTemplate } from "@/lib/draft/reportTemplate";
+import { fillReportTemplate, insertAfterBody } from "@/lib/draft/reportTemplate";
+import { toTemplateData } from "@/lib/draft/reportTemplateData";
+import { downloadBar } from "@/lib/draft/reportDownload";
 import type { StoreReport } from "@/lib/draft/types";
 
 /**
@@ -11,8 +13,8 @@ import type { StoreReport } from "@/lib/draft/types";
  *
  * 그리는 값은 전부 스냅샷이다(라이브 조회 없음 — 인증도 없고 수치도 변한다).
  * 링크 발급(LINKED)·발송(SENT)된 리포트만 열린다. 초안·승인 상태는 로그인한 담당자만 `/r/preview-<id>` 로 본다.
- *   ?print=1     미리보기에서 인쇄창(PDF 저장)을 바로 연다
- *   ?download=1  미리보기에서 HTML 파일 한 장으로 내려받는다(열람 기록 스크립트·미리보기 띠 없음)
+ * 미리보기 위 띠에서 사장님께 카톡으로 보낼 파일(PNG · 스크립트 없는 HTML · 인쇄)을 받는다 — reportDownload.ts.
+ * 승인된 리포트만. `?print=1` 이면 인쇄창을 바로 연다.
  */
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://wouldulike-dashboard.vercel.app";
@@ -59,18 +61,6 @@ function headTags(r: StoreReport): string {
   ].join("\n");
 }
 
-/** 담당자 미리보기 띠 — 인쇄에는 안 나온다 */
-function previewBar(r: StoreReport, token: string): string {
-  const btn = "display:inline-block;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;text-decoration:none";
-  return (
-    `<div data-preview-bar style="background:#FFF7E6;border-bottom:1px solid #F3D9A4;padding:8px 16px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;font:600 12px/1.4 -apple-system,sans-serif;color:#9A6414">` +
-    `<span>미리보기 · ${r.status === "LINKED" || r.status === "SENT" ? "발행됨" : "아직 발행 전"}</span>` +
-    `<a href="javascript:window.print()" style="${btn};background:#312E81;color:#fff">PDF</a>` +
-    `<a href="/r/${esc(token)}?download=1" style="${btn};background:#fff;color:#312E81;border:1px solid #C7CCFB">HTML 파일</a>` +
-    `</div><style>@media print{[data-preview-bar]{display:none!important}}</style>`
-  );
-}
-
 export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const hit = await load(token);
@@ -78,21 +68,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { r, preview } = hit;
   if (r.status === "REVOKED" && !preview) return plain(410, "이 리포트는 더 이상 공개되지 않습니다.", "새 리포트를 받으셨다면 그 링크로 열어 주세요.");
 
-  const q = new URL(req.url).searchParams;
-  const fname = `${r.snapshot.store.name}_매장리포트_${r.snapshot.as_of.slice(0, 10).replace(/-/g, "")}`;
-
-  // 파일로 내려받기 — 양식은 원래 한 파일로 보내도록 만들어졌다
-  if (preview && q.get("download") === "1") {
-    return new Response(fillReportTemplate(r), {
-      headers: { ...HEADERS, "Content-Disposition": `attachment; filename="report.html"; filename*=UTF-8''${encodeURIComponent(fname)}.html` },
-    });
-  }
-
   let html = fillReportTemplate(r, { beaconToken: preview ? undefined : r.token ?? undefined });
   html = html.replace("</head>", `${headTags(r)}\n</head>`);
   if (preview) {
-    html = html.replace(/<body([^>]*)>/, (m) => `${m}\n${previewBar(r, token)}`);
-    if (q.get("print") === "1") html = html.replace("</body>", `<script>setTimeout(function(){document.title=${JSON.stringify(fname).replace(/</g, "\\u003c")};window.print()},600)</script>\n</body>`);
+    const day = toTemplateData(r).report as { day: number | null; measured_at: string };
+    const fname = `${r.snapshot.store.name}_성과리포트${day.day != null ? `_${day.day}일차` : ""}_${day.measured_at.replace(/-/g, "")}`.replace(/[\\/:*?"<>|\s]+/g, "_");
+    const canDownload = r.status === "APPROVED" || r.status === "LINKED" || r.status === "SENT";
+    const label = r.status === "SENT" ? "보냄" : canDownload ? "승인됨" : "승인 전";
+    html = insertAfterBody(html, downloadBar({ filename: fname, canDownload, statusLabel: label }));
   }
   return new Response(html, { headers: HEADERS });
 }
