@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconLink, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, reportAllText, verdict } from "@/lib/draft/report";
+import { templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, rowClickable, type ChipTone } from "../_shared/ui";
@@ -230,7 +231,12 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const editable = r.status === "DRAFT" || r.status === "APPROVED";
   const dirty = title !== r.title || summary !== r.summary || interp !== r.interpretation.join("\n") || JSON.stringify(props) !== JSON.stringify(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved })));
   // 저장 전에도 클라이언트에서 같은 검사를 돌려 미리 보여준다 (최종 판정은 서버)
-  const precheck = useMemo(() => checkText(reportAllText({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props.map((p) => ({ ...p, generated_text: "", edited_by: null, edited_at: null })) }), r.snapshot), [title, summary, interp, props, r.snapshot]);
+  const precheck = useMemo(() => {
+    const t = checkText(reportAllText({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props.map((p) => ({ ...p, generated_text: "", edited_by: null, edited_at: null })) }), r.snapshot);
+    // 점주 화면(리포트 양식)에 꼭 있어야 하는 값 — 스냅샷 문제라 문구를 고쳐도 안 풀린다
+    const missing = templateMissing(r).map((m) => `${m} 없음 — 성과가 모인 뒤 갱신본을 만드세요`);
+    return { ok: t.ok && missing.length === 0, problems: [...t.problems, ...missing] };
+  }, [title, summary, interp, props, r]);
   const url = r.token ? `${typeof window !== "undefined" ? window.location.origin : ""}/r/${r.token}` : null;
 
   async function save() {

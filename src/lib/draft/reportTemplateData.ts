@@ -1,0 +1,102 @@
+import { DEFAULT_SUMMARY, comparable } from "./report";
+import type { StoreReport } from "./types";
+
+/**
+ * Probe 리포트 스냅샷 → 매장 성과 리포트 양식(v0.9)의 `report-data` JSON.
+ *
+ * 양식이 계산·문장·숨김을 다 한다. 여기서는 **스냅샷에 실제로 있는 원본 숫자만** 옮긴다 — 없는 칸은 비워서
+ * 양식이 그 줄·카드를 숨기게 둔다(양식 규칙: 추정 금지).
+ *
+ * 지금 스냅샷에 없는 것 (백엔드 report-data 가 붙으면 채운다):
+ *  - 직전 5건 평균(저장 비교 막대 · 「솔직하게 말씀드리는 부분」), 조회 상위 25% · 순위
+ *  - 지난 보고(7일차) 값 → 「지난 보고 이후」 표
+ *  - 앱에서 가게 화면을 연 수 → 앱 카드
+ */
+
+type Json = Record<string, unknown>;
+
+/** 제목 끝 "(정든밤 포함)" 은 우리끼리의 표시라 점주에게 보이지 않는다 */
+const stripMarker = (t: string) => t.replace(/\s*[(（][^()（）]*포함\s*[)）]\s*/g, " ").trim();
+
+/** ISO → KST 날짜 "YYYY-MM-DD" */
+function kstDate(iso: string): string {
+  return new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+function addDays(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 캡션은 앞부분만 — 양식이 뒤에 "… 본문 더보기" 를 붙인다 */
+function excerpt(c: string | null): string | null {
+  if (!c) return null;
+  const lines = c.split("\n").slice(0, 4).join("\n");
+  return lines.length > 160 ? `${lines.slice(0, 160).trimEnd()}…` : lines;
+}
+
+export function toTemplateData(r: StoreReport): Json {
+  const s = r.snapshot;
+  const val = (k: string) => s.metrics.find((m) => m.key === k)?.value ?? null;
+  const posted = s.post.posted_at ? kstDate(s.post.posted_at) : null;
+
+  // 스냅샷 값의 기준 — 백엔드는 D+7 값이 있으면 그걸 준다. 그때는 7일차, 아니면 찍은 날까지의 누적.
+  const d7 = s.basis === "D7";
+  const day = d7 ? 7 : s.age_days;
+  const measured = d7 && posted ? addDays(posted, 7) : kstDate(s.as_of);
+
+  const views = s.metrics.find((m) => m.key === "views");
+  const multi = s.post.co_stores > 1;
+  const proposals = r.proposals.filter((p) => p.approved).map((p) => `**${p.title}** ${p.text}`);
+
+  return {
+    store: { name: s.store.name },
+    account: { handle: "@w_ouldulike", name: "우주라이크", avatar: "" },
+    post: {
+      title: stripMarker(s.post.topic),
+      type_label: multi ? "큐레이션" : null,
+      format: s.post.format === "reel" ? "reels" : "feed",
+      posted_at: posted,
+      duration_sec: null,
+      permalink: s.post.permalink,
+      image: s.post.cover_url ?? "",
+      caption: excerpt(s.post.caption),
+      store_count: multi ? s.post.co_stores : null,
+      multi_store: multi,
+    },
+    report: { day, measured_at: measured },
+    metrics: {
+      views: val("views"), reach: val("reach"), saved: val("saved"), shares: val("shares"), likes: val("likes"), comments: val("comments"),
+      profile_visits: val("profile_visits"), follows: val("follows"), avg_watch_sec: null,
+      interactions: val("total_interactions"),
+    },
+    app: { store_views: null },
+    previous: null,
+    // 코호트 중간값은 기준(D7/누적)이 같고 표본 5건 이상일 때만 — comparable() 과 같은 문턱
+    benchmarks: views && comparable(views) ? { total_posts: views.n, views: { median: views.median } } : {},
+    notes: {},
+    insight: {
+      headline: r.summary && r.summary !== DEFAULT_SUMMARY ? r.summary : null,
+      paragraphs: [...r.interpretation, ...proposals],
+    },
+    upsell: { enabled: false },
+    contact: { url: "" },
+  };
+}
+
+/**
+ * 양식이 "보내기 전에 채워야 할 값"으로 막는 필드 — 양식 스크립트의 필수 목록과 같다.
+ * 비어 있으면 점주 화면 맨 위에 빨간 칸이 뜨므로, 승인 전에 서버에서 먼저 막는다.
+ */
+const REQUIRED = ["store.name", "post.title", "post.format", "post.posted_at", "post.permalink", "report.day", "report.measured_at",
+  "metrics.views", "metrics.reach", "metrics.saved", "metrics.shares", "metrics.likes", "metrics.comments"] as const;
+const REQUIRED_LABEL: Record<(typeof REQUIRED)[number], string> = {
+  "store.name": "매장 이름", "post.title": "게시물 제목", "post.format": "게시물 형식", "post.posted_at": "게시일", "post.permalink": "인스타그램 링크",
+  "report.day": "며칠차 측정인지", "report.measured_at": "측정일", "metrics.views": "조회수", "metrics.reach": "도달", "metrics.saved": "저장",
+  "metrics.shares": "공유", "metrics.likes": "좋아요", "metrics.comments": "댓글",
+};
+export function templateMissing(r: StoreReport): string[] {
+  const d = toTemplateData(r);
+  const get = (path: string) => path.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Json)[k] : undefined), d);
+  return REQUIRED.filter((k) => { const v = get(k); return v === null || v === undefined || v === ""; }).map((k) => REQUIRED_LABEL[k]);
+}
