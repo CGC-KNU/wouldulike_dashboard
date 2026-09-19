@@ -119,6 +119,16 @@ body {
 .satty[data-mood="sleep"] .satty-wing-l { transform: rotate(10deg) translateY(4px); } .satty[data-mood="sleep"] .satty-wing-r { transform: rotate(-10deg) translateY(4px); }
 .satty[data-mood="sleep"] .satty-zz { opacity: 1; animation: satty-zz 3.6s ease-in-out infinite; }
 .satty[data-mood="sleep"] .satty-beacon { animation-duration: 5s; }
+
+/* 쓰다듬기 — 세 번 두드리면 하트가 올라간다 (민열님 0919) */
+.satty-hearts { opacity: 0; }
+.satty[data-pet="1"] .satty-hearts { opacity: 1; animation: satty-heart 1.7s ease-out; }
+.satty[data-pet="1"] .satty-heart-2 { animation-delay: .25s; }
+@keyframes satty-heart { 0% { transform: translateY(6px) scale(.5); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(-26px) scale(1.05); opacity: 0; } }
+/* 말풍선은 스스로 뜨니 나타나는 것이 보여야 한다 — 툭 튀어나오지 않게 */
+.satty-bubble { animation: satty-pop .22s cubic-bezier(.23,1,.32,1); transform-origin: bottom right; }
+@keyframes satty-pop { from { opacity: 0; transform: translateY(4px) scale(.94); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .satty-bubble { animation: none; } .satty[data-pet="1"] .satty-hearts { animation: none; } }
 .satty[data-mood="sleep"] .satty-svg { animation-duration: 5.5s; }
 .satty[data-mood="sleep"] .satty-mouth { d: path("M78 100q2 2 4 0"); }
 @media (prefers-reduced-motion: reduce) { .satty-svg, .satty-beacon, .satty-sparks, .satty-zz, .satty-pupil { animation: none !important; } }
