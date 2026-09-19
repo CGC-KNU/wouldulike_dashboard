@@ -1,4 +1,4 @@
-import { fetchBackendJson } from "./toolProxy";
+import { fetchBackendJson, fetchBackendResult } from "./toolProxy";
 import { normName } from "./sheet";
 import type { ContentPlan, PostPerformance, Sponsorship } from "@/app/dashboard/admin/satellite/types";
 
@@ -60,6 +60,34 @@ export function sliceForStore(all: Awaited<ReturnType<typeof fetchPapillonMonths
   };
 }
 
-export async function fetchPerformance(planId: number): Promise<PostPerformance | null> {
-  return fetchBackendJson<PostPerformance>(`/api/satellite/plans/${planId}/performance/`);
+/**
+ * 성과 + 못 읽은 이유. 403 은 세틀라이트 블라인드 규칙(리드가 아니면 본인 기획만) — "아직 발행 전"(404)과 다르다.
+ */
+export async function fetchPerformance(planId: number): Promise<{ perf: PostPerformance | null; denied: boolean; notPublished: boolean }> {
+  const r = await fetchBackendResult<PostPerformance>(`/api/satellite/plans/${planId}/performance/`);
+  return { perf: r.data, denied: r.status === 403, notPublished: r.status === 404 };
+}
+
+// ── 제휴식당 표시 "(… 포함)" ─────────────────────────────────────────────
+//
+// 마케팅팀 약속(아윤님 0916): 제휴식당 큐레이션 콘텐츠는 제목 끝 괄호에 "(정든밤 포함)" 처럼 적는다.
+// 백엔드 #ops-partner 알림(satellite/services/partner_content.py)이 같은 규칙으로 게시물을 고른다 —
+// 규칙을 바꾸면 둘 다 바꾼다. 슬랙에서 "7일 경과" 가 울린 게시물이 Probe 에도 떠야 한다.
+const PARTNER_RE = /[(（]\s*([^()（）]*?)\s*포함\s*[)）]/g;
+const GENERIC = new Set(["", "제휴식당", "제휴 식당", "제휴매장", "제휴 매장", "파트너", "파트너매장", "파트너 매장"]);
+
+export function isPartnerContent(topic: string | null | undefined): boolean {
+  return new RegExp(PARTNER_RE.source).test(topic ?? "");
+}
+
+/** 괄호 안에서 읽은 매장 이름들. 못 읽으면 빈 목록 — 그래도 제휴식당 콘텐츠다. */
+export function partnerNames(topic: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const m of (topic ?? "").matchAll(PARTNER_RE)) {
+    for (const part of m[1].split(/[,·/]| 및 /)) {
+      const name = part.trim();
+      if (name && !GENERIC.has(name)) out.push(name);
+    }
+  }
+  return out;
 }
