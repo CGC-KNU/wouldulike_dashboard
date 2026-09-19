@@ -167,6 +167,27 @@ export async function fetchBackendJson<T>(path: string, search?: string, fresh =
   }
 }
 
+/**
+ * fetchBackendJson 과 같되 상태 코드도 돌려준다. null 하나로는 "없음(404)"과 "권한 없음(403)"을
+ * 가를 수 없어서, 화면이 이유를 말해야 하는 자리에 쓴다. 캐시는 fetchBackendJson 과 공유한다.
+ */
+export async function fetchBackendResult<T>(path: string, search?: string): Promise<{ status: number; data: T | null }> {
+  if (!process.env.NEXT_PUBLIC_API_URL) return { status: 0, data: null };
+  const tok = await token();
+  const key = cacheKey(path, search, tok);
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return { status: 200, data: hit.data as T };
+  try {
+    const res = await fetch(backend(path, search), { headers: { Authorization: `Bearer ${tok}` }, cache: "no-store" });
+    if (!res.ok) return { status: res.status, data: null };
+    const data = (await res.json()) as T;
+    cache.set(key, { at: Date.now(), data });
+    return { status: res.status, data };
+  } catch {
+    return { status: 0, data: null };
+  }
+}
+
 /** 쓰기 직후처럼 캐시가 방해되는 자리에서 비운다. */
 export function clearBackendCache(): void {
   cache.clear();
