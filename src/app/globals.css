@@ -147,12 +147,13 @@ body {
   background:radial-gradient(circle at 34% 28%, #2C2D74 0%, #14143E 62%, #0C0C2A 100%);
   box-shadow:inset 0 0 0 9px rgba(255,255,255,.055), inset 0 0 70px rgba(99,102,224,.30), 0 0 90px -24px rgba(99,102,224,.75);
   overflow:hidden;}
-/* 창밖 행성 하나. 느리게 돈다 — 움직이는 게 하나는 있어야 '항해 중'으로 보인다 */
-.playroom .pr-port::after{content:"";position:absolute;left:58%;top:64%;width:52%;aspect-ratio:1;border-radius:999px;
-  background:radial-gradient(circle at 32% 30%, #7C7EF0, #3B3BA8 58%, #1E1E5E 100%);
-  box-shadow:inset -10px -8px 24px rgba(0,0,0,.45);
-  animation:pr-orbit 90s linear infinite;}
-@keyframes pr-orbit{from{transform:translate(0,0)}50%{transform:translate(-14px,-10px)}to{transform:translate(0,0)}}
+/* 창밖 행성 하나. 느리게 돈다 — 움직이는 게 하나는 있어야 '항해 중'으로 보인다.
+   창틀에 걸쳐 두고 대부분 잘라 낸다: 가운데로 오면 세티와 겹쳐 답답하다 (민열님 0919). */
+.playroom .pr-port::after{content:"";position:absolute;left:76%;top:78%;width:44%;aspect-ratio:1;border-radius:999px;
+  background:radial-gradient(circle at 30% 26%, #6A6CD8, #33339A 55%, #171749 100%);
+  box-shadow:inset -12px -10px 26px rgba(0,0,0,.5);opacity:.82;
+  animation:pr-orbit 110s ease-in-out infinite;}
+@keyframes pr-orbit{from{transform:translate(0,0)}50%{transform:translate(-10px,-7px)}to{transform:translate(0,0)}}
 
 /* 놀이방 세티 — 런처 세티와 같은 얼굴, 규칙만 따로 (감싸는 .satty 가 없다) */
 .satty-room .eye-closed,.satty-room .eye-smile,.satty-room .pr-hearts,.satty-room .pr-crumbs,.satty-room .pr-zzz{opacity:0;transition:opacity .22s ease-out}
