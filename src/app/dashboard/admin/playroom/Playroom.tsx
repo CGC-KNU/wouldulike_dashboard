@@ -12,6 +12,8 @@ import { focusRing } from "../_shared/ui";
  * 못 읽으면 0 이 아니라 "못 읽었다"고 적는다.
  *
  * 배경은 우주선 안. 둥근 창 너머로 별과 행성이 흐르고, 세티는 그 앞에 떠 있다.
+ * 낮에는 선실에 불이 들어오고 밤에는 꺼진다(툴의 18시 다크를 그대로 따른다). **창밖은 늘 어둡다** —
+ * 우주니까. 그래서 라이트에서도 창이 또렷하게 보인다.
  * 대화는 B안(규칙 + 기억) — 정해 둔 말에 이름·요일·최근 돌본 사람을 섞는다. 모델을 부르지 않는다.
  */
 
@@ -182,7 +184,7 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
     : "idle";
 
   return (
-    <div className="playroom relative min-h-screen overflow-hidden bg-[#0A0A22] text-white">
+    <div className="playroom relative min-h-screen overflow-hidden bg-[var(--pr-ground)] text-[var(--pr-ink)]">
       {/* 우주선 안 — 창 너머 별, 안쪽은 선체 */}
       <div aria-hidden="true" className="pr-hull" />
       <div aria-hidden="true" className="pr-stars" />
@@ -190,28 +192,28 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
       <div className="relative max-w-5xl mx-auto px-4 md:px-6 pt-4 pb-14">
         <div className="flex items-center gap-3">
           {onBack && (
-            <button type="button" onClick={onBack} className={`inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-[13px] font-semibold text-white/70 hover:text-white hover:bg-white/10 ${focusRing}`}>
+            <button type="button" onClick={onBack} className={`inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-[13px] font-semibold text-[var(--pr-ink-soft)] hover:text-[var(--pr-ink)] hover:bg-[var(--pr-chip)] ${focusRing}`}>
               <IconChevronLeft size={16} aria-hidden="true" />메인
             </button>
           )}
-          <span className="text-[12px] font-semibold tracking-[0.12em] text-[#9B9DF4] uppercase">Satellite · 놀이방</span>
-          {pet && <span className="ml-auto text-[12px] font-medium text-white/55 tabular-nums">함께한 지 {pet.days}일</span>}
+          <span className="text-[12px] font-semibold tracking-[0.12em] text-[var(--pr-accent)] uppercase">Satellite · 놀이방</span>
+          {pet && <span className="ml-auto text-[12px] font-medium text-[var(--pr-ink-faint)] tabular-nums">함께한 지 {pet.days}일</span>}
         </div>
 
         {err && (
-          <p className="mt-8 text-center text-[13.5px] text-white/70">{err}<br /><span className="text-white/40 text-[12px]">새로고침하면 다시 불러 볼게요.</span></p>
+          <p className="mt-8 text-center text-[13.5px] text-[var(--pr-ink-soft)]">{err}<br /><span className="text-[var(--pr-ink-faint)] text-[12px]">새로고침하면 다시 불러 볼게요.</span></p>
         )}
 
         {d && pet && (
           <div className="mt-4 grid gap-4 min-[900px]:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] items-start">
 
             {/* ── 무대 */}
-            <div className="rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4 md:p-5">
+            <div className="rounded-[22px] border border-[var(--pr-line)] bg-[var(--pr-panel)] backdrop-blur-xl p-4 md:p-5">
               <div className="flex items-center gap-2">
-                <span className="text-[11.5px] font-bold text-[#C7C9F7] bg-white/10 border border-white/10 rounded-full px-2.5 py-1">
+                <span className="text-[11.5px] font-bold text-[var(--pr-accent)] bg-[var(--pr-chip)] border border-[var(--pr-line)] rounded-full px-2.5 py-1">
                   세티 · Lv.{pet.level} {pet.level_name}
                 </span>
-                {pet.sleeping && <span className="text-[11.5px] font-semibold text-white/50">자는 중</span>}
+                {pet.sleeping && <span className="text-[11.5px] font-semibold text-[var(--pr-ink-faint)]">자는 중</span>}
               </div>
 
               <div className="relative h-[240px] md:h-[280px] grid place-items-center">
@@ -241,7 +243,7 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
                   <text className="pr-zzz" aria-hidden="true" x="120" y="48" fontWeight="700" fontSize="14" fill="#8C8EF0">z<tspan fontSize="10" dy="-6">z</tspan></text>
                 </svg>
                 {bubble && (
-                  <div role="status" className="absolute bottom-3 left-1/2 -translate-x-1/2 max-w-[85%] text-center rounded-[14px_14px_4px_14px] bg-white text-navy text-[12.5px] font-semibold px-3 py-1.5 shadow-lg">
+                  <div role="status" className="absolute bottom-3 left-1/2 -translate-x-1/2 max-w-[85%] text-center rounded-[14px_14px_4px_14px] bg-[var(--pr-bubble)] text-[var(--pr-bubble-ink)] text-[12.5px] font-semibold px-3 py-1.5 shadow-lg">
                     {bubble}
                   </div>
                 )}
@@ -253,9 +255,9 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
                    ["깨끗함", pet.clean, "linear-gradient(90deg,#2BBE9B,#7FE9CB)"],
                    ["친밀도", pet.bond, "linear-gradient(90deg,#FF8FB1,#FFC2D4)"]] as const).map(([k, v, g]) => (
                   <div key={k} className="grid grid-cols-[58px_1fr_38px] items-center gap-2.5">
-                    <span className="text-[12px] font-semibold text-white/60">{k}</span>
-                    <span className="h-[9px] rounded-full bg-white/12 overflow-hidden"><i className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${v}%`, background: g }} /></span>
-                    <b className="text-[12px] font-semibold text-right tabular-nums text-white/80">{v}</b>
+                    <span className="text-[12px] font-semibold text-[var(--pr-ink-soft)]">{k}</span>
+                    <span className="h-[9px] rounded-full bg-[var(--pr-bar)] overflow-hidden"><i className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${v}%`, background: g }} /></span>
+                    <b className="text-[12px] font-semibold text-right tabular-nums text-[var(--pr-ink)]">{v}</b>
                   </div>
                 ))}
               </div>
@@ -266,67 +268,67 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
                   return (
                     <button key={a} type="button" disabled={busy || left === 0}
                       onClick={() => care(a as Action)}
-                      className={`grid gap-1 justify-items-center py-2.5 px-1 rounded-[14px] border border-white/12 bg-white/[0.06] text-[12.5px] font-semibold text-white transition-transform duration-150 enabled:hover:border-[#9B9DF4] enabled:active:scale-[0.97] disabled:opacity-40 ${focusRing}`}>
+                      className={`grid gap-1 justify-items-center py-2.5 px-1 rounded-[14px] border border-[var(--pr-line)] bg-[var(--pr-chip)] text-[12.5px] font-semibold text-[var(--pr-ink)] transition-transform duration-150 enabled:hover:border-[var(--pr-accent)] enabled:active:scale-[0.97] disabled:opacity-40 ${focusRing}`}>
                       {label}
-                      <span className="text-[10.5px] font-medium text-white/45 tabular-nums">
+                      <span className="text-[10.5px] font-medium text-[var(--pr-ink-faint)] tabular-nums">
                         {left === null ? (pet.sleeping ? "자는 중" : "언제든") : `오늘 ${left}/${d.caps[a]}`}
                       </span>
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[11.5px] text-white/40 mt-3 leading-relaxed">
-                하루 상한은 <b className="text-white/60">사람마다</b> 셉니다 — 한 사람이 다 해 버리면 나머지가 구경만 하니까요.
+              <p className="text-[11.5px] text-[var(--pr-ink-faint)] mt-3 leading-relaxed">
+                하루 상한은 <b className="text-[var(--pr-ink-soft)]">사람마다</b> 셉니다 — 한 사람이 다 해 버리면 나머지가 구경만 하니까요.
                 굶겨도 세티는 죽지 않아요. 시무룩해지고 자라지 않을 뿐이에요.
               </p>
             </div>
 
             {/* ── 오른쪽: 대화 + 크루 기록 */}
             <div className="grid gap-4">
-              <div className="rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-xl flex flex-col">
+              <div className="rounded-[22px] border border-[var(--pr-line)] bg-[var(--pr-panel)] backdrop-blur-xl flex flex-col">
                 <div className="px-4 pt-4">
                   <h2 className="text-[14px] font-bold">세티랑 대화</h2>
-                  <p className="text-[11.5px] text-white/45 mt-0.5">정해 둔 말에 이름·요일·최근 기록을 섞어서 답해요. 업무 얘기는 밖에서 해요.</p>
+                  <p className="text-[11.5px] text-[var(--pr-ink-faint)] mt-0.5">정해 둔 말에 이름·요일·최근 기록을 섞어서 답해요. 업무 얘기는 밖에서 해요.</p>
                 </div>
                 <div ref={logRef} className="flex-1 overflow-y-auto max-h-[240px] px-4 py-3 flex flex-col gap-2">
                   {chat.map((m, i) => (
-                    <span key={i} className={`max-w-[85%] text-[12.5px] leading-snug px-2.5 py-1.5 rounded-[14px] ${m.who === "u" ? "self-end bg-[#4F52DC] rounded-br-[5px]" : "self-start bg-white/10 rounded-bl-[5px]"}`}>{m.text}</span>
+                    <span key={i} className={`max-w-[85%] text-[12.5px] leading-snug px-2.5 py-1.5 rounded-[14px] ${m.who === "u" ? "self-end bg-[#4F52DC] text-white rounded-br-[5px]" : "self-start bg-[var(--pr-chip)] rounded-bl-[5px]"}`}>{m.text}</span>
                   ))}
                 </div>
                 <div className="flex gap-1.5 flex-wrap px-4 pb-2">
                   {["안녕!", "넌 누구야?", "심심해", "누가 제일 많이 챙겼어?"].map((c) => (
-                    <button key={c} type="button" onClick={() => send(c)} className={`text-[11.5px] font-semibold text-[#C7C9F7] border border-white/12 rounded-full px-2.5 py-1 hover:border-[#9B9DF4] ${focusRing}`}>{c}</button>
+                    <button key={c} type="button" onClick={() => send(c)} className={`text-[11.5px] font-semibold text-[var(--pr-accent)] border border-[var(--pr-line)] rounded-full px-2.5 py-1 hover:border-[var(--pr-accent)] ${focusRing}`}>{c}</button>
                   ))}
                 </div>
-                <form onSubmit={(e) => { e.preventDefault(); send(draft); }} className="flex gap-2 px-4 py-3 border-t border-white/10">
+                <form onSubmit={(e) => { e.preventDefault(); send(draft); }} className="flex gap-2 px-4 py-3 border-t border-[var(--pr-line)]">
                   <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="세티에게 말 걸기…" aria-label="세티에게 보낼 말"
-                    className="flex-1 min-w-0 text-[13px] bg-white/[0.06] border border-white/12 rounded-xl px-3 py-2 placeholder:text-white/35 focus:outline-none focus:border-[#9B9DF4]" />
-                  <button type="submit" className={`text-[13px] font-bold bg-white text-navy rounded-xl px-4 ${focusRing}`}>보내기</button>
+                    className="flex-1 min-w-0 text-[13px] bg-[var(--pr-chip)] border border-[var(--pr-line)] rounded-xl px-3 py-2 placeholder:text-[var(--pr-ink-faint)] focus:outline-none focus:border-[var(--pr-accent)]" />
+                  <button type="submit" className={`text-[13px] font-bold bg-[var(--pr-send)] text-[var(--pr-send-ink)] rounded-xl px-4 ${focusRing}`}>보내기</button>
                 </form>
               </div>
 
-              <div className="rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4">
+              <div className="rounded-[22px] border border-[var(--pr-line)] bg-[var(--pr-panel)] backdrop-blur-xl p-4">
                 <div className="flex items-baseline gap-2">
                   <h2 className="text-[14px] font-bold">잘 챙겨준 팀원</h2>
-                  <span className="text-[11.5px] text-white/45">최근 30일</span>
+                  <span className="text-[11.5px] text-[var(--pr-ink-faint)]">최근 30일</span>
                 </div>
                 {d.ranking.length === 0 ? (
-                  <p className="text-[12.5px] text-white/50 mt-2">아직 아무도 안 왔어요. {d.me.name}님이 처음이에요.</p>
+                  <p className="text-[12.5px] text-[var(--pr-ink-faint)] mt-2">아직 아무도 안 왔어요. {d.me.name}님이 처음이에요.</p>
                 ) : (
                   <ol className="mt-2.5 grid gap-1.5">
                     {d.ranking.map((r, i) => (
-                      <li key={r.username} className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl ${r.me ? "bg-white/10" : ""}`}>
-                        <span className={`w-5 text-[12px] font-bold tabular-nums ${i === 0 ? "text-[#FFC2D4]" : "text-white/40"}`}>{i + 1}</span>
-                        <span className="flex-1 min-w-0 text-[13px] font-semibold truncate">{r.name}{r.me && <span className="text-[11px] font-medium text-white/45 ml-1.5">나</span>}</span>
-                        <span className="text-[11.5px] text-white/45 tabular-nums">{ago(r.last_at)}</span>
+                      <li key={r.username} className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl ${r.me ? "bg-[var(--pr-chip)]" : ""}`}>
+                        <span className={`w-5 text-[12px] font-bold tabular-nums ${i === 0 ? "text-[#FFC2D4]" : "text-[var(--pr-ink-faint)]"}`}>{i + 1}</span>
+                        <span className="flex-1 min-w-0 text-[13px] font-semibold truncate">{r.name}{r.me && <span className="text-[11px] font-medium text-[var(--pr-ink-faint)] ml-1.5">나</span>}</span>
+                        <span className="text-[11.5px] text-[var(--pr-ink-faint)] tabular-nums">{ago(r.last_at)}</span>
                         <b className="text-[13px] font-bold tabular-nums">{r.count}</b>
                       </li>
                     ))}
                   </ol>
                 )}
                 {d.recent.length > 0 && (
-                  <p className="text-[11.5px] text-white/45 mt-3 pt-3 border-t border-white/10">
-                    방금 <b className="text-white/70">{d.recent[0].name}</b>님이 {ACT_LABEL[d.recent[0].action]} · {ago(d.recent[0].at)}
+                  <p className="text-[11.5px] text-[var(--pr-ink-faint)] mt-3 pt-3 border-t border-[var(--pr-line)]">
+                    방금 <b className="text-[var(--pr-ink-soft)]">{d.recent[0].name}</b>님이 {ACT_LABEL[d.recent[0].action]} · {ago(d.recent[0].at)}
                   </p>
                 )}
               </div>
@@ -334,7 +336,7 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
           </div>
         )}
 
-        {!d && !err && <p className="mt-10 text-center text-[13px] text-white/50">세티를 깨우는 중…</p>}
+        {!d && !err && <p className="mt-10 text-center text-[13px] text-[var(--pr-ink-faint)]">세티를 깨우는 중…</p>}
       </div>
     </div>
   );
