@@ -40,6 +40,15 @@ export function moodOf(st: SatelliteStatus | null | undefined, weekItems: number
   return { mood: "idle", line: "오늘도 조용히 돌고 있어요" };
 }
 
+/** 화면 밖으로 나가지 않게. 가장자리에 8px 는 남긴다. */
+function clampPos(p: { x: number; y: number }, w: number, h: number) {
+  const pad = 8;
+  return {
+    x: Math.max(pad, Math.min(p.x, window.innerWidth - w - pad)),
+    y: Math.max(pad, Math.min(p.y, window.innerHeight - h - pad)),
+  };
+}
+
 /**
  * 커서가 가까이 오면 눈동자가 따라온다. 반경 3px 안에서만 — 더 가면 눈알이 돌아간 것처럼 보인다.
  */
@@ -54,6 +63,32 @@ export default function Satty({ status, weekItems = 0, onGo, className = "", siz
   const [pupil, setPupil] = useState({ x: 0, y: 0 });
   const [hidden, setHidden] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  /**
+   * 끌어서 옮길 수 있다 (민열님 0919). 놓은 자리는 그 브라우저에만 기억한다 — 사람마다 가리는 자리가 다르다.
+   * 큰 판(런처)과 작은 판(툴 안)은 자리를 따로 기억한다. 저장된 자리가 없으면 원래 구석에 앉는다.
+   */
+  const posKey = `satty-pos-${size}`;
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ dx: number; dy: number; x0: number; y0: number; moved: boolean } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(posKey);
+      if (raw) setPos(JSON.parse(raw) as { x: number; y: number });
+    } catch { /* 저장소를 못 쓰면 원래 자리 */ }
+  }, [posKey]);
+
+  // 창이 좁아지면 밖으로 나간 세티를 도로 안으로 들인다
+  useEffect(() => {
+    if (!pos) return;
+    const clampIn = () => {
+      const el = ref.current; if (!el) return;
+      setPos((p) => (p ? clampPos(p, el.offsetWidth, el.offsetHeight) : p));
+    };
+    window.addEventListener("resize", clampIn);
+    return () => window.removeEventListener("resize", clampIn);
+  }, [pos]);
 
   // 폰에서 스크롤 중엔 숨는다 — 손가락 자리를 뺏지 않는다. 멈추면 돌아온다.
   useEffect(() => {
@@ -84,14 +119,35 @@ export default function Satty({ status, weekItems = 0, onGo, className = "", siz
 
   return (
     <div ref={ref} data-mood={res.mood}
-      className={`satty fixed z-30 select-none transition-[opacity,transform] duration-300 ${size === "sm" ? "right-3 bottom-[96px] md:right-5 md:bottom-[34px]" : "right-3 bottom-[76px] md:right-6 md:bottom-6"} ${hidden ? "opacity-0 translate-y-3 pointer-events-none" : "opacity-100"} ${className}`}>
+      style={pos ? { left: pos.x, top: pos.y } : undefined}
+      className={`satty fixed z-30 select-none touch-none transition-[opacity,transform] duration-300 ${pos ? "" : size === "sm" ? "right-3 bottom-[96px] md:right-5 md:bottom-[34px]" : "right-3 bottom-[76px] md:right-6 md:bottom-6"} ${hidden ? "opacity-0 translate-y-3 pointer-events-none" : "opacity-100"} ${className}`}>
       {open && (
-        <div role="status" className="absolute bottom-full right-0 mb-1.5 max-w-[220px] whitespace-nowrap rounded-[12px_12px_4px_12px] bg-navy text-white text-[11.5px] font-medium px-2.5 py-1.5 shadow-[0_8px_20px_-12px_rgba(5,0,114,0.7)]">
+        <div role="status" className="absolute bottom-full right-0 mb-1.5 max-[420px]:right-auto max-[420px]:left-0 max-w-[220px] whitespace-nowrap rounded-[12px_12px_4px_12px] bg-navy text-white text-[11.5px] font-medium px-2.5 py-1.5 shadow-[0_8px_20px_-12px_rgba(5,0,114,0.7)]">
           {res.line}{res.go && onGo && <button type="button" onClick={() => onGo(res.go!)} className="ml-1.5 underline underline-offset-2 text-[#C7C9F7]">보기</button>}
         </div>
       )}
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-label={`Satty — ${res.line}`} title="Satty"
-        className={`block ${size === "sm" ? "w-[36px] h-[36px]" : "w-[44px] h-[44px] md:w-[56px] md:h-[56px]"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/50 rounded-full`}>
+      <button type="button" aria-label={`Satty — ${res.line}, 끌어서 옮길 수 있어요`} title="Satty — 끌어서 옮기기"
+        onPointerDown={(e) => {
+          const el = ref.current; if (!el) return;
+          const r = el.getBoundingClientRect();
+          drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, moved: false };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current, el = ref.current; if (!d || !el) return;
+          // 손이 살짝 떨린 것까지 이동으로 치면 눌러서 말 거는 게 안 된다
+          if (!d.moved && Math.abs(e.clientX - d.x0) < 4 && Math.abs(e.clientY - d.y0) < 4) return;
+          d.moved = true;
+          setPos(clampPos({ x: e.clientX - d.dx, y: e.clientY - d.dy }, el.offsetWidth, el.offsetHeight));
+        }}
+        onPointerUp={() => {
+          const d = drag.current; drag.current = null;
+          if (!d) return;
+          if (!d.moved) { setOpen((v) => !v); return; }
+          setPos((p) => { try { if (p) localStorage.setItem(posKey, JSON.stringify(p)); } catch { /* 못 적으면 이번만 */ } return p; });
+        }}
+        onPointerCancel={() => { drag.current = null; }}
+        className={`block ${size === "sm" ? "w-[46px] h-[46px]" : "w-[58px] h-[58px] md:w-[76px] md:h-[76px]"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-periwinkle/50 rounded-full cursor-grab active:cursor-grabbing`}>
         <svg viewBox="0 0 160 160" className="satty-svg w-full h-full" aria-hidden="true">
           <defs><radialGradient id="satty-body" cx="40%" cy="30%" r="75%"><stop offset="0" stopColor="#7C7EF0" /><stop offset=".55" stopColor="#4F52DC" /><stop offset="1" stopColor="#2B28B8" /></radialGradient></defs>
           <g className="satty-antenna"><rect x="72" y="34" width="16" height="12" rx="5" fill="#4F52DC" /><circle className="satty-beacon" cx="80" cy="30" r="4.5" fill="#C7C9F7" /></g>
