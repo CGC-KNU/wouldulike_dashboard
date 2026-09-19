@@ -122,15 +122,32 @@ body {
 
 /* ── 세티 놀이방: 우주선 안 (민열님 0919) ───────────────────────────
    업무 화면이 아니라서 여기만 어둡다. 다크 모드와 무관하게 늘 밤이다 — 창밖이 우주니까. */
+/* 선실 색. 툴의 18시 다크를 그대로 따른다 — 낮에는 불이 들어오고 밤에는 꺼진다. */
+.playroom{
+  --pr-ground:#EFEFF9; --pr-panel:rgba(255,255,255,.72); --pr-line:rgba(16,24,40,.10);
+  --pr-ink:#14143C; --pr-ink-soft:rgba(20,20,60,.64); --pr-ink-faint:rgba(20,20,60,.44);
+  --pr-chip:rgba(5,0,114,.07); --pr-bar:rgba(16,24,40,.10); --pr-accent:#050072;
+  --pr-bubble:#050072; --pr-bubble-ink:#fff; --pr-send:#050072; --pr-send-ink:#fff;
+  --pr-hull:linear-gradient(180deg,#F8F8FD 0%,#E8E9F6 55%,#EFEFF9 100%);
+  --pr-panel-line:rgba(16,24,40,.05);
+}
+:root[data-theme="dark"] .playroom{
+  --pr-ground:#0A0A22; --pr-panel:rgba(255,255,255,.04); --pr-line:rgba(255,255,255,.12);
+  --pr-ink:#F0F1FB; --pr-ink-soft:rgba(255,255,255,.64); --pr-ink-faint:rgba(255,255,255,.44);
+  --pr-chip:rgba(255,255,255,.10); --pr-bar:rgba(255,255,255,.12); --pr-accent:#9B9DF4;
+  --pr-bubble:#fff; --pr-bubble-ink:#050072; --pr-send:#fff; --pr-send-ink:#050072;
+  --pr-hull:linear-gradient(180deg,#0E0E2E 0%,#08081C 55%,#0A0A22 100%);
+  --pr-panel-line:rgba(255,255,255,.035);
+}
 .playroom .pr-hull{position:absolute;inset:0;pointer-events:none;
   background:
-    radial-gradient(120% 70% at 50% -10%, rgba(99,102,224,.20), transparent 62%),
-    radial-gradient(80% 50% at 50% 110%, rgba(43,190,155,.08), transparent 60%),
-    linear-gradient(180deg,#0E0E2E 0%,#08081C 55%,#0A0A22 100%);}
+    radial-gradient(120% 70% at 50% -10%, rgba(99,102,224,.16), transparent 62%),
+    var(--pr-hull);}
 /* 선체 패널 — 가로선 몇 개면 '안쪽'으로 읽힌다 */
-.playroom .pr-hull::after{content:"";position:absolute;inset:0;opacity:.5;
-  background:repeating-linear-gradient(180deg, rgba(255,255,255,.035) 0 1px, transparent 1px 84px);}
-.playroom .pr-stars{position:absolute;inset:0;pointer-events:none;opacity:.7;
+.playroom .pr-hull::after{content:"";position:absolute;inset:0;opacity:.6;
+  background:repeating-linear-gradient(180deg, var(--pr-panel-line) 0 1px, transparent 1px 84px);}
+/* 선실 전체에 별이 떠 있는 건 밤에만. 낮에는 창 안에서만 보인다. */
+.playroom .pr-stars{display:none;position:absolute;inset:0;pointer-events:none;opacity:.7;
   background-image:
     radial-gradient(1.6px 1.6px at 12% 18%, #fff, transparent),
     radial-gradient(1.2px 1.2px at 74% 12%, #D8D9FF, transparent),
@@ -140,13 +157,24 @@ body {
     radial-gradient(1px 1px at 24% 88%, #9B9DF4, transparent),
     radial-gradient(1.1px 1.1px at 92% 74%, #fff, transparent);
   animation:pr-drift 70s linear infinite;}
+:root[data-theme="dark"] .playroom .pr-stars{display:block}
 @keyframes pr-drift{from{background-position:0 0,0 0,0 0,0 0,0 0,0 0,0 0}
   to{background-position:0 -240px,0 -190px,0 -280px,0 -150px,0 -220px,0 -170px,0 -260px}}
 /* 창 — 세티가 이 앞에 뜬다 */
 .playroom .pr-port{position:absolute;width:min(330px,78%);aspect-ratio:1;border-radius:999px;
   background:radial-gradient(circle at 34% 28%, #2C2D74 0%, #14143E 62%, #0C0C2A 100%);
-  box-shadow:inset 0 0 0 9px rgba(255,255,255,.055), inset 0 0 70px rgba(99,102,224,.30), 0 0 90px -24px rgba(99,102,224,.75);
+  box-shadow:inset 0 0 0 9px var(--pr-line), inset 0 0 70px rgba(99,102,224,.30), 0 0 90px -24px rgba(99,102,224,.55);
   overflow:hidden;}
+/* 창밖은 낮에도 우주다 — 별은 창 안쪽에 둔다 */
+.playroom .pr-port::before{content:"";position:absolute;inset:0;opacity:.9;
+  background-image:
+    radial-gradient(1.5px 1.5px at 22% 24%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 68% 18%, #D8D9FF, transparent),
+    radial-gradient(1.3px 1.3px at 34% 70%, #fff, transparent),
+    radial-gradient(1px 1px at 80% 52%, #C7C9F7, transparent),
+    radial-gradient(1.1px 1.1px at 52% 40%, #fff, transparent),
+    radial-gradient(1px 1px at 14% 56%, #9B9DF4, transparent);
+  animation:pr-drift 80s linear infinite;}
 /* 창밖 행성 하나. 느리게 돈다 — 움직이는 게 하나는 있어야 '항해 중'으로 보인다.
    창틀에 걸쳐 두고 대부분 잘라 낸다: 가운데로 오면 세티와 겹쳐 답답하다 (민열님 0919). */
 .playroom .pr-port::after{content:"";position:absolute;left:76%;top:78%;width:44%;aspect-ratio:1;border-radius:999px;

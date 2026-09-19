@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import StorePicker, { type PickStore } from "./StorePicker";
 import { decodeJwt } from "@/lib/jwt";
 import PartnerHome, { type PartnerHomeData } from "./PartnerHome";
 
@@ -28,14 +28,29 @@ async function fetchPromoFiles(token: string, rid?: string): Promise<{ poster_ur
   } catch { return { poster_url: "", qr_url: "" }; }
 }
 
+/** 관리자가 고를 매장 목록. 못 읽으면 빈 배열 — 화면이 "0곳"이 아니라 "못 읽었다"고 말한다. */
+async function fetchStores(token: string): Promise<PickStore[]> {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/restaurants/`, {
+      headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const j = (await res.json()) as { restaurants?: PickStore[] };
+    return j.restaurants ?? [];
+  } catch { return []; }
+}
+
 export default async function OwnerHomePage({ searchParams }: { searchParams: Promise<{ rid?: string }> }) {
   const { rid } = await searchParams;
   const token = (await cookies()).get("access_token")?.value ?? "";
 
-  // 관리자 JWT 인데 rid 가 없으면 관리자 화면으로 — 볼 매장이 없다
+  /**
+   * 관리자 JWT 인데 rid 가 없으면 **볼 매장을 고르게 한다** (민열님 0919).
+   * 전에는 관리자 화면으로 되돌렸는데, 화면이 그대로여서 '파트너를 눌러도 안 바뀐다' 로 보였다.
+   */
   let adminNoRid = false;
   try { const p = decodeJwt<{ is_admin?: boolean }>(token); adminNoRid = Boolean(p.is_admin) && !rid; } catch { /* 무시 */ }
-  if (adminNoRid) redirect("/dashboard/admin");
+  if (adminNoRid) return <StorePicker stores={await fetchStores(token)} />;
 
   const [home, promo] = await Promise.all([fetchHome(token, rid), fetchPromoFiles(token, rid)]);
 
