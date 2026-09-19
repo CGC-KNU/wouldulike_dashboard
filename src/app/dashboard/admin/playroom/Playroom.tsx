@@ -86,7 +86,7 @@ function reply(text: string, d: Data): string {
   }
   if (has("심심", "지루", "놀")) return p.mood < 50 ? "저도 심심했어요. 놀아 주실래요?" : "좋아요, 한 바퀴 돌까요?";
   if (has("누가", "순위", "일등", "1등", "많이")) {
-    return top ? `요즘은 ${top.name}님이 제일 많이 챙겨 주셨어요 (${top.count}번)` : "아직 아무도 안 왔어요. ${me}님이 처음이에요";
+    return top ? `요즘은 ${top.name}님이 제일 많이 챙겨 주셨어요 (${top.count}번)` : `아직 아무도 안 왔어요. ${me}님이 처음이에요`;
   }
   if (has("방금", "마지막", "최근")) {
     return last ? `${ago(last.at)}에 ${last.name}님이 ${ACT_LABEL[last.action]} 해 주셨어요` : "최근 기록이 없어요";
@@ -182,7 +182,7 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
     : "idle";
 
   return (
-    <div className="playroom fixed inset-0 z-40 overflow-y-auto bg-[#0A0A22] text-white">
+    <div className="playroom relative min-h-screen overflow-hidden bg-[#0A0A22] text-white">
       {/* 우주선 안 — 창 너머 별, 안쪽은 선체 */}
       <div aria-hidden="true" className="pr-hull" />
       <div aria-hidden="true" className="pr-stars" />
@@ -203,7 +203,7 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
         )}
 
         {d && pet && (
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] items-start">
+          <div className="mt-4 grid gap-4 min-[900px]:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] items-start">
 
             {/* ── 무대 */}
             <div className="rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-xl p-4 md:p-5">
@@ -238,7 +238,7 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
                     <path d="M44 40c-1.9-2.5-5.6-1.9-6.3 1.3-.7-3.2-4.4-3.8-6.3-1.3-1.9 2.5 0 5.7 6.3 9.5 6.3-3.8 8.2-7 6.3-9.5z" opacity=".8" />
                   </g>
                   <g className="pr-crumbs" fill="#E8A33D"><circle cx="70" cy="70" r="3" /><circle cx="88" cy="66" r="2.4" /><circle cx="80" cy="60" r="2" /></g>
-                  <text className="pr-zzz" x="120" y="48" fontWeight="700" fontSize="14" fill="#8C8EF0">z<tspan fontSize="10" dy="-6">z</tspan></text>
+                  <text className="pr-zzz" aria-hidden="true" x="120" y="48" fontWeight="700" fontSize="14" fill="#8C8EF0">z<tspan fontSize="10" dy="-6">z</tspan></text>
                 </svg>
                 {bubble && (
                   <div role="status" className="absolute bottom-3 left-1/2 -translate-x-1/2 max-w-[85%] text-center rounded-[14px_14px_4px_14px] bg-white text-navy text-[12.5px] font-semibold px-3 py-1.5 shadow-lg">

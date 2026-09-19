@@ -2823,6 +2823,9 @@ export default function AdminHomePage() {
     );
   }
 
+  /* ─── 놀이방 — 툴 셸도 도크도 없다. 방 하나가 화면을 다 쓴다. ─── */
+  if (activeTab === "playroom") return <Playroom onBack={backToProducts} />;
+
   /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
   if (!selectedProduct) {
     return (
@@ -2897,8 +2900,6 @@ export default function AdminHomePage() {
           화면 구성과 기능은 그대로고 메뉴 생김새만 통일했다. */}
       {activeTab === "satellite" && <PapillonShell onBack={showProductPicker ? backToProducts : undefined} />}
 
-      {/* 놀이방 — 툴 셸도 도크도 없다. 방 하나가 화면을 다 쓴다. */}
-      {activeTab === "playroom" && <Playroom onBack={backToProducts} />}
 
       {/* Satty 축소판 — 툴 안에서도 같이 산다. 도크 옆(폰에서는 도크 위)에 36px. 런처와 같은 기분 규칙 (민열님 0919). */}
       {showProductPicker && <Satty size="sm" status={satStatus} weekItems={weekIssues.items.length} onGo={go} />}
