@@ -11,6 +11,7 @@ import ProbeHome from "./probe/ProbeHome";
 import AppMetrics from "./probe/AppMetrics";
 import CastorHome from "./castor/CastorHome";
 import Atlas from "./atlas/Atlas";
+import Playroom from "./playroom/Playroom";
 import ContentTab from "./ContentTab";
 import DriveScreen from "./DriveScreen";
 import ImageUploader from "@/components/ImageUploader";
@@ -78,7 +79,8 @@ type Tab =
   | "atlas-team"
   | "atlas-mission"
   | "atlas-tools"
-  | "atlas-history";
+  | "atlas-history"
+  | "playroom";
 
 type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
 type SatelliteRole = "LEAD" | "MEMBER";
@@ -2555,6 +2557,8 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "atlas-mission", label: "미션 · Polaris", icon: "★", allow: () => true },
   { key: "atlas-tools", label: "Satellite", icon: "▦", allow: () => true },
   { key: "atlas-history", label: "연혁", icon: "⌛", allow: () => true },
+  // 놀이방은 업무 탭이 아니다 — 사이드바에도 명령 팔레트에도 두지 않고 런처에서만 들어간다
+  { key: "playroom", label: "세티랑 놀기", icon: "◍", allow: () => true },
 ];
 
 /**
@@ -2567,7 +2571,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
  * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | "drive";
+type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | "drive" | "playroom";
 
 const PRODUCTS: {
   key: Product;
@@ -2626,6 +2630,14 @@ const PRODUCTS: {
     subtitle: "ABOUT WOULDULIKE",
     description: "조직도 · 미션 · Satellite · 연혁",
     tabs: ["atlas-team", "atlas-mission", "atlas-tools", "atlas-history"],
+    ready: true,
+  },
+  {
+    key: "playroom",
+    name: "세티랑 놀기",
+    subtitle: "쉬는 곳",
+    description: "밥 주고 놀아 주기 · 대화 · 잘 챙겨준 팀원",
+    tabs: ["playroom"],
     ready: true,
   },
   {
@@ -2817,12 +2829,13 @@ export default function AdminHomePage() {
       <>
         <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
         <Launcher
-          available={availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => p.key as ToolKey)}
+          available={availableProducts.filter((p) => p.ready && p.key !== "drive" && p.key !== "playroom").map((p) => p.key as ToolKey)}
           extras={availableProducts.filter((p) => p.ready && p.key === "drive").map((p) => ({ key: p.key, name: p.name, subtitle: p.subtitle, description: p.description }))}
           userName={me.display_name || me.username}
           username={me.username}
           userTitle={me.title}
           onSelect={(key) => selectProduct(key as Product)}
+          onPlayroom={() => selectProduct("playroom")}
           status={satStatus}
           onGo={go}
         />
@@ -2884,6 +2897,9 @@ export default function AdminHomePage() {
           화면 구성과 기능은 그대로고 메뉴 생김새만 통일했다. */}
       {activeTab === "satellite" && <PapillonShell onBack={showProductPicker ? backToProducts : undefined} />}
 
+      {/* 놀이방 — 툴 셸도 도크도 없다. 방 하나가 화면을 다 쓴다. */}
+      {activeTab === "playroom" && <Playroom onBack={backToProducts} />}
+
       {/* Satty 축소판 — 툴 안에서도 같이 산다. 도크 옆(폰에서는 도크 위)에 36px. 런처와 같은 기분 규칙 (민열님 0919). */}
       {showProductPicker && <Satty size="sm" status={satStatus} weekItems={weekIssues.items.length} onGo={go} />}
 
@@ -2891,7 +2907,7 @@ export default function AdminHomePage() {
           떠 있는 도크만 따로 얹는다 — ToolShell 을 쓰는 Astro·Probe·Castor 는 셸 안에서 이미 그린다. */}
       {showProductPicker && (selectedProduct === "papillon" || selectedProduct === "aether") && (
         <Dock
-          tools={availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => ({ key: p.key, name: p.name }))}
+          tools={availableProducts.filter((p) => p.ready && p.key !== "drive" && p.key !== "playroom").map((p) => ({ key: p.key, name: p.name }))}
           active={selectedProduct}
           onSwitch={(key) => selectProduct(key as Product)}
           onHome={backToProducts}
@@ -2933,7 +2949,7 @@ export default function AdminHomePage() {
           dock={showProductPicker ? {
             /* 0913 민열님: 도크에 Papillon·Aether 도 뜨게. 도크는 '툴 갈아타기'용이라 세틀라이트 다섯이 다 있어야 한다.
                (Drive 는 세틀라이트 툴이 아니라 런처에서만 연다.) 눌러서 넘어간 화면은 각자의 셸을 그대로 쓴다. */
-            tools: availableProducts.filter((p) => p.ready && p.key !== "drive").map((p) => ({ key: p.key, name: p.name })),
+            tools: availableProducts.filter((p) => p.ready && p.key !== "drive" && p.key !== "playroom").map((p) => ({ key: p.key, name: p.name })),
             active: selectedProduct,
             onSwitch: (key) => selectProduct(key as Product),
             onHome: backToProducts,
