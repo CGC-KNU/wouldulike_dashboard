@@ -19,7 +19,7 @@ import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skelet
 type SortKey = "name" | "coupon" | "stamp" | "loyal" | "revisit";
 
 interface Totals {
-  stores: number; affiliate: number; paid: number;
+  stores: number; affiliate: number; paid: number; free: number;
   coupon_redeemed: number; stamp_earned: number; loyal_total: number; revisit_this_month: number;
   unavailable: number; silent: number;
 }
@@ -29,7 +29,7 @@ export default function ProbeOverview() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "coupon", dir: "desc" });
-  const [scope, setScope] = useState<"all" | "paid" | "silent">("all");
+  const [scope, setScope] = useState<"all" | "paid" | "free" | "silent">("all");
   const [generatedAt, setGeneratedAt] = useState("");
   const [source, setSource] = useState("");
 
@@ -50,7 +50,9 @@ export default function ProbeOverview() {
 
   const rows = useMemo(() => {
     let list = stores.filter((s) => s.is_affiliate);
-    if (scope === "paid") list = list.filter((s) => s.tier === "BOOST" || s.tier === "CONTENT");
+    const paid = (s: StoreMetric) => s.tier === "BOOST" || s.tier === "CONTENT";
+    if (scope === "paid") list = list.filter(paid);
+    if (scope === "free") list = list.filter((s) => !paid(s));
     if (scope === "silent") list = list.filter((s) => !s.unavailable && s.coupon_redeemed_this_month === 0 && s.stamp_earned_this_month === 0);
     const dir = sort.dir === "asc" ? 1 : -1;
     const num = (s: StoreMetric) =>
@@ -88,6 +90,7 @@ export default function ProbeOverview() {
           options={[
             { key: "all", label: "제휴 전체", count: totals?.affiliate },
             { key: "paid", label: "유료", count: totals?.paid },
+            { key: "free", label: "무료", count: totals?.free },
             { key: "silent", label: "조용한 매장", count: totals?.silent },
           ]}
         />
@@ -104,7 +107,7 @@ export default function ProbeOverview() {
       )}
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
-        <Kpi label="제휴 매장" value={loading ? "-" : totals?.affiliate ?? 0} hint={`유료 ${totals?.paid ?? 0}곳`} />
+        <Kpi label="제휴 매장" value={loading ? "-" : totals?.affiliate ?? 0} hint={`유료 ${totals?.paid ?? 0} · 무료 ${totals?.free ?? 0}곳`} />
         <Kpi label="조용한 매장" value={loading ? "-" : totals?.silent ?? 0} tone="alert" hint="이번 달 쿠폰·스탬프 0" onClick={() => setScope("silent")} active={scope === "silent"} />
         <Kpi label="쿠폰 사용" value={loading ? "-" : (totals?.coupon_redeemed ?? 0).toLocaleString()} suffix="건" hint="이번 달, 읽은 매장만" />
         <Kpi label="스탬프 적립" value={loading ? "-" : (totals?.stamp_earned ?? 0).toLocaleString()} suffix="건" hint="이번 달, 읽은 매장만" />

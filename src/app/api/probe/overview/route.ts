@@ -85,10 +85,14 @@ export async function GET() {
       );
 
   const live = stores.filter((s) => !s.unavailable);
+  const affiliate = stores.filter((s) => s.is_affiliate);
+  const isPaid = (s: StoreMetric) => s.tier === "BOOST" || s.tier === "CONTENT";
   const totals = {
     stores: stores.length,
-    affiliate: stores.filter((s) => s.is_affiliate).length,
-    paid: stores.filter((s) => s.tier === "BOOST" || s.tier === "CONTENT").length,
+    affiliate: affiliate.length,
+    // 유료 + 무료 = 제휴 전체. 요금제가 비어 있는 제휴 매장은 무료로 센다(돈을 안 내는 건 같다)
+    paid: affiliate.filter(isPaid).length,
+    free: affiliate.filter((s) => !isPaid(s)).length,
     coupon_redeemed: live.reduce((a, s) => a + s.coupon_redeemed_this_month, 0),
     stamp_earned: live.reduce((a, s) => a + s.stamp_earned_this_month, 0),
     loyal_total: live.reduce((a, s) => a + s.loyal_total, 0),
