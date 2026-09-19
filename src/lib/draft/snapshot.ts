@@ -28,7 +28,7 @@ export function metricsOf(p: PostPerformance | null): ReportMetric[] {
 }
 
 export async function buildSnapshot(store: BackendRestaurant & { campus?: ReportSnapshot["store"]["campus"] }, plan: Pick<ContentPlan, "id" | "topic" | "owner_name">, allStores: BackendRestaurant[]): Promise<ReportSnapshot> {
-  const [perf, detail, env] = await Promise.all([
+  const [{ perf }, detail, env] = await Promise.all([
     fetchPerformance(plan.id),
     fetchBackendJson<PlanDetail>(`/api/satellite/plans/${plan.id}/detail/`),
     fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${store.restaurant_id}`),
