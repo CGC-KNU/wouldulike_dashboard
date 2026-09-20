@@ -20,6 +20,8 @@ jobs:
       - run: npm ci
       - name: 타입 검사
         run: npx tsc --noEmit -p tsconfig.json
+      - name: 테스트
+        run: npm test
       - name: 빌드
         run: npm run build
 

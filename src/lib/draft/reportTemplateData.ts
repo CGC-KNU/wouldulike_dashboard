@@ -38,7 +38,7 @@ function excerpt(c: string | null): string | null {
 export function toTemplateData(r: StoreReport): Json {
   const s = r.snapshot;
   const rd = s.report_data?.available ? s.report_data : null;
-  const val = (k: string) => rd?.metrics?.[k] ?? s.metrics.find((m) => m.key === k)?.value ?? null;
+  const val = (k: string) => rd?.metrics?.[k as keyof NonNullable<typeof rd.metrics>] ?? s.metrics.find((m) => m.key === k)?.value ?? null;
   const posted = rd?.post?.posted_at ?? (s.post.posted_at ? kstDate(s.post.posted_at) : null);
 
   // 며칠차 수치인가 — report-data 가 말해 준다. 없으면 예전 규칙(D+7 이 있으면 7일차, 아니면 누적).
