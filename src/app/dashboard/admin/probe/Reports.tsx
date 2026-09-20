@@ -248,12 +248,12 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       setMsg({ tone: "blue", text: "저장했습니다. 승인은 다시 받아야 합니다." }); onChanged();
     } finally { setBusy(false); }
   }
-  async function act(action: "approve" | "link" | "sent" | "revoke") {
+  async function act(action: "refresh" | "approve" | "link" | "sent" | "revoke") {
     setBusy(true); setMsg(null);
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const d = await res.json(); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
-      setMsg({ tone: "green", text: action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '카톡으로 보냈음'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "보냈음으로 표시했습니다." : "링크를 회수했습니다." }); onChanged();
+      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 문구는 그대로 두었습니다 — 숫자가 달라졌으면 문장도 확인해 주세요." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '카톡으로 보냈음'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "보냈음으로 표시했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
   /** 초안 지우기 — 게시물 목록에서 다시 만들 수 있게 돌려놓는다. 보낸 리포트는 이 버튼이 없다. */
@@ -270,11 +270,14 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   async function copy(text: string) { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
 
   const s = r.snapshot;
+  const staleHours = Math.floor((Date.now() - new Date(s.as_of).getTime()) / 3600000);
   return (
     <SlideOver open onClose={onClose} title={s.store.name} subtitle={`'${s.post.topic}' · ${new Date(s.as_of).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 기준 스냅샷`} badge={<Chip tone={S_TONE[r.status]}>{S_LABEL[r.status]}</Chip>} width="lg"
       footer={
         <>
           {editable && dirty && <Button variant="primary" onClick={save} disabled={busy}>문구 저장</Button>}
+          {/* 스냅샷은 만든 순간으로 굳는다. 초안일 때만 지금 수치로 다시 읽는다 — 보낸 리포트는 갱신본을 만든다. */}
+          {r.status === "DRAFT" && !dirty && <Button icon={<IconRefresh />} onClick={() => act("refresh")} disabled={busy}>수치 다시 읽기</Button>}
           {r.status === "DRAFT" && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("approve")} disabled={busy || !precheck.ok}>승인</Button>}
           {(r.status === "LINKED" || r.status === "SENT") && url && <Button variant={r.status === "SENT" ? "primary" : "secondary"} icon={<IconCopy />} onClick={() => copy(url)}>{copied ? "복사했습니다" : "링크 복사"}</Button>}
           {/* 0920: 사장님께는 링크 대신 파일(PNG·HTML)을 카톡으로 보낸다 — 승인 뒤 받기 → 보냈음 */}
@@ -291,6 +294,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         </>
       }>
       {msg && <Notice tone={msg.tone === "green" ? "blue" : msg.tone} title={msg.text}>{msg.problems && <ul className="list-disc pl-4 mt-1">{msg.problems.map((p) => <li key={p}>{p}</li>)}</ul>}</Notice>}
+      {r.status === "DRAFT" && staleHours >= 6 && <Notice tone="amber" title={`수치가 ${staleHours}시간 전 것입니다`}>인스타그램 수치는 계속 오릅니다. 보내기 전에 「수치 다시 읽기」로 지금 값을 담아 주세요.</Notice>}
       {!precheck.ok && <Notice tone="amber" title="이대로는 승인되지 않습니다"><ul className="list-disc pl-4">{precheck.problems.map((p) => <li key={p}>{p}</li>)}</ul></Notice>}
 
       <PanelSection title="스냅샷 (읽기 전용)">
