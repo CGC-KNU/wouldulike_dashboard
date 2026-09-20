@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { appendDraftItem, patchDraftItem, readDraft } from "./store";
+import { appendDraftItem, patchDraftItem, readDraft, writeDraft } from "./store";
 import type { StoreReport } from "./types";
 
 /**
@@ -83,6 +83,15 @@ export async function patchReport(id: string, patch: Partial<StoreReport>): Prom
   if (!reportsOnBackend()) return patchDraftItem<StoreReport>(KEY, seed, id, patch);
   const d = await call<{ report: StoreReport }>(`/reports/${encodeURIComponent(id)}/`, { method: "PATCH", body: JSON.stringify(patch) });
   return d ? normalize(d.report) : null;
+}
+
+/** 초안·승인 단계에서만 지운다 — 링크가 나갔거나 보낸 리포트는 기록이라 남긴다(호출부가 막는다). */
+export async function deleteReport(id: string): Promise<void> {
+  if (!reportsOnBackend()) {
+    writeDraft<StoreReport[]>(KEY, readDraft<StoreReport[]>(KEY, seed).filter((r) => r.id !== id));
+    return;
+  }
+  await call(`/reports/${encodeURIComponent(id)}/`, { method: "DELETE" });
 }
 
 /** 공개 링크로 읽기 — 인증 없음. LINKED·SENT 는 본문, REVOKED 는 상태만, 그 외는 null. */
