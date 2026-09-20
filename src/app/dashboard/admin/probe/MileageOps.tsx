@@ -113,26 +113,72 @@ export default function MileageOps({ actor }: { actor: string }) {
         </Card>
       </div>
 
-      {open && <RoundPanel r={open} onClose={() => setOpenId(null)} onPatch={patch} />}
+      {open && <RoundPanel r={open} prog={prog(open)} onClose={() => setOpenId(null)} onPatch={patch} onCreated={load} />}
     </>
   );
 }
 
-function RoundPanel({ r, onClose, onPatch }: { r: Round; onClose: () => void; onPatch: (id: string, body: Partial<Pick<Round, "pool_count" | "result" | "note">>) => Promise<void> }) {
+type PickMode = "random" | "top_entries";
+/** 회차 기본값 — 9월은 전부 랜덤, 10월부터 5,000원은 확정권(0920 운영 방침) */
+function defaultItems(date: string): { prize_amount: number; winner_count: number; pick_mode: PickMode }[] {
+  const oct = date >= "2026-10-01";
+  return [
+    { prize_amount: 5000, winner_count: 1, pick_mode: oct ? "top_entries" : "random" },
+    { prize_amount: 10000, winner_count: 1, pick_mode: "random" },
+  ];
+}
+
+function RoundPanel({ r, prog, onClose, onPatch, onCreated }: { r: Round; prog: DayProgress | null; onClose: () => void; onPatch: (id: string, body: Partial<Pick<Round, "pool_count" | "result" | "note">>) => Promise<void>; onCreated: () => void }) {
+  const [items, setItems] = useState(defaultItems(r.date));
+  const [creating, setCreating] = useState(false);
+  const [createMsg, setCreateMsg] = useState<string | null>(null);
+  async function create() {
+    if (creating) return; setCreating(true); setCreateMsg(null);
+    try {
+      const res = await fetch("/api/probe/mileage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: r.date, items }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setCreateMsg(d.detail ?? "만들지 못했습니다."); return; }
+      const made = (d.created ?? []).length;
+      setCreateMsg(made ? `${made}건 만들었습니다. 앱 상점에 바로 뜹니다.` : "이미 있는 회차라 새로 만들지 않았습니다.");
+      onCreated();
+    } finally { setCreating(false); }
+  }
   const [pool, setPool] = useState(r.pool_count === null ? "" : String(r.pool_count));
   const [note, setNote] = useState(r.note ?? "");
   const [result, setResult] = useState<Round["result"]>(r.result);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { setPool(r.pool_count === null ? "" : String(r.pool_count)); setNote(r.note ?? ""); setResult(r.result); }, [r]);
+  useEffect(() => { setPool(r.pool_count === null ? "" : String(r.pool_count)); setNote(r.note ?? ""); setResult(r.result); setItems(defaultItems(r.date)); setCreateMsg(null); }, [r]);
   async function save() {
     if (saving) return; setSaving(true);
     try { await onPatch(r.id, { pool_count: pool.trim() === "" ? null : Math.max(0, parseInt(pool, 10) || 0), result, note: note.trim() || null }); onClose(); } finally { setSaving(false); }
   }
   return (
-    <SlideOver open onClose={onClose} title={`${Number(r.date.slice(5, 7))}/${Number(r.date.slice(8))} (${r.weekday}) 20:00 회차`} subtitle={`확정 ${r.seats.fixed} · 랜덤 ${r.seats.random} · ${r.prizes}`} badge={<Chip tone={R_TONE[r.result]}>{R_LABEL[r.result]}</Chip>}
+    <SlideOver open onClose={onClose} title={`${Number(r.date.slice(5, 7))}/${Number(r.date.slice(8))} (${r.weekday}) 11:00 마감 회차`} subtitle={`확정 ${r.seats.fixed} · 랜덤 ${r.seats.random} · ${r.prizes}`} badge={<Chip tone={R_TONE[r.result]}>{R_LABEL[r.result]}</Chip>}
       footer={<><Button variant="primary" onClick={save} disabled={saving}>{saving ? "저장 중…" : "기록 저장"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{r.updated_at && <span className="ml-auto text-[12px] text-gray-400">{r.updated_by} · {new Date(r.updated_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}</>}>
-      <PanelSection title="응모풀">
-        <Field label="응모 인원 (시트 '응모풀' 탭 기준)" hint="비어 있으면 '미확인'. 0 은 확인했는데 없다는 뜻입니다."><Input type="number" inputMode="numeric" value={pool} onChange={(e) => setPool(e.target.value)} placeholder="예: 42" /></Field>
+      {/* 앱에 응모(래플)가 없으면 여기서 손으로 만든다. 자동 생성은 두지 않는다(0920) — 상품이 걸린 자리라서. */}
+      {!prog && (
+        <PanelSection title="이 회차 응모 만들기" actions={<span className="text-[12px] text-gray-400">앱에 아직 없습니다</span>}>
+          <div className="space-y-2">
+            {items.map((it, i) => (
+              <div key={it.prize_amount} className="flex items-center gap-2">
+                <span className="w-[5.5rem] text-[13px] font-semibold text-gray-800">{it.prize_amount.toLocaleString()}원</span>
+                <Select value={it.pick_mode} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, pick_mode: e.target.value as PickMode } : x)))}>
+                  <option value="random">랜덤 (응모권 비례)</option>
+                  <option value="top_entries">확정 (최다 응모자)</option>
+                </Select>
+                <Input type="number" inputMode="numeric" min={1} max={50} value={it.winner_count} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, winner_count: Number(e.target.value) } : x)))} className="w-[5rem]" />
+                <span className="text-[12px] text-gray-500">명</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[12px] text-gray-500 mt-2">마감은 그날 11:00, 응모 시작은 3일 전입니다. 9월은 전부 랜덤, 10월부터 5,000원은 확정권(그 회차에 가장 많이 응모한 사람)입니다.</p>
+          <Button variant="primary" onClick={create} disabled={creating} className="mt-2">{creating ? "만드는 중…" : "앱에 회차 만들기"}</Button>
+          {createMsg && <p className="text-[12px] text-gray-600 mt-2">{createMsg}</p>}
+        </PanelSection>
+      )}
+      <PanelSection title={prog ? "응모 (앱 실측)" : "응모풀"}>
+        {prog && <p className="text-[13px] text-gray-800 mb-2">응모 <b>{prog.entries}건</b> · {prog.people}명 · 당첨 <b>{prog.winners}명</b>{prog.raffles.map((x) => ` · ${x.prize_amount.toLocaleString()}원 ${x.entries}건${x.status === "DRAWN" ? " (추첨 완료)" : ""}`).join("")}</p>}
+        <Field label="응모 인원 (사람 확인 · 시트 기준)" hint="비어 있으면 '미확인'. 0 은 확인했는데 없다는 뜻입니다."><Input type="number" inputMode="numeric" value={pool} onChange={(e) => setPool(e.target.value)} placeholder="예: 42" /></Field>
         {r.pool_checked_at && <p className="text-[12px] text-gray-500">{r.pool_checked_by} 가 {new Date(r.pool_checked_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 에 확인</p>}
       </PanelSection>
       <PanelSection title="결과">
