@@ -2,11 +2,15 @@ import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
 import { isPreview } from "@/lib/draft/previewStores";
-import { appendDraftItem } from "@/lib/draft/store";
+import { appendDraftItem, readDraft } from "@/lib/draft/store";
 import { ReportStoreError, deleteReport, getReport, patchReport, reportStorePersistent, reportsOnBackend } from "@/lib/draft/reportStore";
-import { checkText, reportAllText } from "@/lib/draft/report";
+import { checkText, cohortNote, reportAllText } from "@/lib/draft/report";
+import { fetchBackendJson } from "@/lib/draft/toolProxy";
+import { fetchPapillonMonths } from "@/lib/draft/papillon";
+import { buildSnapshot } from "@/lib/draft/snapshot";
+import { seedStoreOps } from "@/lib/draft/seed";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
-import type { Activity, ReportProposal, StoreReport } from "@/lib/draft/types";
+import type { Activity, BackendRestaurant, ReportProposal, StoreOps, StoreReport } from "@/lib/draft/types";
 
 const storeError = (e: unknown) => NextResponse.json({ detail: e instanceof ReportStoreError ? e.message : "리포트 저장소 오류" }, { status: e instanceof ReportStoreError && e.status < 500 ? e.status : 502 });
 const draft = () => !reportsOnBackend();
@@ -77,7 +81,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   return new NextResponse(null, { status: 204 });
 }
 
-/** POST { action: "approve" | "link" | "revoke" } */
+/** POST { action: "refresh" | "approve" | "link" | "sent" | "revoke" } */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -89,6 +93,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const now = new Date().toISOString();
   const bad = (msg: string, extra: object = {}) => NextResponse.json({ detail: msg, ...extra }, { status: 409 });
 
+  if (action === "refresh") {
+    // 초안만 — 보낸 리포트의 숫자가 나중에 바뀌면 "9/18 기준"이라고 적어 보낸 문장이 거짓이 된다.
+    if (cur.status !== "DRAFT") return bad("초안만 수치를 다시 읽을 수 있습니다. 보낸 리포트는 갱신본을 만드세요.");
+    const stores = (await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/"))?.restaurants ?? [];
+    const store = stores.find((s) => s.restaurant_id === cur.restaurant_id);
+    const plan = (await fetchPapillonMonths(3)).plans.find((p) => p.id === cur.plan_id);
+    if (!store || !plan) return bad("매장이나 Papillon 기획을 찾지 못했습니다 (백엔드 연결 확인).");
+    const ops = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).find((o) => o.id === store.restaurant_id);
+    const snapshot = await buildSnapshot({ ...store, campus: ops?.campus ?? null }, plan, stores.filter((s) => s.is_affiliate !== false));
+    snapshot.cohort_note = cohortNote(snapshot.metrics);
+    // 문구는 사람이 쓴 것이라 그대로 둔다. 스냅샷에 없는 숫자를 쓴 문장은 승인 단계에서 걸린다.
+    const updated = await save(id, { snapshot });
+    if (updated instanceof NextResponse) return updated;
+    return NextResponse.json({ report: updated, draft: draft() });
+  }
   if (action === "approve") {
     if (cur.status !== "DRAFT") return bad("초안만 승인할 수 있습니다.");
     // 금지 표현·지어낸 숫자 — 경고가 아니라 차단
