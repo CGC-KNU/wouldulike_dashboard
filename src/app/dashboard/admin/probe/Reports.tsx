@@ -93,7 +93,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
         <Kpi label="보낸 리포트" value={list ? counts.sent : "-"} tone="good" hint="카톡으로 보낸 것" onClick={() => setFilter("sent")} active={filter === "sent"} />
       </div>
 
-      {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개의 성과를 볼 권한이 없습니다`}>세틀라이트 성과는 마케팅 리드가 아니면 본인 기획만 보입니다. 그래서 수치가 비고 「리포트 만들 때」에 안 잡힙니다. 제휴식당 콘텐츠 예외를 마케팅팀에 확인 중입니다.</Notice></div>}
+      {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개는 성과를 못 읽었습니다`}>제목에 「(매장 포함)」 표시가 있는 제휴식당 콘텐츠만 성과가 열려 있습니다(마케팅팀 합의 0920). 표시가 없는 콘텐츠는 수치가 비고 「리포트 만들 때」에 안 잡힙니다 — 마케팅팀에 제목 표시를 부탁하세요.</Notice></div>}
       {posts && !posts.papillon_reachable && <div className="mb-4"><Notice tone="red" title="Papillon 기획 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>홍보한 적 없음이 아닙니다.</strong> 백엔드 연결을 확인하세요.</Notice></div>}
 
       <Card flush title="Papillon 에서 온 게시물" description={`제목에 "(매장 포함)" 표시가 있거나 제휴 매장 이름이 들어간 발행 게시물. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}

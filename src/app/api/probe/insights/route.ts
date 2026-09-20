@@ -136,7 +136,7 @@ export async function GET() {
     const reason = rid === null
       ? "괄호에 적힌 매장을 매장 표에서 찾지 못했습니다 — 이름을 매장 표와 맞추면 리포트를 만들 수 있습니다"
       : denied.has(plan.id)
-        ? "성과를 볼 권한이 없습니다 — 세틀라이트 리드가 아니면 본인 기획 성과만 보입니다(마케팅팀 확인 중)"
+        ? "제목에 「(매장 포함)」 표시가 없어 성과를 못 봅니다 — 표시가 있는 제휴식당 콘텐츠만 열려 있습니다(마케팅팀 합의 0920)"
         : p?.reason;
     return {
       restaurant_id: rid, store: label, matched_by: by, plan_id: plan.id, topic: plan.topic,
