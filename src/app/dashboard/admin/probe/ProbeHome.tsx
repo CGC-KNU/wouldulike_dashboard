@@ -57,7 +57,7 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
             <ul className="space-y-1.5 text-[13px]">{due.slice(0, 4).map((i, k) => <li key={k} className="flex items-center justify-between gap-2"><span className="text-gray-800 truncate"><b>{i.store}</b> · {i.topic}</span><Chip tone="amber">D+{i.age_days ?? "?"}</Chip></li>)}</ul>
           )}
         </Card>
-        <Card title="마일리지 추첨" description="수 · 금 20시 · 응모풀 확인 · 결과 기록" actions={<Button size="sm" variant="ghost" onClick={() => onGo("probe-mileage")}>열기</Button>}>
+        <Card title="마일리지 추첨" description="수 · 금 11시 마감 · 응모풀 확인 · 결과 기록" actions={<Button size="sm" variant="ghost" onClick={() => onGo("probe-mileage")}>열기</Button>}>
           {!mil ? <Skeleton rows={3} cols={2} /> : (
             <div className="space-y-2 text-[13px]">
               <Row label="다음 회차" value={nextRound ? `${Number(nextRound.date.slice(5, 7))}/${Number(nextRound.date.slice(8))} (${nextRound.weekday})` : "-"} />

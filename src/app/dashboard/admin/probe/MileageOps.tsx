@@ -8,7 +8,8 @@ import { Button, Card, Chip, DraftBadge, Field, Input, Kpi, Notice, PageHeader, 
  * Probe · 마일리지 추첨 운영.
  *
  * 민열님 0902: "마일리지는 재민이랑 싱크하거나 예산 풀 바뀌지 않는 한 결재까지 민찬 전담".
- * 9/2 · 9/4 · 9/9 연속으로 응모풀이 비어 20시 추첨이 보류됐다. 봇(Libra)이 알림은 보내는데 **응모풀을 어디서 가져오는지**가
+ * 0920 확인: 9/2·9/4 는 래플이 아예 없었고(회차 미생성), 9/9 는 오히려 응모 7건에 당첨 2명이 나왔다 —
+ * 사람이 손으로 적은 기록이 실제와 달랐다. 그래서 이 화면은 앱 DB 실측을 먼저 보여 준다. 마감은 11:00 KST 다. 봇(Libra)이 알림은 보내는데 **응모풀을 어디서 가져오는지**가
  * 정해지지 않아서다(0909 민찬 "어디서 캡쳐하면 돼?"). 이 화면은 그 빈 자리를 먼저 보이게 하고, 회차마다 사람이 확인한 기록을 남긴다.
  * 시트(우주라이크_마일리지_운영)가 정본이고 여기는 운영 기록이다.
  */
@@ -39,7 +40,7 @@ export default function MileageOps({ actor }: { actor: string }) {
   const progress = data?.progress ?? null;
   /** 이 회차에 실제로 무슨 일이 있었나 — 앱 DB. 못 읽었으면 null. */
   const prog = (r: Round): DayProgress | null => progress?.[r.date] ?? null;
-  // 응모가 실제로 0 이면 20시에 또 보류된다 — 사람 확인을 기다리지 않고 먼저 말한다
+  // 응모가 실제로 0 이면 11시 마감 때 뽑을 게 없다 — 사람 확인을 기다리지 않고 먼저 말한다
   const nextEmpty = next ? prog(next)?.entries === 0 : false;
   const poolUnknown = next ? next.pool_count === null && !prog(next) : false;
   const open = rounds.find((r) => r.id === openId) ?? null;
@@ -51,7 +52,7 @@ export default function MileageOps({ actor }: { actor: string }) {
 
   return (
     <>
-      <PageHeader title="마일리지 추첨" description="수 · 금 20시. 응모풀이 비면 추첨이 보류됩니다. 회차마다 응모풀을 확인하고 결과를 남깁니다."
+      <PageHeader title="마일리지 추첨" description="수 · 금 11시 마감 · 마감 직후 추첨. 응모풀이 비면 추첨이 보류됩니다. 회차마다 응모풀을 확인하고 결과를 남깁니다."
         actions={<>{data?.draft && <DraftBadge note={data.draft_note} />}{data && <a href={data.sheet_url} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>운영 시트</Button></a>}{data && <a href={`https://slack.com/app_redirect?channel=${data.slack_channel}`} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{data.slack_channel}</Button></a>}<Button variant="primary" icon={<IconRefresh />} onClick={load} disabled={loading}>다시 읽기</Button></>} />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
@@ -59,7 +60,7 @@ export default function MileageOps({ actor }: { actor: string }) {
         {/* 다음 회차 응모 — 앱 DB 실측이 있으면 그걸 먼저 보여 준다(사람이 시트에서 세던 숫자를 대신한다) */}
         <Kpi label="다음 회차 응모" value={loading ? "-" : !next ? "-" : prog(next) ? prog(next)!.entries : next.pool_count === null ? "미확인" : next.pool_count}
           tone={nextEmpty || poolUnknown ? "alert" : "plain"}
-          hint={!next ? "" : prog(next) ? `${prog(next)!.people}명 · 앱 기록${nextEmpty ? " · 이대로면 20시에 또 보류" : ""}` : next.pool_checked_at ? `${next.pool_checked_by ?? ""} 확인` : "앱 기록을 못 읽었습니다 — 시트 확인"}
+          hint={!next ? "" : prog(next) ? `${prog(next)!.people}명 · 앱 기록${nextEmpty ? " · 이대로면 11시 마감 때 뽑을 게 없다" : ""}` : next.pool_checked_at ? `${next.pool_checked_by ?? ""} 확인` : "앱 기록을 못 읽었습니다 — 시트 확인"}
           onClick={next ? () => setOpenId(next.id) : undefined} />
         <Kpi label="보류된 회차" value={loading ? "-" : held} tone="alert" hint="응모풀 비어 추첨 못 함" />
         <Kpi label="추첨 완료" value={loading ? "-" : drawn} hint={`이번 달 ${rounds.filter((r) => r.result !== "skipped").length}회차 중`} tone="good" />
