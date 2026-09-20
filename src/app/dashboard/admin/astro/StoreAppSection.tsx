@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { IconExternalLink, IconRefresh } from "@tabler/icons-react";
 import ImageUploader from "@/components/ImageUploader";
-import { Button, Chip, Field, Input, Notice, Skeleton } from "../_shared/ui";
+import { Button, Chip, Field, Input, Notice, Skeleton, Textarea } from "../_shared/ui";
 
 /**
  * 파트너 매장 상세 안의 **식당 관리** 블록.
@@ -13,13 +13,17 @@ import { Button, Chip, Field, Input, Notice, Skeleton } from "../_shared/ui";
  * 블록을 따로 두고, 저장 대상이 어디인지 화면이 말한다.
  *
  * 쓰는 경로는 식당 관리 화면과 같다 —
- *   사진   GET/PATCH `/api/dashboard/restaurant?rid=<id>` (`s3_image_urls`)
+ *   사진·프로모션 문구  GET/PATCH `/api/dashboard/restaurant?rid=<id>` (`s3_image_urls`, `promotion_text`)
  *   플랜·제휴·PIN  PATCH `/api/dashboard/admin/restaurants/<id>`
  *   포스터·QR      GET/PUT `/api/dashboard/admin/promo-files/<id>`
  * 백엔드가 없으면(미리보기) 읽기는 비고 쓰기는 막힌다 — 조용히 성공한 척하지 않는다.
+ *
+ * 프로모션 문구(promotion_text) — 식당 상세 화면 식당명 아래 표시되는 문구. 점주 앱
+ * (`/dashboard/owner/restaurant`)에서는 이미 편집 가능했지만, 영업이 파트너를 대신해
+ * 바로 고칠 방법이 없어서(관리자 CLI 명령뿐) 여기 추가한다.
  */
 
-interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null }
+interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null; promotion_text?: string | null }
 
 export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: { id: number; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void> }) {
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -28,6 +32,9 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
   const [reachable, setReachable] = useState(true);
   const [msg, setMsg] = useState<{ tone: "blue" | "red"; text: string } | null>(null);
   const [pin, setPin] = useState("");
+  const [promotionText, setPromotionText] = useState("");
+  const [promotionTextSaved, setPromotionTextSaved] = useState("");
+  const [promoTextSaving, setPromoTextSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   /** 계약 종료는 앱에 바로 보이는 변화라 화면 안에서 한 번 더 확인받는다. */
   const [ending, setEnding] = useState(false);
@@ -41,6 +48,8 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
       setReachable(Boolean(d));
       setDetail((d as Detail) ?? {});
       setPin(d?.pin != null ? String(d.pin) : "");
+      setPromotionText(d?.promotion_text ?? "");
+      setPromotionTextSaved(d?.promotion_text ?? "");
       setPromo({ poster_url: p?.poster_url ?? "", qr_url: p?.qr_url ?? "" });
     }).finally(() => setLoading(false));
   };
@@ -92,6 +101,23 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
     } finally { setBusy(false); }
   }
 
+  /** 식당 상세 화면 식당명 아래 표시되는 문구 — 점주 앱과 같은 필드(promotion_text)를 같은 경로로 고친다. */
+  async function savePromotionText() {
+    setPromoTextSaving(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/dashboard/restaurant?rid=${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promotion_text: promotionText, restaurant_id: id }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setMsg({ tone: "red", text: (d as { detail?: string }).detail ?? `저장하지 못했습니다 (${res.status}).` }); return; }
+      setPromotionTextSaved(promotionText);
+      setMsg({ tone: "blue", text: "프로모션 문구를 저장했습니다." });
+      onChanged?.();
+    } catch {
+      setMsg({ tone: "red", text: "서버에 연결하지 못했습니다." });
+    } finally { setPromoTextSaving(false); }
+  }
+
   if (loading) return <Skeleton rows={3} cols={2} />;
 
   return (
@@ -116,6 +142,22 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
           }}
         />
       </div>
+
+      {/* 프로모션 문구 — 점주 앱 "식당 관리"의 그 필드와 같다. 영업이 파트너를 대신해
+          바로 고칠 방법이 없었어서(관리자 CLI 명령뿐) 추가한다. */}
+      <Field label="프로모션 문구" hint="식당 상세 화면 식당명 아래 표시됩니다. 점주 앱에서 편집하는 값과 같습니다">
+        <Textarea
+          value={promotionText}
+          onChange={(e) => setPromotionText(e.target.value)}
+          placeholder="예: 오늘 하루 전 메뉴 10% 할인!"
+          rows={2}
+        />
+        <div className="flex items-center gap-2 mt-1.5">
+          <Button size="sm" variant="primary" onClick={savePromotionText} disabled={promoTextSaving || promotionText === promotionTextSaved}>
+            {promoTextSaving ? "저장 중…" : "프로모션 문구 저장"}
+          </Button>
+        </div>
+      </Field>
 
       {/* 플랜은 위 '계약' 블록 한 곳에서만 바꾼다 — 월 이용료·계약 시작일과 같이 보이는 자리라야
           플랜을 올렸을 때 청구가 어떻게 되는지가 같이 보인다. 같은 값을 두 칸에 두지 않는다. */}
