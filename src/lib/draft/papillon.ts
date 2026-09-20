@@ -1,6 +1,7 @@
 import { fetchBackendJson, fetchBackendResult } from "./toolProxy";
 import { normName } from "./sheet";
 import type { ContentPlan, PostPerformance, Sponsorship } from "@/app/dashboard/admin/satellite/types";
+import type { ReportData } from "./types";
 
 /**
  * Papillon(마케팅) ↔ Astro/Probe 연결점.
@@ -75,6 +76,12 @@ export async function fetchPerformance(planId: number): Promise<{ perf: PostPerf
 // 규칙을 바꾸면 둘 다 바꾼다. 슬랙에서 "7일 경과" 가 울린 게시물이 Probe 에도 떠야 한다.
 const PARTNER_RE = /[(（]\s*([^()（）]*?)\s*포함\s*[)）]/g;
 const GENERIC = new Set(["", "제휴식당", "제휴 식당", "제휴매장", "제휴 매장", "파트너", "파트너매장", "파트너 매장"]);
+
+/** 리포트 양식이 쓰는 한 벌 — 성과와 같은 블라인드 규칙이라 못 읽으면 null */
+export async function fetchReportData(planId: number): Promise<ReportData | null> {
+  const r = await fetchBackendResult<ReportData>(`/api/satellite/plans/${planId}/report-data/`);
+  return r.data;
+}
 
 export function isPartnerContent(topic: string | null | undefined): boolean {
   return new RegExp(PARTNER_RE.source).test(topic ?? "");

@@ -1,5 +1,5 @@
 import { fetchBackendJson } from "./toolProxy";
-import { fetchPerformance, mentions } from "./papillon";
+import { fetchPerformance, fetchReportData, mentions } from "./papillon";
 import type { ContentPlan, PlanDetail, PostPerformance } from "@/app/dashboard/admin/satellite/types";
 import type { BackendRestaurant, ReportMetric, ReportSnapshot } from "./types";
 import { MIN_COHORT } from "./report";
@@ -28,8 +28,9 @@ export function metricsOf(p: PostPerformance | null): ReportMetric[] {
 }
 
 export async function buildSnapshot(store: BackendRestaurant & { campus?: ReportSnapshot["store"]["campus"] }, plan: Pick<ContentPlan, "id" | "topic" | "owner_name">, allStores: BackendRestaurant[]): Promise<ReportSnapshot> {
-  const [{ perf }, detail, env] = await Promise.all([
+  const [{ perf }, reportData, detail, env] = await Promise.all([
     fetchPerformance(plan.id),
+    fetchReportData(plan.id),
     fetchBackendJson<PlanDetail>(`/api/satellite/plans/${plan.id}/detail/`),
     fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${store.restaurant_id}`),
   ]);
@@ -51,6 +52,8 @@ export async function buildSnapshot(store: BackendRestaurant & { campus?: Report
     collecting: Boolean(perf?.collecting),
     metrics: metricsOf(perf),
     cohort_note: null,
+    // 양식(v0.9)이 쓰는 한 벌 — 지난 보고 대비·직전 5건 평균·게시물 썸네일
+    report_data: reportData,
     app: stats ? { month: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`, coupon_redeemed: stats.coupon_redeemed_this_month ?? 0, stamp_earned: stats.stamp_earned_this_month ?? 0, revisit: stats.revisit_this_month ?? 0, loyal_total: stats.loyal_total ?? 0 } : null,
   };
 }
