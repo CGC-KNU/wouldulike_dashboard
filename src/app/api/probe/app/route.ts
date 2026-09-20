@@ -92,19 +92,20 @@ export async function GET() {
   if (deny) return deny;
 
   // 백엔드 집계가 없거나 칸 하나가 실패하면 null 로 둔다 — 0 이 아니다.
-  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/");
+  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/");
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   const sum = (...ks: string[]) => (ks.every((k) => n(k) === null) ? null : ks.reduce((a, k) => a + (n(k) ?? 0), 0));
   const month = stats?.since ? `${md(stats.since)}~ 이번 달` : "이번 달";
   // 쿠폰 발급 경로 — 「발급 → 사용」이 자동 지급 쿠폰에 묻히지 않게 상위 경로를 설명에 적는다
-  const bySource: [string, { issued: number; redeemed: number; label?: string }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
+  const bySource: [string, { issued: number; redeemed: number; expiring?: number; label?: string }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
   const issuedTotal = bySource.reduce((a, [, v]) => a + v.issued, 0);
   const top = bySource[0];
   // 캠페인 이름(백엔드) → 우리가 아는 이름 → 코드. 모르는 코드를 숨기지는 않는다.
   const ko = (k: string) => bySource.find(([c]) => c === k)?.[1].label ?? SOURCE_KO[k] ?? k;
   const issuedList = bySource.filter(([, v]) => v.issued > 0).slice(0, 3).map(([k, v]) => `${ko(k)} ${v.issued.toLocaleString()}건`).join(" · ");
   // 경로별 사용률은 표본이 얕으면 뜻이 없다 — 발급 10건 이상만
+  const expiringList = [...bySource].sort((a, b) => (b[1].expiring ?? 0) - (a[1].expiring ?? 0)).filter(([, v]) => v.expiring).slice(0, 3).map(([k, v]) => `${ko(k)} ${v.expiring!.toLocaleString()}장`).join(" · ");
   const rateList = bySource.filter(([, v]) => v.issued >= 10).slice(0, 4).map(([k, v]) => `${ko(k)} ${Math.round((v.redeemed / v.issued) * 1000) / 10}%`).join(" · ");
   const { data: g, error: gErr } = await ga4();
   const week = g ? `${md(g.week.from)}~${md(g.week.to)}` : "";
@@ -130,6 +131,8 @@ export async function GET() {
         { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend", note: "분모(매장 상세 열람)는 앱 이벤트 숫자 — DB 와 BigQuery 를 합쳐야 한다" },
         { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend", note: issuedList ? `경로: ${issuedList}${bySource.length > 3 ? ` 외 ${bySource.length - 3}개 경로` : ""}` : undefined },
         { key: "coupon_used", label: "쿠폰 사용", value: n("coupon_redeemed_this_month"), unit: "건", source: "backend" },
+        // 0920: 학생회 쿠폰 513장이 한 장도 안 쓰인 채 만료를 이틀 앞두고 있던 것을 늦게 알았다. "안 쓴다"와 "아직 안 썼다"는 다르다.
+        { key: "coupon_expiring", label: "7일 안에 만료", value: n("coupon_expiring_7d"), unit: "장", source: "backend", note: expiringList ? `아직 안 쓴 쿠폰 · ${expiringList} — 만료 전에 알리면 살릴 수 있다` : s ? "곧 사라질 미사용 쿠폰이 없다" : undefined },
         { key: "coupon_rate", label: "발급 → 사용", value: n("coupon_redeem_rate"), unit: "%", source: "backend", note: s ? [
           `${month} 발급분 중 이미 쓴 비율. 달 초엔 낮게 나온다`,
           top && issuedTotal > 0 && top[1].issued / issuedTotal >= 0.3 ? `발급의 ${Math.round((top[1].issued / issuedTotal) * 100)}%가 「${ko(top[0])}」 한 경로 — 이 숫자는 사실상 그 경로 얘기다` : null,
