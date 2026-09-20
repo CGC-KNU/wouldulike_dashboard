@@ -477,6 +477,11 @@ export interface ReportProposal {
  * 리포트 양식(v0.9)이 요구하는 한 벌 — 백엔드 `/api/satellite/plans/<id>/report-data/` 응답 그대로.
  * 스냅샷을 굳힐 때 같이 박아 둔다. 없으면(옛 스냅샷·권한 없음) 양식이 해당 칸을 숨긴다.
  */
+/** 백엔드 PostMetric 의 지표 이름 */
+export type ReportMetricKey = "views" | "reach" | "saved" | "likes" | "comments" | "shares" | "total_interactions" | "profile_visits" | "follows";
+/** 비교군 한 지표 — 없는 값은 양식이 그 줄을 숨긴다 */
+export interface ReportBenchmark { prev5_avg?: number; median?: number | null; p75?: number | null; rank?: number | null; rate_median?: number }
+
 export interface ReportData {
   available: boolean;
   reason?: string;
@@ -484,11 +489,9 @@ export interface ReportData {
   window?: string;
   measured_at?: string;
   post?: { posted_at: string | null; permalink: string; format: string; thumb_url: string; caption: string; card_count: number };
-  metrics?: Record<string, number>;
-  previous?: ({ day: number; measured_at: string } & Record<string, number>) | null;
-  benchmarks?: Record<string, { prev5_avg?: number; median?: number | null; p75?: number | null; rank?: number | null; rate_median?: number }> & {
-    window?: string; total_posts?: number; prev_dates?: string[];
-  };
+  metrics?: Partial<Record<ReportMetricKey, number>>;
+  previous?: ({ day: number; measured_at: string } & Partial<Record<ReportMetricKey, number>>) | null;
+  benchmarks?: { window?: string; total_posts?: number; prev_dates?: string[] } & Partial<Record<ReportMetricKey, ReportBenchmark>>;
 }
 
 export interface ReportSnapshot {

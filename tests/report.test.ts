@@ -29,7 +29,7 @@ const rd: ReportData = {
   available: true, day: 14, window: "D14", measured_at: "2026-09-18",
   post: { posted_at: "2026-09-04", permalink: "https://ig/p/x", format: "carousel", thumb_url: "https://t/x.jpg", caption: "c", card_count: 9 },
   metrics: { views: 32657, reach: 18702, saved: 644, shares: 528, likes: 258, comments: 2 },
-  previous: { day: 7, measured_at: "2026-09-11", saved: 538 } as ReportData["previous"],
+  previous: { day: 7, measured_at: "2026-09-11", saved: 538 },
   benchmarks: { total_posts: 45, saved: { prev5_avg: 272 }, views: { median: 17085, p75: 27828, rank: 10 } },
 };
 
@@ -47,7 +47,7 @@ test("report-data 가 있으면 그 수치와 며칠차를 쓴다", () => {
   assert.equal(d.metrics.saved, 644);           // 스냅샷의 D+7(538) 이 아니라 D+14
   assert.equal(d.post.image, "https://t/x.jpg"); // 메타 썸네일 우선
   assert.ok(d.previous, "지난 보고 표가 들어간다");
-  assert.equal((d.benchmarks as { total_posts: number }).total_posts, 45);
+  assert.equal((d.benchmarks as { total_posts?: number }).total_posts, 45);
 });
 
 test("report-data 가 없으면 예전 규칙 — D+7 · 코호트 중앙값만", () => {
