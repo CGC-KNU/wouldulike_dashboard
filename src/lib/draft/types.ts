@@ -473,6 +473,24 @@ export interface ReportProposal {
 /**
  * 스냅샷 — 만든 순간의 값만, 화이트리스트로. StoreOps 를 통째로 넣지 않는다(연락처·PIN·사업자번호가 공개 URL 에 실린다).
  */
+/**
+ * 리포트 양식(v0.9)이 요구하는 한 벌 — 백엔드 `/api/satellite/plans/<id>/report-data/` 응답 그대로.
+ * 스냅샷을 굳힐 때 같이 박아 둔다. 없으면(옛 스냅샷·권한 없음) 양식이 해당 칸을 숨긴다.
+ */
+export interface ReportData {
+  available: boolean;
+  reason?: string;
+  day?: number | null;
+  window?: string;
+  measured_at?: string;
+  post?: { posted_at: string | null; permalink: string; format: string; thumb_url: string; caption: string; card_count: number };
+  metrics?: Record<string, number>;
+  previous?: ({ day: number; measured_at: string } & Record<string, number>) | null;
+  benchmarks?: Record<string, { prev5_avg?: number; median?: number | null; p75?: number | null; rank?: number | null; rate_median?: number }> & {
+    window?: string; total_posts?: number; prev_dates?: string[];
+  };
+}
+
 export interface ReportSnapshot {
   store: { name: string; campus: Campus | null };
   post: { plan_id: number; topic: string; posted_at: string | null; permalink: string | null; format: string | null; caption: string | null; cover_url: string | null; owner_name: string | null; co_stores: number };
@@ -483,6 +501,8 @@ export interface ReportSnapshot {
   metrics: ReportMetric[];
   cohort_note: string | null; // "최근 90일 게시물 30건 기준"
   app: { month: string; coupon_redeemed: number; stamp_earned: number; revisit: number; loyal_total: number } | null;
+  /** 양식이 쓰는 원본 한 벌 (0920) — 0919 이전 스냅샷엔 없다 */
+  report_data?: ReportData | null;
 }
 
 export interface StoreReport {

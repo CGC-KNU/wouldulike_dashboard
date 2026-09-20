@@ -7,10 +7,10 @@ import type { StoreReport } from "./types";
  * 양식이 계산·문장·숨김을 다 한다. 여기서는 **스냅샷에 실제로 있는 원본 숫자만** 옮긴다 — 없는 칸은 비워서
  * 양식이 그 줄·카드를 숨기게 둔다(양식 규칙: 추정 금지).
  *
- * 지금 스냅샷에 없는 것 (백엔드 report-data 가 붙으면 채운다):
- *  - 직전 5건 평균(저장 비교 막대 · 「솔직하게 말씀드리는 부분」), 조회 상위 25% · 순위
- *  - 지난 보고(7일차) 값 → 「지난 보고 이후」 표
- *  - 앱에서 가게 화면을 연 수 → 앱 카드
+ * 수치·비교·지난 보고는 백엔드 report-data(스냅샷의 `report_data`)를 그대로 옮긴다 — 같은 시점(D+7/D+14)끼리만 비교한다.
+ * 그게 없는 스냅샷(0919 이전 · 성과 권한 없음)은 예전처럼 코호트 중앙값만 쓰고 나머지 칸은 비운다.
+ *
+ * 아직 못 채우는 것: 앱에서 가게 화면을 연 수(앱 카드) — 앱이 사용자 ID 를 안 보내 DB 와 이을 수 없다.
  */
 
 type Json = Record<string, unknown>;
@@ -37,13 +37,14 @@ function excerpt(c: string | null): string | null {
 
 export function toTemplateData(r: StoreReport): Json {
   const s = r.snapshot;
-  const val = (k: string) => s.metrics.find((m) => m.key === k)?.value ?? null;
-  const posted = s.post.posted_at ? kstDate(s.post.posted_at) : null;
+  const rd = s.report_data?.available ? s.report_data : null;
+  const val = (k: string) => rd?.metrics?.[k] ?? s.metrics.find((m) => m.key === k)?.value ?? null;
+  const posted = rd?.post?.posted_at ?? (s.post.posted_at ? kstDate(s.post.posted_at) : null);
 
-  // 스냅샷 값의 기준 — 백엔드는 D+7 값이 있으면 그걸 준다. 그때는 7일차, 아니면 찍은 날까지의 누적.
+  // 며칠차 수치인가 — report-data 가 말해 준다. 없으면 예전 규칙(D+7 이 있으면 7일차, 아니면 누적).
   const d7 = s.basis === "D7";
-  const day = d7 ? 7 : s.age_days;
-  const measured = d7 && posted ? addDays(posted, 7) : kstDate(s.as_of);
+  const day = rd?.day ?? (d7 ? 7 : s.age_days);
+  const measured = rd?.measured_at ?? (d7 && posted ? addDays(posted, 7) : kstDate(s.as_of));
 
   const views = s.metrics.find((m) => m.key === "views");
   const multi = s.post.co_stores > 1;
@@ -58,8 +59,9 @@ export function toTemplateData(r: StoreReport): Json {
       format: s.post.format === "reel" ? "reels" : "feed",
       posted_at: posted,
       duration_sec: null,
-      permalink: s.post.permalink,
-      image: s.post.cover_url ?? "",
+      permalink: rd?.post?.permalink ?? s.post.permalink,
+      // 게시물 사진: 인스타 썸네일(메타) 우선, 없으면 기획 커버
+      image: rd?.post?.thumb_url || s.post.cover_url || "",
       caption: excerpt(s.post.caption),
       store_count: multi ? s.post.co_stores : null,
       multi_store: multi,
@@ -71,9 +73,12 @@ export function toTemplateData(r: StoreReport): Json {
       interactions: val("total_interactions"),
     },
     app: { store_views: null },
-    previous: null,
-    // 코호트 중간값은 기준(D7/누적)이 같고 표본 5건 이상일 때만 — comparable() 과 같은 문턱
-    benchmarks: views && comparable(views) ? { total_posts: views.n, views: { median: views.median } } : {},
+    // 지난 보고(7일차) 대비 표 — 14일차 보고일 때만 온다
+    previous: rd?.previous ?? null,
+    // 직전 5건 평균 · 중앙값 · 상위 25% · 순위. report-data 가 없으면 예전처럼 코호트 중앙값만.
+    benchmarks: rd?.benchmarks && Object.keys(rd.benchmarks).length
+      ? rd.benchmarks
+      : views && comparable(views) ? { total_posts: views.n, views: { median: views.median } } : {},
     notes: {},
     insight: {
       headline: r.summary && r.summary !== DEFAULT_SUMMARY ? r.summary : null,
