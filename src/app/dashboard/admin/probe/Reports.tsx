@@ -256,6 +256,17 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       setMsg({ tone: "green", text: action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '카톡으로 보냈음'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "보냈음으로 표시했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
+  /** 초안 지우기 — 게시물 목록에서 다시 만들 수 있게 돌려놓는다. 보낸 리포트는 이 버튼이 없다. */
+  const [askDelete, setAskDelete] = useState(false);
+  async function remove() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/probe/reports/${r.id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) { const d = await res.json().catch(() => ({})); setMsg({ tone: "red", text: d.detail ?? "지우지 못했습니다." }); return; }
+      onClose(); onChanged();
+    } finally { setBusy(false); setAskDelete(false); }
+  }
+
   async function copy(text: string) { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
 
   const s = r.snapshot;
@@ -271,6 +282,11 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           {(r.status === "APPROVED" || r.status === "LINKED") && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>카톡으로 보냈음</Button>}
           {r.status === "DRAFT" && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>미리보기</Button></a>}
           {(r.status === "LINKED" || r.status === "SENT") && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
+          {(r.status === "DRAFT" || r.status === "APPROVED") && !r.token && (
+            askDelete
+              ? <Button variant="ghost" icon={<IconTrash />} onClick={remove} disabled={busy} title="게시물 목록으로 되돌립니다">정말 지웁니다</Button>
+              : <Button variant="ghost" icon={<IconTrash />} onClick={() => setAskDelete(true)} disabled={busy} title="초안을 지우고 게시물 목록에서 다시 만들 수 있게 합니다">초안 지우기</Button>
+          )}
           <span className="ml-auto text-[12px] text-gray-400">{r.token ? `열람 ${r.views.count}회${r.views.last_at ? ` · ${agoLabel(r.views.last_at)}` : ""}` : r.approved_by ? `${r.approved_by} 승인` : `${r.created_by} 작성`}</span>
         </>
       }>

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
 import { isPreview } from "@/lib/draft/previewStores";
 import { appendDraftItem } from "@/lib/draft/store";
-import { ReportStoreError, getReport, patchReport, reportStorePersistent, reportsOnBackend } from "@/lib/draft/reportStore";
+import { ReportStoreError, deleteReport, getReport, patchReport, reportStorePersistent, reportsOnBackend } from "@/lib/draft/reportStore";
 import { checkText, reportAllText } from "@/lib/draft/report";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
 import type { Activity, ReportProposal, StoreReport } from "@/lib/draft/types";
@@ -51,6 +51,30 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const updated = await save(id, patch);
   if (updated instanceof NextResponse) return updated;
   return NextResponse.json({ report: updated, draft: draft() });
+}
+
+/**
+ * DELETE — 초안·승인 단계 리포트를 지운다. 게시물은 다시 「리포트 없음」으로 돌아가 새로 만들 수 있다.
+ * 링크가 나갔거나 보냈다고 표시한 리포트는 지우지 않는다 — 무엇을 언제 보냈는지가 남아야 한다(그건 회수).
+ */
+export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const deny = await requireTool("restaurants");
+  if (deny) return deny;
+  const { id } = await ctx.params;
+  const cur = await load(id);
+  if (cur instanceof NextResponse) return cur;
+  if (cur.status !== "DRAFT" && cur.status !== "APPROVED") {
+    return NextResponse.json({ detail: "링크가 나갔거나 보낸 리포트는 지울 수 없습니다. 회수만 됩니다." }, { status: 409 });
+  }
+  if (cur.token) return NextResponse.json({ detail: "링크가 발급된 리포트는 지울 수 없습니다." }, { status: 409 });
+  try {
+    await deleteReport(id);
+  } catch (e) {
+    return storeError(e);
+  }
+  const who = (await actorName()) ?? "unknown";
+  appendDraftItem<Activity>("astro_activities", () => [], { target_type: "store", target_id: String(cur.restaurant_id), kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 초안 삭제`, author: who, created_at: new Date().toISOString() });
+  return new NextResponse(null, { status: 204 });
 }
 
 /** POST { action: "approve" | "link" | "revoke" } */
