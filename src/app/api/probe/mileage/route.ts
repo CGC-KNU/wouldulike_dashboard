@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
 import { readDraft, writeDraft } from "@/lib/draft/store";
+import { accessToken, clearBackendCache, fetchBackendJson } from "@/lib/draft/toolProxy";
 
 /**
  * Probe · 마일리지 추첨 운영.
@@ -10,7 +11,9 @@ import { readDraft, writeDraft } from "@/lib/draft/store";
  * 응모풀 정본 소스(앱 DB → 시트)는 아직 없다. 지금은 회차마다 사람이 시트 '응모풀' 탭에 붙여넣고
  * `mileageDrawManual` 을 돌린다. 9/2·9/4·9/9 세 번 연속 응모풀이 비어 추첨이 보류됐다 — 이 화면이 그걸 먼저 보이게 한다.
  *
- * 회차 기록은 초안 저장소(`probe_mileage`). 시트가 정본이고 여기는 '확인했다'는 사람의 기록이다.
+ * 회차 기록은 백엔드 `probe.MileageRound`. 시트가 정본이고 여기는 '확인했다'는 사람의 기록이다.
+ * 달마다 수·금 회차는 이 파일이 만들어(roundsFor) 백엔드에 없는 것만 넣는다 — 9월의 예외(1주차 미운용·추석)가 여기 있어서다.
+ * 백엔드가 없는 로컬·미리보기에서만 예전 초안 파일을 쓴다.
  */
 
 interface MileageRound {
@@ -75,10 +78,30 @@ function ensureCurrentMonth(rounds: MileageRound[]): MileageRound[] {
   return next;
 }
 
+const onBackend = () => Boolean(process.env.NEXT_PUBLIC_API_URL);
+
+/** 백엔드에 이번 달·9월 회차가 없으면 만들어 넣고, 전체를 날짜순으로 돌려준다. */
+async function loadRounds(): Promise<MileageRound[]> {
+  if (!onBackend()) return ensureCurrentMonth(readDraft<MileageRound[]>(KEY, seedRounds));
+  const now = new Date();
+  const want = [...seedRounds(), ...roundsFor(now.getFullYear(), now.getMonth())];
+  const have = (await fetchBackendJson<{ rounds: MileageRound[] }>("/api/probe/mileage/rounds/"))?.rounds ?? [];
+  const missing = want.filter((w) => !have.some((h) => h.id === w.id));
+  if (missing.length) {
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/probe/mileage/rounds/`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await accessToken()}` },
+      body: JSON.stringify({ rounds: missing }), cache: "no-store",
+    }).catch(() => undefined);
+    const after = (await fetchBackendJson<{ rounds: MileageRound[] }>("/api/probe/mileage/rounds/", undefined, true))?.rounds;
+    if (after) return [...after].sort((a, b) => a.id.localeCompare(b.id));
+  }
+  return [...have].sort((a, b) => a.id.localeCompare(b.id));
+}
+
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const rounds = ensureCurrentMonth(readDraft<MileageRound[]>(KEY, seedRounds));
+  const rounds = await loadRounds();
   return NextResponse.json({
     rounds,
     rules: {
@@ -93,7 +116,7 @@ export async function GET() {
     sheet_url: MILEAGE_SHEET,
     slack_channel: MILEAGE_SLACK,
     pool_source: "manual", // 앱 DB → 시트 자동화 전
-    draft: true,
+    draft: !onBackend(),
     draft_note: "회차 표는 #ops-mileage 게시 기준으로 채웠습니다. 시트가 정본이고, 여기는 사람이 확인한 기록입니다.",
   });
 }
@@ -106,6 +129,18 @@ export async function PATCH(req: NextRequest) {
   if (!body.id) return NextResponse.json({ detail: "id 가 필요합니다." }, { status: 400 });
   if (body.result && !["scheduled", "drawn", "held", "skipped"].includes(body.result)) return NextResponse.json({ detail: "result 값이 올바르지 않습니다." }, { status: 400 });
   if (body.pool_count !== undefined && body.pool_count !== null && (!Number.isInteger(body.pool_count) || body.pool_count < 0)) return NextResponse.json({ detail: "pool_count 는 0 이상 정수여야 합니다." }, { status: 400 });
+  if (onBackend()) {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/probe/mileage/rounds/`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await accessToken()}` },
+      body: JSON.stringify({ id: body.id, ...(body.pool_count !== undefined ? { pool_count: body.pool_count } : {}), ...(body.result ? { result: body.result } : {}), ...(body.note !== undefined ? { note: body.note } : {}) }),
+      cache: "no-store",
+    }).catch(() => null);
+    if (!res) return NextResponse.json({ detail: "마일리지 저장소(백엔드)에 연결하지 못했습니다." }, { status: 502 });
+    const d = (await res.json().catch(() => ({}))) as { round?: MileageRound; detail?: string };
+    if (!res.ok) return NextResponse.json({ detail: d.detail ?? "저장하지 못했습니다." }, { status: res.status });
+    clearBackendCache(); // 방금 적은 값이 바로 다음 조회에 보이게 (조회는 6초 캐시된다)
+    return NextResponse.json({ ok: true, round: d.round, draft: false });
+  }
   const rounds = ensureCurrentMonth(readDraft<MileageRound[]>(KEY, seedRounds));
   const who = (await actorName()) ?? body.by ?? null;
   const idx = rounds.findIndex((r) => r.id === body.id);
