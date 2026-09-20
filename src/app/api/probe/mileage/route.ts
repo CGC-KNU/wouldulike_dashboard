@@ -127,6 +127,25 @@ export async function GET() {
   });
 }
 
+/**
+ * POST { date, items:[{prize_amount, winner_count, pick_mode}] } — 회차(응모)를 손으로 만든다.
+ * 자동 생성은 두지 않는다(0920 민찬) — 상품이 걸린 자리를 기계가 늘리지 않게.
+ */
+export async function POST(req: NextRequest) {
+  const deny = await requireTool("restaurants");
+  if (deny) return deny;
+  if (!onBackend()) return NextResponse.json({ detail: "백엔드가 연결돼야 회차를 만들 수 있습니다." }, { status: 501 });
+  const body = await req.json().catch(() => ({}));
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/probe/mileage/rounds/raffles/`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await accessToken()}` },
+    body: JSON.stringify(body), cache: "no-store",
+  }).catch(() => null);
+  if (!res) return NextResponse.json({ detail: "백엔드에 연결하지 못했습니다." }, { status: 502 });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) clearBackendCache(); // 만든 회차가 바로 표에 보이게
+  return NextResponse.json(d, { status: res.status });
+}
+
 /** PATCH { id, pool_count?, result?, note?, by } — 응모풀 확인·결과 기록 */
 export async function PATCH(req: NextRequest) {
   const deny = await requireTool("restaurants");
