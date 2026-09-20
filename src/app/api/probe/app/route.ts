@@ -46,7 +46,10 @@ export interface AppMetricGroup {
   metrics: AppMetric[];
 }
 
-/** 쿠폰 발급 경로 — 백엔드 _issue_source() 가 주는 코드를 사람 말로. 모르는 코드는 코드 그대로 보여 준다(숨기지 않는다). */
+/**
+ * 쿠폰 발급 경로 — issue_key 로 가른 경로의 이름. 캠페인으로 가른 경로는 백엔드가 캠페인 이름을 같이 주므로
+ * 여기 적을 필요가 없다(새 이벤트가 생겨도 손댈 곳이 없게).
+ */
 const SOURCE_KO: Record<string, string> = {
   SIGNUP_WELCOME: "가입 환영", STAMP_REWARD: "스탬프 보상", BULK_EVENT: "일괄 지급", REFERRAL: "친구 초대",
   EVENT_REWARD_SIGNUP: "이벤트 가입 보상", FLASH_8PM: "밤 8시 플래시", FINAL_EXAM_EVENT: "시험기간 이벤트",
@@ -89,16 +92,17 @@ export async function GET() {
   if (deny) return deny;
 
   // 백엔드 집계가 없거나 칸 하나가 실패하면 null 로 둔다 — 0 이 아니다.
-  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number }> | null }>("/api/dashboard/admin/app-stats/");
+  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/");
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   const sum = (...ks: string[]) => (ks.every((k) => n(k) === null) ? null : ks.reduce((a, k) => a + (n(k) ?? 0), 0));
   const month = stats?.since ? `${md(stats.since)}~ 이번 달` : "이번 달";
   // 쿠폰 발급 경로 — 「발급 → 사용」이 자동 지급 쿠폰에 묻히지 않게 상위 경로를 설명에 적는다
-  const bySource: [string, { issued: number; redeemed: number }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
+  const bySource: [string, { issued: number; redeemed: number; label?: string }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
   const issuedTotal = bySource.reduce((a, [, v]) => a + v.issued, 0);
   const top = bySource[0];
-  const ko = (k: string) => SOURCE_KO[k] ?? k;
+  // 캠페인 이름(백엔드) → 우리가 아는 이름 → 코드. 모르는 코드를 숨기지는 않는다.
+  const ko = (k: string) => bySource.find(([c]) => c === k)?.[1].label ?? SOURCE_KO[k] ?? k;
   const issuedList = bySource.filter(([, v]) => v.issued > 0).slice(0, 3).map(([k, v]) => `${ko(k)} ${v.issued.toLocaleString()}건`).join(" · ");
   // 경로별 사용률은 표본이 얕으면 뜻이 없다 — 발급 10건 이상만
   const rateList = bySource.filter(([, v]) => v.issued >= 10).slice(0, 4).map(([k, v]) => `${ko(k)} ${Math.round((v.redeemed / v.issued) * 1000) / 10}%`).join(" · ");
