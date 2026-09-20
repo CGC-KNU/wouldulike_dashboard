@@ -98,12 +98,18 @@ async function loadRounds(): Promise<MileageRound[]> {
   return [...have].sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** 회차에 실제로 무슨 일이 있었나 — 앱 DB(응모·당첨). 사람이 시트에서 세던 숫자를 대신한다. */
+interface DayProgress { entries: number; people: number; winners: number; raffles: { id: number; title: string; prize_amount: number; winner_count: number; status: string; entries: number; winners: number; drawn_at: string | null }[] }
+
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   const rounds = await loadRounds();
+  const progress = onBackend() ? (await fetchBackendJson<{ days: Record<string, DayProgress> }>("/api/probe/mileage/progress/"))?.days ?? null : null;
   return NextResponse.json({
     rounds,
+    // 회차 날짜별 실제 응모·당첨. 못 읽으면 null — 0 이 아니다(사람이 적은 숫자와 섞이면 안 된다).
+    progress,
     rules: {
       cadence: "수 · 금 20:00 (주 2회)",
       prizes: "회당 5,000원 1건 + 10,000원 1건 (0906 확정)",

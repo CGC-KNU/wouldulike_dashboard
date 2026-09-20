@@ -14,7 +14,9 @@ import { Button, Card, Chip, DraftBadge, Field, Input, Kpi, Notice, PageHeader, 
  */
 
 interface Round { id: string; date: string; weekday: "수" | "금"; seats: { fixed: number; random: number }; prizes: string; pool_count: number | null; pool_checked_by: string | null; pool_checked_at: string | null; result: "scheduled" | "drawn" | "held" | "skipped"; note: string | null; updated_by: string | null; updated_at: string | null }
-interface Payload { rounds: Round[]; rules: Record<string, string | string[]>; sheet_url: string; slack_channel: string; pool_source: string; draft?: boolean; draft_note?: string }
+interface Raffle { id: number; title: string; prize_amount: number; winner_count: number; status: string; entries: number; winners: number; drawn_at: string | null }
+interface DayProgress { entries: number; people: number; winners: number; raffles: Raffle[] }
+interface Payload { rounds: Round[]; progress?: Record<string, DayProgress> | null; rules: Record<string, string | string[]>; sheet_url: string; slack_channel: string; pool_source: string; draft?: boolean; draft_note?: string }
 
 const R_LABEL: Record<Round["result"], string> = { scheduled: "예정", drawn: "추첨 완료", held: "보류", skipped: "미운용" };
 const R_TONE: Record<Round["result"], ChipTone> = { scheduled: "blue", drawn: "green", held: "red", skipped: "gray" };
@@ -34,7 +36,12 @@ export default function MileageOps({ actor }: { actor: string }) {
   const next = useMemo(() => rounds.find((r) => r.date >= today && r.result === "scheduled") ?? null, [rounds, today]);
   const held = rounds.filter((r) => r.result === "held").length;
   const drawn = rounds.filter((r) => r.result === "drawn").length;
-  const poolUnknown = next ? next.pool_count === null : false;
+  const progress = data?.progress ?? null;
+  /** 이 회차에 실제로 무슨 일이 있었나 — 앱 DB. 못 읽었으면 null. */
+  const prog = (r: Round): DayProgress | null => progress?.[r.date] ?? null;
+  // 응모가 실제로 0 이면 20시에 또 보류된다 — 사람 확인을 기다리지 않고 먼저 말한다
+  const nextEmpty = next ? prog(next)?.entries === 0 : false;
+  const poolUnknown = next ? next.pool_count === null && !prog(next) : false;
   const open = rounds.find((r) => r.id === openId) ?? null;
 
   async function patch(id: string, body: Partial<Pick<Round, "pool_count" | "result" | "note">>) {
@@ -49,7 +56,11 @@ export default function MileageOps({ actor }: { actor: string }) {
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="다음 회차" value={loading ? "-" : next ? `${Number(next.date.slice(5, 7))}/${Number(next.date.slice(8))} ${next.weekday}` : "없음"} hint={next ? `20:00 · 확정 ${next.seats.fixed} · 랜덤 ${next.seats.random}` : "이번 달 남은 회차 없음"} />
-        <Kpi label="응모풀" value={loading ? "-" : next ? (next.pool_count === null ? "미확인" : next.pool_count) : "-"} tone={poolUnknown ? "alert" : "plain"} hint={next?.pool_checked_at ? `${next.pool_checked_by ?? ""} 확인` : "19시 전 시트에 붙여넣기"} onClick={next ? () => setOpenId(next.id) : undefined} />
+        {/* 다음 회차 응모 — 앱 DB 실측이 있으면 그걸 먼저 보여 준다(사람이 시트에서 세던 숫자를 대신한다) */}
+        <Kpi label="다음 회차 응모" value={loading ? "-" : !next ? "-" : prog(next) ? prog(next)!.entries : next.pool_count === null ? "미확인" : next.pool_count}
+          tone={nextEmpty || poolUnknown ? "alert" : "plain"}
+          hint={!next ? "" : prog(next) ? `${prog(next)!.people}명 · 앱 기록${nextEmpty ? " · 이대로면 20시에 또 보류" : ""}` : next.pool_checked_at ? `${next.pool_checked_by ?? ""} 확인` : "앱 기록을 못 읽었습니다 — 시트 확인"}
+          onClick={next ? () => setOpenId(next.id) : undefined} />
         <Kpi label="보류된 회차" value={loading ? "-" : held} tone="alert" hint="응모풀 비어 추첨 못 함" />
         <Kpi label="추첨 완료" value={loading ? "-" : drawn} hint={`이번 달 ${rounds.filter((r) => r.result !== "skipped").length}회차 중`} tone="good" />
       </div>
@@ -67,14 +78,19 @@ export default function MileageOps({ actor }: { actor: string }) {
         <Card flush title="9월 회차" description="1주차 없음 · 4주차는 추석 적립분 몰아 방출 + 상품 2배 (0902 확정)">
           {loading ? <Skeleton rows={8} cols={5} /> : (
             <Table minWidth="40rem">
-              <thead><tr><Th width="6rem">회차</Th><Th width="8rem">좌석</Th><Th width="11rem">상품</Th><Th width="5rem" align="right">응모풀</Th><Th width="6.5rem">결과</Th><Th>메모</Th></tr></thead>
+              <thead><tr><Th width="6rem">회차</Th><Th width="8rem">좌석</Th><Th width="11rem">상품</Th><Th width="7rem" align="right">응모 (앱)</Th><Th width="5rem" align="right">당첨</Th><Th width="5rem" align="right">사람 확인</Th><Th width="6.5rem">결과</Th><Th>메모</Th></tr></thead>
               <tbody>
                 {rounds.map((r) => (
                   <tr key={r.id} className={`${rowClickable} ${r.id === next?.id ? "bg-navy/[0.03]" : ""}`} onClick={() => setOpenId(r.id)}>
                     <Td><span className="font-semibold text-gray-900 whitespace-nowrap">{Number(r.date.slice(5, 7))}/{Number(r.date.slice(8))} ({r.weekday})</span>{r.id === next?.id && <span className="block text-[11px] text-navy font-semibold">다음</span>}</Td>
                     <Td className="text-[12px] text-gray-600 whitespace-nowrap">확정 {r.seats.fixed} · 랜덤 {r.seats.random}</Td>
                     <Td className="text-[12px] text-gray-600 whitespace-nowrap">{r.result === "skipped" ? "-" : r.prizes}</Td>
-                    <Td align="right" numeric className={r.pool_count === null ? "text-gray-300" : r.pool_count === 0 ? "text-red-600 font-semibold" : "text-gray-900 font-semibold"}>{r.pool_count === null ? "?" : r.pool_count}</Td>
+                    {/* 앱 DB 실측 — 못 읽으면 '—'(모름), 읽었는데 없으면 0. 사람이 적은 숫자와 섞지 않는다. */}
+                    <Td align="right" numeric className={!prog(r) ? "text-gray-300" : prog(r)!.entries === 0 ? "text-red-600 font-semibold" : "text-gray-900 font-semibold"}>
+                      {!prog(r) ? "—" : <>{prog(r)!.entries}{prog(r)!.people > 0 && <span className="block text-[11px] text-gray-400 font-normal">{prog(r)!.people}명</span>}</>}
+                    </Td>
+                    <Td align="right" numeric className="text-gray-700">{!prog(r) ? "—" : prog(r)!.winners}</Td>
+                    <Td align="right" numeric className={r.pool_count === null ? "text-gray-300" : "text-gray-600"}>{r.pool_count === null ? "?" : r.pool_count}</Td>
                     <Td><Chip tone={R_TONE[r.result]} dot={r.result === "held"}>{R_LABEL[r.result]}</Chip></Td>
                     <Td className="text-[12px] text-gray-500 truncate max-w-[16rem]">{r.note ?? ""}</Td>
                   </tr>
