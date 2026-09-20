@@ -19,6 +19,11 @@ const NOT_IMPLEMENTED = new Set([404, 405, 501]);
 /** 백엔드 앱이 올라간 뒤엔 `DRAFT_FALLBACK=0` 으로 폴백을 끈다. 그러면 미구현 응답도 그대로 에러로 나간다. */
 const FALLBACK_ON = process.env.DRAFT_FALLBACK !== "0";
 
+/** 로그인한 사람의 백엔드 토큰 — 이 파일 밖에서 직접 fetch 할 때 쓴다(쓰기·삭제 등). */
+export async function accessToken(): Promise<string> {
+  return token();
+}
+
 async function token(): Promise<string> {
   const store = await cookies();
   return store.get("access_token")?.value ?? "";
