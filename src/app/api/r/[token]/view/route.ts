@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { patchDraftItem, readDraft } from "@/lib/draft/store";
-import type { StoreReport } from "@/lib/draft/types";
+import { recordReportView } from "@/lib/draft/reportStore";
 
 /**
  * 열람 비콘 — 공개 페이지가 클라이언트에서 한 번 보낸다.
@@ -10,9 +9,6 @@ import type { StoreReport } from "@/lib/draft/types";
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
   if (!/^[0-9a-f]{40}$/.test(token)) return new NextResponse(null, { status: 204 });
-  const r = readDraft<StoreReport[]>("probe_reports", () => []).find((x) => x.token === token && (x.status === "LINKED" || x.status === "SENT"));
-  if (!r) return new NextResponse(null, { status: 204 });
-  const now = new Date().toISOString();
-  patchDraftItem<StoreReport>("probe_reports", () => [], r.id, { views: { count: r.views.count + 1, first_at: r.views.first_at ?? now, last_at: now } });
+  await recordReportView(token);
   return new NextResponse(null, { status: 204 });
 }

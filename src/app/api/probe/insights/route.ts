@@ -3,7 +3,7 @@ import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { fetchPapillonMonths, fetchPerformance, isPartnerContent, mentions, partnerNames } from "@/lib/draft/papillon";
-import { readDraft } from "@/lib/draft/store";
+import { listReports } from "@/lib/draft/reportStore";
 import { metricsOf } from "@/lib/draft/snapshot";
 import { buildReportText, cohortNote } from "@/lib/draft/report";
 import type { BackendRestaurant, ReportMetric, StoreReport } from "@/lib/draft/types";
@@ -115,7 +115,8 @@ export async function GET() {
   } else {
     await Promise.all(ids.map(async (id) => stats.set(id, (await fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${id}`))?.stats ?? null)));
   }
-  const reports = readDraft<StoreReport[]>("probe_reports", () => []);
+  // 저장소를 못 읽어도 게시물 목록은 보여 준다 — 그때는 '보냄' 표시만 빠진다
+  const reports = await listReports().catch((e) => { console.error("[probe/insights] 리포트 목록 실패", e); return [] as StoreReport[]; });
   const month = new Date().toISOString().slice(0, 7);
 
   const insights: StoreInsight[] = matched.map(({ r, label, by, plan }) => {
