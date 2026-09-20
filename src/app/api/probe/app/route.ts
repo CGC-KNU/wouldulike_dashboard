@@ -46,6 +46,14 @@ export interface AppMetricGroup {
   metrics: AppMetric[];
 }
 
+/** 쿠폰 발급 경로 — 백엔드 _issue_source() 가 주는 코드를 사람 말로. 모르는 코드는 코드 그대로 보여 준다(숨기지 않는다). */
+const SOURCE_KO: Record<string, string> = {
+  SIGNUP_WELCOME: "가입 환영", STAMP_REWARD: "스탬프 보상", BULK_EVENT: "일괄 지급", REFERRAL: "친구 초대",
+  EVENT_REWARD_SIGNUP: "이벤트 가입 보상", FLASH_8PM: "밤 8시 플래시", FINAL_EXAM_EVENT: "시험기간 이벤트",
+  LIMITED_BONUS: "한정 보너스", LIMITED_CAMPAIGN: "한정 쿠폰 받기", KNUSCSEPT_EVENT: "학생회 추천코드",
+  unknown: "발급 경로 기록 없음", other: "기타",
+};
+
 const SOURCE_LABEL: Record<Source, string> = {
   backend: "백엔드 DB",
   push: "푸시 발송 기록",
@@ -81,11 +89,19 @@ export async function GET() {
   if (deny) return deny;
 
   // 백엔드 집계가 없거나 칸 하나가 실패하면 null 로 둔다 — 0 이 아니다.
-  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string }>("/api/dashboard/admin/app-stats/");
+  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number }> | null }>("/api/dashboard/admin/app-stats/");
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   const sum = (...ks: string[]) => (ks.every((k) => n(k) === null) ? null : ks.reduce((a, k) => a + (n(k) ?? 0), 0));
   const month = stats?.since ? `${md(stats.since)}~ 이번 달` : "이번 달";
+  // 쿠폰 발급 경로 — 「발급 → 사용」이 자동 지급 쿠폰에 묻히지 않게 상위 경로를 설명에 적는다
+  const bySource: [string, { issued: number; redeemed: number }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
+  const issuedTotal = bySource.reduce((a, [, v]) => a + v.issued, 0);
+  const top = bySource[0];
+  const ko = (k: string) => SOURCE_KO[k] ?? k;
+  const issuedList = bySource.filter(([, v]) => v.issued > 0).slice(0, 3).map(([k, v]) => `${ko(k)} ${v.issued.toLocaleString()}건`).join(" · ");
+  // 경로별 사용률은 표본이 얕으면 뜻이 없다 — 발급 10건 이상만
+  const rateList = bySource.filter(([, v]) => v.issued >= 10).slice(0, 4).map(([k, v]) => `${ko(k)} ${Math.round((v.redeemed / v.issued) * 1000) / 10}%`).join(" · ");
   const { data: g, error: gErr } = await ga4();
   const week = g ? `${md(g.week.from)}~${md(g.week.to)}` : "";
 
@@ -108,9 +124,14 @@ export async function GET() {
       metrics: [
         { key: "open_to_store", label: "앱 열기 → 매장 상세", value: g?.open_to_store ?? null, unit: "%", source: "ga4", note: g ? `${week} 세션 ${g.sessions.toLocaleString()}개 중 매장 상세를 연 비율` : "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
         { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend", note: "분모(매장 상세 열람)는 앱 이벤트 숫자 — DB 와 BigQuery 를 합쳐야 한다" },
-        { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend" },
+        { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend", note: issuedList ? `경로: ${issuedList}${bySource.length > 3 ? ` 외 ${bySource.length - 3}개 경로` : ""}` : undefined },
         { key: "coupon_used", label: "쿠폰 사용", value: n("coupon_redeemed_this_month"), unit: "건", source: "backend" },
-        { key: "coupon_rate", label: "발급 → 사용", value: n("coupon_redeem_rate"), unit: "%", source: "backend", note: s ? `${month} 발급분 중 이미 쓴 비율. 달 초엔 낮게 나온다 · 배너 A/B 주요 지표 (Castor)` : "이 숫자가 배너 A/B 의 주요 지표다 (Castor)" },
+        { key: "coupon_rate", label: "발급 → 사용", value: n("coupon_redeem_rate"), unit: "%", source: "backend", note: s ? [
+          `${month} 발급분 중 이미 쓴 비율. 달 초엔 낮게 나온다`,
+          top && issuedTotal > 0 && top[1].issued / issuedTotal >= 0.3 ? `발급의 ${Math.round((top[1].issued / issuedTotal) * 100)}%가 「${ko(top[0])}」 한 경로 — 이 숫자는 사실상 그 경로 얘기다` : null,
+          rateList ? `경로별: ${rateList}` : null,
+          "배너 A/B 주요 지표 (Castor)",
+        ].filter(Boolean).join(" · ") : "이 숫자가 배너 A/B 의 주요 지표다 (Castor)" },
       ],
     },
     {
