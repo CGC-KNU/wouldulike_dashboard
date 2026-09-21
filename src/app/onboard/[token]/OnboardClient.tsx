@@ -160,17 +160,17 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
         <p className="text-[11.5px] text-gray-400 mt-2">주소·전화가 다르면 등록 후 대시보드에서 바로 고칠 수 있습니다.</p>
       </div>
       <div className="grid gap-3">
-        <Field label="대표자 성함" required><Input value={d.owner_name} onChange={(e) => patch({ owner_name: e.target.value })} placeholder="홍길동" /></Field>
-        <Field label="사업자등록번호" required hint="숫자 10자리"><Input inputMode="numeric" value={d.biz_no} onChange={(e) => patch({ biz_no: e.target.value })} placeholder="000-00-00000" /></Field>
-        <Field label="휴대폰 번호" required hint={sms ? "인증번호를 보내드립니다" : "계약서 사본과 연락에 씁니다"}><Input inputMode="tel" value={d.phone} onChange={(e) => patch({ phone: e.target.value })} placeholder="010-0000-0000" /></Field>
+        <Field label="대표자 성함" required><Input name="owner_name" autoComplete="off" value={d.owner_name} onChange={(e) => patch({ owner_name: e.target.value })} placeholder="홍길동" /></Field>
+        <Field label="사업자등록번호" required hint="숫자 10자리"><Input name="biz_no" autoComplete="off" inputMode="numeric" value={d.biz_no} onChange={(e) => patch({ biz_no: e.target.value })} placeholder="000-00-00000" /></Field>
+        <Field label="휴대폰 번호" required hint={sms ? "인증번호를 보내드립니다" : "계약서 사본과 연락에 씁니다"}><Input name="owner_phone" type="tel" autoComplete="off" inputMode="tel" value={d.phone} onChange={(e) => patch({ phone: e.target.value.replace(/[^\d-]/g, "") })} placeholder="010-0000-0000" /></Field>
       </div>
       <div className="mt-5 rounded-2xl border border-navy/20 bg-navy/[0.03] p-4">
         <p className="text-[13.5px] font-semibold text-gray-900 mb-1">점주 대시보드 PIN 4자리 정하기 <span className="text-red-600">*</span></p>
         <p className="text-[12px] text-gray-600 mb-3">앞으로 카카오 로그인 뒤 이 번호로 매장을 확인합니다. <b>사장님만 아는 번호</b>로 정해 주세요.</p>
         {d.pin_set ? <p className="text-[13px] text-green-700 font-semibold">✓ PIN 을 설정했습니다.</p> : (
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="PIN"><Input type="password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
-            <Field label="확인"><Input type="password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
+            <Field label="PIN"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
+            <Field label="확인"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
             <Button variant="primary" disabled={busy || pin.length !== 4 || pin !== pin2} onClick={() => run(async () => { await post(`/api/onboard/${token}/pin`, { new_pin: pin }); patch({ pin_set: true }); })}>설정</Button>
           </div>
         )}
@@ -228,7 +228,7 @@ function Step2({ d, patch, meta, token, busy, run, post, onBack, onNext }: StepP
           </label>
         ))}
         <Field label="서명 — 대표자 성함을 그대로 입력" required hint="입력한 성함·시각·접속 정보가 서명 기록으로 남습니다"><Input value={d.signature} disabled={done} onChange={(e) => patch({ signature: e.target.value })} placeholder={d.owner_name || "홍길동"} /></Field>
-        <Field label="계약서·세금계산서 받을 이메일" hint="비워두셔도 됩니다. 있으면 사본을 바로 보내드립니다"><Input type="email" value={d.email} onChange={(e) => patch({ email: e.target.value })} placeholder="owner@example.com" /></Field>
+        <Field label="계약서·세금계산서 받을 이메일" hint="비워두셔도 됩니다. 있으면 사본을 바로 보내드립니다"><Input type="email" name="owner_email" autoComplete="off" value={d.email} onChange={(e) => patch({ email: e.target.value })} placeholder="owner@example.com" /></Field>
         {done ? <Notice tone="blue" title="계약이 체결되었습니다">{d.consent_at ? `동의 시각 ${new Date(d.consent_at).toLocaleString("ko-KR")}` : "동의 기록이 저장되어 있습니다."}{d.contract_url && <> · <a className="underline" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a></>}</Notice>
           : <Button variant="primary" size="md" className="w-full" disabled={busy || !allChecked || d.signature.trim().length < 2} onClick={() => run(async () => {
               const j = await post(`/api/onboard/${token}/consent`, { checks: d.checks, signature: d.signature, owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, terms_hash: meta.terms.hash }) as { at: string; starts_on: string; contract_url: string | null };
