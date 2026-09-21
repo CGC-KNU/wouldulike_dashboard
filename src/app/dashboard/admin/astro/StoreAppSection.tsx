@@ -32,6 +32,8 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
   const [reachable, setReachable] = useState(true);
   const [msg, setMsg] = useState<{ tone: "blue" | "red"; text: string } | null>(null);
   const [pin, setPin] = useState("");
+  /** 서버에 저장돼 있는 값 — change-pin 이 current_pin 을 요구한다 */
+  const [loadedPin, setLoadedPin] = useState<string | null>(null);
   const [promotionText, setPromotionText] = useState("");
   const [promotionTextSaved, setPromotionTextSaved] = useState("");
   const [promoTextSaving, setPromoTextSaving] = useState(false);
@@ -48,12 +50,39 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
       setReachable(Boolean(d));
       setDetail((d as Detail) ?? {});
       setPin(d?.pin != null ? String(d.pin) : "");
+      setLoadedPin(d?.pin != null ? String(d.pin) : null);
       setPromotionText(d?.promotion_text ?? "");
       setPromotionTextSaved(d?.promotion_text ?? "");
       setPromo({ poster_url: p?.poster_url ?? "", qr_url: p?.qr_url ?? "" });
     }).finally(() => setLoading(false));
   };
   useEffect(load, [id]);
+
+  /**
+   * 매장 PIN 저장 — `admin/restaurants` PATCH 는 `is_affiliate`·`tier` 만 받는다(백엔드 AdminRestaurantView).
+   * 여기로 `pin` 을 보내면 400 이 나고 조용히 아무것도 안 바뀐다 — 0921 에 실제로 겪었다.
+   * 실제로 PIN 을 바꾸는 경로는 `auth/change-pin` 하나뿐이고, 기존 PIN 이 있으면 current_pin 을 같이 보내야 한다.
+   *
+   * ⚠️ 이 번호는 점주 로그인만이 아니라 **손님 쿠폰 사용·스탬프 적립**에도 쓰인다
+   * (backend coupons/service.py `_verify_pin`). 바꾸면 매장에 안내된 번호가 즉시 무효가 된다.
+   */
+  async function savePin() {
+    const next = pin.trim();
+    if (!/^\d{4,6}$/.test(next)) { setMsg({ tone: "red", text: "PIN 은 숫자 4~6자리입니다." }); return; }
+    if (next === (loadedPin ?? "")) { setMsg({ tone: "blue", text: "이미 그 번호입니다." }); return; }
+    if (!window.confirm(`매장 PIN 을 ${next} 로 바꿉니다.\n\n이 번호는 손님이 스탬프를 찍고 쿠폰을 쓸 때도 부르는 번호입니다. 매장에 안내된 번호와 달라지면 적립이 막힙니다.\n\n계속할까요?`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      const body: Record<string, string> = { new_pin: next };
+      if (loadedPin) body.current_pin = loadedPin;
+      const res = await fetch(`/api/dashboard/auth/change-pin?rid=${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = (await res.json().catch(() => ({}))) as { detail?: string; success?: boolean };
+      if (!res.ok || d.success === false) { setMsg({ tone: "red", text: d.detail ?? `저장하지 못했습니다 (${res.status}).` }); return; }
+      setLoadedPin(next);
+      setMsg({ tone: "blue", text: "매장 PIN 을 저장했습니다. 손님 적립·쿠폰 사용에도 이 번호가 쓰입니다." });
+      onChanged?.();
+    } finally { setBusy(false); }
+  }
 
   async function patchStore(body: Record<string, unknown>, ok: string) {
     setBusy(true); setMsg(null);
@@ -162,10 +191,10 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
       {/* 플랜은 위 '계약' 블록 한 곳에서만 바꾼다 — 월 이용료·계약 시작일과 같이 보이는 자리라야
           플랜을 올렸을 때 청구가 어떻게 되는지가 같이 보인다. 같은 값을 두 칸에 두지 않는다. */}
       <div className="grid grid-cols-1 gap-2.5">
-        <Field label="매장 PIN" hint="손님이 부르는 번호. 앱의 적립이 이 값으로 붙습니다">
+        <Field label="매장 PIN" hint="손님이 부르는 번호 — 점주 로그인·쿠폰 사용·스탬프 적립에 모두 쓰입니다. 바꾸면 매장에 안내된 번호도 함께 바꿔야 합니다">
           <div className="flex gap-1.5">
             <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="1234" inputMode="numeric" />
-            <Button size="sm" onClick={() => patchStore({ pin }, "PIN 을 저장했습니다.")} disabled={busy || !pin}>저장</Button>
+            <Button size="sm" onClick={savePin} disabled={busy || !pin}>저장</Button>
           </div>
         </Field>
       </div>
