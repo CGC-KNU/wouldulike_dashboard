@@ -287,11 +287,41 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
   const [specialSaved, setSpecialSaved] = useState(false);
   const paid = meta.store.plan !== "FREE";
 
+  /**
+   * 이미 등록된 혜택을 **화면으로 되살린다.**
+   *
+   * 0921 실측: 같은 매장에 링크를 다시 냈더니 "✓ 스탬프를 등록했습니다"라고만 뜨고
+   * 내용은 하나도 안 보이는데 칸은 전부 잠겨 있었다. 등록됐다는 사실만 백엔드에서 읽고
+   * 내용은 안 읽어서다. 사장님 입장에서는 뭘 등록했는지도 모르고 고칠 수도 없다.
+   *
+   * 초안이 비어 있을 때만 채운다 — 적던 걸 덮어쓰면 안 된다.
+   */
   useEffect(() => {
     fetch(`/api/dashboard/stamp-rule${rq}`).then((r) => (r.ok ? r.json() : null)).then((j) => {
-      const rule = j?.rule ?? j; if (rule?.active && rule?.config_json?.thresholds?.length) setStampSaved(true);
+      const rule = j?.rule ?? j;
+      const th = rule?.config_json?.thresholds as { stamps?: number; reward_text?: string }[] | undefined;
+      if (!rule?.active || !Array.isArray(th) || !th.length) return;
+      setStampSaved(true);
+      if (Object.keys(d.stamp_steps).length) return;
+      const back: Record<string, string> = {};
+      for (const t of th) if (Number(t?.stamps) > 0) back[String(t.stamps)] = String(t.reward_text ?? "");
+      patch({ stamp_steps: back, stamp_note: String(rule.config_json?.notes ?? "") });
     }).catch(() => null);
-  }, [rq]);
+
+    fetch(`/api/dashboard/restaurant-benefits${rq}&kind=GENERAL`).then((r) => (r.ok ? r.json() : null)).then((list: { title?: string; subtitle?: string }[] | null) => {
+      if (!Array.isArray(list) || !list.length) return;
+      setSavedCoupons(list.length);
+      if (d.coupons.length) return;
+      patch({ coupons: list.map((x) => ({ benefit: String(x.title ?? ""), cond: String(x.subtitle ?? "") })) });
+    }).catch(() => null);
+
+    fetch(`/api/dashboard/restaurant-benefits${rq}&kind=SPECIAL`).then((r) => (r.ok ? r.json() : null)).then((list: { title?: string; subtitle?: string }[] | null) => {
+      if (!Array.isArray(list) || !list.length) return;
+      setSpecialSaved(true);
+      if (d.special) return;
+      patch({ special: { benefit: String(list[0].title ?? ""), cond: String(list[0].subtitle ?? "") } });
+    }).catch(() => null);
+  }, [rq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const steps = Object.keys(d.stamp_steps).map(Number).sort((a, b) => a - b);
   const filled = steps.filter((n) => (d.stamp_steps[String(n)] ?? "").trim());
@@ -393,7 +423,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
             <Textarea rows={2} disabled={stampSaved} value={d.stamp_note} onChange={(e) => patch({ stamp_note: e.target.value })} placeholder="1인 1회 · 배달 제외" />
           </Field>
         </div>
-        {stampSaved ? <p className="text-[13px] text-green-700 font-semibold mt-2">✓ 스탬프를 등록했습니다.</p>
+        {stampSaved ? <div className="mt-2"><Saved text="스탬프를 등록했습니다." onEdit={() => setStampSaved(false)} /></div>
           : (
             <>
               {blanks.length > 0 && <p className="text-[12px] text-amber-700 mt-2">{blanks.join("개, ")}개 칸이 비어 있습니다. 채워야 등록할 수 있습니다.</p>}
@@ -414,7 +444,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
             ))}
           </ul>
         </div>
-        {savedCoupons > 0 ? <p className="text-[13px] text-green-700 font-semibold">✓ 쿠폰 {savedCoupons}개를 등록했습니다.</p> : (
+        {savedCoupons > 0 ? <Saved text={`쿠폰 ${savedCoupons}개를 등록했습니다.`} onEdit={() => setSavedCoupons(0)} /> : (
           <>
             <div className="space-y-3">
               {d.coupons.map((c, i) => (
@@ -455,7 +485,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
           <div className="rounded-xl bg-white border border-gray-200 p-3 text-[12.5px] text-gray-500">
             무료 플랜에서는 등록하실 수 없습니다. <b className="text-gray-700">Boost 플랜</b>으로 바꾸시면 매달 학생회 채널 홍보에 함께 나갑니다 — 담당자에게 말씀해 주세요.
           </div>
-        ) : specialSaved ? <p className="text-[13px] text-green-700 font-semibold">✓ 한정 쿠폰을 등록했습니다.</p> : (
+        ) : specialSaved ? <Saved text="한정 쿠폰을 등록했습니다." onEdit={() => setSpecialSaved(false)} /> : (
           <div className="space-y-2">
             <Field label="무엇을 드릴지"><Input autoComplete="off" value={d.special?.benefit ?? ""} placeholder="사이드 1종"
               onChange={(e) => patch({ special: { benefit: e.target.value, cond: d.special?.cond ?? "" } })} /></Field>
@@ -576,6 +606,20 @@ function PostcodeLayer({ onPick, onClose }: { onPick: (d: PostcodeData) => void;
         {err ? <div className="p-4"><Notice tone="amber" title="불러오지 못했습니다">{err}</Notice></div>
              : <div ref={box} style={{ height: 420 }} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 등록을 마친 칸 — 잠그되 **되돌릴 수 있게** 둔다.
+ * 잠그기만 하면 오타 하나에 담당자한테 전화해야 한다. 등록 자체가 선언형(지우고 다시 넣기)이라
+ * 다시 눌러도 쌓이지 않는다 — 고치게 두는 편이 맞다. (0921)
+ */
+function Saved({ text, onEdit }: { text: string; onEdit: () => void }) {
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <p className="text-[13px] text-green-700 font-semibold">✓ {text}</p>
+      <button type="button" className="text-[12px] font-semibold text-navy underline underline-offset-2" onClick={onEdit}>고치기</button>
     </div>
   );
 }
