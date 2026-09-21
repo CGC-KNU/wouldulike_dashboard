@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { shortId, stepStamp, stepStampOk, verifyOnboardToken } from "@/lib/onboard/token";
-import { PLAN_LABEL, TERMS_VERSION, termsHash } from "@/lib/onboard/contract";
+import { PLAN_LABEL, TERMS_VERSION, kdate, startsOnAfter, termsHash, todaySeoul } from "@/lib/onboard/contract";
 import { anyCopy, clientMeta, notifyOnboard, persistRecord, type ConsentRecord } from "@/lib/onboard/records";
 
 const API = () => process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -44,11 +44,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   try { const j = decodeJwt<{ kakao_id?: number | string }>(access); kakao_id = j.kakao_id != null ? String(j.kakao_id) : null; } catch { /* 무시 */ }
   const { ip, ua } = clientMeta(req);
   const at = new Date().toISOString();
+  const starts_on = startsOnAfter(todaySeoul());
+  const billing_period = starts_on.slice(0, 7);
+  const paid = p.plan !== "FREE";
   const rec: ConsentRecord = {
     kind: "complete", short_id: shortId(p), rid: p.rid, lid: p.lid, name: p.name, campus: p.campus, plan: p.plan, fee: p.fee,
     terms_version: TERMS_VERSION, terms_hash: termsHash(), checks: {}, signature: (b.signature ?? "").trim(),
     owner_name: (b.owner_name ?? "").trim(), biz_no: (b.biz_no ?? "").replace(/\D/g, ""), phone: (b.phone ?? "").replace(/\D/g, ""),
-    phone_verified: false, email: (b.email ?? "").trim(), kakao_id, ip, ua, at, stamp_ok, kit_address,
+    phone_verified: false, email: (b.email ?? "").trim(), kakao_id, ip, ua, at, stamp_ok, kit_address, starts_on,
   };
   const copies = await persistRecord(rec, { ownerToken: access });
   if (!anyCopy(copies)) return NextResponse.json({ detail: "완료 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.", errors: copies.errors }, { status: 503 });
@@ -62,10 +65,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     }).then((r) => r.ok).catch(() => false);
   }
 
+  /**
+   * 4) 매장 운영 값(계약 시작일·청구 시작 월)을 개시일에 맞춘다 — **최선 노력**.
+   *
+   * 개시일은 이제 온보딩이 정한다(다음 달 1일). 그런데 그 값을 손으로 다시 옮겨 적게 두면
+   * 반드시 어긋난다 — 0921 에 실제로 어긋나 있었다(개시일 10월인데 청구 시작 월 2026-09).
+   *
+   * 다만 백엔드 `astro/*` 는 전부 `_is_admin` 으로 막혀 있어 **점주 토큰으로는 403 이다**
+   * (wouldulike_backend astro/views.py). 그래서 실패해도 완료를 막지 않고, 대신 슬랙에
+   * "손으로 넣어 주세요 · 2026-10" 이라고 값을 그대로 적어 둔다. 사람이 계산할 일은 없게 한다.
+   * 재민이 이 경로를 열어 주면 코드를 고치지 않아도 그날부터 자동으로 들어간다.
+   */
+  let ops_ok = false;
+  if (API()) {
+    ops_ok = await fetch(`${API()}/api/astro/stores/${p.rid}/`, {
+      method: "PATCH", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ contract_started_on: starts_on, ...(paid ? { billing_start_period: billing_period } : {}), updated_by: "온보딩" }),
+      cache: "no-store",
+    }).then((r) => r.ok).catch(() => false);
+  }
+
   const feeTxt = p.fee ? ` ${p.fee.toLocaleString()}원` : "";
   const copyTxt = [copies.activity && "활동기록", copies.sheet && "시트", copies.drive_json && "드라이브"].filter(Boolean).join("·") || "없음";
   await notifyOnboard(
     `:white_check_mark: *${p.name}* 온보딩 완료 — 계약 ${p.name} ${PLAN_LABEL[p.plan]}${feeTxt} · ${p.campus}\n` +
+    `• 개시일 ${kdate(starts_on)}${paid ? ` · 청구 시작 월 ${billing_period}` : " · 무료 플랜(청구 없음)"}\n` +
+    (ops_ok ? "" : `• :warning: 매장 운영 값이 자동 반영되지 않았습니다 — 파트너 매장 ${p.rid} 상세에서 *계약 시작일 ${starts_on}*${paid ? ` · *청구 시작 월 ${billing_period}*` : ""} 를 넣어 주세요\n`) +
     `• 스탬프 등록 ✓ · 웰컴 키트 발송 대기 (${kit_address})\n` +
     `• 기록 사본: ${copyTxt}${copies.errors.length ? ` · 실패: ${copies.errors.join(", ")}` : ""}` +
     (p.lid ? `\n• 후보 단계: ${stage_ok ? "계약 완료로 옮김" : "옮기지 못함 — 세틀라이트에서 수동 변경 필요"}` : "") +
@@ -74,7 +99,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
 
   const secure = process.env.NODE_ENV === "production";
   jar.set(`ob_done_${p.rid}`, stepStamp(p.n, "done"), { httpOnly: true, secure, sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
-  return NextResponse.json({ ok: true, at, copies, stage_ok, guide_url: process.env.ONBOARD_GUIDE_URL ?? null });
+  return NextResponse.json({ ok: true, at, starts_on, copies, stage_ok, ops_ok, guide_url: process.env.ONBOARD_GUIDE_URL ?? null });
 }
 
 /**

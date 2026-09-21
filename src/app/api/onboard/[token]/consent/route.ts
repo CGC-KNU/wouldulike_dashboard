@@ -46,14 +46,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
 
   const { ip, ua } = clientMeta(req);
   const at = new Date().toISOString();
+  // 개시일은 동의한 날이 아니라 **다음 달 1일**이다 (lib/onboard/contract.ts 머리말 — 청구 주기를 매장마다 갈라놓지 않으려는 것).
+  // 여기서 확정되어 사본과 기록에 그대로 박힌다.
+  const starts_on = startsOnAfter(todaySeoul());
   const rec: ConsentRecord = {
     kind: "consent", short_id: shortId(p), rid: p.rid, lid: p.lid, name: p.name, campus: p.campus, plan: p.plan, fee: p.fee,
-    terms_version: TERMS_VERSION, terms_hash: hash, checks: b.checks!, signature, owner_name, biz_no, phone,
+    terms_version: TERMS_VERSION, terms_hash: hash, checks: b.checks!, signature, owner_name, biz_no, phone, starts_on,
     phone_verified: Boolean(b.phone_verified) && Boolean(process.env.ONBOARD_SMS_PROVIDER), email, kakao_id, ip, ua, at,
   };
-  // 개시일 = 동의한 날(서울 기준). 여기서 확정되어 사본에 박힌다.
-  // 개시일은 동의한 날이 아니라 **다음 달 1일**이다 (lib/onboard/contract.ts 머리말 — 청구 주기를 매장마다 갈라놓지 않으려는 것)
-  const starts_on = startsOnAfter(todaySeoul());
   const html = contractHtml({ name: p.name, campus: p.campus, plan: p.plan, fee: p.fee, owner_name, biz_no: fmtBiz(biz_no), phone: fmtPhone(phone), email, starts_on, signed_at: at.replace("T", " ").slice(0, 19) + " (UTC)", signature }, rec.checks);
 
   const copies = await persistRecord(rec, { ownerToken: access, contractHtml: html });

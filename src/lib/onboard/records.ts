@@ -38,6 +38,8 @@ export interface ConsentRecord {
   ip: string;
   ua: string;
   at: string; // ISO
+  /** 개시일 — 동의한 달의 다음 달 1일. 청구 시작 월이 여기서 나온다 (lib/onboard/contract.ts). */
+  starts_on?: string;
   /** complete 에서만: 스탬프 규칙 존재 여부, 키트 배송지 */
   stamp_ok?: boolean;
   kit_address?: string;
@@ -117,7 +119,7 @@ export async function persistRecord(rec: ConsentRecord, opts: { ownerToken: stri
       rec.at, rec.kind, rec.short_id, rec.rid, rec.lid ?? "", rec.name, rec.campus, rec.plan, rec.fee,
       rec.owner_name, bizText(rec.biz_no), phoneText(rec.phone), rec.phone_verified ? "Y" : "N", rec.email, rec.kakao_id ?? "",
       rec.signature, rec.terms_version, rec.terms_hash, JSON.stringify(rec.checks), rec.ip, rec.ua.slice(0, 160),
-      rec.stamp_ok === undefined ? "" : rec.stamp_ok ? "Y" : "N", rec.kit_address ?? "",
+      rec.stamp_ok === undefined ? "" : rec.stamp_ok ? "Y" : "N", rec.kit_address ?? "", rec.starts_on ?? "",
     ]).catch(() => false),
     driveUpload(`${base}_${rec.kind}.json`, JSON.stringify(rec, null, 2), "application/json").catch(() => null),
     opts.contractHtml ? driveUpload(`${base}_계약서.html`, opts.contractHtml, "text/html").catch(() => null) : Promise.resolve(null),
