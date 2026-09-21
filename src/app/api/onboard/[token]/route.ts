@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { verifyOnboardToken, shortId, stepStampOk } from "@/lib/onboard/token";
 import { CHECKS, PLAN_LABEL, TERMS_VERSION, articles, scheduleFrom, startsOnAfter, termsHash, todaySeoul } from "@/lib/onboard/contract";
-import { COUPON_EXAMPLES, STAMP_EXAMPLES } from "@/lib/onboard/records";
+import { COUPON_EXAMPLES, STAMP_EXAMPLES, sheetRead } from "@/lib/onboard/records";
 
 /**
  * 온보딩 화면이 처음 부르는 것 — 토큰이 유효한지, 어느 매장·플랜인지, 세션이 이 매장 것인지, 어디까지 왔는지.
@@ -31,24 +31,22 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   }
 
   /**
-   * **이미 등록을 마친 매장인가** — 쿠키가 아니라 백엔드 상태로 판정한다.
+   * **이미 등록을 마친 매장인가** — 쿠키가 아니라 **원장**으로 판정한다.
    *
-   * `done` 은 브라우저 쿠키다. 사장님이 폰에서 끝내고 며칠 뒤 카톡을 스크롤해 같은 링크를 다시 열면
-   * (흔하다) 쿠키가 없는 기기에서는 처음부터 다시 걷게 되고, 계약 동의를 **두 번째로** 하게 된다.
-   * 중복 계약 기록이 남고, 사장님은 두 번 서명한 줄 안다.
+   * `done` 은 브라우저 쿠키다. 폰에서 끝내고 며칠 뒤 카톡을 스크롤해 같은 링크를 다시 열면(흔하다)
+   * 쿠키가 없는 기기에서는 처음부터 걷고 계약 동의를 두 번째로 하게 된다.
    *
-   * 그래서 "이 계정이 이 매장의 점주이고(세션), 스탬프 규칙이 이미 있다"면 끝난 것으로 본다.
-   * 스탬프는 완료의 필수 조건이므로(complete 라우트) 이 둘이면 완료를 통과한 매장이다.
+   * ⚠️ 처음엔 "스탬프 규칙이 있으면 끝난 것"으로 봤다. **틀렸다** — 스탬프는 완료의 *필요*조건이지
+   * 충분조건이 아니다. [3]혜택에서 등록되고 완료는 [6]이다. 그대로 두면 [3]까지 하고 새로고침한
+   * 사장님이 완료 화면으로 튕겨, 입금·키트·완료 기록 없이 끝난 줄 안다. (0921 검토에서 잡음)
+   *
+   * 그래서 **완료가 실제로 기록된 곳**을 본다 — 시트 원장에 이 매장의 complete/revise 줄이 있는가.
+   * 로그인 뒤에만 조회한다(첫 화면을 원장 읽기로 늦추지 않는다).
    */
   let already = false;
-  if (session.ok && access && process.env.NEXT_PUBLIC_API_URL) {
-    already = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/stamp-rule/?restaurant_id=${p.rid}`, { headers: { Authorization: `Bearer ${access}` }, cache: "no-store" })
-      .then(async (r) => {
-        if (!r.ok) return false;
-        const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-        const rule = (j.rule ?? j.stamp_rule ?? j) as { active?: boolean; config_json?: { thresholds?: { stamps?: number }[] } };
-        return rule?.active !== false && Array.isArray(rule?.config_json?.thresholds) && rule.config_json.thresholds.some((t) => Number(t?.stamps) > 0);
-      }).catch(() => false);
+  if (session.ok) {
+    const rows = await sheetRead("A2:D10000").catch(() => []);
+    already = rows.some((r) => Number(r[3]) === p.rid && (r[1] === "complete" || r[1] === "revise"));
   }
 
   // 아직 동의 전이므로 "오늘 동의한다면" 기준으로 날짜를 미리 보여 준다. 확정은 consent 에서 한다.

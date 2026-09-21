@@ -70,6 +70,8 @@ export async function POST(req: NextRequest) {
   const failed: { rid: number; name: string; detail: string }[] = [];
 
   for (const d of items) {
+    // 충돌만 있고 쓸 것이 없는 매장 — 아무것도 안 하면서 "반영했다"고 말하면 안 된다 (0921 검토)
+    if (!Object.keys(d.fill).length && !Object.keys(d.store).length && !d.lead) continue;
     const errs: string[] = [];
     // 1) 운영 행 — 비어 있던 칸만 채운다 (충돌은 건드리지 않는다)
     if (Object.keys(d.fill).length) {

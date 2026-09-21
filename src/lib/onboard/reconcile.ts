@@ -90,6 +90,16 @@ const LABEL: Record<string, string> = {
 const digits = (s: string) => (s ?? "").replace(/\D/g, "");
 
 /**
+ * ISO(UTC) → 한국 날짜. 그냥 `slice(0,10)` 하면 **하루 어긋난다** —
+ * 밤 9시 이후 동의는 UTC 로 전날이다. 계약일은 법적 날짜라 어긋나면 안 된다. (0921 검토)
+ */
+function kstDate(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return (iso ?? "").slice(0, 10);
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
  * 한 매장의 온보딩 기록과 현재 운영 행을 대조한다.
  * 비교는 **정규화해서** 한다 — 시트에는 하이픈이 들어간 문자열이, 툴에는 숫자만 있을 수 있다.
  */
@@ -105,7 +115,7 @@ export function diffStore(f: Folded, ops: OpsLike | null, tier: string | null, i
   add("owner_email", done.email);
   add("biz_no", done.biz_no);
   add("contract_started_on", done.starts_on);
-  add("contract_signed_on", (f.consent?.at ?? done.at).slice(0, 10));
+  add("contract_signed_on", kstDate(f.consent?.at ?? done.at));
   add("kit_note", done.kit_address);
   if (done.fee > 0) { add("monthly_fee", done.fee); add("pay_cycle", "MONTHLY"); }
   if (done.fee > 0 && done.starts_on) add("billing_start_period", done.starts_on.slice(0, 7));
