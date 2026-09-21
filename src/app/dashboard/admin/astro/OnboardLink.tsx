@@ -22,6 +22,10 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
   const [copied, setCopied] = useState<"url" | "text" | null>(null);
   // 기존 PIN 이 있으면 발급이 그것을 갈아엎는다 — 운영 중인 매장에서 사고가 나는 지점이라 미리 경고한다.
   const [hasPin, setHasPin] = useState<boolean | null>(null);
+  // 서버가 실제로 "PIN 이 있어 막았다"(409 has_pin)고 답한 상태.
+  // 이때 같은 버튼을 다시 누르는 건 아무 의미가 없다 — 라우트에 force 가 없어 같은 409 가 온다.
+  // 그래서 재시도를 권하지 않고, 실제로 통하는 길을 적는다 (0921).
+  const [blocked, setBlocked] = useState(false);
   const [restorePin, setRestorePin] = useState("");
   const [restored, setRestored] = useState<string | null>(null);
   useEffect(() => {
@@ -33,13 +37,14 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
   }, [open, hasPin, rid]);
 
   const issue = async () => {
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setBlocked(false);
     try {
       const body: Record<string, unknown> = { rid, lid, name, campus, plan, days: Number(days) || 14 };
       if (plan !== "FREE" && feeIn.trim()) body.fee = Number(feeIn.replace(/\D/g, ""));
       if (plan === "FREE") body.fee = 0;
       const r = await fetch("/api/onboard/issue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = (await r.json().catch(() => ({}))) as { detail?: string; url?: string; kakao_text?: string; expires_at?: string; short_id?: string };
+      const j = (await r.json().catch(() => ({}))) as { detail?: string; url?: string; kakao_text?: string; expires_at?: string; short_id?: string; has_pin?: boolean };
+      if (j.has_pin) setBlocked(true);
       if (!r.ok || !j.url) throw new Error(j.detail ?? `발급 실패 (${r.status})`);
       setOut({ url: j.url, kakao_text: j.kakao_text ?? j.url, expires_at: j.expires_at ?? "", short_id: j.short_id ?? "" });
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
@@ -70,7 +75,14 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
               </div>
               {err && <div className="mt-2"><Notice tone="red" title="발급하지 못했습니다">{err}</Notice></div>}
               {restored && <div className="mt-2"><Notice tone="blue" title="PIN 을 복구했습니다">{restored}</Notice></div>}
-              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" disabled={busy} onClick={issue}>{busy ? "발급 중…" : hasPin === true ? "그래도 발급 시도" : "링크 발급"}</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
+              {blocked && (
+                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                  <b>같은 버튼을 다시 눌러도 결과는 같습니다.</b> 통하는 길은 둘뿐입니다.<br />
+                  · <b>테스트 매장</b>이면 아래 운영 항목의 <b>테스트 매장</b>을 켜고 다시 시도하세요.<br />
+                  · <b>운영 중인 매장</b>이면 발급하지 마세요. 사장님께 <b>현재 매장 번호</b>를 안내해 점주 대시보드로 바로 로그인하시게 하는 것이 맞습니다.
+                </div>
+              )}
+              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" disabled={busy} onClick={issue}>{busy ? "발급 중…" : blocked ? "다시 시도" : "링크 발급"}</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
               {/* 실수로 발급한 뒤 되돌리는 길 — 원래 PIN 은 시트 '계약 세부사항' PIN 번호 열에 있다 */}
               <details className="mt-3">
                 <summary className="text-[11.5px] text-gray-500 cursor-pointer">실수로 발급했다면 — PIN 되돌리기</summary>
