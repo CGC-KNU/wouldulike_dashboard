@@ -77,6 +77,16 @@ export default function OnboardClient({ token }: { token: string }) {
     location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${id}&redirect_uri=${uri}&response_type=code&scope=profile_nickname&state=${state}`;
   };
 
+  /**
+   * 담당자가 자기 브라우저에서 온보딩을 시험할 때를 위한 길.
+   * 이미 대시보드 세션이 있으면 그 세션이 이 매장 점주가 아니어서 [0]단계가 막힌다 — 세션을 비우고 다시 시작한다.
+   */
+  const restart = async () => {
+    await fetch("/api/auth/logout").catch(() => null);
+    try { sessionStorage.removeItem(key); } catch { /* 무시 */ }
+    startKakao();
+  };
+
   if (fatal) return <Shell><p className="text-[15px] text-gray-800">{fatal}</p></Shell>;
   if (!meta) return <Shell><div className="flex items-center gap-2 text-gray-500 text-[13px]"><Spinner size={16} /> 불러오는 중…</div></Shell>;
 
@@ -95,6 +105,9 @@ export default function OnboardClient({ token }: { token: string }) {
         </div>
         {err && <Notice tone="red" title="로그인 오류">{err}</Notice>}
         <Button variant="primary" size="md" className="w-full bg-[#FEE500] text-[#191919] hover:bg-[#f5dc00]" onClick={startKakao}>카카오로 시작하기</Button>
+        <button type="button" onClick={restart} className="mt-2 w-full text-[11.5px] text-gray-400 hover:text-gray-600 underline underline-offset-2">
+          다른 계정으로 로그인되어 있나요? 로그아웃하고 다시 시작
+        </button>
         <p className="text-[11.5px] text-gray-400 mt-3">링크 유효기간 {new Date(meta.expires_at).toLocaleDateString("ko-KR")} · 문의 hello@wouldulike.kr</p>
       </Shell>
     );

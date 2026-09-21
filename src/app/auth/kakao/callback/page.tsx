@@ -22,7 +22,8 @@ function KakaoCallbackInner() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // redirect_uri 는 백엔드 교환이 실패했을 때(localhost·프리뷰) 라우트가 직접 교환하는 데 쓴다 — 인가 요청 때 쓴 값과 같아야 한다
-          body: JSON.stringify({ code, redirect_uri: process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI ?? `${window.location.origin}/auth/kakao/callback` }),
+          // state 에 온보딩 토큰이 실려 있으면 점주로 들어가는 길이다 — 직원 계정이어도 관리자 2단계로 새지 않게 알린다
+          body: JSON.stringify({ code, redirect_uri: process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI ?? `${window.location.origin}/auth/kakao/callback`, onboard: (searchParams.get("state") ?? "").startsWith("onboard:") }),
         });
 
         const data = await res.json();

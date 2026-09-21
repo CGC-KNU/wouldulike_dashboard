@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export async function POST(req: NextRequest) {
-  const { code, redirect_uri } = (await req.json()) as { code?: string; redirect_uri?: string };
+  const { code, redirect_uri, onboard } = (await req.json()) as { code?: string; redirect_uri?: string; onboard?: boolean };
 
   if (!code) {
     return NextResponse.json({ success: false, message: "code missing" }, { status: 400 });
@@ -54,6 +54,19 @@ export async function POST(req: NextRequest) {
   const kakaoId: number | undefined = body.user?.kakao_id;
 
   const cookieStore = await cookies();
+
+  // 온보딩 링크에서 온 로그인은 **점주로 들어가는 길**이다. 직원 계정이어도 관리자 2단계로 보내지 않는다 —
+  // 그 관문은 대시보드 접근용이고, 여기서 필요한 건 그 매장의 점주 세션이다 (`api/onboard/[token]/session` 이 임시 PIN 으로 만든다).
+  // 사장님 역할 카카오 계정 없이 온보딩을 끝까지 시험하려고 연 길이다. 대시보드 권한은 이 경로로 생기지 않는다.
+  if (onboard) {
+    cookieStore.set("pending_token", access, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 30,
+    });
+    return NextResponse.json({ success: false, requiresPinVerification: true, onboard: true });
+  }
 
   // 내부 구성원(대시보드 명단)이면 2단계 — 공용 관리자 아이디/비번으로 넘긴다.
   // 여기서는 아직 access_token 을 심지 않는다. 관문을 통과해야 세션이 생긴다.
