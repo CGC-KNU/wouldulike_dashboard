@@ -5,7 +5,6 @@ import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, Icon
 import { ALL_LEAD_STAGES, APP_CATEGORIES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES, PROPOSED_PLANS, type Campus, type Lead, type LeadIntent, type LeadStage } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
 import { INSTA_STATES, fitOf, type InstaState } from "@/lib/draft/fit";
-import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, PanelSection, Segmented, Select, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, daysSince, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
 import CampusPicker, { allCampuses } from "./CampusPicker";
@@ -97,7 +96,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
     <>
       <PageHeader
         title="파트너 후보"
-        description="캠퍼스별로 봅니다. 단계 이름은 팀 시트와 같고, 칸반은 네 묶음으로 접었습니다."
+        description="캠퍼스별로 봅니다. 칸반은 네 묶음으로 접었습니다."
         actions={
           <>
             {draft.on && <DraftBadge note={draft.note} />}
@@ -126,7 +125,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
       {loading ? (
         <Card flush><Skeleton rows={6} cols={4} /></Card>
       ) : leads.length === 0 ? (
-        <Card><Empty title="아직 후보가 없습니다" detail="팀 시트의 신규 컨택·후보 실측 탭을 한 번에 불러옵니다." action={<Button variant="primary" icon={<IconTableImport />} onClick={() => setImporting(true)}>시트에서 불러오기</Button>} /></Card>
+        <Card><Empty title="아직 후보가 없습니다" detail="붙여넣기나 CSV 로 한 번에 올릴 수 있습니다." action={<Button variant="primary" icon={<IconTableImport />} onClick={() => setImporting(true)}>시트에서 불러오기</Button>} /></Card>
       ) : view === "board" ? (
         <div className={`grid gap-3 ${groups.length === 4 ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 md:grid-cols-3"}`}>
           {groups.map((g) => {
@@ -173,7 +172,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
         </label>
         <div className="flex items-center gap-4">
           <a href="/api/astro/export?tab=후보" className="inline-flex items-center gap-1 text-[12px] text-gray-500 hover:text-navy"><IconDownload size={13} aria-hidden="true" /> 시트 형식 CSV</a>
-          <a href={SALES_SHEET.url(SALES_SHEET.tabs.현황)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-gray-500 hover:text-navy">원본 시트 <IconExternalLink size={12} aria-hidden="true" /></a>
+          
         </div>
       </div>
 
@@ -451,51 +450,25 @@ function FitBar({ label, hint, v, tone }: { label: string; hint: string; v: numb
   );
 }
 
-/* ═══════════ 시트에서 불러오기 ═══════════ */
-
-type Tab = "현황" | "신규" | "후보" | "후보계명" | "계약";
-const TAB_DESC: Record<Tab, string> = {
-  현황: "매장 현황 탭 (33곳, 경북대). 대표자·연락처·상권은 매장 운영 필드에도 들어갑니다.",
-  신규: "신규 컨택 탭 (24곳, 경북대). 담당자·단계·미팅 일시.",
-  후보: "후보 실측 탭 (61곳, 영남대 0909). 등급·점수·공략 포인트. 캠퍼스는 영남대로 들어갑니다.",
-  후보계명: "후보 실측 탭 — 계명대 (36곳, 0913). 등급·점수·공략 포인트. 캠퍼스는 계명대로 들어갑니다.",
-  계약: "계약 세부사항 탭 (39곳). 플랜·월 이용료·납부·계산서·혜택·홍보물·PIN → 매장 운영 필드.",
-};
+/* ═══════════ 후보 불러오기 ═══════════ */
 
 /**
- * 가져오기 세 갈래 (민열님 0911): ① 팀 시트 링크를 직접 읽기 ② 시트에서 복사해 붙여넣기 ③ 고정 양식(CSV) 내려받아 채운 뒤 업로드.
+ * 가져오기 두 갈래: ① 표에서 복사해 붙여넣기 ② 고정 양식(CSV) 내려받아 채운 뒤 업로드.
+ * 0921 시트를 걷어내면서 '시트 링크를 직접 읽기'는 뺐다 — 읽을 시트가 없다.
  * ②③은 같은 파서(`parseTable`)를 탄다 — 첫 줄이 머리글이면 그대로, 없으면 양식 열 순서로 본다. 미리 세어 보고(dry) 확정한다.
  */
 function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [mode, setMode] = useState<"sheet" | "paste" | "file">("sheet");
+  const [mode, setMode] = useState<"paste" | "file">("paste");
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [dry, setDry] = useState<{ rows: number; created: number; updated: number; skipped: number; columns: string[]; sample: string[] } | null>(null);
-  const [tab, setTab] = useState<Tab>("신규");
-  const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setPreview(null); setResult(null); setError(null);
-    fetch(`/api/astro/import?tab=${encodeURIComponent(tab)}`).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail); setPreview(d); }).catch((e) => setError(e.message ?? "시트를 읽지 못했습니다."));
-  }, [tab]);
-  async function run() {
-    if (busy) return;
-    setBusy(true); setError(null);
-    try {
-      const res = await fetch("/api/astro/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tab }) });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.detail);
-      setResult(tab === "계약" || tab === "현황" ? `${d.applied}곳의 운영 필드를 채웠습니다.${d.unmatched?.length ? ` 못 찾은 ${d.unmatched.length}곳: ${d.unmatched.join(", ")}` : ""}` : `${d.created}곳 추가, ${d.updated}곳 갱신.`);
-      onDone();
-    } catch (e) { setError((e as Error).message ?? "불러오지 못했습니다."); } finally { setBusy(false); }
-  }
-  const n = (k: string) => (preview?.[k] as number | undefined) ?? 0;
 
   // 붙여넣기·업로드: 서버에 미리 세어 보게 한 뒤(dry) 확정한다
   useEffect(() => {
-    if (mode === "sheet" || !text.trim()) { setDry(null); return; }
+    if (!text.trim()) { setDry(null); return; }
     const id = setTimeout(() => {
       fetch("/api/astro/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, dry: true }) })
         .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail); setDry(d); setError(null); })
@@ -517,14 +490,13 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
     setFileName(f.name);
     f.text().then((t) => setText(t));
   }
-  const textMode = mode !== "sheet";
   return (
-    <SlideOver open onClose={onClose} title="후보 불러오기" subtitle="시트 링크를 읽거나, 복사해 붙여넣거나, 양식을 채워 올립니다. 시트는 건드리지 않습니다." width="lg"
-      footer={<>{textMode ? <Button variant="primary" onClick={runText} disabled={!dry || busy}>{busy ? "불러오는 중…" : dry ? `${dry.created + dry.updated}곳 불러오기` : "불러오기"}</Button> : <Button variant="primary" onClick={run} disabled={!preview || busy}>{busy ? "불러오는 중…" : `${tab} 탭 불러오기`}</Button>}<Button variant="ghost" onClick={onClose}>{result ? "닫기" : "취소"}</Button>{result && <span className="text-[12px] text-emerald-700 ml-auto" aria-live="polite">{result}</span>}</>}>
-      <Segmented<"sheet" | "paste" | "file"> label="방법" value={mode} onChange={(m) => { setMode(m); setResult(null); setError(null); }} options={[{ key: "sheet", label: "팀 시트 링크" }, { key: "paste", label: "붙여넣기" }, { key: "file", label: "양식 업로드" }]} />
+    <SlideOver open onClose={onClose} title="후보 불러오기" subtitle="표에서 복사해 붙여넣거나, 양식을 채워 올립니다." width="lg"
+      footer={<><Button variant="primary" onClick={runText} disabled={!dry || busy}>{busy ? "불러오는 중…" : dry ? `${dry.created + dry.updated}곳 불러오기` : "불러오기"}</Button><Button variant="ghost" onClick={onClose}>{result ? "닫기" : "취소"}</Button>{result && <span className="text-[12px] text-emerald-700 ml-auto" aria-live="polite">{result}</span>}</>}>
+      <Segmented<"paste" | "file"> label="방법" value={mode} onChange={(m) => { setMode(m); setResult(null); setError(null); }} options={[{ key: "paste", label: "붙여넣기" }, { key: "file", label: "양식(CSV)" }]} />
       {mode === "paste" && (
         <>
-          <p className="text-[13px] text-gray-600">구글시트에서 머리글 줄부터 드래그해 복사(⌘C)한 뒤 여기에 붙여넣으세요. 머리글이 없으면 <a href="/api/astro/export?tab=양식" className="text-navy font-medium">양식</a> 열 순서로 읽습니다.</p>
+          <p className="text-[13px] text-gray-600">표에서 머리글 줄부터 드래그해 복사(⌘C)한 뒤 여기에 붙여넣으세요. 머리글이 없으면 <a href="/api/astro/export?tab=양식" className="text-navy font-medium">양식</a> 열 순서로 읽습니다.</p>
           <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={"캠퍼스\t담당자\t매장명\t전화번호\t…\n경북대\t준영\t○○식당\t053-…"} className="font-mono text-[12px]" />
         </>
       )}
@@ -535,11 +507,11 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
             <label className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-navy text-white text-[13px] font-semibold cursor-pointer hover:bg-navy/90"><IconTableImport size={15} aria-hidden="true" /> 채운 양식 올리기<input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" className="sr-only" onChange={(e) => onFile(e.target.files?.[0] ?? null)} /></label>
             {fileName && <span className="text-[12px] text-gray-500">{fileName}</span>}
           </div>
-          <p className="text-[12px] text-gray-500">양식 머리글은 팀 시트 열과 같습니다(캠퍼스 · 담당자 · 매장명 · … · 비고). 엑셀에서 열어 채우고 CSV 로 저장하면 됩니다. 예시 줄은 지우세요.</p>
+          <p className="text-[12px] text-gray-500">양식 머리글은 아래 표와 같습니다(캠퍼스 · 담당자 · 매장명 · … · 비고). 엑셀에서 열어 채우고 CSV 로 저장하면 됩니다. 예시 줄은 지우세요.</p>
         </>
       )}
-      {textMode && error && <div className="bg-red-50 rounded-lg px-3 py-2 text-[13px] text-red-700" role="alert">{error}</div>}
-      {textMode && dry && (
+      {error && <div className="bg-red-50 rounded-lg px-3 py-2 text-[13px] text-red-700" role="alert">{error}</div>}
+      {dry && (
         <>
           <div className="grid grid-cols-3 gap-2.5">
             <Kpi label="읽은 행" value={dry.rows} hint={dry.skipped ? `매장명 없는 ${dry.skipped}행 제외` : undefined} />
@@ -550,20 +522,6 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
           {dry.sample.length > 0 && <p className="text-[12px] text-gray-600">새로 들어올 매장: {dry.sample.join(", ")}{dry.created > dry.sample.length ? " …" : ""}</p>}
         </>
       )}
-      {mode === "sheet" && <>
-      <FilterPills label="탭" value={tab} onChange={setTab} options={(["신규", "후보", "후보계명", "현황", "계약"] as Tab[]).map((t) => ({ key: t, label: t === "후보" ? "후보 (영남대)" : t === "후보계명" ? "후보 (계명대)" : t }))} />
-      <p className="text-[13px] text-gray-600">{TAB_DESC[tab]}</p>
-      {mode !== "sheet" ? null : error ? <div className="bg-red-50 rounded-lg px-3 py-2 text-[13px] text-red-700" role="alert">{error}</div> : !preview ? <Skeleton rows={3} cols={2} /> : (
-        <div className="grid grid-cols-3 gap-2.5">
-          <Kpi label="시트 행" value={n("rows")} />
-          {tab === "계약" || tab === "현황" ? <><Kpi label="매장 매칭" value={n("matched")} tone="good" /><Kpi label="못 찾음" value={(preview.unmatched as string[] | undefined)?.length ?? 0} tone="alert" /></> : <><Kpi label="새로 추가" value={n("new")} tone="good" /><Kpi label="이미 있음 · 갱신" value={n("update")} hint="빈 칸만 채움" /></>}
-        </div>
-      )}
-      {preview && Array.isArray(preview.unmatched) && (preview.unmatched as string[]).length > 0 && (
-        <PanelSection title="이름이 안 맞는 매장"><ul className="flex flex-wrap gap-1.5">{(preview.unmatched as string[]).map((nme) => <li key={nme} className="text-[12px] bg-black/[0.04] rounded-lg px-2 py-1">{nme}</li>)}</ul></PanelSection>
-      )}
-      <a href={(preview?.sheet_url as string | undefined) ?? SALES_SHEET.url(0)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-navy font-medium">시트에서 이 탭 열기 <IconExternalLink size={12} aria-hidden="true" /></a>
-      </>}
     </SlideOver>
   );
 }

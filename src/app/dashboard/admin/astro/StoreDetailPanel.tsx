@@ -17,7 +17,6 @@ import {
   CAMPUSES,
   TAX_STATUS_LABEL,
 } from "@/lib/draft/types";
-import { SALES_SHEET } from "@/lib/satellite";
 import { Button, Chip, Field, Input, PanelSection, Select, SlideOver, Stepper, Textarea, agoLabel, Skeleton, periodLocal, todayLocal } from "../_shared/ui";
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 import ActivityLog from "./ActivityLog";
@@ -344,10 +343,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       <PanelSection title="비고">
         <Cell label="계약 특이사항 · 점주 요청" value={o.memo} onCommit={set("memo")} rows={3} placeholder="예: 방학엔 쉬고 싶다고 하심, 9월 말 재확인" />
         <p className="text-[12px] text-gray-500 mt-2">
-          {o.sheet_synced_at
-            ? `${new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(o.sheet_synced_at))} 에 시트에서 읽어온 뒤로는 여기서 고친 값이 원본입니다.`
-            : "아직 시트에서 읽어오지 않은 매장입니다. 입점 후보 → '시트에서 불러오기 → 계약' 으로 채우거나 직접 적으세요."}{" "}
-          <a href={SALES_SHEET.url(SALES_SHEET.tabs.계약)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy font-medium">시트 열기 <IconExternalLink size={12} aria-hidden="true" /></a>
+          이 칸들은 여기가 원본입니다. 0921 부터 팀 시트는 쓰지 않습니다 — 세틀라이트·슬랙·카톡 셋만.
         </p>
       </PanelSection>
 
