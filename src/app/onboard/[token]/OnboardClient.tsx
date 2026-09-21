@@ -38,7 +38,10 @@ interface Draft {
   photo_urls: string[];
   paid_clicked: boolean; kit_address: string; kit_ok: boolean; starts_on: string | null;
 }
+// 무료 플랜은 입금할 게 없어 [4]입금을 건너뛴다 (go(paid ? 4 : 5)).
+// 스텝바에까지 "입금"이 남아 있으면 건너뛴 게 아니라 뭘 놓친 것처럼 보인다 — 칸 자체를 뺀다.
 const STEPS = ["내 매장", "플랜", "계약", "혜택", "입금", "키트", "완료"];
+const STEPS_FREE = STEPS.filter((x) => x !== "입금");
 const fmtWon = (n: number) => n.toLocaleString("ko-KR") + "원";
 const kdate = (iso: string) => { const [y, m, d] = iso.split("-"); return `${y}. ${Number(m)}. ${Number(d)}.`; };
 const emptyDraft = (): Draft => ({ step: 0, owner_name: "", biz_no: "", phone: "", email: "", pin_set: false, checks: {}, signature: "", consent_at: null, contract_url: null, stamp_steps: {}, stamp_note: "", coupons: [], special: null, photo_urls: [], paid_clicked: false, kit_address: "", kit_ok: false, starts_on: null });
@@ -140,7 +143,7 @@ export default function OnboardClient({ token }: { token: string }) {
     <Shell wide>
       <div className="mb-5">
         <p className="text-[11.5px] text-gray-500 mb-2">{s.name} · {s.campus} · {s.plan_label}</p>
-        <Stepper steps={STEPS} current={d.step} />
+        <Stepper steps={paid ? STEPS : STEPS_FREE} current={paid ? d.step : Math.max(0, d.step > 4 ? d.step - 1 : d.step)} />
       </div>
       {err && <div className="mb-4"><Notice tone="red" title="확인해 주세요">{err}</Notice></div>}
 
