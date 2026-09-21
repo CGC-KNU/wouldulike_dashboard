@@ -127,7 +127,14 @@ export default function OnboardClient({ token }: { token: string }) {
     if (!r.ok) throw new Error(String(j.detail ?? j.message ?? `오류 (${r.status})`));
     return j;
   };
-  const run = async (fn: () => Promise<void>) => { setBusy(true); setErr(null); try { await fn(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  // 오류 배너는 화면 맨 위에 있다. 아래쪽 버튼을 누르고 실패하면 점주 눈에는 "안 눌린다"로 보인다 —
+  // 그래서 실패하면 위로 데려간다 (0921 실측: 쿠폰 등록 400 이 났는데 점주가 알아채지 못했다).
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true); setErr(null);
+    try { await fn(); }
+    catch (e) { setErr((e as Error).message); window.scrollTo({ top: 0, behavior: "smooth" }); }
+    finally { setBusy(false); }
+  };
 
   return (
     <Shell wide>
@@ -266,6 +273,27 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
     patch({ stamp_steps: next });
   };
 
+  /**
+   * 혜택 등록은 **선언형**이다 — "지금 우리 매장 쿠폰은 이것들이다".
+   * 그래서 저장할 때마다 같은 종류(kind)의 기존 행을 지우고 새로 넣는다.
+   *
+   * 그냥 POST 만 하면 안 되는 이유: 백엔드에 `uq_restaurant_benefit_slot`
+   * (restaurant, kind, stamp_key, sort_order) 유니크 제약이 있다 (coupons/models.py).
+   * 같은 자리에 두 번 넣으면 IntegrityError → 400 이고, 점주 화면에서는 "버튼이 안 눌린다"로 보인다.
+   * 고쳐서 다시 누르는 건 온보딩에서 늘 일어나는 일이라 재실행이 되게 만든다. (0921)
+   */
+  const replaceBenefits = async (kind: string, rows: Record<string, unknown>[]) => {
+    const cur = await fetch(`/api/dashboard/restaurant-benefits${rq}&kind=${kind}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => []) as { id?: number }[];
+    for (const b of Array.isArray(cur) ? cur : []) {
+      if (b?.id) await fetch(`/api/dashboard/restaurant-benefits/${b.id}${rq}`, { method: "DELETE" }).catch(() => null);
+    }
+    for (const [i, row] of rows.entries()) {
+      await post(`/api/dashboard/restaurant-benefits${rq}`, { kind, sort_order: i, active: true, ...row });
+    }
+  };
+
   // 고른 칸은 전부 채워야 한다 — 빈 칸이 있으면 그 칸은 보상 없이 저장돼 손님이 헛걸음한다
   const blanks = steps.filter((n) => !(d.stamp_steps[String(n)] ?? "").trim());
   const saveStamp = () => run(async () => {
@@ -280,12 +308,10 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
       active: true,
     }, "PATCH");
     // 스탬프 보상도 혜택 카탈로그에 남긴다 — 앱·계약서가 같은 값을 본다
-    for (const [i, n] of steps.entries()) {
-      await post(`/api/dashboard/restaurant-benefits${rq}`, {
-        kind: "STAMP", stamp_key: String(n), sort_order: i,
-        title: d.stamp_steps[String(n)].trim(), subtitle: `${n}개 모으면`, notes: d.stamp_note.trim(), active: true,
-      }).catch(() => null);
-    }
+    await replaceBenefits("STAMP", steps.map((n) => ({
+      stamp_key: String(n), title: d.stamp_steps[String(n)].trim(),
+      subtitle: `${n}개 모으면`, notes: d.stamp_note.trim(),
+    })));
     setStampSaved(true);
   });
 
@@ -294,20 +320,14 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
     const list = d.coupons.filter((c) => c.benefit.trim());
     if (!list.length) throw new Error("쿠폰 혜택을 적어 주세요.");
     if (couponBlank) throw new Error("비어 있는 쿠폰 칸이 있습니다. 채우거나 삭제해 주세요.");
-    for (const [i, c] of list.entries()) {
-      await post(`/api/dashboard/restaurant-benefits${rq}`, {
-        kind: "GENERAL", sort_order: i, title: c.benefit.trim(), subtitle: c.cond.trim(), notes: c.cond.trim(), active: true,
-      });
-    }
+    await replaceBenefits("GENERAL", list.map((c) => ({ title: c.benefit.trim(), subtitle: c.cond.trim(), notes: c.cond.trim() })));
     setSavedCoupons(list.length);
   });
 
   const saveSpecial = () => run(async () => {
     const sp = d.special;
     if (!sp?.benefit.trim()) throw new Error("한정 쿠폰 혜택을 적어 주세요.");
-    await post(`/api/dashboard/restaurant-benefits${rq}`, {
-      kind: "SPECIAL", sort_order: 0, title: sp.benefit.trim(), subtitle: sp.cond.trim(), notes: sp.cond.trim(), active: true,
-    });
+    await replaceBenefits("SPECIAL", [{ title: sp.benefit.trim(), subtitle: sp.cond.trim(), notes: sp.cond.trim() }]);
     setSpecialSaved(true);
   });
 
