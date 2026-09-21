@@ -17,7 +17,8 @@ import { notifyPartnerOps } from "@/lib/slack";
 const API = () => process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export interface ConsentRecord {
-  kind: "consent" | "complete";
+  /** consent = 계약 동의 · complete = 등록 완료 · revise = 완료 뒤 내용 수정. 원장에서 중복과 수정을 가를 수 있어야 한다. */
+  kind: "consent" | "complete" | "revise";
   short_id: string;
   rid: number;
   lid: string | null;
@@ -114,7 +115,7 @@ export async function persistRecord(rec: ConsentRecord, opts: { ownerToken: stri
   const base = `온보딩_${rec.rid}_${rec.name}_${stamp}`;
 
   const [activity, sheet, drive_json, drive_contract] = await Promise.all([
-    postActivity(opts.ownerToken, rec.rid, rec.kind === "consent" ? "계약동의" : "온보딩완료", JSON.stringify(rec), "onboard").catch(() => false),
+    postActivity(opts.ownerToken, rec.rid, rec.kind === "consent" ? "계약동의" : rec.kind === "revise" ? "온보딩수정" : "온보딩완료", JSON.stringify(rec), "onboard").catch(() => false),
     sheetAppend([
       rec.at, rec.kind, rec.short_id, rec.rid, rec.lid ?? "", rec.name, rec.campus, rec.plan, rec.fee,
       rec.owner_name, bizText(rec.biz_no), phoneText(rec.phone), rec.phone_verified ? "Y" : "N", rec.email, rec.kakao_id ?? "",

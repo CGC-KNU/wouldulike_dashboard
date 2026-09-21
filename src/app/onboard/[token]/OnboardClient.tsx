@@ -23,7 +23,9 @@ interface Meta {
   session: { ok: boolean; kakao_id: string | null };
   progress: { consent: boolean };
   bank: { name: string; account: string; holder: string } | null;
-  sms_enabled: boolean; done: boolean; expires_at: string;
+  sms_enabled: boolean;
+  /** 백엔드 상태로 본 "이미 등록을 마친 매장" — done(쿠키)과 달리 기기가 바뀌어도 남는다 */
+  already?: boolean; done: boolean; expires_at: string;
 }
 interface Draft {
   step: number;
@@ -90,7 +92,7 @@ export default function OnboardClient({ token }: { token: string }) {
   useEffect(() => {
     (async () => {
       const m = await load(); if (!m) return;
-      if (m.done) { patch({ step: 6 }); return; }
+      if (m.done || m.already) { patch({ step: 6 }); return; }
       if (!m.session.ok && sp.get("resume") === "1") {
         const s = await fetch(`/api/onboard/${token}/session`, { method: "POST" });
         const j = (await s.json().catch(() => ({}))) as { success?: boolean; message?: string; need_kakao?: boolean };
@@ -99,6 +101,28 @@ export default function OnboardClient({ token }: { token: string }) {
       }
     })();
   }, [load, patch, sp, token]);
+
+  /**
+   * 며칠 뒤 카톡을 스크롤해 링크를 다시 연 경우 — 요약을 보여 주려면 등록된 혜택을 읽어야 한다.
+   * 초안은 그 기기의 sessionStorage 에만 있으므로 다른 기기에서는 비어 있다.
+   */
+  useEffect(() => {
+    if (!meta?.already || Object.keys(d.stamp_steps).length || d.coupons.length) return;
+    const q = `?rid=${meta.store.rid}`;
+    fetch(`/api/dashboard/stamp-rule${q}`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      const th = (j?.rule ?? j)?.config_json?.thresholds as { stamps?: number; reward_text?: string }[] | undefined;
+      if (!Array.isArray(th)) return;
+      const back: Record<string, string> = {};
+      for (const t of th) if (Number(t?.stamps) > 0) back[String(t.stamps)] = String(t.reward_text ?? "");
+      patch({ stamp_steps: back, stamp_note: String((j?.rule ?? j)?.config_json?.notes ?? "") });
+    }).catch(() => null);
+    fetch(`/api/dashboard/restaurant-benefits${q}&kind=GENERAL`).then((r) => (r.ok ? r.json() : null)).then((l: { title?: string; subtitle?: string }[] | null) => {
+      if (Array.isArray(l) && l.length) patch({ coupons: l.map((x) => ({ benefit: String(x.title ?? ""), cond: String(x.subtitle ?? "") })) });
+    }).catch(() => null);
+    fetch(`/api/dashboard/restaurant-benefits${q}&kind=SPECIAL`).then((r) => (r.ok ? r.json() : null)).then((l: { title?: string; subtitle?: string }[] | null) => {
+      if (Array.isArray(l) && l.length) patch({ special: { benefit: String(l[0].title ?? ""), cond: String(l[0].subtitle ?? "") } });
+    }).catch(() => null);
+  }, [meta?.already, meta?.store.rid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startKakao = () => {
     const id = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID;
@@ -186,7 +210,7 @@ export default function OnboardClient({ token }: { token: string }) {
           const j = await post(`/api/onboard/${token}/complete`, { owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, kit_address: d.kit_address, kit_ok: d.kit_ok, signature: d.signature, revision: editing === "kit" }) as { guide_url?: string | null };
           setEditing(null); patch({ step: 6 }); setMeta((m) => m ? { ...m, done: true } : m); (window as unknown as { __guide?: string | null }).__guide = j.guide_url ?? null; window.scrollTo({ top: 0 });
         })} />}
-      {d.step === 6 && <Step6 d={d} s={s} guide={(window as unknown as { __guide?: string | null }).__guide ?? null} onEdit={(what) => { setEditing(what); go(what === "benefit" ? 3 : 5); }} />}
+      {d.step === 6 && <Step6 d={d} s={s} revisit={Boolean(meta.already) && !meta.done} guide={(window as unknown as { __guide?: string | null }).__guide ?? null} onEdit={(what) => { setEditing(what); go(what === "benefit" ? 3 : 5); }} />}
     </Shell>
   );
 }
@@ -687,15 +711,17 @@ function Step5({ d, patch, s, onBack, onNext, busy, nextLabel }: { d: Draft; pat
   );
 }
 
-function Step6({ d, s, guide, onEdit }: { d: Draft; s: Meta["store"]; guide: string | null; onEdit: (what: "benefit" | "kit") => void }) {
+function Step6({ d, s, guide, onEdit, revisit }: { d: Draft; s: Meta["store"]; guide: string | null; onEdit: (what: "benefit" | "kit") => void; revisit?: boolean }) {
   const stampRows = Object.entries(d.stamp_steps).filter(([, v]) => v.trim()).sort((a, b) => Number(a[0]) - Number(b[0]));
   const coupons = d.coupons.filter((c) => c.benefit.trim());
   return (
     <section className="text-center pt-4">
       <BrandStack size={52} className="mb-4" />
       <div className="mx-auto w-14 h-14 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-2xl mb-3">✓</div>
-      <h2 className="font-display text-[22px] font-bold text-gray-900">등록이 끝났습니다</h2>
-      <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <><b>{kdate(d.starts_on)}부터 시작</b>합니다. 그때까지는 준비 기간이라 부담하실 것이 없습니다.<br /></>}웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>
+      <h2 className="font-display text-[22px] font-bold text-gray-900">{revisit ? "이미 등록을 마치셨습니다" : "등록이 끝났습니다"}</h2>
+      {revisit
+        ? <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 이 링크로 하실 일은 끝났습니다.<br />혜택을 바꾸시거나 매장 정보를 고치시려면 <b>점주 대시보드</b>에서 하시면 됩니다.</p>
+        : <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <><b>{kdate(d.starts_on)}부터 시작</b>합니다. 그때까지는 준비 기간이라 부담하실 것이 없습니다.<br /></>}웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>}
       {/* 무엇을 등록했는지 한 장으로 — 사장님이 끝나고 확인하실 곳은 여기뿐이다.
           이게 없으면 "내가 뭘 신청한 거지"로 끝나고, 나중에 담당자에게 되묻는다. */}
       <div className="text-left max-w-sm mx-auto rounded-2xl border border-gray-200 bg-white p-4 mb-4">
@@ -726,9 +752,9 @@ function Step6({ d, s, guide, onEdit }: { d: Draft; s: Meta["store"]; guide: str
       </div>
       <div className="mt-6 max-w-xs mx-auto rounded-2xl border border-gray-200 bg-white p-3">
         <p className="text-[12px] font-semibold text-gray-700 mb-2">고칠 것이 있으신가요?</p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className={revisit ? "grid gap-2" : "grid grid-cols-2 gap-2"}>
           <button type="button" className="rounded-xl border border-gray-200 py-2.5 text-[12.5px] font-semibold text-gray-800" onClick={() => onEdit("benefit")}>혜택 고치기</button>
-          <button type="button" className="rounded-xl border border-gray-200 py-2.5 text-[12.5px] font-semibold text-gray-800" onClick={() => onEdit("kit")}>배송지 고치기</button>
+          {!revisit && <button type="button" className="rounded-xl border border-gray-200 py-2.5 text-[12.5px] font-semibold text-gray-800" onClick={() => onEdit("kit")}>배송지 고치기</button>}
         </div>
         <p className="text-[11px] text-gray-400 mt-2">지금 고치셔도 됩니다. 나중에는 점주 대시보드에서 바꾸실 수 있습니다.</p>
       </div>

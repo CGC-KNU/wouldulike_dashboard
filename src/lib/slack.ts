@@ -33,14 +33,19 @@ export async function postToChannel(channelId: string, text: string): Promise<vo
   const token = process.env.SLACK_BOT_TOKEN;
   if (token) {
     try {
-      await fetch("https://slack.com/api/chat.postMessage", {
+      const res = await fetch("https://slack.com/api/chat.postMessage", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ channel: channelId, text, unfurl_links: false }),
       });
-      return;
-    } catch {
-      /* 아래 우회로로 */
+      // 슬랙은 **인증 실패에도 HTTP 200** 을 주고 본문에 {ok:false,error:"invalid_auth"} 를 담는다.
+      // 그래서 fetch 가 성공했다고 보낸 것이 아니다 — 토큰이 폐기되면 알림이 조용히 사라지고,
+      // 점주가 계약을 마쳐도 아무도 모른다. 본문을 보고 실패면 우회로로 넘긴다. (0921)
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (j.ok) return;
+      console.error("[slack] chat.postMessage 실패:", j.error ?? `http_${res.status}`, "→ 웹훅으로 재시도");
+    } catch (e) {
+      console.error("[slack] chat.postMessage 오류:", e, "→ 웹훅으로 재시도");
     }
   }
   await sendSlackNotification("SLACK_ASTRO_WEBHOOK_URL", text);

@@ -30,6 +30,27 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     }
   }
 
+  /**
+   * **이미 등록을 마친 매장인가** — 쿠키가 아니라 백엔드 상태로 판정한다.
+   *
+   * `done` 은 브라우저 쿠키다. 사장님이 폰에서 끝내고 며칠 뒤 카톡을 스크롤해 같은 링크를 다시 열면
+   * (흔하다) 쿠키가 없는 기기에서는 처음부터 다시 걷게 되고, 계약 동의를 **두 번째로** 하게 된다.
+   * 중복 계약 기록이 남고, 사장님은 두 번 서명한 줄 안다.
+   *
+   * 그래서 "이 계정이 이 매장의 점주이고(세션), 스탬프 규칙이 이미 있다"면 끝난 것으로 본다.
+   * 스탬프는 완료의 필수 조건이므로(complete 라우트) 이 둘이면 완료를 통과한 매장이다.
+   */
+  let already = false;
+  if (session.ok && access && process.env.NEXT_PUBLIC_API_URL) {
+    already = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/stamp-rule/?restaurant_id=${p.rid}`, { headers: { Authorization: `Bearer ${access}` }, cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) return false;
+        const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+        const rule = (j.rule ?? j.stamp_rule ?? j) as { active?: boolean; config_json?: { thresholds?: { stamps?: number }[] } };
+        return rule?.active !== false && Array.isArray(rule?.config_json?.thresholds) && rule.config_json.thresholds.some((t) => Number(t?.stamps) > 0);
+      }).catch(() => false);
+  }
+
   // 아직 동의 전이므로 "오늘 동의한다면" 기준으로 날짜를 미리 보여 준다. 확정은 consent 에서 한다.
   const sched = scheduleFrom(startsOnAfter(todaySeoul()));
   return NextResponse.json({
@@ -45,5 +66,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     // [4] 입금 안내 — 세금계산서 발행 설정과 같은 값(ASTRO_BANK_*). 없으면 화면이 "담당자가 안내" 로 대체한다.
     bank: process.env.ASTRO_BANK_ACCOUNT ? { name: process.env.ASTRO_BANK_NAME ?? "", account: process.env.ASTRO_BANK_ACCOUNT, holder: process.env.ASTRO_BANK_HOLDER ?? "" } : null,
     done: stepStampOk(p.n, "done", jar.get(`ob_done_${p.rid}`)?.value),
+    already,
   });
 }
