@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { verifyOnboardToken } from "@/lib/onboard/token";
+import { tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
 
 /**
  * [0] PIN 을 점주 것으로 바꾼다.
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
 
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/change-pin/?restaurant_id=${v.payload.rid}`, {
     method: "POST", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ current_pin: v.payload.tp, new_pin }), cache: "no-store",
+    body: JSON.stringify({ current_pin: tempPinFor(v.payload.rid), new_pin }), cache: "no-store",
   });
   const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
   if (!res.ok || data.success === false) return NextResponse.json({ success: false, message: data.message ?? "PIN 을 바꾸지 못했습니다." }, { status: res.status || 400 });

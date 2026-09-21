@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
 import { backendUrl, getAccessToken, proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
-import { newTempPin, shortId, signOnboardToken, type OnboardPlan } from "@/lib/onboard/token";
+import { shortId, signOnboardToken, tempPinFor, type OnboardPlan } from "@/lib/onboard/token";
 import { defaultFee } from "@/lib/onboard/contract";
 
 /**
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!["FREE", "BOOST", "PREMIUM"].includes(b.plan)) return NextResponse.json({ detail: "플랜은 FREE · BOOST · PREMIUM 중 하나입니다." }, { status: 400 });
 
   const by = (await actorName()) ?? "unknown";
-  const tp = newTempPin();
+  const tp = tempPinFor(b.rid);
 
   // 1) 임시 PIN — 백엔드 `ChangePinView` (dashboard/views.py) 확인 결과:
   //    · 관리자는 ?restaurant_id= 로 남의 매장 PIN 을 만든다/바꾼다.
@@ -40,22 +40,27 @@ export async function POST(req: NextRequest) {
   // `MerchantPin.secret` 하나가 **점주 로그인 + 손님 쿠폰 사용(redeem_coupon) + 손님 스탬프 적립(add_stamp)** 셋에 다 쓰인다
   // (wouldulike_backend coupons/service.py `_verify_pin`). 임시 PIN 을 심으면 그 매장 손님의 적립이 즉시 막힌다.
   // 운영 중인 매장은 온보딩 대상이 아니다(0921 결정 4: 기존 매장 재온보딩 안 함). 신규 매장은 PIN 이 없어 그대로 통과한다.
-  if (info.pin) {
+  // 이미 우리가 심어 둔 임시 PIN 이면 "온보딩을 시작했지만 안 끝낸 매장" 이다 — 다시 발급해 준다.
+  // (링크 만료·사장님 미확인은 늘 생긴다. 이 경우 손님 적립은 어차피 이미 이 값으로 돌고 있으므로 새로 망가뜨리는 게 없다.)
+  const isOurTemp = Boolean(info.pin) && String(info.pin) === tp;
+  if (info.pin && !isOurTemp) {
     return NextResponse.json({
       detail: "이 매장에는 이미 매장 PIN 이 있어 온보딩 링크를 발급하지 않습니다. 그 PIN 은 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 바꾸면 매장 운영이 멈춥니다. 이미 운영 중인 매장이면 사장님께 현재 매장 번호를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.",
       has_pin: true,
     }, { status: 409 });
   }
 
-  const body: Record<string, string> = { new_pin: tp };
-  const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, body);
-  if (!pinRes.ok) {
-    const d = (await pinRes.json().catch(() => ({}))) as { detail?: string };
-    return NextResponse.json({ detail: `임시 PIN 을 설정하지 못했습니다 (${pinRes.status}${d.detail ? ` · ${d.detail}` : ""}).` }, { status: 502 });
+  // 이미 임시 PIN 이 심겨 있으면 그대로 두고 링크만 새로 뽑는다.
+  if (!isOurTemp) {
+    const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, { new_pin: tp });
+    if (!pinRes.ok) {
+      const d = (await pinRes.json().catch(() => ({}))) as { detail?: string };
+      return NextResponse.json({ detail: `임시 PIN 을 설정하지 못했습니다 (${pinRes.status}${d.detail ? ` · ${d.detail}` : ""}).` }, { status: 502 });
+    }
   }
 
   const fee = typeof b.fee === "number" && b.fee >= 0 ? b.fee : defaultFee(b.plan, b.campus);
-  const { token, payload } = signOnboardToken({ rid: b.rid, lid: b.lid ?? null, name: b.name, campus: b.campus, plan: b.plan, fee, by, tp, days: b.days ?? 14 });
+  const { token, payload } = signOnboardToken({ rid: b.rid, lid: b.lid ?? null, name: b.name, campus: b.campus, plan: b.plan, fee, by, days: b.days ?? 14 });
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
   const url = `${base}/onboard/${token}`;
 

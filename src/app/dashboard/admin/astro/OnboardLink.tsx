@@ -26,6 +26,8 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
   const [restored, setRestored] = useState<string | null>(null);
   useEffect(() => {
     if (!open || hasPin !== null) return;
+    // 기존 PIN 이 있으면 발급이 막힌다. 다만 우리가 심은 임시 PIN 이면 재발급이므로 서버가 허용한다 —
+    // 화면은 그 구분을 모르니 발급을 시도해 보고 409 일 때만 막힌 것으로 본다.
     fetch(`/api/dashboard/restaurant?rid=${rid}`).then((r) => (r.ok ? r.json() : null))
       .then((j: { pin?: string | null } | null) => setHasPin(Boolean(j?.pin))).catch(() => setHasPin(null));
   }, [open, hasPin, rid]);
@@ -54,9 +56,9 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
               <p className="text-[12px] text-gray-600 mb-2">사장님께 카톡으로 보낼 링크입니다. 계약(약관 동의)·PIN·혜택·입금·키트까지 이 링크 안에서 끝납니다.</p>
               {hasPin === true && (
                 <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
-                  <b>이 매장은 이미 매장 PIN 이 있어 발급할 수 없습니다.</b> 그 PIN 은 점주 로그인뿐 아니라
-                  <b> 손님 스탬프 적립·쿠폰 사용</b>에도 쓰이는 번호라, 바꾸면 매장 운영이 즉시 멈춥니다.<br />
-                  이미 운영 중인 매장이면 사장님께 <b>현재 매장 번호</b>를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.
+                  <b>이 매장은 이미 매장 PIN 이 있습니다.</b> 그 번호는 점주 로그인뿐 아니라
+                  <b> 손님 스탬프 적립·쿠폰 사용</b>에도 쓰이므로, 운영 중인 매장이면 발급이 막힙니다.<br />
+                  전에 온보딩 링크를 냈다가 안 끝낸 매장이면 그대로 <b>재발급</b>됩니다. 눌러 보시면 서버가 판단합니다.
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -68,7 +70,7 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
               </div>
               {err && <div className="mt-2"><Notice tone="red" title="발급하지 못했습니다">{err}</Notice></div>}
               {restored && <div className="mt-2"><Notice tone="blue" title="PIN 을 복구했습니다">{restored}</Notice></div>}
-              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" disabled={busy || hasPin === true} onClick={issue}>{busy ? "발급 중…" : hasPin === true ? "발급 불가 (PIN 있음)" : "링크 발급"}</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
+              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" disabled={busy} onClick={issue}>{busy ? "발급 중…" : hasPin === true ? "그래도 발급 시도" : "링크 발급"}</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
               {/* 실수로 발급한 뒤 되돌리는 길 — 원래 PIN 은 시트 '계약 세부사항' PIN 번호 열에 있다 */}
               <details className="mt-3">
                 <summary className="text-[11.5px] text-gray-500 cursor-pointer">실수로 발급했다면 — PIN 되돌리기</summary>

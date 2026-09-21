@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { verifyOnboardToken } from "@/lib/onboard/token";
+import { tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
 
 /**
  * 카카오 로그인 뒤 — 토큰 안의 임시 PIN 으로 백엔드 `verify-owner` 를 통과시켜 점주 세션을 만든다.
@@ -24,7 +24,7 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ token: st
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/verify-owner/`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
-    body: JSON.stringify({ restaurant_id: p.rid, pin: p.tp }),
+    body: JSON.stringify({ restaurant_id: p.rid, pin: tempPinFor(p.rid) }),
     cache: "no-store",
   });
   const data = (await res.json().catch(() => ({}))) as { success?: boolean; access?: string; refresh?: string; message?: string; restaurant_id?: number };

@@ -30,8 +30,6 @@ export interface OnboardPayload {
   exp: number;
   /** 무작위 nonce — 같은 매장에 두 번 발급해도 토큰이 다르다. */
   n: string;
-  /** 임시 PIN(4자리). 점주는 이 값을 보지 않는다 — 세션 교환에만 쓰고 [0]단계에서 갈아엎는다. */
-  tp: string;
   /** 발급한 담당자 */
   by: string;
 }
@@ -55,7 +53,7 @@ function mac(data: string): Buffer {
 
 export const ONBOARD_TOKEN_RE = /^[A-Za-z0-9_-]{40,600}\.[A-Za-z0-9_-]{43}$/;
 
-export function signOnboardToken(p: Omit<OnboardPayload, "v" | "iat" | "exp" | "n" | "tp"> & { days?: number; tp?: string }): { token: string; payload: OnboardPayload } {
+export function signOnboardToken(p: Omit<OnboardPayload, "v" | "iat" | "exp" | "n"> & { days?: number }): { token: string; payload: OnboardPayload } {
   const now = Math.floor(Date.now() / 1000);
   const payload: OnboardPayload = {
     v: 1,
@@ -63,7 +61,6 @@ export function signOnboardToken(p: Omit<OnboardPayload, "v" | "iat" | "exp" | "
     iat: now,
     exp: now + 60 * 60 * 24 * (p.days ?? 14),
     n: b64u(randomBytes(9)),
-    tp: p.tp ?? newTempPin(),
     by: p.by,
   };
   const body = b64u(Buffer.from(JSON.stringify(payload), "utf8"));
@@ -89,14 +86,24 @@ export function verifyOnboardToken(token: string): VerifyResult {
   return { ok: true, payload };
 }
 
-/** 4자리 임시 PIN — 0000·1111·1234 같은 흔한 값은 피한다. */
-export function newTempPin(): string {
-  for (;;) {
-    const n = randomBytes(2).readUInt16BE(0) % 10000;
+/**
+ * 매장별 **임시 PIN** — 토큰에 넣지 않고 비밀키에서 유도한다.
+ *
+ * 왜 유도하나 (0921):
+ *  1. 토큰 payload 는 base64url 평문이라, 넣어 두면 링크를 본 사람이 PIN 을 읽는다.
+ *  2. 값이 매장마다 고정이라 **"지금 PIN 이 우리가 심은 임시값인가"** 를 서버가 판정할 수 있다 →
+ *     온보딩을 안 끝낸 매장에 링크를 다시 발급할 수 있다 (링크 만료·사장님 미확인은 실무에서 늘 생긴다).
+ * 흔한 값(1111·1234 등)이 나오면 한 칸씩 돌린다.
+ */
+export function tempPinFor(rid: number): string {
+  const h = createHmac("sha256", secret()).update(`temp-pin:${rid}`).digest();
+  let n = h.readUInt32BE(0) % 10000;
+  for (let i = 0; i < 20; i++) {
     const s = String(n).padStart(4, "0");
-    if (/^(\d)\1{3}$/.test(s) || s === "1234" || s === "0123" || s === "1112") continue;
-    return s;
+    if (!/^(\d)\1{3}$/.test(s) && s !== "1234" && s !== "0123") return s;
+    n = (n + 1) % 10000;
   }
+  return String(n).padStart(4, "0");
 }
 
 /** 점주 화면·슬랙에 토큰 전체를 노출하지 않으려고 쓰는 짧은 식별자 */
