@@ -101,9 +101,14 @@ export default function OnboardClient({ token }: { token: string }) {
   }, [load, patch, sp, token]);
 
   const startKakao = () => {
-    const id = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID, uri = process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI;
-    const state = encodeURIComponent(`onboard:${token}`);
-    location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${id}&redirect_uri=${uri}&response_type=code&scope=profile_nickname&state=${state}`;
+    const id = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID;
+    if (!id) { setErr("카카오 로그인 설정이 없습니다. 담당자에게 알려 주세요."); return; }
+    // 환경변수가 없으면 지금 열린 주소로 되돌아온다 — 콜백 라우트도 같은 폴백을 쓰므로 두 값이 어긋나지 않는다.
+    // (카카오는 authorize 의 redirect_uri 와 token 교환의 redirect_uri 가 다르면 거절한다.)
+    // 없다고 링크가 죽으면 안 된다: 점주는 이 화면에서 더 갈 데가 없다.
+    const uri = process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI || `${location.origin}/auth/kakao/callback`;
+    const q = new URLSearchParams({ client_id: id, redirect_uri: uri, response_type: "code", scope: "profile_nickname", state: `onboard:${token}` });
+    location.href = `https://kauth.kakao.com/oauth/authorize?${q}`;
   };
 
   /**
