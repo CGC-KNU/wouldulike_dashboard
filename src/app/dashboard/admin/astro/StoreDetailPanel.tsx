@@ -300,7 +300,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <Cell label="홍보물 수령 (포스터/QR/배너)" value={o.kit_note} onCommit={set("kit_note")} placeholder="2장/10장" />
-          <Cell label="PIN 번호" value={o.pin} onCommit={set("pin")} placeholder="1234" />
+          <Cell label="PIN 번호 (메모)" hint="시트에 적힌 값. 실제로 동작하는 번호는 아래 식당 관리 → 매장 PIN 입니다" value={o.pin} onCommit={set("pin")} placeholder="1234" />
         </div>
       </PanelSection>
 

@@ -54,9 +54,9 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
               <p className="text-[12px] text-gray-600 mb-2">사장님께 카톡으로 보낼 링크입니다. 계약(약관 동의)·PIN·혜택·입금·키트까지 이 링크 안에서 끝납니다.</p>
               {hasPin === true && (
                 <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
-                  <b>이 매장은 이미 PIN 이 있습니다.</b> 발급하면 PIN 이 임시값으로 바뀌어,
-                  사장님이 쓰시던 <b>기존 PIN 으로는 로그인이 안 됩니다.</b> 온보딩을 마치면 사장님이 새 PIN 을 직접 정합니다.
-                  운영 중인 매장이면 사장님께 먼저 말씀드리고 발급하세요.
+                  <b>이 매장은 이미 매장 PIN 이 있어 발급할 수 없습니다.</b> 그 PIN 은 점주 로그인뿐 아니라
+                  <b> 손님 스탬프 적립·쿠폰 사용</b>에도 쓰이는 번호라, 바꾸면 매장 운영이 즉시 멈춥니다.<br />
+                  이미 운영 중인 매장이면 사장님께 <b>현재 매장 번호</b>를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -68,11 +68,11 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
               </div>
               {err && <div className="mt-2"><Notice tone="red" title="발급하지 못했습니다">{err}</Notice></div>}
               {restored && <div className="mt-2"><Notice tone="blue" title="PIN 을 복구했습니다">{restored}</Notice></div>}
-              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" disabled={busy} onClick={issue}>{busy ? "발급 중…" : "링크 발급"}</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
+              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" disabled={busy || hasPin === true} onClick={issue}>{busy ? "발급 중…" : hasPin === true ? "발급 불가 (PIN 있음)" : "링크 발급"}</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
               {/* 실수로 발급한 뒤 되돌리는 길 — 원래 PIN 은 시트 '계약 세부사항' PIN 번호 열에 있다 */}
               <details className="mt-3">
                 <summary className="text-[11.5px] text-gray-500 cursor-pointer">실수로 발급했다면 — PIN 되돌리기</summary>
-                <p className="text-[11.5px] text-gray-500 mt-1 mb-1.5">사장님이 쓰시던 원래 PIN 을 넣으면 그대로 되돌립니다. 시트 <b>계약 세부사항 → PIN 번호</b> 열에 있습니다.</p>
+                <p className="text-[11.5px] text-gray-500 mt-1 mb-1.5">사장님이 쓰시던 원래 매장 번호를 넣으면 그대로 되돌립니다. 아래 <b>식당 관리 → 매장 PIN</b> 칸이 실제 동작하는 값이고, 운영 필드의 <b>PIN 번호</b> 는 시트를 비추는 메모입니다.</p>
                 <div className="flex items-end gap-2">
                   <Field label="원래 PIN"><Input inputMode="numeric" maxLength={6} value={restorePin} onChange={(e) => setRestorePin(e.target.value.replace(/\D/g, ""))} placeholder="0000" className="w-24" /></Field>
                   <Button size="sm" disabled={busy || restorePin.length < 4} onClick={async () => {

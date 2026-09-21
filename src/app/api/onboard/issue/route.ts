@@ -35,8 +35,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ detail: `매장 정보를 읽지 못했습니다 (${infoRes?.status ?? "연결 실패"}). 매장 id ${b.rid} 가 대시보드에 있는지 확인해 주세요.` }, { status: 502 });
   }
   const info = (await infoRes.json().catch(() => ({}))) as { pin?: string | null; name?: string };
+
+  // ⚠️ 기존 PIN 이 있는 매장에는 발급하지 않는다 (0921 사고).
+  // `MerchantPin.secret` 하나가 **점주 로그인 + 손님 쿠폰 사용(redeem_coupon) + 손님 스탬프 적립(add_stamp)** 셋에 다 쓰인다
+  // (wouldulike_backend coupons/service.py `_verify_pin`). 임시 PIN 을 심으면 그 매장 손님의 적립이 즉시 막힌다.
+  // 운영 중인 매장은 온보딩 대상이 아니다(0921 결정 4: 기존 매장 재온보딩 안 함). 신규 매장은 PIN 이 없어 그대로 통과한다.
+  if (info.pin) {
+    return NextResponse.json({
+      detail: "이 매장에는 이미 매장 PIN 이 있어 온보딩 링크를 발급하지 않습니다. 그 PIN 은 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 바꾸면 매장 운영이 멈춥니다. 이미 운영 중인 매장이면 사장님께 현재 매장 번호를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.",
+      has_pin: true,
+    }, { status: 409 });
+  }
+
   const body: Record<string, string> = { new_pin: tp };
-  if (info.pin) body.current_pin = String(info.pin);
   const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, body);
   if (!pinRes.ok) {
     const d = (await pinRes.json().catch(() => ({}))) as { detail?: string };

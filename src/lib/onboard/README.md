@@ -13,6 +13,18 @@
 ## 환경변수 (`.env.local.example` 참고)
 `ONBOARD_SECRET`(필수) · `ONBOARD_GSHEET_URL/TOKEN/ID/TAB` · `ONBOARD_DRIVE_URL/TOKEN` · `ONBOARD_SMS_PROVIDER`(미구현, 비우면 번호 입력만) · `ONBOARD_GUIDE_URL`
 
+## ⚠️ 매장 PIN 은 손님 적립 번호와 같은 값이다 (0921 사고)
+
+`coupons.MerchantPin.secret` **하나**가 세 곳에 쓰인다 — 점주 로그인(`verify-owner`),
+손님 쿠폰 사용(`redeem_coupon`), 손님 스탬프 적립(`add_stamp` → `_verify_pin`).
+임시 PIN 을 심으면 **그 매장 손님의 적립이 즉시 막힌다.** 실제로 운영 매장(혜화문식당)에 발급해서 겪었다.
+
+그래서 **기존 PIN 이 있는 매장에는 발급하지 않는다** (`issue` 가 409). 신규 매장은 PIN 이 없어 그대로 통과한다.
+0921 결정 4(기존 매장 재온보딩 안 함)와도 맞는다. 기존 매장까지 태우려면 백엔드에 **온보딩 전용 일회용 코드**가 필요하다(아래 2번).
+
+화면에 PIN 칸이 둘이라 헷갈린다 — **식당 관리 → 매장 PIN 이 실제 값**이고,
+Astro 운영 필드의 `PIN 번호` 는 시트를 비추는 메모다(라벨에 표시해 뒀다).
+
 ## 백엔드 소스로 확인한 것 (wouldulike_backend main 45bd6e7 · 0921)
 | 가정 | 결과 | 반영 |
 |---|---|---|
