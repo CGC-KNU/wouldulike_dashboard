@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
-import { proxyBody } from "@/lib/apiProxy";
+import { backendUrl, getAccessToken, proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
 import { newTempPin, shortId, signOnboardToken, type OnboardPlan } from "@/lib/onboard/token";
 import { defaultFee } from "@/lib/onboard/contract";
@@ -24,11 +24,23 @@ export async function POST(req: NextRequest) {
   const by = (await actorName()) ?? "unknown";
   const tp = newTempPin();
 
-  // 1) 임시 PIN — 백엔드가 pin 필드를 안 받으면 여기서 멈춘다. 링크만 나가고 로그인이 안 되는 상황을 만들지 않는다.
-  const pinRes = await proxyBody("PATCH", `/api/dashboard/admin/restaurants/${b.rid}/`, { pin: tp });
+  // 1) 임시 PIN — 백엔드 `ChangePinView` (dashboard/views.py) 확인 결과:
+  //    · 관리자는 ?restaurant_id= 로 남의 매장 PIN 을 만든다/바꾼다.
+  //    · PIN 이 **없는** 매장은 new_pin 만으로 생성. PIN 이 **있는** 매장은 관리자여도 current_pin 이 필요하다.
+  //    · 현재 PIN 은 관리자가 GET /api/dashboard/restaurant/?restaurant_id= 로 읽을 수 있다 (응답 "pin").
+  //    (AdminRestaurantView PATCH 는 is_affiliate·tier 만 받는다 — pin 을 보내면 400. 0921 소스 확인.)
+  const admin = await getAccessToken();
+  const infoRes = await fetch(backendUrl("/api/dashboard/restaurant/", `restaurant_id=${b.rid}`), { headers: { Authorization: `Bearer ${admin}` }, cache: "no-store" }).catch(() => null);
+  if (!infoRes || !infoRes.ok) {
+    return NextResponse.json({ detail: `매장 정보를 읽지 못했습니다 (${infoRes?.status ?? "연결 실패"}). 매장 id ${b.rid} 가 대시보드에 있는지 확인해 주세요.` }, { status: 502 });
+  }
+  const info = (await infoRes.json().catch(() => ({}))) as { pin?: string | null; name?: string };
+  const body: Record<string, string> = { new_pin: tp };
+  if (info.pin) body.current_pin = String(info.pin);
+  const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, body);
   if (!pinRes.ok) {
     const d = (await pinRes.json().catch(() => ({}))) as { detail?: string };
-    return NextResponse.json({ detail: `임시 PIN 을 설정하지 못했습니다 (${pinRes.status}${d.detail ? ` · ${d.detail}` : ""}). 백엔드 매장 수정 API 가 pin 을 받는지 확인이 필요합니다.` }, { status: 502 });
+    return NextResponse.json({ detail: `임시 PIN 을 설정하지 못했습니다 (${pinRes.status}${d.detail ? ` · ${d.detail}` : ""}).` }, { status: 502 });
   }
 
   const fee = typeof b.fee === "number" && b.fee >= 0 ? b.fee : defaultFee(b.plan, b.campus);

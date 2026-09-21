@@ -5,8 +5,8 @@ import { notifyPartnerOps } from "@/lib/slack";
  *
  * 백엔드에 온보딩 테이블이 없다. 그래서 동의 기록은 세 곳에 나눠 쓴다. 하나라도 남으면 증거는 산다.
  *
- *   1. 백엔드 `astro/activities` — 매장에 붙는 활동 기록. 백엔드가 살아 있고 토큰이 권한이 있으면 남는다.
- *      점주 토큰은 403 이 날 수 있어 "최선 노력"이다.
+ *   1. 백엔드 `astro/activities` — 매장에 붙는 활동 기록. **점주 토큰으로는 403 이다** — astro 뷰가 전부 `_is_admin` 으로
+ *      막혀 있다 (wouldulike_backend astro/views.py, 0921 확인). 운영에서는 사실상 남지 않는다고 보고, 2·3 이 원본이다.
  *   2. 구글 시트 (Apps Script 브리지) — 우리가 통제하는 append-only 원장. `ONBOARD_GSHEET_*`.
  *   3. 구글 드라이브 (자료실 업로드 브리지) — 계약서 사본 HTML + 동의 JSON. `ONBOARD_DRIVE_*`.
  *
