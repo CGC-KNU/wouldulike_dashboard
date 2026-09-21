@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 const PUBLIC_PATHS = ["/login", "/auth/", "/api/auth/"];
 // 점주가 로그인 없이 여는 리포트 링크 — 접두어가 아니라 **정확한 모양**만 연다 (40자 hex, 또는 담당자 미리보기는 쿠키가 있어야 하므로 여기 없음).
 const PUBLIC_EXACT = [/^\/r\/[0-9a-f]{40}$/, /^\/api\/r\/[0-9a-f]{40}\/view$/];
+// 점주 온보딩 — 서명 토큰(base64url.base64url)만 연다. 세션은 라우트 안에서 만든다 (lib/onboard/token.ts).
+const ONBOARD_TOKEN = "[A-Za-z0-9_-]{40,600}\\.[A-Za-z0-9_-]{43}";
+const PUBLIC_ONBOARD = [new RegExp(`^/onboard/${ONBOARD_TOKEN}(/contract)?$`), new RegExp(`^/api/onboard/${ONBOARD_TOKEN}(/(session|consent|complete|sms|pin))?$`)];
 
 interface DashboardJWT {
   is_admin?: boolean;
@@ -23,7 +26,7 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // 공개 경로는 통과
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || PUBLIC_EXACT.some((re) => re.test(pathname))) {
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || PUBLIC_EXACT.some((re) => re.test(pathname)) || PUBLIC_ONBOARD.some((re) => re.test(pathname))) {
     return NextResponse.next();
   }
 

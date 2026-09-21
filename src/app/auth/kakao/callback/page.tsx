@@ -27,6 +27,14 @@ function KakaoCallbackInner() {
         const data = await res.json();
         console.log("[callback] status:", res.status, "body:", JSON.stringify(data));
 
+        // 점주 온보딩에서 온 로그인 — 카카오 `state` 에 실어 보낸 토큰으로 되돌아간다.
+        // PIN 화면을 거치지 않는다: 온보딩 라우트가 임시 PIN 으로 세션을 만든다 (api/onboard/[token]/session).
+        const state = searchParams.get("state") ?? "";
+        if (state.startsWith("onboard:") && (data.requiresPinVerification || data.success)) {
+          router.replace(`/onboard/${state.slice("onboard:".length)}?resume=1`);
+          return;
+        }
+
         if (data.requiresAdminAuth) {
           // 내부 구성원 — 2단계(공용 관리자 아이디/비번)로 넘어간다
           const name = data.staff?.display_name ?? "";

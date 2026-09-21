@@ -24,6 +24,7 @@ import CampusPicker from "./CampusPicker";
 import StoreAppSection from "./StoreAppSection";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 import MessageComposer from "./MessageComposer";
+import OnboardLink from "./OnboardLink";
 
 /**
  * 매장 한 장 — 오른쪽 슬라이드 패널.
@@ -182,6 +183,8 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           {paid && invoice && !invoice.paid_at && onMarkPaid && <Button variant="primary" icon={<IconCheck />} onClick={() => onMarkPaid(invoice)}>{invoice.period.slice(5).replace(/^0/, "")}월 입금 확인</Button>}
           {paid && (!invoice || o.pay_cycle === "LUMP") && o.billing !== "PAID" && <Button variant="primary" icon={<IconCheck />} onClick={() => onPatch(id, { billing: "PAID", invoice: "ISSUED" })}>{o.pay_cycle === "LUMP" ? "일시납 입금 확인" : "입금 확인 처리"}</Button>}
           {!o.kit_delivered && <Button onClick={() => onPatch(id, { kit_delivered: true })}>비치물 전달 완료</Button>}
+          {/* 계약 전에도 보여야 한다 — 온보딩이 곧 계약이다 */}
+          <OnboardLink rid={id} name={row.name} campus={o.campus ?? "경북대"} tier={row.tier} fee={o.monthly_fee} />
           {/* 적어 둔 게 있을 때만 켜진다 — 꺼져 있으면 보낼 게 없다는 뜻이다 (민열님 0915) */}
           <Button variant={dirty ? "primary" : "secondary"} disabled={!dirty || saving} icon={<IconDeviceFloppy />} onClick={saveDraft}>
             {saving ? "저장 중…" : dirty ? `변동사항 저장 ${dirty}` : "변동사항 저장"}
