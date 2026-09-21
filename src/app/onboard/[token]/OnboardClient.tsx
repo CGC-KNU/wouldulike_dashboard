@@ -55,6 +55,14 @@ export default function OnboardClient({ token }: { token: string }) {
   const [fatal, setFatal] = useState<string | null>(null);
   const [d, setD] = useState<Draft>(emptyDraft);
   const [busy, setBusy] = useState(false);
+  /**
+   * 등록을 마친 뒤 내용을 고치러 되돌아간 상태.
+   *
+   * 끝내고 나서야 "아, 스탬프 5개가 아니라 10개인데" 를 알아차린다 — 그때 되돌아갈 길이 없으면
+   * 담당자에게 전화한다. 혜택 저장은 그 단계 안에서 이미 백엔드로 나가므로(선언형, 지우고 다시 넣기)
+   * 고치고 돌아오기만 하면 된다. 배송지는 완료 기록에만 남는 값이라 다시 기록해야 한다.
+   */
+  const [editing, setEditing] = useState<null | "benefit" | "kit">(null);
   const [err, setErr] = useState<string | null>(null);
   const key = useMemo(() => `ob_${token.slice(-16)}`, [token]);
 
@@ -162,13 +170,18 @@ export default function OnboardClient({ token }: { token: string }) {
       {d.step === 0 && <Step0 d={d} patch={patch} rq={rq} token={token} busy={busy} run={run} post={post} onNext={() => go(1)} sms={meta.sms_enabled} />}
       {d.step === 1 && <Step1 s={s} paid={paid} terms={meta.terms} onBack={() => go(0)} onNext={() => go(2)} />}
       {d.step === 2 && <Step2 d={d} patch={patch} meta={meta} token={token} busy={busy} run={run} post={post} onBack={() => go(1)} onNext={() => go(3)} />}
-      {d.step === 3 && <Step3 d={d} patch={patch} meta={meta} rq={rq} busy={busy} run={run} post={post} onBack={() => go(2)} onNext={() => go(paid ? 4 : 5)} />}
+      {d.step === 3 && <Step3 d={d} patch={patch} meta={meta} rq={rq} busy={busy} run={run} post={post} onBack={() => (editing ? (setEditing(null), go(6)) : go(2))} onNext={() => (editing === "benefit" ? (setEditing(null), go(6)) : go(paid ? 4 : 5))} nextLabel={editing === "benefit" ? "고치고 돌아가기" : undefined} />}
       {d.step === 4 && <Step4 d={d} patch={patch} s={s} bank={meta.bank} onBack={() => go(3)} onNext={() => go(5)} />}
-      {d.step === 5 && <Step5 d={d} patch={patch} s={s} rq={rq} onBack={() => go(paid ? 4 : 3)} onNext={() => run(async () => {
-        const j = await post(`/api/onboard/${token}/complete`, { owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, kit_address: d.kit_address, kit_ok: d.kit_ok, signature: d.signature }) as { guide_url?: string | null };
-        patch({ step: 6 }); setMeta((m) => m ? { ...m, done: true } : m); (window as unknown as { __guide?: string | null }).__guide = j.guide_url ?? null; window.scrollTo({ top: 0 });
-      })} busy={busy} />}
-      {d.step === 6 && <Step6 d={d} s={s} guide={(window as unknown as { __guide?: string | null }).__guide ?? null} />}
+      {d.step === 5 && <Step5 d={d} patch={patch} s={s} rq={rq} busy={busy}
+        nextLabel={editing === "kit" ? "배송지 고치고 돌아가기" : undefined}
+        onBack={() => (editing ? (setEditing(null), go(6)) : go(paid ? 4 : 3))}
+        onNext={() => run(async () => {
+          // 배송지는 완료 기록에만 남는 값이다 — 고쳤으면 다시 기록해야 실제로 바뀐다.
+          // 원장은 append-only 라 수정도 한 줄로 남는다. 그게 맞다(무엇이 언제 바뀌었는지가 증거다).
+          const j = await post(`/api/onboard/${token}/complete`, { owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, kit_address: d.kit_address, kit_ok: d.kit_ok, signature: d.signature, revision: editing === "kit" }) as { guide_url?: string | null };
+          setEditing(null); patch({ step: 6 }); setMeta((m) => m ? { ...m, done: true } : m); (window as unknown as { __guide?: string | null }).__guide = j.guide_url ?? null; window.scrollTo({ top: 0 });
+        })} />}
+      {d.step === 6 && <Step6 d={d} s={s} guide={(window as unknown as { __guide?: string | null }).__guide ?? null} onEdit={(what) => { setEditing(what); go(what === "benefit" ? 3 : 5); }} />}
     </Shell>
   );
 }
@@ -281,7 +294,7 @@ function Step2({ d, patch, meta, token, busy, run, post, onBack, onNext }: StepP
   );
 }
 
-function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProps & { meta: Meta; rq: string }) {
+function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel }: StepProps & { meta: Meta; rq: string; nextLabel?: string }) {
   const [stampSaved, setStampSaved] = useState(false);
   const [savedCoupons, setSavedCoupons] = useState(0);
   const [specialSaved, setSpecialSaved] = useState(false);
@@ -540,7 +553,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
         <ImageUploader initialUrls={d.photo_urls} uploadType="restaurant" maxImages={3} onSave={async (urls: string[]) => { patch({ photo_urls: urls }); await fetch(`/api/dashboard/restaurant${rq}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ s3_image_urls: urls }) }).catch(() => null); }} />
       </div>
 
-      <Nav onBack={onBack} onNext={onNext} nextDisabled={!stampSaved} nextHint={stampSaved ? undefined : "스탬프를 등록해야 다음으로 갈 수 있습니다"} />
+      <Nav onBack={onBack} onNext={onNext} nextLabel={nextLabel} nextDisabled={!stampSaved} nextHint={stampSaved ? undefined : "스탬프를 등록해야 다음으로 갈 수 있습니다"} />
     </section>
   );
 }
@@ -624,7 +637,7 @@ function Saved({ text, onEdit }: { text: string; onEdit: () => void }) {
   );
 }
 
-function Step5({ d, patch, s, onBack, onNext, busy }: { d: Draft; patch: (p: Partial<Draft>) => void; s: Meta["store"]; rq: string; onBack: () => void; onNext: () => void; busy: boolean }) {
+function Step5({ d, patch, s, onBack, onNext, busy, nextLabel }: { d: Draft; patch: (p: Partial<Draft>) => void; s: Meta["store"]; rq: string; onBack: () => void; onNext: () => void; busy: boolean; nextLabel?: string }) {
   const [open, setOpen] = useState(false);
   // 서버로 나가는 건 합친 한 줄이다. 어느 칸이 바뀌든 여기서 다시 만든다 — 화면과 기록이 갈라지지 않게.
   const compose = (zip: string, a1: string, det: string) => `${zip ? `(${zip}) ` : ""}${a1}${det ? ` ${det}` : ""}`.trim();
@@ -662,14 +675,14 @@ function Step5({ d, patch, s, onBack, onNext, busy }: { d: Draft; patch: (p: Par
 
       <label className="flex gap-3 items-start mt-3 cursor-pointer"><input type="checkbox" className="mt-1 w-4 h-4 accent-[#050072]" checked={d.kit_ok} onChange={(e) => patch({ kit_ok: e.target.checked })} /><span className="text-[13px] text-gray-800">위 주소로 보내주세요. 도착하면 붙인 자리 사진 한 장 보내드릴게요.</span></label>
       {d.kit_ok && d.kit_address && <p className="text-[12.5px] text-gray-700 mt-2 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">보낼 곳 · {d.kit_address}</p>}
-      <Nav onBack={onBack} onNext={onNext} nextLabel="등록 마치기" nextDisabled={busy || !d.kit_ok || d.kit_addr1.trim().length < 5}
+      <Nav onBack={onBack} onNext={onNext} nextLabel={nextLabel ?? "등록 마치기"} nextDisabled={busy || !d.kit_ok || d.kit_addr1.trim().length < 5}
         nextHint={d.kit_addr1.trim().length < 5 ? "아직 남았습니다 — 배송지 주소" : !d.kit_ok ? "아직 남았습니다 — 위 주소로 보내달라는 확인" : undefined} />
       {open && <PostcodeLayer onPick={pick} onClose={() => setOpen(false)} />}
     </section>
   );
 }
 
-function Step6({ d, s, guide }: { d: Draft; s: Meta["store"]; guide: string | null }) {
+function Step6({ d, s, guide, onEdit }: { d: Draft; s: Meta["store"]; guide: string | null; onEdit: (what: "benefit" | "kit") => void }) {
   return (
     <section className="text-center pt-4">
       <BrandStack size={52} className="mb-4" />
@@ -680,6 +693,14 @@ function Step6({ d, s, guide }: { d: Draft; s: Meta["store"]; guide: string | nu
         {d.contract_url && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a>}
         {guide && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={guide} target="_blank" rel="noreferrer">점주 안내문 받기</a>}
         <a className="block rounded-xl bg-navy text-white py-3 text-[13.5px] font-semibold" href="/dashboard/owner">점주 대시보드 열기</a>
+      </div>
+      <div className="mt-6 max-w-xs mx-auto rounded-2xl border border-gray-200 bg-white p-3">
+        <p className="text-[12px] font-semibold text-gray-700 mb-2">고칠 것이 있으신가요?</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" className="rounded-xl border border-gray-200 py-2.5 text-[12.5px] font-semibold text-gray-800" onClick={() => onEdit("benefit")}>혜택 고치기</button>
+          <button type="button" className="rounded-xl border border-gray-200 py-2.5 text-[12.5px] font-semibold text-gray-800" onClick={() => onEdit("kit")}>배송지 고치기</button>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-2">지금 고치셔도 됩니다. 나중에는 점주 대시보드에서 바꾸실 수 있습니다.</p>
       </div>
       <p className="text-[11.5px] text-gray-400 mt-5">다음 로그인부터는 카카오 로그인 후 방금 정하신 PIN 4자리로 들어오시면 됩니다.</p>
     </section>

@@ -30,8 +30,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     return NextResponse.json({ detail: "계약 동의 단계가 완료되지 않았습니다.", step: 2 }, { status: 409 });
   }
 
-  const b = (await req.json().catch(() => ({}))) as { owner_name?: string; biz_no?: string; phone?: string; email?: string; kit_address?: string; kit_ok?: boolean; signature?: string };
+  const b = (await req.json().catch(() => ({}))) as { owner_name?: string; biz_no?: string; phone?: string; email?: string; kit_address?: string; kit_ok?: boolean; signature?: string; revision?: boolean };
   const kit_address = (b.kit_address ?? "").trim();
+  // 이미 끝낸 뒤 배송지만 고치러 돌아온 경우. 원장은 append-only 라 수정도 한 줄로 남는다 —
+  // 무엇이 언제 바뀌었는지가 곧 증거다. 다만 슬랙에서 신규 등록처럼 보이면 안 된다.
+  const revision = Boolean(b.revision);
   if (!b.kit_ok || !kit_address) return NextResponse.json({ detail: "웰컴 키트 배송지를 확인해 주세요.", step: 5 }, { status: 400 });
 
   // 2) 스탬프 필수 — 규칙이 없으면 완료 불가
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
    * 재민이 이 경로를 열어 주면 코드를 고치지 않아도 그날부터 자동으로 들어간다.
    */
   let ops_ok = false;
-  if (API()) {
+  if (API() && !revision) {
     ops_ok = await fetch(`${API()}/api/astro/stores/${p.rid}/`, {
       method: "PATCH", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
       body: JSON.stringify({ contract_started_on: starts_on, ...(paid ? { billing_start_period: billing_period } : {}), updated_by: "온보딩" }),
@@ -88,9 +91,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const feeTxt = p.fee ? ` ${p.fee.toLocaleString()}원` : "";
   const copyTxt = [copies.activity && "활동기록", copies.sheet && "시트", copies.drive_json && "드라이브"].filter(Boolean).join("·") || "없음";
   await notifyOnboard(
-    `:white_check_mark: *${p.name}* 온보딩 완료 — 계약 ${p.name} ${PLAN_LABEL[p.plan]}${feeTxt} · ${p.campus}\n` +
-    `• 개시일 ${kdate(starts_on)}${paid ? ` · 청구 시작 월 ${billing_period}` : " · 무료 플랜(청구 없음)"}\n` +
-    (ops_ok ? "" : `• :warning: 매장 운영 값이 자동 반영되지 않았습니다 — 파트너 매장 ${p.rid} 상세에서 *계약 시작일 ${starts_on}*${paid ? ` · *청구 시작 월 ${billing_period}*` : ""} 를 넣어 주세요\n`) +
+    (revision
+      ? `:pencil2: *${p.name}* 온보딩 내용 수정 — ${PLAN_LABEL[p.plan]}${feeTxt} · ${p.campus}\n`
+      : `:white_check_mark: *${p.name}* 온보딩 완료 — 계약 ${p.name} ${PLAN_LABEL[p.plan]}${feeTxt} · ${p.campus}\n`) +
+    (revision ? "" : `• 개시일 ${kdate(starts_on)}${paid ? ` · 청구 시작 월 ${billing_period}` : " · 무료 플랜(청구 없음)"}\n`) +
+    (ops_ok || revision ? "" : `• :warning: 매장 운영 값이 자동 반영되지 않았습니다 — 파트너 매장 ${p.rid} 상세에서 *계약 시작일 ${starts_on}*${paid ? ` · *청구 시작 월 ${billing_period}*` : ""} 를 넣어 주세요\n`) +
     `• 스탬프 등록 ✓ · 웰컴 키트 발송 대기 (${kit_address})\n` +
     `• 기록 사본: ${copyTxt}${copies.errors.length ? ` · 실패: ${copies.errors.join(", ")}` : ""}` +
     (p.lid ? `\n• 후보 단계: ${stage_ok ? "계약 완료로 옮김" : "옮기지 못함 — 세틀라이트에서 수동 변경 필요"}` : "") +
