@@ -683,12 +683,37 @@ function Step5({ d, patch, s, onBack, onNext, busy, nextLabel }: { d: Draft; pat
 }
 
 function Step6({ d, s, guide, onEdit }: { d: Draft; s: Meta["store"]; guide: string | null; onEdit: (what: "benefit" | "kit") => void }) {
+  const stampRows = Object.entries(d.stamp_steps).filter(([, v]) => v.trim()).sort((a, b) => Number(a[0]) - Number(b[0]));
+  const coupons = d.coupons.filter((c) => c.benefit.trim());
   return (
     <section className="text-center pt-4">
       <BrandStack size={52} className="mb-4" />
       <div className="mx-auto w-14 h-14 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-2xl mb-3">✓</div>
       <h2 className="font-display text-[22px] font-bold text-gray-900">등록이 끝났습니다</h2>
       <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <><b>{kdate(d.starts_on)}부터 시작</b>합니다. 그때까지는 준비 기간이라 부담하실 것이 없습니다.<br /></>}웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>
+      {/* 무엇을 등록했는지 한 장으로 — 사장님이 끝나고 확인하실 곳은 여기뿐이다.
+          이게 없으면 "내가 뭘 신청한 거지"로 끝나고, 나중에 담당자에게 되묻는다. */}
+      <div className="text-left max-w-sm mx-auto rounded-2xl border border-gray-200 bg-white p-4 mb-4">
+        <p className="text-[12px] font-semibold text-gray-500 mb-2.5">등록하신 내용</p>
+        <dl className="text-[13px] space-y-2">
+          <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">플랜</dt>
+            <dd className="text-gray-900 font-semibold">{s.plan_label}{s.fee ? ` · 월 ${fmtWon(s.fee)} (부가세 별도)` : " · 0원"}</dd></div>
+          {d.starts_on && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">개시일</dt>
+            <dd className="text-gray-900">{kdate(d.starts_on)}</dd></div>}
+          {stampRows.length > 0 && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">스탬프</dt>
+            <dd className="text-gray-900">{stampRows.map(([n, v]) => <span key={n} className="block"><b>{n}개</b> 모으면 · {v}</span>)}
+              {d.stamp_note.trim() && <span className="block text-[12px] text-gray-500 mt-0.5">{d.stamp_note.trim()}</span>}</dd></div>}
+          {coupons.length > 0 && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">쿠폰</dt>
+            <dd className="text-gray-900">{coupons.map((c, i) => <span key={i} className="block"><b>{c.benefit}</b>{c.cond.trim() ? <span className="text-gray-500"> · {c.cond.trim()}</span> : null}</span>)}</dd></div>}
+          {d.special?.benefit.trim() && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">한정 쿠폰</dt>
+            <dd className="text-gray-900"><b>{d.special.benefit.trim()}</b>{d.special.cond.trim() ? <span className="text-gray-500"> · {d.special.cond.trim()}</span> : null}
+              <span className="block text-[12px] text-gray-500">학생회 채널로 매달 홍보됩니다</span></dd></div>}
+          {d.kit_address && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">키트 배송</dt>
+            <dd className="text-gray-900">{d.kit_address}</dd></div>}
+        </dl>
+        <p className="text-[11.5px] text-gray-400 mt-3">혜택은 점주 대시보드에서 언제든 바꾸실 수 있습니다. 바꾸시면 앱에 바로 반영됩니다.</p>
+      </div>
+
       <div className="grid gap-2 max-w-xs mx-auto">
         {d.contract_url && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a>}
         {guide && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={guide} target="_blank" rel="noreferrer">점주 안내문 받기</a>}
