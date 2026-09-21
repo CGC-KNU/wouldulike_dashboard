@@ -16,8 +16,10 @@ import { Button, Card, Chip, DraftBadge, Field, Input, Kpi, Notice, PageHeader, 
 
 interface Round { id: string; date: string; weekday: "수" | "금"; seats: { fixed: number; random: number }; prizes: string; pool_count: number | null; pool_checked_by: string | null; pool_checked_at: string | null; result: "scheduled" | "drawn" | "held" | "skipped"; note: string | null; updated_by: string | null; updated_at: string | null }
 interface Raffle { id: number; title: string; prize_amount: number; winner_count: number; status: string; entries: number; winners: number; drawn_at: string | null }
-interface DayProgress { entries: number; people: number; winners: number; raffles: Raffle[] }
-interface Payload { rounds: Round[]; progress?: Record<string, DayProgress> | null; rules: Record<string, string | string[]>; sheet_url: string; slack_channel: string; pool_source: string; draft?: boolean; draft_note?: string }
+interface Voucher { user_id: number; coupon_code: string | null; status: "REDEEMED" | "EXPIRED" | "ISSUED" | null; expires_at: string | null; redeemed_at: string | null; restaurant_id: number | null; restaurant_name: string | null }
+interface VoucherSummary { issued: number; redeemed: number; expired: number; waiting: number; none: number }
+interface DayProgress { entries: number; people: number; winners: number; vouchers: Voucher[]; raffles: Raffle[] }
+interface Payload { rounds: Round[]; progress?: Record<string, DayProgress> | null; vouchers?: VoucherSummary | null; rules: Record<string, string | string[]>; sheet_url: string; slack_channel: string; pool_source: string; draft?: boolean; draft_note?: string }
 
 const R_LABEL: Record<Round["result"], string> = { scheduled: "예정", drawn: "추첨 완료", held: "보류", skipped: "미운용" };
 const R_TONE: Record<Round["result"], ChipTone> = { scheduled: "blue", drawn: "green", held: "red", skipped: "gray" };
@@ -38,6 +40,7 @@ export default function MileageOps({ actor }: { actor: string }) {
   const held = rounds.filter((r) => r.result === "held").length;
   const drawn = rounds.filter((r) => r.result === "drawn").length;
   const progress = data?.progress ?? null;
+  const v = data?.vouchers ?? null;
   /** 이 회차에 실제로 무슨 일이 있었나 — 앱 DB. 못 읽었으면 null. */
   const prog = (r: Round): DayProgress | null => progress?.[r.date] ?? null;
   // 응모가 실제로 0 이면 11시 마감 때 뽑을 게 없다 — 사람 확인을 기다리지 않고 먼저 말한다
@@ -58,6 +61,9 @@ export default function MileageOps({ actor }: { actor: string }) {
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="다음 회차" value={loading ? "-" : next ? `${Number(next.date.slice(5, 7))}/${Number(next.date.slice(8))} ${next.weekday}` : "없음"} hint={next ? `20:00 · 확정 ${next.seats.fixed} · 랜덤 ${next.seats.random}` : "이번 달 남은 회차 없음"} />
         {/* 다음 회차 응모 — 앱 DB 실측이 있으면 그걸 먼저 보여 준다(사람이 시트에서 세던 숫자를 대신한다) */}
+        {/* 뽑힌 것과 쓴 것은 다르다 — 안 쓰고 만료되면 학생에게도 매장에게도 아무 일이 없었던 것이다 */}
+        <Kpi label="식사권 사용" value={loading ? "-" : v ? `${v.redeemed}/${v.issued}` : "-"} tone={v && v.expired > 0 ? "alert" : "plain"}
+          hint={!v ? "앱 기록을 못 읽었습니다" : v.issued === 0 ? "아직 당첨 식사권이 없습니다" : `사용 ${Math.round((v.redeemed / v.issued) * 100)}% · 안 쓰고 만료 ${v.expired} · 아직 ${v.waiting}${v.none ? ` · 쿠폰 없음 ${v.none}` : ""}`} />
         <Kpi label="다음 회차 응모" value={loading ? "-" : !next ? "-" : prog(next) ? prog(next)!.entries : next.pool_count === null ? "미확인" : next.pool_count}
           tone={nextEmpty || poolUnknown ? "alert" : "plain"}
           hint={!next ? "" : prog(next) ? `${prog(next)!.people}명 · 앱 기록${nextEmpty ? " · 이대로면 11시 마감 때 뽑을 게 없다" : ""}` : next.pool_checked_at ? `${next.pool_checked_by ?? ""} 확인` : "앱 기록을 못 읽었습니다 — 시트 확인"}
@@ -181,6 +187,24 @@ function RoundPanel({ r, prog, onClose, onPatch, onCreated }: { r: Round; prog: 
         <Field label="응모 인원 (사람 확인 · 시트 기준)" hint="비어 있으면 '미확인'. 0 은 확인했는데 없다는 뜻입니다."><Input type="number" inputMode="numeric" value={pool} onChange={(e) => setPool(e.target.value)} placeholder="예: 42" /></Field>
         {r.pool_checked_at && <p className="text-[12px] text-gray-500">{r.pool_checked_by} 가 {new Date(r.pool_checked_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 에 확인</p>}
       </PanelSection>
+      {prog && prog.vouchers.length > 0 && (
+        <PanelSection title={`식사권 ${prog.vouchers.filter((x) => x.status === "REDEEMED").length}/${prog.vouchers.length} 사용`}>
+          <ul className="space-y-1 text-[13px]">
+            {prog.vouchers.map((x, i) => (
+              <li key={x.coupon_code ?? i} className="flex items-center gap-2">
+                <Chip tone={x.status === "REDEEMED" ? "green" : x.status === "EXPIRED" ? "red" : x.status === "ISSUED" ? "blue" : "gray"}>
+                  {x.status === "REDEEMED" ? "사용" : x.status === "EXPIRED" ? "만료" : x.status === "ISSUED" ? "미사용" : "쿠폰 없음"}
+                </Chip>
+                <span className="text-gray-700 truncate">
+                  {x.status === "REDEEMED"
+                    ? `${x.restaurant_name ?? (x.restaurant_id ? `매장 ${x.restaurant_id}` : "매장 미상")}${x.redeemed_at ? ` · ${new Date(x.redeemed_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}` : ""}`
+                    : x.expires_at ? `${new Date(x.expires_at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })} 까지` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </PanelSection>
+      )}
       <PanelSection title="결과">
         <Field label="회차 결과"><Select value={result} onChange={(e) => setResult(e.target.value as Round["result"])}><option value="scheduled">예정</option><option value="drawn">추첨 완료</option><option value="held">보류 (응모풀 비어 있음 등)</option><option value="skipped">미운용 (정책상 없음)</option></Select></Field>
         <Field label="메모"><Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 당첨 2명, 시트 추첨기록 탭 반영" /></Field>
