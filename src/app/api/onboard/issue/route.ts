@@ -4,6 +4,7 @@ import { backendUrl, getAccessToken, proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
 import { shortId, signOnboardToken, tempPinFor, type OnboardPlan } from "@/lib/onboard/token";
 import { defaultFee } from "@/lib/onboard/contract";
+import { remoteGet } from "@/lib/draft/remote";
 
 /**
  * 온보딩 링크 발급 (담당자 전용).
@@ -43,7 +44,10 @@ export async function POST(req: NextRequest) {
   // 이미 우리가 심어 둔 임시 PIN 이면 "온보딩을 시작했지만 안 끝낸 매장" 이다 — 다시 발급해 준다.
   // (링크 만료·사장님 미확인은 늘 생긴다. 이 경우 손님 적립은 어차피 이미 이 값으로 돌고 있으므로 새로 망가뜨리는 게 없다.)
   const isOurTemp = Boolean(info.pin) && String(info.pin) === tp;
-  if (info.pin && !isOurTemp) {
+  // 테스트 매장(StoreOps.is_test)은 손님이 없다 — 막을 이유가 없고, 막으면 온보딩을 시험해 볼 방법이 사라진다.
+  const isTest = await remoteGet<{ ops: { is_test?: boolean } | null }>(`/api/astro/stores/${b.rid}/`)
+    .then((r) => Boolean(r.handled && r.ok && r.data?.ops?.is_test)).catch(() => false);
+  if (info.pin && !isOurTemp && !isTest) {
     return NextResponse.json({
       detail: "이 매장에는 이미 매장 PIN 이 있어 온보딩 링크를 발급하지 않습니다. 그 PIN 은 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 바꾸면 매장 운영이 멈춥니다. 이미 운영 중인 매장이면 사장님께 현재 매장 번호를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.",
       has_pin: true,

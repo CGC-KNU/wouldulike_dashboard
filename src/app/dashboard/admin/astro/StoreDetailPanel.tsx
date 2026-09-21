@@ -326,6 +326,10 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 px-3">
           <Tri label="학기 중" value={o.semester_active} onChange={(v) => onPatch(id, { semester_active: v })} />
           <Tri label="방학 중" value={o.vacation_active} onChange={(v) => onPatch(id, { vacation_active: v })} />
+          <label className="flex items-center justify-between gap-3 py-2 cursor-pointer">
+            <span className="text-[13px] text-gray-700">테스트 매장<SourceBadge src="ops" /><span className="block text-[11.5px] text-gray-400">집계에서 빼고, 온보딩 링크를 제한 없이 발급합니다</span></span>
+            <input type="checkbox" checked={o.is_test} onChange={(e) => onPatch(id, { is_test: e.target.checked })} className="w-[18px] h-[18px] accent-[#050072]" />
+          </label>
         </div>
         <div className="mt-3">
           <Cell label={<L src="sheet">PIN 번호</L>} hint="예전 시트에서 옮겨 온 번호입니다. 실제로 동작하는 값은 위 '앱에 실제로 나가는 것 → 매장 PIN' 입니다" value={o.pin} onCommit={set("pin")} placeholder="1234" />
