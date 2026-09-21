@@ -28,6 +28,8 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["Pretendard", "system-ui", "sans-serif"],
+        // 브랜드 디스플레이 — 로고 워드마크와 같은 서체. 제목·상호에만 (globals.css 주석 참고)
+        display: ["Ria Sans", "Pretendard", "system-ui", "sans-serif"],
       },
     },
   },

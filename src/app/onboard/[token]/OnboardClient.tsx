@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ImageUploader from "@/components/ImageUploader";
+import { BrandLockup, BrandStack, BrandWordmarkLight } from "./Brand";
 import { Button, Field, Input, Notice, Spinner, Stepper, Textarea } from "@/app/dashboard/admin/_shared/ui";
 
 /**
@@ -36,7 +37,9 @@ interface Draft {
   /** 한정 쿠폰 — Boost 이상. 학생회 채널로 매달 나간다 */
   special: { benefit: string; cond: string } | null;
   photo_urls: string[];
-  paid_clicked: boolean; kit_address: string; kit_ok: boolean; starts_on: string | null;
+  paid_clicked: boolean; kit_ok: boolean; starts_on: string | null;
+  /** 배송지 — 우편번호 찾기로 받은 기본주소와 직접 적는 상세주소를 나눠 둔다. kit_address 는 그 둘을 합친 최종값(서버로 나가는 값). */
+  kit_zip: string; kit_addr1: string; kit_detail: string; kit_address: string;
 }
 // 무료 플랜은 입금할 게 없어 [4]입금을 건너뛴다 (go(paid ? 4 : 5)).
 // 스텝바에까지 "입금"이 남아 있으면 건너뛴 게 아니라 뭘 놓친 것처럼 보인다 — 칸 자체를 뺀다.
@@ -44,7 +47,7 @@ const STEPS = ["내 매장", "플랜", "계약", "혜택", "입금", "키트", "
 const STEPS_FREE = STEPS.filter((x) => x !== "입금");
 const fmtWon = (n: number) => n.toLocaleString("ko-KR") + "원";
 const kdate = (iso: string) => { const [y, m, d] = iso.split("-"); return `${y}. ${Number(m)}. ${Number(d)}.`; };
-const emptyDraft = (): Draft => ({ step: 0, owner_name: "", biz_no: "", phone: "", email: "", pin_set: false, checks: {}, signature: "", consent_at: null, contract_url: null, stamp_steps: {}, stamp_note: "", coupons: [], special: null, photo_urls: [], paid_clicked: false, kit_address: "", kit_ok: false, starts_on: null });
+const emptyDraft = (): Draft => ({ step: 0, owner_name: "", biz_no: "", phone: "", email: "", pin_set: false, checks: {}, signature: "", consent_at: null, contract_url: null, stamp_steps: {}, stamp_note: "", coupons: [], special: null, photo_urls: [], paid_clicked: false, kit_ok: false, starts_on: null, kit_zip: "", kit_addr1: "", kit_detail: "", kit_address: "" });
 
 export default function OnboardClient({ token }: { token: string }) {
   const sp = useSearchParams();
@@ -56,7 +59,16 @@ export default function OnboardClient({ token }: { token: string }) {
   const key = useMemo(() => `ob_${token.slice(-16)}`, [token]);
 
   // 이어하기 — 브라우저에만 남는 초안. 민감값은 서버가 다시 받으므로 여기 남아도 계약 증거가 아니다.
-  useEffect(() => { try { const raw = sessionStorage.getItem(key); if (raw) setD({ ...emptyDraft(), ...(JSON.parse(raw) as Partial<Draft>) }); } catch { /* 무시 */ } }, [key]);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return;
+      const saved = { ...emptyDraft(), ...(JSON.parse(raw) as Partial<Draft>) };
+      // 배송지를 한 칸에서 세 칸으로 쪼개기 전에 저장된 초안 — 옛 한 줄을 기본주소 칸으로 옮긴다 (0921)
+      if (!saved.kit_addr1 && saved.kit_address) saved.kit_addr1 = saved.kit_address;
+      setD(saved);
+    } catch { /* 무시 */ }
+  }, [key]);
   useEffect(() => { try { sessionStorage.setItem(key, JSON.stringify(d)); } catch { /* 무시 */ } }, [key, d]);
   const patch = useCallback((p: Partial<Draft>) => setD((prev) => ({ ...prev, ...p })), []);
 
@@ -166,7 +178,7 @@ export default function OnboardClient({ token }: { token: string }) {
 function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps & { rq: string; token: string; sms: boolean }) {
   const [info, setInfo] = useState<{ name?: string; address?: string; phone_number?: string } | null>(null);
   const [pin, setPin] = useState(""); const [pin2, setPin2] = useState("");
-  useEffect(() => { fetch(`/api/dashboard/restaurant${rq}`).then((r) => (r.ok ? r.json() : null)).then((j) => { setInfo(j); if (j?.address && !d.kit_address) patch({ kit_address: j.address }); }).catch(() => null); }, [rq]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetch(`/api/dashboard/restaurant${rq}`).then((r) => (r.ok ? r.json() : null)).then((j) => { setInfo(j); if (j?.address && !d.kit_addr1) patch({ kit_addr1: j.address }); }).catch(() => null); }, [rq]); // eslint-disable-line react-hooks/exhaustive-deps
   const canNext = d.owner_name.trim().length >= 2 && /^\d{10}$/.test(d.biz_no.replace(/\D/g, "")) && /^01\d{8,9}$/.test(d.phone.replace(/\D/g, "")) && d.pin_set;
   return (
     <section>
@@ -201,7 +213,7 @@ function Step1({ s, paid, terms, onBack, onNext }: { s: Meta["store"]; paid: boo
     <section>
       <H title="플랜 확인" time="20초" />
       <div className="rounded-2xl border-2 border-navy bg-white p-5 mb-3">
-        <div className="flex items-baseline justify-between"><span className="text-[18px] font-bold text-gray-900">{s.plan_label}</span><span className="text-[18px] font-bold text-navy">{paid ? `월 ${fmtWon(s.fee)}` : "0원"}</span></div>
+        <div className="flex items-baseline justify-between"><span className="font-display text-[19px] font-bold text-gray-900">{s.plan_label}</span><span className="font-display text-[19px] font-bold text-navy">{paid ? `월 ${fmtWon(s.fee)}` : "0원"}</span></div>
         {paid && <p className="text-[12.5px] text-gray-500 mt-1">부가세 {fmtWon(s.vat)} 별도 · 실제 청구 월 {fmtWon(s.fee + s.vat)}</p>}
         <ul className="mt-3 text-[13px] text-gray-700 space-y-1">
           <li>· 앱에 매장·혜택 상시 게재, 기본 쿠폰·스탬프·마일리지 추첨 운영</li>
@@ -210,8 +222,8 @@ function Step1({ s, paid, terms, onBack, onNext }: { s: Meta["store"]; paid: boo
         </ul>
       </div>
       <div className="rounded-xl bg-navy/[0.04] border border-navy/10 p-3 text-[12.5px] text-gray-700">
-        <p className="mb-1"><b>정해진 종료일이 없습니다.</b> 오늘 동의하시면 오늘부터 시작해서, 그만두겠다고 말씀하실 때까지 매월 이어집니다.</p>
-        <p className="mb-1">최소 이용기간은 <b>1개월 — 오늘부터 {kdate(terms.schedule.min_term_to)}까지</b>입니다.</p>
+        <p className="mb-1"><b>시작은 다음 달 1일({kdate(terms.schedule.starts_on)})입니다.</b> 그때까지는 준비 기간이라 {paid ? "이용료를 받지 않습니다" : "부담하실 것이 없습니다"}. 저희가 매장 정보·혜택 등록과 포스터 제작을 마쳐 둡니다.</p>
+        <p className="mb-1"><b>정해진 종료일이 없습니다.</b> 개시일부터 그만두겠다고 말씀하실 때까지 매월 이어집니다. 최소 이용기간은 <b>1개월 — {kdate(terms.schedule.starts_on)} ~ {kdate(terms.schedule.min_term_to)}</b>입니다.</p>
         <p style={{marginBottom:0}}>그 뒤에는 <b>매월 말일까지 말씀만 하시면 다음 달 1일자로 끝나고, 위약금은 없습니다.</b></p>
       </div>
       <p className="text-[12px] text-gray-400 mt-2">플랜을 바꾸고 싶으시면 담당자에게 말씀해 주세요. 미팅에서 정한 값이 들어가 있습니다.</p>
@@ -508,19 +520,93 @@ function Step4({ d, patch, s, bank, onBack, onNext }: { d: Draft; patch: (p: Par
   );
 }
 
+/**
+ * 우편번호 찾기 — 다음(카카오) 우편번호 서비스. 무료, 키 없음, 국내 주소 정본.
+ *
+ * 왜 팝업이 아니라 레이어인가: 팝업 창은 모바일 브라우저에서 차단되는 일이 잦다.
+ * 점주 대부분이 카톡 링크를 폰으로 연다 — 여기서 막히면 배송지를 못 적는다.
+ * 스크립트는 이 버튼을 누를 때 처음 받는다(초기 로딩에 얹지 않는다).
+ */
+const POSTCODE_SRC = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
+type PostcodeData = { zonecode: string; roadAddress: string; jibunAddress: string; buildingName?: string; apartment?: string };
+type DaumPostcode = { new (o: { oncomplete: (d: PostcodeData) => void; onclose?: () => void; width?: string; height?: string }): { embed: (el: HTMLElement) => void } };
+
+function loadPostcode(): Promise<DaumPostcode> {
+  const w = window as unknown as { daum?: { Postcode?: DaumPostcode } };
+  if (w.daum?.Postcode) return Promise.resolve(w.daum.Postcode);
+  return new Promise((resolve, reject) => {
+    const prev = document.querySelector<HTMLScriptElement>(`script[src="${POSTCODE_SRC}"]`);
+    const el = prev ?? Object.assign(document.createElement("script"), { src: POSTCODE_SRC, async: true });
+    el.addEventListener("load", () => (w.daum?.Postcode ? resolve(w.daum.Postcode) : reject(new Error("우편번호 서비스를 불러오지 못했습니다."))));
+    el.addEventListener("error", () => reject(new Error("우편번호 서비스에 연결하지 못했습니다. 주소를 직접 적어 주셔도 됩니다.")));
+    if (!prev) document.body.appendChild(el);
+  });
+}
+
+function PostcodeLayer({ onPick, onClose }: { onPick: (d: PostcodeData) => void; onClose: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadPostcode()
+      .then((P) => { if (live && box.current) new P({ oncomplete: onPick, onclose: onClose, width: "100%", height: "100%" }).embed(box.current); })
+      .catch((e: Error) => live && setErr(e.message));
+    return () => { live = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-[480px] rounded-t-2xl sm:rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <span className="text-[14px] font-bold text-gray-900">우편번호 찾기</span>
+          <button type="button" className="text-[13px] text-gray-500 px-2 py-1" onClick={onClose}>닫기</button>
+        </div>
+        {err ? <div className="p-4"><Notice tone="amber" title="불러오지 못했습니다">{err}</Notice></div>
+             : <div ref={box} style={{ height: 420 }} />}
+      </div>
+    </div>
+  );
+}
+
 function Step5({ d, patch, s, onBack, onNext, busy }: { d: Draft; patch: (p: Partial<Draft>) => void; s: Meta["store"]; rq: string; onBack: () => void; onNext: () => void; busy: boolean }) {
+  const [open, setOpen] = useState(false);
+  // 서버로 나가는 건 합친 한 줄이다. 어느 칸이 바뀌든 여기서 다시 만든다 — 화면과 기록이 갈라지지 않게.
+  const compose = (zip: string, a1: string, det: string) => `${zip ? `(${zip}) ` : ""}${a1}${det ? ` ${det}` : ""}`.trim();
+  const setAddr = (v: Partial<Pick<Draft, "kit_zip" | "kit_addr1" | "kit_detail">>) => {
+    const zip = v.kit_zip ?? d.kit_zip, a1 = v.kit_addr1 ?? d.kit_addr1, det = v.kit_detail ?? d.kit_detail;
+    patch({ ...v, kit_address: compose(zip, a1, det) });
+  };
+  const pick = (r: PostcodeData) => {
+    const bld = r.buildingName && r.apartment === "Y" ? ` (${r.buildingName})` : "";
+    setAddr({ kit_zip: r.zonecode, kit_addr1: (r.roadAddress || r.jibunAddress) + bld });
+    setOpen(false);
+  };
   return (
     <section>
       <H title="웰컴 키트" time="30초" />
       <p className="text-[13px] text-gray-600 mb-3">포스터 1장, QR 스티커 2장, 테이블 카드, 사용 안내를 택배로 보내드립니다. <b>최초 등록 때 한 번</b> 보내드리는 것이라 배송지만 확인해 주세요.</p>
       <div className="rounded-2xl border border-gray-200 bg-white p-4 mb-3">
         <p className="text-[12px] text-gray-500 mb-2">포스터 미리보기</p>
-        <div className="rounded-xl bg-[#050072] text-white p-5 text-center"><p className="text-[11px] tracking-[0.2em] opacity-70">WOULDULIKE</p><p className="text-[20px] font-bold mt-1">{s.name}</p><p className="text-[12px] opacity-80 mt-1">우주라이크 앱에서 스탬프 적립 · 쿠폰 사용</p></div>
+        <div className="rounded-xl bg-[#050072] text-white p-5 text-center"><BrandWordmarkLight height={13} className="mx-auto opacity-90" /><p className="font-display text-[22px] font-bold mt-1">{s.name}</p><p className="text-[12px] opacity-80 mt-1">우주라이크 앱에서 스탬프 적립 · 쿠폰 사용</p></div>
         <p className="text-[11.5px] text-gray-400 mt-2">실제 디자인은 다를 수 있습니다. 매장명은 위와 같이 인쇄됩니다.</p>
       </div>
-      <Field label="배송지" required hint="사업장 주소가 기본입니다. 받으실 곳이 다르면 고쳐 주세요"><Input value={d.kit_address} onChange={(e) => patch({ kit_address: e.target.value })} placeholder="대구광역시 북구 …" /></Field>
+
+      <p className="text-[12px] font-semibold text-gray-700 mb-1.5">배송지 <span className="text-red-500">*</span></p>
+      <div className="flex gap-2 mb-2">
+        <input value={d.kit_zip} readOnly placeholder="우편번호" className="w-28 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[14px] text-gray-900" />
+        <Button onClick={() => setOpen(true)}>우편번호 찾기</Button>
+      </div>
+      <Input value={d.kit_addr1} onChange={(e) => setAddr({ kit_addr1: e.target.value })} placeholder="기본 주소" autoComplete="off" />
+      <div className="mt-2"><Input value={d.kit_detail} onChange={(e) => setAddr({ kit_detail: e.target.value })} placeholder="상세 주소 (동·층·호수, 받는 분)" autoComplete="off" /></div>
+      <p className="text-[12px] text-gray-500 mt-1">
+        {d.kit_zip
+          ? "상세 주소까지 적어 주시면 기사님이 헤매지 않습니다."
+          : "사업장 주소가 기본으로 들어가 있습니다. 정확한 배송을 위해 우편번호 찾기로 한 번 확인해 주세요."}
+      </p>
+
       <label className="flex gap-3 items-start mt-3 cursor-pointer"><input type="checkbox" className="mt-1 w-4 h-4 accent-[#050072]" checked={d.kit_ok} onChange={(e) => patch({ kit_ok: e.target.checked })} /><span className="text-[13px] text-gray-800">위 주소로 보내주세요. 도착하면 붙인 자리 사진 한 장 보내드릴게요.</span></label>
-      <Nav onBack={onBack} onNext={onNext} nextLabel="등록 마치기" nextDisabled={busy || !d.kit_ok || d.kit_address.trim().length < 5} />
+      {d.kit_ok && d.kit_address && <p className="text-[12.5px] text-gray-700 mt-2 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">보낼 곳 · {d.kit_address}</p>}
+      <Nav onBack={onBack} onNext={onNext} nextLabel="등록 마치기" nextDisabled={busy || !d.kit_ok || d.kit_addr1.trim().length < 5} />
+      {open && <PostcodeLayer onPick={pick} onClose={() => setOpen(false)} />}
     </section>
   );
 }
@@ -528,9 +614,10 @@ function Step5({ d, patch, s, onBack, onNext, busy }: { d: Draft; patch: (p: Par
 function Step6({ d, s, guide }: { d: Draft; s: Meta["store"]; guide: string | null }) {
   return (
     <section className="text-center pt-4">
+      <BrandStack size={52} className="mb-4" />
       <div className="mx-auto w-14 h-14 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-2xl mb-3">✓</div>
-      <h2 className="text-[20px] font-bold text-gray-900">등록이 끝났습니다</h2>
-      <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <>오늘({kdate(d.starts_on)})부터 시작합니다. </>}웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>
+      <h2 className="font-display text-[22px] font-bold text-gray-900">등록이 끝났습니다</h2>
+      <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <><b>{kdate(d.starts_on)}부터 시작</b>합니다. 그때까지는 준비 기간이라 부담하실 것이 없습니다.<br /></>}웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>
       <div className="grid gap-2 max-w-xs mx-auto">
         {d.contract_url && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a>}
         {guide && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={guide} target="_blank" rel="noreferrer">점주 안내문 받기</a>}
@@ -548,14 +635,14 @@ function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }
   return (
     <main className="min-h-screen bg-background">
       <div className={`mx-auto px-5 py-8 ${wide ? "max-w-lg" : "max-w-md"}`}>
-        <div className="text-[11px] font-bold tracking-[0.18em] text-navy mb-6">WOULDULIKE</div>
+        <div className="mb-6"><BrandLockup size={24} /></div>
         {children}
       </div>
     </main>
   );
 }
 function H({ title, time }: { title: string; time: string }) {
-  return <div className="flex items-baseline gap-2 mb-3"><h2 className="text-[19px] font-bold text-gray-900">{title}</h2><span className="text-[11px] font-semibold text-navy bg-navy/[0.07] rounded-full px-2 py-0.5">약 {time}</span></div>;
+  return <div className="flex items-baseline gap-2 mb-3"><h2 className="font-display text-[20px] font-bold text-gray-900">{title}</h2><span className="text-[11px] font-semibold text-navy bg-navy/[0.07] rounded-full px-2 py-0.5">약 {time}</span></div>;
 }
 function Row({ k, v }: { k: string; v: string }) {
   return <div className="flex gap-3 py-1 border-b border-gray-100 last:border-0"><span className="w-24 shrink-0 text-gray-500">{k}</span><span className="text-gray-900 break-keep">{v}</span></div>;

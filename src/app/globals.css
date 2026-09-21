@@ -41,6 +41,24 @@
 :root[data-theme="dark"] .sat-bg { background: radial-gradient(1200px 520px at 18% -8%, rgba(99,102,224,0.10), transparent 60%), radial-gradient(900px 400px at 92% 0%, rgba(99,102,224,0.07), transparent 60%), #0A0A22; }
 :root[data-theme="dark"] .shadow-sm { --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.4); }
 
+/* ── 브랜드 디스플레이 서체 · Ria Sans ──────────────────────────────
+   logo.png 워드마크("wouldulike")를 그린 그 서체다. 그동안 배너랩 캔버스에서만
+   FontFace 로 쓰고 있었는데, 점주 온보딩처럼 브랜드를 내세우는 화면에서는
+   제목이 이 서체여야 로고와 한 몸으로 읽힌다.
+
+   굵기가 Bold 하나뿐이다 — **제목·상호에만 쓰고 본문은 Pretendard 로 둔다.**
+   본문까지 이걸로 깔면 무겁고 작은 글자에서 뭉갠다.
+
+   woff2(117KB, 한글 11,172자 전부)로 줄여 둔 파일을 쓴다. 원본 TTF 899KB 는
+   배너랩 캔버스가 계속 쓰므로 지우지 않는다. 원본이 바뀌면 둘 다 다시 만들어야 한다. */
+@font-face {
+  font-family: "Ria Sans";
+  src: url("/fonts/RiaSans-Bold.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 body {
   background-color: var(--color-background);
   font-family: "Pretendard", system-ui, sans-serif;

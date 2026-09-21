@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { verifyOnboardToken, shortId, stepStampOk } from "@/lib/onboard/token";
-import { CHECKS, PLAN_LABEL, TERMS_VERSION, articles, scheduleFrom, termsHash, todaySeoul } from "@/lib/onboard/contract";
+import { CHECKS, PLAN_LABEL, TERMS_VERSION, articles, scheduleFrom, startsOnAfter, termsHash, todaySeoul } from "@/lib/onboard/contract";
 import { COUPON_EXAMPLES, STAMP_EXAMPLES } from "@/lib/onboard/records";
 
 /**
@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   }
 
   // 아직 동의 전이므로 "오늘 동의한다면" 기준으로 날짜를 미리 보여 준다. 확정은 consent 에서 한다.
-  const sched = scheduleFrom(todaySeoul());
+  const sched = scheduleFrom(startsOnAfter(todaySeoul()));
   return NextResponse.json({
     ok: true,
     short_id: shortId(p),

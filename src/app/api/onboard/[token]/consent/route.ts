@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { shortId, stepStamp, verifyOnboardToken } from "@/lib/onboard/token";
-import { CHECKS, TERMS_VERSION, contractHtml, termsHash, todaySeoul } from "@/lib/onboard/contract";
+import { CHECKS, TERMS_VERSION, contractHtml, startsOnAfter, termsHash, todaySeoul } from "@/lib/onboard/contract";
 import { anyCopy, clientMeta, persistRecord, type ConsentRecord } from "@/lib/onboard/records";
 
 /**
@@ -52,7 +52,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     phone_verified: Boolean(b.phone_verified) && Boolean(process.env.ONBOARD_SMS_PROVIDER), email, kakao_id, ip, ua, at,
   };
   // 개시일 = 동의한 날(서울 기준). 여기서 확정되어 사본에 박힌다.
-  const starts_on = todaySeoul();
+  // 개시일은 동의한 날이 아니라 **다음 달 1일**이다 (lib/onboard/contract.ts 머리말 — 청구 주기를 매장마다 갈라놓지 않으려는 것)
+  const starts_on = startsOnAfter(todaySeoul());
   const html = contractHtml({ name: p.name, campus: p.campus, plan: p.plan, fee: p.fee, owner_name, biz_no: fmtBiz(biz_no), phone: fmtPhone(phone), email, starts_on, signed_at: at.replace("T", " ").slice(0, 19) + " (UTC)", signature }, rec.checks);
 
   const copies = await persistRecord(rec, { ownerToken: access, contractHtml: html });

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { verifyOnboardToken } from "@/lib/onboard/token";
 import OnboardClient from "./OnboardClient";
+import { BrandStack } from "./Brand";
 
 /** 점주 온보딩 — 공개 경로(미들웨어). 내부 이름(Satellite)을 띄우지 않는다. */
 export const metadata: Metadata = { title: { absolute: "우주라이크 파트너 등록" }, robots: { index: false, follow: false } };
@@ -13,7 +14,7 @@ export default async function OnboardPage({ params }: { params: Promise<{ token:
     return (
       <main className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="max-w-sm text-center">
-          <div className="text-[13px] font-bold tracking-[0.18em] text-navy mb-3">WOULDULIKE</div>
+          <BrandStack size={52} className="mb-4" />
           <p className="text-[15px] text-gray-800 leading-relaxed">{msg}</p>
         </div>
       </main>
