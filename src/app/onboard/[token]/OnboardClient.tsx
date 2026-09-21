@@ -179,7 +179,19 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
   const [info, setInfo] = useState<{ name?: string; address?: string; phone_number?: string } | null>(null);
   const [pin, setPin] = useState(""); const [pin2, setPin2] = useState("");
   useEffect(() => { fetch(`/api/dashboard/restaurant${rq}`).then((r) => (r.ok ? r.json() : null)).then((j) => { setInfo(j); if (j?.address && !d.kit_addr1) patch({ kit_addr1: j.address }); }).catch(() => null); }, [rq]); // eslint-disable-line react-hooks/exhaustive-deps
-  const canNext = d.owner_name.trim().length >= 2 && /^\d{10}$/.test(d.biz_no.replace(/\D/g, "")) && /^01\d{8,9}$/.test(d.phone.replace(/\D/g, "")) && d.pin_set;
+  /**
+   * 어느 칸이 막고 있는지 화면이 말해야 한다.
+   * 0921 실측: 사업자등록번호를 9자리 적었는데 '다음'만 꺼져 있고 이유가 어디에도 없었다.
+   * 사장님은 그 화면에서 그냥 멈춘다 — 담당자에게 전화하거나, 그만둔다.
+   * 칸을 건드린 뒤에만 지적한다(빈 칸에 먼저 소리치지 않는다).
+   */
+  const bizDigits = d.biz_no.replace(/\D/g, ""), phoneDigits = d.phone.replace(/\D/g, "");
+  const okName = d.owner_name.trim().length >= 2, okBiz = /^\d{10}$/.test(bizDigits), okPhone = /^01\d{8,9}$/.test(phoneDigits);
+  const errName = d.owner_name.trim() && !okName ? "두 글자 이상 적어 주세요." : undefined;
+  const errBiz = bizDigits && !okBiz ? `숫자 10자리여야 합니다 — 지금 ${bizDigits.length}자리입니다.` : undefined;
+  const errPhone = phoneDigits && !okPhone ? "010 으로 시작하는 휴대폰 번호를 적어 주세요." : undefined;
+  const missing = [okName ? null : "대표자 성함", okBiz ? null : "사업자등록번호", okPhone ? null : "휴대폰 번호", d.pin_set ? null : "PIN 4자리"].filter(Boolean) as string[];
+  const canNext = missing.length === 0;
   return (
     <section>
       <H title="내 매장이 맞나요?" time="30초" />
@@ -188,9 +200,9 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
         <p className="text-[11.5px] text-gray-400 mt-2">주소·전화가 다르면 등록 후 대시보드에서 바로 고칠 수 있습니다.</p>
       </div>
       <div className="grid gap-3">
-        <Field label="대표자 성함" required><Input name="owner_name" autoComplete="off" value={d.owner_name} onChange={(e) => patch({ owner_name: e.target.value })} placeholder="홍길동" /></Field>
-        <Field label="사업자등록번호" required hint="숫자 10자리"><Input name="biz_no" autoComplete="off" inputMode="numeric" value={d.biz_no} onChange={(e) => patch({ biz_no: e.target.value })} placeholder="000-00-00000" /></Field>
-        <Field label="휴대폰 번호" required hint={sms ? "인증번호를 보내드립니다" : "계약서 사본과 연락에 씁니다"}><Input name="owner_phone" type="tel" autoComplete="off" inputMode="tel" value={d.phone} onChange={(e) => patch({ phone: e.target.value.replace(/[^\d-]/g, "") })} placeholder="010-0000-0000" /></Field>
+        <Field label="대표자 성함" required error={errName}><Input name="owner_name" autoComplete="off" value={d.owner_name} onChange={(e) => patch({ owner_name: e.target.value })} placeholder="홍길동" /></Field>
+        <Field label="사업자등록번호" required hint="숫자 10자리" error={errBiz}><Input name="biz_no" autoComplete="off" inputMode="numeric" value={d.biz_no} onChange={(e) => patch({ biz_no: e.target.value })} placeholder="000-00-00000" /></Field>
+        <Field label="휴대폰 번호" required hint={sms ? "인증번호를 보내드립니다" : "계약서 사본과 연락에 씁니다"} error={errPhone}><Input name="owner_phone" type="tel" autoComplete="off" inputMode="tel" value={d.phone} onChange={(e) => patch({ phone: e.target.value.replace(/[^\d-]/g, "") })} placeholder="010-0000-0000" /></Field>
       </div>
       <div className="mt-5 rounded-2xl border border-navy/20 bg-navy/[0.03] p-4">
         <p className="text-[13.5px] font-semibold text-gray-900 mb-1">점주 대시보드 PIN 4자리 정하기 <span className="text-red-600">*</span></p>
@@ -203,7 +215,7 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
           </div>
         )}
       </div>
-      <Nav onNext={onNext} nextDisabled={!canNext} />
+      <Nav onNext={onNext} nextDisabled={!canNext} nextHint={canNext ? undefined : `아직 남았습니다 — ${missing.join(" · ")}`} />
     </section>
   );
 }
@@ -263,7 +275,8 @@ function Step2({ d, patch, meta, token, busy, run, post, onBack, onNext }: StepP
               patch({ consent_at: j.at, starts_on: j.starts_on, contract_url: j.contract_url });
             })}>위 내용에 동의하며 계약을 체결합니다</Button>}
       </div>
-      <Nav onBack={onBack} onNext={onNext} nextDisabled={!done} />
+      <Nav onBack={onBack} onNext={onNext} nextDisabled={!done}
+        nextHint={done ? undefined : !allChecked ? "아직 남았습니다 — 중요 내용 확인 (전부 체크해 주세요)" : d.signature.trim().length < 2 ? "아직 남았습니다 — 성함 서명" : "아직 남았습니다 — 계약 체결 버튼"} />
     </section>
   );
 }
@@ -515,7 +528,7 @@ function Step4({ d, patch, s, bank, onBack, onNext }: { d: Draft; patch: (p: Par
       </div>
       {!d.email && <Notice tone="amber" title="세금계산서 받을 이메일이 비어 있습니다">계약 단계로 돌아가 이메일을 적어 주시면 계산서와 계약서 사본을 바로 받으실 수 있습니다.</Notice>}
       <label className="flex gap-3 items-start mt-3 cursor-pointer"><input type="checkbox" className="mt-1 w-4 h-4 accent-[#050072]" checked={d.paid_clicked} onChange={(e) => patch({ paid_clicked: e.target.checked })} /><span className="text-[13px] text-gray-800">입금 안내를 확인했습니다 (지금 바로 입금하지 않으셔도 됩니다)</span></label>
-      <Nav onBack={onBack} onNext={onNext} nextDisabled={!d.paid_clicked} />
+      <Nav onBack={onBack} onNext={onNext} nextDisabled={!d.paid_clicked} nextHint={d.paid_clicked ? undefined : "아직 남았습니다 — 입금 안내 확인"} />
     </section>
   );
 }
@@ -605,7 +618,8 @@ function Step5({ d, patch, s, onBack, onNext, busy }: { d: Draft; patch: (p: Par
 
       <label className="flex gap-3 items-start mt-3 cursor-pointer"><input type="checkbox" className="mt-1 w-4 h-4 accent-[#050072]" checked={d.kit_ok} onChange={(e) => patch({ kit_ok: e.target.checked })} /><span className="text-[13px] text-gray-800">위 주소로 보내주세요. 도착하면 붙인 자리 사진 한 장 보내드릴게요.</span></label>
       {d.kit_ok && d.kit_address && <p className="text-[12.5px] text-gray-700 mt-2 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">보낼 곳 · {d.kit_address}</p>}
-      <Nav onBack={onBack} onNext={onNext} nextLabel="등록 마치기" nextDisabled={busy || !d.kit_ok || d.kit_addr1.trim().length < 5} />
+      <Nav onBack={onBack} onNext={onNext} nextLabel="등록 마치기" nextDisabled={busy || !d.kit_ok || d.kit_addr1.trim().length < 5}
+        nextHint={d.kit_addr1.trim().length < 5 ? "아직 남았습니다 — 배송지 주소" : !d.kit_ok ? "아직 남았습니다 — 위 주소로 보내달라는 확인" : undefined} />
       {open && <PostcodeLayer onPick={pick} onClose={() => setOpen(false)} />}
     </section>
   );
