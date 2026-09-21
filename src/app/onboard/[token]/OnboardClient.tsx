@@ -266,18 +266,21 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
     patch({ stamp_steps: next });
   };
 
+  // 고른 칸은 전부 채워야 한다 — 빈 칸이 있으면 그 칸은 보상 없이 저장돼 손님이 헛걸음한다
+  const blanks = steps.filter((n) => !(d.stamp_steps[String(n)] ?? "").trim());
   const saveStamp = () => run(async () => {
-    if (!filled.length) throw new Error("스탬프 칸을 고르고 보상을 적어 주세요.");
+    if (!steps.length) throw new Error("스탬프 칸을 골라 주세요.");
+    if (blanks.length) throw new Error(`${blanks.join("개, ")}개 칸에 무엇을 드릴지 적어 주세요.`);
     await post(`/api/dashboard/stamp-rule${rq}`, {
       rule_type: "THRESHOLD",
       config_json: {
-        thresholds: filled.map((n) => ({ stamps: n, reward_text: d.stamp_steps[String(n)].trim() })),
+        thresholds: steps.map((n) => ({ stamps: n, reward_text: d.stamp_steps[String(n)].trim() })),
         notes: d.stamp_note.trim(),
       },
       active: true,
     }, "PATCH");
     // 스탬프 보상도 혜택 카탈로그에 남긴다 — 앱·계약서가 같은 값을 본다
-    for (const [i, n] of filled.entries()) {
+    for (const [i, n] of steps.entries()) {
       await post(`/api/dashboard/restaurant-benefits${rq}`, {
         kind: "STAMP", stamp_key: String(n), sort_order: i,
         title: d.stamp_steps[String(n)].trim(), subtitle: `${n}개 모으면`, notes: d.stamp_note.trim(), active: true,
@@ -286,9 +289,11 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
     setStampSaved(true);
   });
 
+  const couponBlank = d.coupons.some((c) => !c.benefit.trim());
   const saveCoupons = () => run(async () => {
     const list = d.coupons.filter((c) => c.benefit.trim());
     if (!list.length) throw new Error("쿠폰 혜택을 적어 주세요.");
+    if (couponBlank) throw new Error("비어 있는 쿠폰 칸이 있습니다. 채우거나 삭제해 주세요.");
     for (const [i, c] of list.entries()) {
       await post(`/api/dashboard/restaurant-benefits${rq}`, {
         kind: "GENERAL", sort_order: i, title: c.benefit.trim(), subtitle: c.cond.trim(), notes: c.cond.trim(), active: true,
@@ -341,7 +346,12 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
           </Field>
         </div>
         {stampSaved ? <p className="text-[13px] text-green-700 font-semibold mt-2">✓ 스탬프를 등록했습니다.</p>
-          : <Button variant="primary" className="mt-2" disabled={busy || !filled.length} onClick={saveStamp}>스탬프 등록</Button>}
+          : (
+            <>
+              {blanks.length > 0 && <p className="text-[12px] text-amber-700 mt-2">{blanks.join("개, ")}개 칸이 비어 있습니다. 채워야 등록할 수 있습니다.</p>}
+              <Button variant="primary" className="mt-2" disabled={busy || !steps.length || blanks.length > 0} onClick={saveStamp}>스탬프 등록</Button>
+            </>
+          )}
       </div>
 
       {/* ② 일반 쿠폰 — 여러 개 */}
@@ -376,7 +386,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
             </div>
             <div className="flex gap-2 mt-2">
               <Button onClick={() => patch({ coupons: [...d.coupons, { benefit: "", cond: "" }] })}>+ 쿠폰 추가</Button>
-              {d.coupons.some((c) => c.benefit.trim()) && <Button variant="primary" disabled={busy} onClick={saveCoupons}>쿠폰 등록</Button>}
+              {d.coupons.length > 0 && <Button variant="primary" disabled={busy || couponBlank} onClick={saveCoupons}>쿠폰 등록</Button>}
             </div>
           </>
         )}
@@ -407,6 +417,43 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
           </div>
         )}
       </div>
+
+      {/* 등록한 혜택 한눈에 — 앱에 이렇게 나갑니다 */}
+      {(stampSaved || savedCoupons > 0 || specialSaved) && (
+        <div className="rounded-2xl border border-navy/20 bg-navy/[0.03] p-4 mb-3">
+          <p className="text-[13.5px] font-bold text-navy mb-2">앱에 이렇게 나갑니다</p>
+          <div className="space-y-2.5">
+            {stampSaved && (
+              <div>
+                <p className="text-[11.5px] font-semibold text-gray-500 mb-1">스탬프</p>
+                <ul className="space-y-0.5">
+                  {steps.map((n) => (
+                    <li key={n} className="text-[13px] text-gray-800"><b className="text-navy">{n}개</b> 모으면 · {d.stamp_steps[String(n)]}</li>
+                  ))}
+                </ul>
+                {d.stamp_note.trim() && <p className="text-[11.5px] text-gray-500 mt-0.5">조건 · {d.stamp_note.trim()}</p>}
+              </div>
+            )}
+            {savedCoupons > 0 && (
+              <div>
+                <p className="text-[11.5px] font-semibold text-gray-500 mb-1">쿠폰</p>
+                <ul className="space-y-0.5">
+                  {d.coupons.filter((c) => c.benefit.trim()).map((c, i) => (
+                    <li key={i} className="text-[13px] text-gray-800"><b>{c.benefit.trim()}</b>{c.cond.trim() && <span className="text-gray-500"> · {c.cond.trim()}</span>}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {specialSaved && d.special && (
+              <div>
+                <p className="text-[11.5px] font-semibold text-gray-500 mb-1">한정 쿠폰 <span className="text-navy">· 학생회 채널</span></p>
+                <p className="text-[13px] text-gray-800"><b>{d.special.benefit.trim()}</b>{d.special.cond.trim() && <span className="text-gray-500"> · {d.special.cond.trim()}</span>}</p>
+              </div>
+            )}
+          </div>
+          <p className="text-[11.5px] text-gray-500 mt-2.5">고치고 싶으시면 등록 후에도 점주 대시보드에서 바꾸실 수 있습니다.</p>
+        </div>
+      )}
 
       {/* ④ 사진 */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
