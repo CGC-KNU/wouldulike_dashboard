@@ -62,7 +62,22 @@ export async function postActivity(token: string, rid: number, kind: string, bod
   }
 }
 
-/* ── 2. 구글 시트 브리지 (비서 bin/gsheet 와 같은 Web App) ── */
+/* ── 2. 구글 시트 브리지 (비서 bin/gsheet 와 같은 Web App) ──
+ *
+ * ⚠️ 시트에 **숫자로 읽힐 문자열을 그대로 넣으면 앞자리 0이 사라진다.**
+ * 0921 실측: `01012345678` → `1012345678`, `0000000000` → `0`.
+ * 계약 증거로 남기는 원장에서 연락처·사업자번호가 틀리면 그 기록은 쓸모가 없다.
+ * 그래서 시트에 쓸 때만 하이픈을 넣어 텍스트로 만든다 — 시트가 파싱하지 못하고, 사람이 읽기도 낫다.
+ * 드라이브 JSON 에는 원본(숫자만)이 그대로 남는다. 기계가 읽는 쪽과 사람이 읽는 쪽을 나눈 것.
+ */
+const bizText = (d: string) => { const n = (d ?? "").replace(/\D/g, ""); return n.length === 10 ? `${n.slice(0, 3)}-${n.slice(3, 5)}-${n.slice(5)}` : (d ?? ""); };
+const phoneText = (d: string) => {
+  const n = (d ?? "").replace(/\D/g, "");
+  if (n.length === 11) return `${n.slice(0, 3)}-${n.slice(3, 7)}-${n.slice(7)}`;
+  if (n.length === 10) return `${n.slice(0, 3)}-${n.slice(3, 6)}-${n.slice(6)}`;
+  return d ?? "";
+};
+
 async function sheetAppend(row: (string | number | boolean | null)[]): Promise<boolean> {
   const url = process.env.ONBOARD_GSHEET_URL, token = process.env.ONBOARD_GSHEET_TOKEN, id = process.env.ONBOARD_GSHEET_ID;
   const sheet = process.env.ONBOARD_GSHEET_TAB ?? "온보딩기록";
@@ -100,7 +115,7 @@ export async function persistRecord(rec: ConsentRecord, opts: { ownerToken: stri
     postActivity(opts.ownerToken, rec.rid, rec.kind === "consent" ? "계약동의" : "온보딩완료", JSON.stringify(rec), "onboard").catch(() => false),
     sheetAppend([
       rec.at, rec.kind, rec.short_id, rec.rid, rec.lid ?? "", rec.name, rec.campus, rec.plan, rec.fee,
-      rec.owner_name, rec.biz_no, rec.phone, rec.phone_verified ? "Y" : "N", rec.email, rec.kakao_id ?? "",
+      rec.owner_name, bizText(rec.biz_no), phoneText(rec.phone), rec.phone_verified ? "Y" : "N", rec.email, rec.kakao_id ?? "",
       rec.signature, rec.terms_version, rec.terms_hash, JSON.stringify(rec.checks), rec.ip, rec.ua.slice(0, 160),
       rec.stamp_ok === undefined ? "" : rec.stamp_ok ? "Y" : "N", rec.kit_address ?? "",
     ]).catch(() => false),
