@@ -56,7 +56,10 @@ export async function POST(req: NextRequest) {
 
   // 이미 임시 PIN 이 심겨 있으면 그대로 두고 링크만 새로 뽑는다.
   if (!isOurTemp) {
-    const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, { new_pin: tp });
+    // PIN 이 이미 있으면 관리자여도 `current_pin` 을 같이 보내야 한다 (위 주석, ChangePinView).
+    // 위에서 읽어 둔 현재 값을 그대로 동봉한다 — 안 보내면 400 "current_pin이 필요합니다".
+    // 여기까지 온 매장은 PIN 이 없거나 테스트 매장뿐이다(위 가드).
+    const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, info.pin ? { new_pin: tp, current_pin: String(info.pin) } : { new_pin: tp });
     if (!pinRes.ok) {
       const d = (await pinRes.json().catch(() => ({}))) as { detail?: string };
       return NextResponse.json({ detail: `임시 PIN 을 설정하지 못했습니다 (${pinRes.status}${d.detail ? ` · ${d.detail}` : ""}).` }, { status: 502 });
