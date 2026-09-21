@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { verifyOnboardToken, shortId, stepStampOk } from "@/lib/onboard/token";
 import { CHECKS, PLAN_LABEL, TERMS_VERSION, articles, scheduleFrom, termsHash, todaySeoul } from "@/lib/onboard/contract";
-import { COUPON_PRESETS, STAMP_PRESETS } from "@/lib/onboard/records";
+import { COUPON_EXAMPLES, STAMP_EXAMPLES } from "@/lib/onboard/records";
 
 /**
  * 온보딩 화면이 처음 부르는 것 — 토큰이 유효한지, 어느 매장·플랜인지, 세션이 이 매장 것인지, 어디까지 왔는지.
@@ -37,7 +37,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     short_id: shortId(p),
     store: { rid: p.rid, lid: p.lid, name: p.name, campus: p.campus, plan: p.plan, plan_label: PLAN_LABEL[p.plan], fee: p.fee, vat: Math.round(p.fee * 0.1) },
     terms: { version: TERMS_VERSION, hash: termsHash(), schedule: sched, articles: articles(), checks: CHECKS.map((c) => ({ id: c.id, article: c.article, text: c.text(sched) })) },
-    presets: { stamp: STAMP_PRESETS, coupon: COUPON_PRESETS },
+    examples: { stamp: STAMP_EXAMPLES, coupon: COUPON_EXAMPLES },
     session,
     progress: { consent: stepStampOk(p.n, "consent", jar.get(`ob_consent_${p.rid}`)?.value) },
     expires_at: new Date(p.exp * 1000).toISOString(),

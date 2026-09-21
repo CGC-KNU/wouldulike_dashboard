@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ImageUploader from "@/components/ImageUploader";
-import { Button, Field, Input, Notice, Spinner, Stepper } from "@/app/dashboard/admin/_shared/ui";
+import { Button, Field, Input, Notice, Spinner, Stepper, Textarea } from "@/app/dashboard/admin/_shared/ui";
 
 /**
  * 점주 온보딩 7단계 — 카톡 링크 하나로 계약·혜택·입금·키트까지.
@@ -18,7 +18,7 @@ interface Meta {
   ok: boolean; short_id: string;
   store: { rid: number; lid: string | null; name: string; campus: string; plan: Plan; plan_label: string; fee: number; vat: number };
   terms: { version: string; hash: string; schedule: { starts_on: string; min_term_to: string; campaign_due: string }; articles: { no: string; title: string; body: string[] }[]; checks: { id: string; article: string; text: string }[] };
-  presets: { stamp: readonly { count: number; reward: string }[]; coupon: readonly { title: string; sub: string; cond: string }[] };
+  examples: { stamp: readonly string[]; coupon: readonly { benefit: string; cond: string }[] };
   session: { ok: boolean; kakao_id: string | null };
   progress: { consent: boolean };
   bank: { name: string; account: string; holder: string } | null;
@@ -29,13 +29,17 @@ interface Draft {
   step: number;
   owner_name: string; biz_no: string; phone: string; email: string; pin_set: boolean;
   checks: Record<string, string>; signature: string; consent_at: string | null; contract_url: string | null;
-  stamp_count: number; stamp_code: string; coupon_on: boolean; coupon_idx: number; coupon_code: string; photo_urls: string[];
+  /** 고른 스탬프 칸(1~10) → 그 칸의 보상 문구 */
+  stamp_steps: Record<string, string>;
+  stamp_code: string; stamp_note: string;
+  coupon_on: boolean; coupon_code: string; coupon_benefit: string; coupon_cond: string;
+  photo_urls: string[];
   paid_clicked: boolean; kit_address: string; kit_ok: boolean; starts_on: string | null;
 }
 const STEPS = ["내 매장", "플랜", "계약", "혜택", "입금", "키트", "완료"];
 const fmtWon = (n: number) => n.toLocaleString("ko-KR") + "원";
 const kdate = (iso: string) => { const [y, m, d] = iso.split("-"); return `${y}. ${Number(m)}. ${Number(d)}.`; };
-const emptyDraft = (): Draft => ({ step: 0, owner_name: "", biz_no: "", phone: "", email: "", pin_set: false, checks: {}, signature: "", consent_at: null, contract_url: null, stamp_count: 5, stamp_code: "", coupon_on: false, coupon_idx: 0, coupon_code: "", photo_urls: [], paid_clicked: false, kit_address: "", kit_ok: false, starts_on: null });
+const emptyDraft = (): Draft => ({ step: 0, owner_name: "", biz_no: "", phone: "", email: "", pin_set: false, checks: {}, signature: "", consent_at: null, contract_url: null, stamp_steps: {}, stamp_code: "", stamp_note: "", coupon_on: false, coupon_code: "", coupon_benefit: "", coupon_cond: "", photo_urls: [], paid_clicked: false, kit_address: "", kit_ok: false, starts_on: null });
 
 export default function OnboardClient({ token }: { token: string }) {
   const sp = useSearchParams();
@@ -244,52 +248,131 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext }: StepProp
   const [types, setTypes] = useState<CouponType[]>([]);
   const [stampSaved, setStampSaved] = useState(false);
   const [couponSaved, setCouponSaved] = useState(false);
-  useEffect(() => { fetch(`/api/dashboard/coupon-types${rq}`).then((r) => (r.ok ? r.json() : [])).then((j) => { const arr = (Array.isArray(j) ? j : (j?.coupon_types ?? j?.results ?? [])) as CouponType[]; setTypes(arr); if (arr[0] && !d.stamp_code) patch({ stamp_code: arr[0].code, coupon_code: arr[0].code }); }).catch(() => null);
-    fetch(`/api/dashboard/stamp-rule${rq}`).then((r) => (r.ok ? r.json() : null)).then((j) => { const rule = j?.rule ?? j; if (rule?.active && rule?.config_json?.thresholds?.length) setStampSaved(true); }).catch(() => null);
+  useEffect(() => {
+    fetch(`/api/dashboard/coupon-types${rq}`).then((r) => (r.ok ? r.json() : [])).then((j) => {
+      const arr = (Array.isArray(j) ? j : (j?.coupon_types ?? j?.results ?? [])) as CouponType[];
+      setTypes(arr); if (arr[0] && !d.stamp_code) patch({ stamp_code: arr[0].code, coupon_code: arr[0].code });
+    }).catch(() => null);
+    fetch(`/api/dashboard/stamp-rule${rq}`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      const rule = j?.rule ?? j; if (rule?.active && rule?.config_json?.thresholds?.length) setStampSaved(true);
+    }).catch(() => null);
   }, [rq]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const steps = Object.keys(d.stamp_steps).map(Number).sort((a, b) => a - b);
+  const filled = steps.filter((n) => (d.stamp_steps[String(n)] ?? "").trim());
+  const toggle = (n: number) => {
+    const next = { ...d.stamp_steps }; const k = String(n);
+    if (k in next) delete next[k]; else next[k] = "";
+    patch({ stamp_steps: next });
+  };
   const saveStamp = () => run(async () => {
-    if (!d.stamp_code) throw new Error("스탬프 보상으로 줄 쿠폰 종류를 골라 주세요.");
-    await post(`/api/dashboard/stamp-rule${rq}`, { rule_type: "THRESHOLD", config_json: { thresholds: [{ stamps: d.stamp_count, coupon_type_code: d.stamp_code }], notes: "온보딩 등록" }, active: true }, "PATCH");
+    if (!filled.length) throw new Error("스탬프 칸을 고르고 보상을 적어 주세요.");
+    if (!d.stamp_code) throw new Error("보상으로 줄 쿠폰 종류를 골라 주세요.");
+    await post(`/api/dashboard/stamp-rule${rq}`, {
+      rule_type: "THRESHOLD",
+      config_json: {
+        // 칸마다 보상 문구가 다르므로 그대로 실어 보낸다. 쿠폰 종류는 앱이 발급할 실제 쿠폰이다.
+        thresholds: filled.map((n) => ({ stamps: n, coupon_type_code: d.stamp_code, reward_text: d.stamp_steps[String(n)].trim() })),
+        notes: [d.stamp_note.trim(), ...filled.map((n) => `${n}개: ${d.stamp_steps[String(n)].trim()}`)].filter(Boolean).join(" / "),
+      },
+      active: true,
+    }, "PATCH");
     setStampSaved(true);
   });
   const saveCoupon = () => run(async () => {
-    const p = meta.presets.coupon[d.coupon_idx];
-    await post(`/api/dashboard/coupon-benefits${rq}`, { coupon_type_code: d.coupon_code, title: p.title, subtitle: p.sub, notes: p.cond, sort_order: 0, active: true });
+    if (!d.coupon_benefit.trim()) throw new Error("쿠폰으로 드릴 혜택을 적어 주세요.");
+    await post(`/api/dashboard/coupon-benefits${rq}`, {
+      coupon_type_code: d.coupon_code, title: d.coupon_benefit.trim(),
+      subtitle: d.coupon_cond.trim(), notes: d.coupon_cond.trim(), sort_order: 0, active: true,
+    });
     setCouponSaved(true);
   });
+
   return (
     <section>
       <H title="혜택 등록" time="2분" />
+
+      {/* ① 스탬프 — 1~10 중 원하는 칸을 고르고, 칸마다 보상을 적는다 */}
       <div className="rounded-2xl border-2 border-navy bg-white p-4 mb-3">
         <p className="text-[14px] font-bold text-gray-900">① 스탬프 <span className="text-red-600 text-[12px] font-semibold ml-1">필수</span></p>
-        <p className="text-[12.5px] text-gray-600 mb-3">손님이 방문할 때마다 앱에서 스탬프를 찍고, 정한 개수가 되면 보상을 받습니다. 재방문을 만드는 앱의 본체라 꼭 필요합니다.</p>
-        <div className="flex flex-wrap gap-2 mb-3">{meta.presets.stamp.map((p) => (
-          <button key={p.count} type="button" disabled={stampSaved} onClick={() => patch({ stamp_count: p.count })} className={`px-3 py-2 rounded-xl border text-[13px] ${d.stamp_count === p.count ? "border-navy bg-navy text-white" : "border-gray-200 bg-white text-gray-700"}`}>{p.count}개 적립 시 보상</button>
-        ))}</div>
-        <Field label="보상으로 줄 쿠폰" required hint="목록은 저희가 미리 만들어 둔 쿠폰 종류입니다. 원하는 게 없으면 담당자에게 말씀해 주세요">
-          <select value={d.stamp_code} disabled={stampSaved} onChange={(e) => patch({ stamp_code: e.target.value })} className="w-full h-9 px-3 text-[13px] rounded-[10px] bg-black/[0.05] border border-transparent focus:bg-white focus:border-navy/40 focus:outline-none">
-            <option value="">— 선택 —</option>{types.map((t) => <option key={t.code} value={t.code}>{t.title}</option>)}
-          </select>
-        </Field>
-        {stampSaved ? <p className="text-[13px] text-green-700 font-semibold mt-2">✓ 스탬프 규칙이 등록되었습니다.</p> : <Button variant="primary" className="mt-2" disabled={busy || !d.stamp_code} onClick={saveStamp}>스탬프 등록</Button>}
+        <p className="text-[12.5px] text-gray-600 mb-3">손님이 방문할 때마다 스탬프를 찍습니다. <b>보상을 줄 칸을 고르고</b>, 그 칸에 무엇을 드릴지 적어 주세요. 여러 칸을 고르셔도 됩니다.</p>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+            const on = String(n) in d.stamp_steps;
+            return (
+              <button key={n} type="button" disabled={stampSaved} onClick={() => toggle(n)} aria-pressed={on}
+                className={`w-10 h-10 rounded-xl border text-[13.5px] font-bold transition-colors ${on ? "border-navy bg-navy text-white" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
+                {n}
+              </button>
+            );
+          })}
+        </div>
+        {steps.length === 0 && <p className="text-[12px] text-amber-700 mb-2">몇 개를 모으면 보상을 드릴지 위에서 골라 주세요. (예: 5개, 10개)</p>}
+        <div className="space-y-2">
+          {steps.map((n) => (
+            <div key={n} className="flex items-center gap-2">
+              <span className="w-[74px] shrink-0 text-[12.5px] font-semibold text-navy">{n}개 모으면</span>
+              <Input autoComplete="off" disabled={stampSaved} value={d.stamp_steps[String(n)] ?? ""} placeholder={meta.examples.stamp[steps.indexOf(n) % meta.examples.stamp.length]}
+                onChange={(e) => patch({ stamp_steps: { ...d.stamp_steps, [String(n)]: e.target.value } })} />
+            </div>
+          ))}
+        </div>
+        {steps.length > 0 && <p className="text-[11.5px] text-gray-400 mt-1.5">예시 · {meta.examples.stamp.join(" · ")}</p>}
+        <div className="mt-3">
+          <Field label="사용 조건 · 요청 사항" hint="예: 음료 1잔당 1회 · 17~19시 제외 · 포장 제외. 없으면 비워두세요">
+            <Textarea rows={2} disabled={stampSaved} value={d.stamp_note} onChange={(e) => patch({ stamp_note: e.target.value })} placeholder="예: 1인 1회 · 배달 제외 · 다른 쿠폰과 중복 불가" />
+          </Field>
+        </div>
+        <div className="mt-2">
+          <Field label="보상으로 발급할 쿠폰 종류" required hint="저희가 미리 만들어 둔 쿠폰입니다. 원하는 게 없으면 담당자에게 말씀해 주세요">
+            <select value={d.stamp_code} disabled={stampSaved} onChange={(e) => patch({ stamp_code: e.target.value })} className="w-full h-9 px-3 text-[13px] rounded-[10px] bg-black/[0.05] border border-transparent focus:bg-white focus:border-navy/40 focus:outline-none">
+              <option value="">— 선택 —</option>{types.map((t) => <option key={t.code} value={t.code}>{t.title}</option>)}
+            </select>
+          </Field>
+        </div>
+        {stampSaved ? <p className="text-[13px] text-green-700 font-semibold mt-2">✓ 스탬프를 등록했습니다.</p>
+          : <Button variant="primary" className="mt-2" disabled={busy || !filled.length || !d.stamp_code} onClick={saveStamp}>스탬프 등록</Button>}
       </div>
+
+      {/* ② 쿠폰 — 예시만 보여주고 직접 적는다 */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4 mb-3">
         <p className="text-[14px] font-bold text-gray-900">② 쿠폰 <span className="text-gray-400 text-[12px] font-semibold ml-1">선택</span></p>
         <p className="text-[12.5px] text-gray-600 mb-3">처음 오는 손님을 부르는 1회성 혜택입니다. 지금 안 하셔도 됩니다.</p>
-        <div className="grid gap-2 mb-2">{meta.presets.coupon.map((p, i) => (
-          <label key={i} className={`flex gap-2 items-start rounded-xl border p-3 cursor-pointer ${d.coupon_idx === i && d.coupon_on ? "border-navy bg-navy/[0.03]" : "border-gray-200"}`}>
-            <input type="radio" name="cp" className="mt-1 accent-[#050072]" checked={d.coupon_on && d.coupon_idx === i} disabled={couponSaved} onChange={() => patch({ coupon_on: true, coupon_idx: i })} />
-            <span className="text-[13px] text-gray-800"><b>{p.title}</b><br /><span className="text-gray-500">{p.sub} · {p.cond}</span></span>
-          </label>
-        ))}</div>
-        {d.coupon_on && !couponSaved && <div className="flex items-end gap-2"><Field label="쿠폰 종류"><select value={d.coupon_code} onChange={(e) => patch({ coupon_code: e.target.value })} className="h-9 px-3 text-[13px] rounded-[10px] bg-black/[0.05] border border-transparent"><option value="">— 선택 —</option>{types.map((t) => <option key={t.code} value={t.code}>{t.title}</option>)}</select></Field><Button disabled={busy || !d.coupon_code} onClick={saveCoupon}>쿠폰 등록</Button></div>}
-        {couponSaved && <p className="text-[13px] text-green-700 font-semibold">✓ 쿠폰이 등록되었습니다.</p>}
+        <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 mb-3">
+          <p className="text-[11.5px] font-semibold text-gray-600 mb-1.5">다른 매장은 이렇게 적었습니다</p>
+          <ul className="space-y-0.5">
+            {meta.examples.coupon.map((e, i) => (
+              <li key={i} className="text-[12px] text-gray-600"><b className="text-gray-800">{e.benefit}</b> <span className="text-gray-400">·</span> {e.cond}</li>
+            ))}
+          </ul>
+        </div>
+        {!couponSaved ? (
+          <div className="space-y-2">
+            <Field label="무엇을 드릴지" hint="예: 음료 1캔 · 10% 할인 · 사이드 메뉴 택 1">
+              <Input autoComplete="off" value={d.coupon_benefit} onChange={(e) => patch({ coupon_benefit: e.target.value, coupon_on: true })} placeholder="음료 1캔" />
+            </Field>
+            <Field label="어떤 조건에" hint="금액·인원·시간대·중복 사용 등. 비워두면 조건 없이 누구나 쓸 수 있습니다">
+              <Textarea rows={2} value={d.coupon_cond} onChange={(e) => patch({ coupon_cond: e.target.value })} placeholder="10,000원 이상 주문 시 · 테이블당 1개 · 배달 제외" />
+            </Field>
+            <div className="flex items-end gap-2">
+              <Field label="쿠폰 종류">
+                <select value={d.coupon_code} onChange={(e) => patch({ coupon_code: e.target.value })} className="h-9 px-3 text-[13px] rounded-[10px] bg-black/[0.05] border border-transparent">
+                  <option value="">— 선택 —</option>{types.map((t) => <option key={t.code} value={t.code}>{t.title}</option>)}
+                </select>
+              </Field>
+              <Button disabled={busy || !d.coupon_benefit.trim() || !d.coupon_code} onClick={saveCoupon}>쿠폰 등록</Button>
+            </div>
+          </div>
+        ) : <p className="text-[13px] text-green-700 font-semibold">✓ 쿠폰을 등록했습니다.</p>}
       </div>
+
+      {/* ③ 사진 */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <p className="text-[14px] font-bold text-gray-900 mb-1">③ 대표 사진</p>
         <p className="text-[12.5px] text-gray-600 mb-3">앱에 가장 먼저 보이는 사진입니다. 메뉴 사진 한 장이면 충분합니다. 나중에 대시보드에서 더 올릴 수 있습니다.</p>
         <ImageUploader initialUrls={d.photo_urls} uploadType="restaurant" maxImages={3} onSave={async (urls: string[]) => { patch({ photo_urls: urls }); await fetch(`/api/dashboard/restaurant${rq}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ s3_image_urls: urls }) }).catch(() => null); }} />
       </div>
+
       <Nav onBack={onBack} onNext={onNext} nextDisabled={!stampSaved} nextHint={stampSaved ? undefined : "스탬프를 등록해야 다음으로 갈 수 있습니다"} />
     </section>
   );
