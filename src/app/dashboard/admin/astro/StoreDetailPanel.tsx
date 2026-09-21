@@ -327,7 +327,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           <Tri label="학기 중" value={o.semester_active} onChange={(v) => onPatch(id, { semester_active: v })} />
           <Tri label="방학 중" value={o.vacation_active} onChange={(v) => onPatch(id, { vacation_active: v })} />
           <label className="flex items-center justify-between gap-3 py-2 cursor-pointer">
-            <span className="text-[13px] text-gray-700">테스트 매장<SourceBadge src="ops" /><span className="block text-[11.5px] text-gray-400">집계에서 빼고, 온보딩 링크를 제한 없이 발급합니다</span></span>
+            <span className="text-[13px] text-gray-700">테스트 매장<SourceBadge src="ops" /><span className="block text-[11.5px] text-gray-400">집계·청구·캘린더에서 빼고, 온보딩 링크를 제한 없이 발급합니다. 목록에서는 <b>테스트</b> 범위로 옮겨집니다</span></span>
             <input type="checkbox" checked={o.is_test} onChange={(e) => onPatch(id, { is_test: e.target.checked })} className="w-[18px] h-[18px] accent-[#050072]" />
           </label>
         </div>

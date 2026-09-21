@@ -19,7 +19,7 @@ import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
  * 설계 원칙은 그대로 — 자동 판정하지 않는다. 학기/방학도 입금도 사람이 확인해서 넣는다(2026-08-12 합의).
  */
 
-type Filter = "all" | "paid" | "unpaid" | "kit" | "season" | "ended";
+type Filter = "all" | "paid" | "unpaid" | "kit" | "season" | "ended" | "test";
 type SortKey = "name" | "tier" | "billing" | "updated";
 
 const PLAN_TONE: Record<string, ChipTone> = { BOOST: "amber", CONTENT: "navy", FREE: "gray" };
@@ -108,6 +108,14 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
 
   const affiliateAll = useMemo(() => rows.filter((r) => r.is_affiliate && !r.ops?.is_test), [rows]);
   /**
+   * 테스트 매장 — 숫자·청구·캘린더에서는 빼지만 **목록에서 사라지게 두면 안 된다.**
+   * 0921 에 실제로 밟았다: 체크를 켠 순간 매장이 목록에서 없어져 토글을 되돌릴 수도,
+   * 온보딩 링크를 낼 수도 없었다. 켜면 되돌릴 수 없는 스위치는 스위치가 아니다.
+   * 그래서 별도 칩으로 따로 세운다 — 평소엔 안 보이고, 찾을 때는 한 번에 찾힌다.
+   */
+  const testAll = useMemo(() => rows.filter((r) => Boolean(r.ops?.is_test)), [rows]);
+  const test = useMemo(() => testAll.filter((r) => campus === "all" || campusOf(r) === campus), [testAll, campus]);
+  /**
    * 계약 종료 — 제휴를 끈 매장. 지우지 않고 따로 세워 둔다(재계약할 수 있다).
    *
    * **비제휴라고 다 계약 종료가 아니다.** 앱 DB에는 제휴한 적 없는 일반 식당이 150곳 넘게 있다.
@@ -136,8 +144,21 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
     season: paid.filter((r) => !r.ops || (r.ops.semester_active === null && r.ops.vacation_active === null)),
   }), [paid, pay]);
 
+  /**
+   * 빈 목록의 이유를 정확히 말한다. "막힌 곳이 없다"는 검색어 때문에 비었을 때는 거짓말이다 —
+   * 0921 에 테스트 매장을 찾다가 이 문장을 봤다. 어디에 있는지까지 짚어 준다.
+   */
+  const emptyWhy = useMemo(() => {
+    const q = search.trim();
+    if (!q) return null;
+    const hit = rows.find((r) => r.name.includes(q) || String(r.restaurant_id) === q);
+    if (!hit) return `'${q}'에 맞는 매장이 없습니다.`;
+    const where = hit.ops?.is_test ? "테스트" : !hit.is_affiliate ? "계약 종료" : campusOf(hit) !== campus && campus !== "all" ? campusOf(hit) : "전체";
+    return `'${q}'는 있지만 이 범위에 없습니다 — ${where}에서 찾아보세요.`;
+  }, [search, rows, campus]);
+
   const visible = useMemo(() => {
-    let list: StoreRow[] = filter === "all" ? affiliate : filter === "paid" ? paid : filter === "ended" ? ended : stuck[filter as "unpaid" | "kit" | "season"];
+    let list: StoreRow[] = filter === "all" ? affiliate : filter === "paid" ? paid : filter === "ended" ? ended : filter === "test" ? test : stuck[filter as "unpaid" | "kit" | "season"];
     const q = search.trim();
     if (q) list = list.filter((r) => r.name.includes(q) || String(r.restaurant_id) === q);
     const dir = sort.dir === "asc" ? 1 : -1;
@@ -188,9 +209,9 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
       </div>
 
       <Card flush title={`매장 ${visible.length}곳`}
-        actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : filter === "ended" ? "ended" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }, ...(endedAll.length ? [{ key: "ended", label: "계약 종료", count: ended.length }] : [])]} />}>
+        actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : filter === "ended" ? "ended" : filter === "test" ? "test" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }, ...(endedAll.length ? [{ key: "ended", label: "계약 종료", count: ended.length }] : []), ...(testAll.length ? [{ key: "test", label: "테스트", count: test.length }] : [])]} />}>
         {loading ? <Skeleton rows={8} cols={6} /> : visible.length === 0 ? (
-          <Empty title={affiliateAll.length === 0 ? "매장을 불러오지 못했습니다" : "이 조건에 해당하는 매장이 없습니다"} detail={affiliateAll.length === 0 ? "매장 목록은 실데이터(/api/dashboard/restaurants)에서 옵니다. 백엔드 연결을 확인하세요." : campus !== "all" && countIn(campus) === 0 ? `${campus} 매장은 아직 없습니다. 파트너 후보에서 계약이 되면 여기로 옵니다.` : "막힌 곳이 없다는 뜻입니다. 다른 지표를 눌러 보세요."} action={campus !== "all" && countIn(campus) === 0 ? <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button> : undefined} />
+          <Empty title={affiliateAll.length === 0 ? "매장을 불러오지 못했습니다" : "이 조건에 해당하는 매장이 없습니다"} detail={affiliateAll.length === 0 ? "매장 목록은 실데이터(/api/dashboard/restaurants)에서 옵니다. 백엔드 연결을 확인하세요." : campus !== "all" && countIn(campus) === 0 ? `${campus} 매장은 아직 없습니다. 파트너 후보에서 계약이 되면 여기로 옵니다.` : emptyWhy ?? (filter === "test" ? "테스트 매장이 없습니다. 매장 상세의 '테스트 매장'을 켜면 여기로 옵니다." : "막힌 곳이 없다는 뜻입니다. 다른 지표를 눌러 보세요.")} action={campus !== "all" && countIn(campus) === 0 ? <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button> : undefined} />
         ) : (
           <Table minWidth="52rem">
             <thead>
@@ -225,7 +246,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                       </span>
                     </Td>
                     {/* 운영 구분 — 계약이 끝난 곳은 학기/방학이 의미가 없다. 종료를 먼저 말한다 (민열님 0914). */}
-                    <Td>{!r.is_affiliate ? <Chip tone="red" dot>계약 종료</Chip> : isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
+                    <Td>{r.ops?.is_test ? <Chip tone="gray">테스트</Chip> : !r.is_affiliate ? <Chip tone="red" dot>계약 종료</Chip> : isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
                     <Td>{p.key === "free" ? <span className="text-gray-400">무료</span> : <Chip tone={p.tone} dot={p.stuck}>{p.label}</Chip>}</Td>
                     <Td align="center">{o?.kit_delivered ? <span className="text-emerald-700 font-semibold">전달</span> : <span className="text-gray-300">-</span>}</Td>
                     <Td align="right" className="text-gray-500 text-[12px]">{agoLabel(o?.updated_at)}</Td>
