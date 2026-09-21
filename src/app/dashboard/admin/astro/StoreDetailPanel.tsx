@@ -31,18 +31,18 @@ import SourceBadge, { L, Mismatch } from "./SourceBadge";
  * 매장 한 장 — 오른쪽 슬라이드 패널.
  *
  * Console 캠페인 상세를 따랐다: 상단 단계 표시줄 · 블록 · 하단 고정 액션.
- * **시트 '계약 세부사항' 탭의 열이 전부 여기서 편집된다** (민열님 0910: "시트를 Astro 로 대체하는 게 목적").
+ * **매장에 관한 모든 편집이 여기서 끝난다.** 0921 부터 팀 시트는 쓰지 않는다 — 세틀라이트·슬랙·카톡 셋만.
  *
  * 저장은 두 갈래다 (민열님 0915).
  *  - **글자 칸·드롭다운**: 적어 두기만 하고, 아래 '변동사항 저장'을 눌러야 한 번에 나간다.
  *    칸에서 나갈 때마다 저장하던 걸 바꿨다 — 여러 칸을 이어서 고치는 동안 무엇이 저장됐는지
  *    화면이 말해 주지 못했고, 사람은 저장됐는지 아닌지를 알 수 없었다.
- *  - **버튼·토글·체크**(입금/계산서 상태, 학기·방학, 비치물, 캠퍼스, 플랜): 누른 즉시 반영.
+ *  - **버튼·토글·체크**(입금/계산서 상태, 학기·방학, 키트, 캠퍼스, 플랜): 누른 즉시 반영.
  *    한 번의 동작이 곧 결정이라 모아 둘 게 없다.
  * 플랜(FREE/BOOST/CONTENT)만 백엔드 소유라 식당 관리에서 바꾼다.
  */
 
-const STEPS = ["계약", "계산서 발송", "입금 확인", "비치물 전달"];
+const STEPS = ["계약", "계산서 발송", "입금 확인", "키트 발송"];
 
 function stepOf(o: StoreOps): number {
   if (o.kit_delivered) return 3;
@@ -186,7 +186,6 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           {/* 월납 + 이번 달 청구가 있으면 계산서 건에 입금을 찍는다 — 매장 현황·입금 현황·런처가 전부 그 건을 본다 */}
           {paid && invoice && !invoice.paid_at && onMarkPaid && <Button variant="primary" icon={<IconCheck />} onClick={() => onMarkPaid(invoice)}>{invoice.period.slice(5).replace(/^0/, "")}월 입금 확인</Button>}
           {paid && (!invoice || o.pay_cycle === "LUMP") && o.billing !== "PAID" && <Button variant="primary" icon={<IconCheck />} onClick={() => onPatch(id, { billing: "PAID", invoice: "ISSUED" })}>{o.pay_cycle === "LUMP" ? "일시납 입금 확인" : "입금 확인 처리"}</Button>}
-          {!o.kit_delivered && <Button onClick={() => onPatch(id, { kit_delivered: true })}>비치물 전달 완료</Button>}
           {/* 계약 전에도 보여야 한다 — 온보딩이 곧 계약이다 */}
           <OnboardLink rid={id} name={row.name} campus={o.campus ?? "경북대"} tier={row.tier} fee={o.monthly_fee} />
           {/* 적어 둔 게 있을 때만 켜진다 — 꺼져 있으면 보낼 게 없다는 뜻이다 (민열님 0915) */}
@@ -204,7 +203,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         <span className="font-semibold text-gray-700">이 값 어디에 저장되나요?</span>
         <span><SourceBadge src="app" /> 고치면 <b>손님 화면·적립</b>에 바로 반영</span>
         <span><SourceBadge src="ops" /> 우리끼리 보는 <b>영업 기록</b></span>
-        <span><SourceBadge src="sheet" /> 시트를 비추는 <b>메모</b> — 앱은 안 바뀜</span>
+        <span><SourceBadge src="sheet" /> 예전 시트에서 옮겨 온 <b>메모</b> — 앱은 안 바뀜</span>
       </div>
 
       <PanelSection title="이행">
@@ -246,6 +245,17 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
              날짜가 없으면 나중에 "언제 끝났더라"를 아무도 모른다. */
           onEnd={() => onPatch(id, { contract_ends_on: o.contract_ends_on ?? todayLocal() })}
         />
+      </PanelSection>
+
+      <PanelSection title="웰컴 키트">
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5 cursor-pointer">
+          <span className="text-[13px] text-gray-700">발송 완료<SourceBadge src="ops" /></span>
+          <input type="checkbox" checked={o.kit_delivered} onChange={(e) => onPatch(id, { kit_delivered: e.target.checked })} className="w-[18px] h-[18px] accent-[#050072]" />
+        </label>
+        <div className="mt-3">
+          <Cell label={<L src="ops">구성 메모</L>} value={o.kit_note} onCommit={set("kit_note")} placeholder="포스터 1 · 스티커 2 · 손편지" />
+        </div>
+        <p className="text-[12px] text-gray-500 mt-2">인쇄물 파일 링크는 바로 위 <span className="font-semibold text-gray-700">앱에 실제로 나가는 것 → 포스터·QR</span> 에 있습니다.</p>
       </PanelSection>
 
       <PanelSection title="계약 — 우리 영업 기록">
@@ -291,8 +301,8 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
               <option value="">-</option><option value="MONTHLY">월납</option><option value="LUMP">일시납</option>
             </Select>
           </Field>
-          <Cell label={<L src="ops">제1차 이용기간 시작</L>} value={o.contract_started_on} onCommit={set("contract_started_on")} placeholder="2026-09-01" />
-          <Cell label={<L src="ops">전체 계약기간 끝</L>} value={o.contract_ends_on} onCommit={set("contract_ends_on")} placeholder="2027-02-28" />
+          <Cell label={<L src="ops">개시일</L>} hint="이 날부터 최소 이용기간 1개월" value={o.contract_started_on} onCommit={set("contract_started_on")} placeholder="2026-10-01" />
+          <Cell label={<L src="ops">종료일</L>} hint="해지했을 때만 적습니다. 계약은 기간의 정함이 없습니다" value={o.contract_ends_on} onCommit={set("contract_ends_on")} placeholder="해지 시에만" />
           <Cell label={<L src="ops">담당자</L>} value={o.sheet_owner} onCommit={set("sheet_owner")} placeholder="준영" />
           <Cell label={<L src="ops">계약서 원본 보관</L>} value={o.contract_original} onCommit={set("contract_original")} placeholder="예: 사무실 파일함 / 드라이브" />
         </div>
@@ -309,24 +319,17 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           <Cell label={<L src="ops">스탬프 혜택</L>} value={o.stamp_reward} onCommit={set("stamp_reward")} rows={2} placeholder="예: 5개 타코야끼 · 10개 만원 할인" />
           <Cell label={<L src="ops">별도 견적 항목</L>} value={o.extra_quote} onCommit={set("extra_quote")} placeholder="예: 릴스 8만" />
         </div>
-        <p className="text-[12px] text-gray-500 mt-2">앱에 실제로 나가는 쿠폰은 <span className="font-semibold text-gray-700">식당 관리 → 혜택</span>에 등록해야 합니다. 여기는 계약서에 적힌 조건입니다. 둘이 다르면 정합성 점검이 잡습니다.</p>
+        <p className="text-[12px] text-gray-500 mt-2">앱에 실제로 나가는 쿠폰은 <span className="font-semibold text-gray-700">점주 대시보드 → 쿠폰·스탬프</span>에서 등록합니다. 여기는 계약서에 적힌 조건입니다. 둘이 다르면 정합성 점검이 잡습니다.</p>
       </PanelSection>
 
-      <PanelSection title="운영">
+      <PanelSection title="플랜 이용">
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 px-3">
-          <Tri label="학기 중 플랜 이용" value={o.semester_active} onChange={(v) => onPatch(id, { semester_active: v })} />
-          <Tri label="방학 중 플랜 이용" value={o.vacation_active} onChange={(v) => onPatch(id, { vacation_active: v })} />
-          <label className="flex items-center justify-between gap-3 py-2 cursor-pointer">
-            <span className="text-[13px] text-gray-700">포스터·QR 스티커 전달</span>
-            <input type="checkbox" checked={o.kit_delivered} onChange={(e) => onPatch(id, { kit_delivered: e.target.checked })} className="w-[18px] h-[18px] accent-[#050072]" />
-          </label>
+          <Tri label="학기 중" value={o.semester_active} onChange={(v) => onPatch(id, { semester_active: v })} />
+          <Tri label="방학 중" value={o.vacation_active} onChange={(v) => onPatch(id, { vacation_active: v })} />
         </div>
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          <Cell label={<L src="ops">홍보물 수령 (포스터/QR/배너)</L>} value={o.kit_note} onCommit={set("kit_note")} placeholder="2장/10장" />
-          <div>
-              <Cell label={<L src="sheet">PIN 번호</L>} hint="시트에 적어 둔 번호입니다. 실제로 동작하는 값은 아래 '앱에 실제로 나가는 것 → 매장 PIN' 입니다" value={o.pin} onCommit={set("pin")} placeholder="1234" />
-              <Mismatch memo={o.pin} real={appPin} realLabel="매장 PIN" onUseReal={() => stage("pin")(appPin)} />
-            </div>
+        <div className="mt-3">
+          <Cell label={<L src="sheet">PIN 번호</L>} hint="예전 시트에서 옮겨 온 번호입니다. 실제로 동작하는 값은 위 '앱에 실제로 나가는 것 → 매장 PIN' 입니다" value={o.pin} onCommit={set("pin")} placeholder="1234" />
+          <Mismatch memo={o.pin} real={appPin} realLabel="매장 PIN" onUseReal={() => stage("pin")(appPin)} />
         </div>
       </PanelSection>
 
@@ -334,7 +337,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       {(o.contract_started_on || o.contract_signed_on) && (
         <PanelSection title="계약 완료 · 보낼 것">
           <p className="text-[12px] text-gray-600 mb-2">
-            운영 시작 전 점주 확인용입니다. 혜택·플랜·이용료는 아래 칸에 적힌 값이 그대로 문안에 들어가고, 빈 칸은 문장이 빠집니다.
+            운영 시작 전 점주 확인용입니다. 혜택·플랜·이용료는 위 칸에 적힌 값이 그대로 문안에 들어가고, 빈 칸은 문장이 빠집니다.
           </p>
           <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <Button size="sm" variant="primary" icon={<IconMessage2 />} onClick={() => setOnboarding(true)}>안내 문자 문안</Button>
