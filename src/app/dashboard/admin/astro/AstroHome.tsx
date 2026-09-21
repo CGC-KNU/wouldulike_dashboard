@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { IconArrowRight, IconBrandSlack, IconExternalLink } from "@tabler/icons-react";
 import { LEAD_OPEN_STAGES, isPaidTier, type Activity, type Lead, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
 import { BLOCKER_KIND_LABEL, buildBlockers, monthlyFromPlan, type BlockerKind } from "@/lib/draft/blockers";
-import { SALES_SHEET, TOOLS, slackUrl } from "@/lib/satellite";
+import { TOOLS, slackUrl } from "@/lib/satellite";
 import { Button, Card, Chip, Empty, Kpi, PageHeader, Skeleton, agoLabel, daysSince, focusRing, todayLocal, type ChipTone, periodLocal } from "../_shared/ui";
 import CampusMark from "./CampusMark";
 
@@ -75,9 +75,6 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         description="매출을 앞으로 움직이는 일부터. 처리하면 목록에서 사라집니다."
         actions={
           <>
-            <a href={SALES_SHEET.url(0)} target="_blank" rel="noreferrer">
-              <Button icon={<IconExternalLink />}>팀 시트</Button>
-            </a>
             <a href={slackUrl(astro)} target="_blank" rel="noreferrer">
               <Button icon={<IconBrandSlack />}>#{astro.slack.channel}</Button>
             </a>
@@ -170,7 +167,7 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
           {loading ? (
             <Skeleton rows={7} cols={2} />
           ) : active.length === 0 ? (
-            <Empty title="아직 후보가 없습니다" detail="파트너 후보 화면에서 '시트에서 불러오기'를 누르면 팀 시트의 후보가 들어옵니다." action={<Button variant="primary" onClick={() => onGo("astro-leads")}>파트너 후보로</Button>} />
+            <Empty title="아직 후보가 없습니다" detail="파트너 후보 화면에서 후보를 추가하거나 CSV 로 올리면 여기에 모입니다." action={<Button variant="primary" onClick={() => onGo("astro-leads")}>파트너 후보로</Button>} />
           ) : (
             <ol className="space-y-2">
               {byStage.map((b) => (

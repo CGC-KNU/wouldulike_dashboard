@@ -3,41 +3,19 @@ import { appendDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { seedLeads } from "@/lib/draft/seed";
 import { LEAD_STAGES, type Lead, type LeadStage } from "@/lib/draft/types";
 import { requireTool } from "@/lib/draft/guard";
-import { fetchTab, normName, rowToLead } from "@/lib/draft/sheet";
-import { SALES_SHEET } from "@/lib/satellite";
 import { notifyAstro } from "@/lib/slack";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
 /**
  * 파트너 후보(신규 컨택) 목록·등록.
  *
- * 0913 민열님: "파트너 후보는 원래 시트 기준으로 불러와줘."
- * 저장소가 비어 있으면 **팀 세일즈 시트의 '신규'·'후보' 탭을 읽어 그대로 목록을 만든다**(`sheetLeads`).
- * 사람이 툴에서 고친 값이 이미 있으면 시트를 읽지 않는다 — 툴이 원본인 칸을 시트 빈 칸이 덮으면 안 되기 때문이다.
- * 시트를 못 읽으면 빈 목록 + `sheet_error` 로 돌려준다. 빈 것과 '못 읽음'을 화면이 구분하게.
+ * 원본은 백엔드 한 곳이다. 0921 민열님이 팀 시트를 걷어냈다 — 이제 세틀라이트·슬랙·카톡 셋만 쓴다.
+ * 시트에서 씨앗을 붓던 길은 지웠다. 두 곳에서 읽으면 반드시 갈라지고, 어느 쪽이 맞는지 아무도 모르게 된다.
+ * 백엔드를 못 읽으면 임시 저장소를 보여 주되 **그렇다고 화면에 적는다** — 빈 것과 못 읽은 것은 다르다.
  */
 
 const KEY = "astro_leads";
 const VALID_STAGE = new Set<string>([...LEAD_STAGES, "거절"]);
-
-/** 팀 시트 '신규' + '후보(영남대)' + '후보계명(계명대)' → 후보 목록. 같은 매장은 뒤 탭이 이긴다. */
-async function sheetLeads(): Promise<{ leads: Lead[]; error: boolean }> {
-  const now = new Date().toISOString();
-  const [nw, cand, kmu] = await Promise.all([
-    fetchTab(SALES_SHEET.tabs.신규),
-    fetchTab(SALES_SHEET.tabs.후보),
-    fetchTab(SALES_SHEET.tabs.후보계명),
-  ]);
-  if (nw === null && cand === null && kmu === null) return { leads: [], error: true };
-  const byName = new Map<string, Lead>();
-  for (const [rows, src] of [[nw ?? [], "sheet:신규"], [cand ?? [], "sheet:후보"], [kmu ?? [], "sheet:후보계명"]] as const) {
-    for (const r of rows) {
-      const lead = rowToLead(r, src as Lead["source"], now);
-      if (lead) byName.set(normName(lead.name), lead);
-    }
-  }
-  return { leads: [...byName.values()], error: false };
-}
 
 export async function GET() {
   const deny = await requireTool("restaurants");
@@ -48,18 +26,6 @@ export async function GET() {
   if (r.handled) {
     if (!r.ok) return NextResponse.json(r.data ?? { detail: "후보를 읽지 못했습니다." }, { status: r.status });
     const leads = r.data?.leads ?? [];
-    // 처음 올린 직후라 비어 있으면 시트 값을 한 번 밀어 넣는다 (그 뒤로는 툴이 원본).
-    if (leads.length === 0) {
-      const { leads: fromSheet, error } = await sheetLeads();
-      if (fromSheet.length > 0) {
-        const push = await remoteSend<{ created: number }>("POST", "/api/astro/leads/bulk/", { leads: fromSheet });
-        if (push.ok) {
-          const again = await remoteGet<{ leads: Lead[] }>("/api/astro/leads/");
-          if (again.ok) return NextResponse.json({ leads: again.data?.leads ?? [], draft: false, source: "backend_seeded" });
-        }
-      }
-      if (error) return NextResponse.json({ leads: [], draft: false, source: "backend", sheet_note: "저장소는 비어 있고 팀 시트도 읽지 못했습니다 — 시트 공개 설정을 확인하세요." });
-    }
     return NextResponse.json({ leads, draft: false, source: "backend" });
   }
 
@@ -67,18 +33,11 @@ export async function GET() {
     ? "백엔드를 읽지 못해 임시 저장소를 보여 주고 있습니다. 여기서 고친 값은 오래 남지 않습니다."
     : undefined;
   const stored = readDraft<Lead[]>(KEY, seedLeads);
-  if (stored.length > 0) return NextResponse.json({ leads: stored, draft: true, source: "store", sheet_note: backendNote });
-
-  // 비어 있으면 시트가 원본이다
-  const { leads, error } = await sheetLeads();
-  if (leads.length > 0) {
-    try { writeDraft(KEY, leads); } catch { /* 읽기 전용 저장소면 이번 응답에만 쓴다 */ }
-  }
   return NextResponse.json({
-    leads,
+    leads: stored,
     draft: true,
-    source: error ? "sheet_error" : "sheet",
-    sheet_note: error ? "팀 시트를 읽지 못했습니다. 비어 있는 것이 아니라 못 읽은 것입니다 — 시트 공개 설정을 확인하세요." : undefined,
+    source: "store",
+    sheet_note: backendNote ?? "백엔드를 읽지 못했습니다. 후보가 없는 것이 아니라 못 읽은 것입니다.",
   });
 }
 
