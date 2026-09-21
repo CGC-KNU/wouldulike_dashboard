@@ -25,7 +25,7 @@ import { Button, Chip, Field, Input, Notice, Skeleton, Textarea } from "../_shar
 
 interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null; promotion_text?: string | null }
 
-export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: { id: number; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void> }) {
+export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onAppPin }: { id: number; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void>; /** 앱이 쓰는 실제 PIN 을 부모에 알린다 — 메모 칸과 대조해 불일치를 띄운다 */ onAppPin?: (pin: string | null) => void }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [promo, setPromo] = useState<{ poster_url: string; qr_url: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +51,7 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
       setDetail((d as Detail) ?? {});
       setPin(d?.pin != null ? String(d.pin) : "");
       setLoadedPin(d?.pin != null ? String(d.pin) : null);
+      onAppPin?.(d?.pin != null ? String(d.pin) : null);
       setPromotionText(d?.promotion_text ?? "");
       setPromotionTextSaved(d?.promotion_text ?? "");
       setPromo({ poster_url: p?.poster_url ?? "", qr_url: p?.qr_url ?? "" });
@@ -78,7 +79,7 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
       const res = await fetch(`/api/dashboard/auth/change-pin?rid=${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = (await res.json().catch(() => ({}))) as { detail?: string; success?: boolean };
       if (!res.ok || d.success === false) { setMsg({ tone: "red", text: d.detail ?? `저장하지 못했습니다 (${res.status}).` }); return; }
-      setLoadedPin(next);
+      setLoadedPin(next); onAppPin?.(next);
       setMsg({ tone: "blue", text: "매장 PIN 을 저장했습니다. 손님 적립·쿠폰 사용에도 이 번호가 쓰입니다." });
       onChanged?.();
     } finally { setBusy(false); }
@@ -247,7 +248,7 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd }: {
       </div>
 
       <p className="text-[11px] text-gray-500 leading-relaxed">
-        이 블록의 값은 <strong>식당 관리와 같은 매장 레코드</strong>에 저장됩니다. 계약·입금 같은 영업 기록은 아래 블록(Astro 운영 필드)에 따로 남습니다.
+        여기 값은 <strong>앱이 실제로 쓰는 값</strong>입니다. 고치면 손님 화면·적립에 바로 반영됩니다. 계약·입금 같은 영업 기록은 위 블록에 따로 남습니다.
       </p>
     </div>
   );

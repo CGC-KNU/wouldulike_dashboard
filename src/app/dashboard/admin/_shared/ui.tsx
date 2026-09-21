@@ -98,7 +98,8 @@ export function Field({
   required,
   children,
 }: {
-  label: string;
+  /** 문자열 외에 배지 같은 노드도 받는다 — 값의 원본(앱/영업기록/메모)을 라벨 옆에 붙인다 */
+  label: ReactNode;
   hint?: string;
   error?: string;
   required?: boolean;

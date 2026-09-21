@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { IconCheck, IconExternalLink, IconFiles, IconCash, IconMessage2, IconDeviceFloppy } from "@tabler/icons-react";
 import {
   BILLING_LABEL,
@@ -25,6 +25,7 @@ import StoreAppSection from "./StoreAppSection";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 import MessageComposer from "./MessageComposer";
 import OnboardLink from "./OnboardLink";
+import SourceBadge, { L, Mismatch } from "./SourceBadge";
 
 /**
  * 매장 한 장 — 오른쪽 슬라이드 패널.
@@ -51,7 +52,7 @@ function stepOf(o: StoreOps): number {
 }
 
 /** blur 때 한 번만 PATCH 하는 텍스트 칸. 타이핑마다 서버를 부르지 않는다. */
-function Cell({ label, value, onCommit, placeholder, hint, type, rows }: { label: string; value: string | number | null; onCommit: (v: string | null) => void; placeholder?: string; hint?: string; type?: string; rows?: number }) {
+function Cell({ label, value, onCommit, placeholder, hint, type, rows }: { label: ReactNode; value: string | number | null; onCommit: (v: string | null) => void; placeholder?: string; hint?: string; type?: string; rows?: number }) {
   const [v, setV] = useState(value === null ? "" : String(value));
   useEffect(() => setV(value === null ? "" : String(value)), [value]);
   const commit = () => {
@@ -105,6 +106,9 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
     onClose();
   }
   const [onboarding, setOnboarding] = useState(false);
+  /** 앱이 실제로 쓰는 PIN — 메모 칸(o.pin)과 달라지면 화면이 말해 준다 */
+  const [appPin, setAppPin] = useState<string | null>(null);
+  useEffect(() => setAppPin(null), [id]);
   // 계약 완료 문안에 들어갈 입금 계좌 — 세금계산서 설정에 적힌 값만 쓴다(코드에 박지 않는다)
   const [bank, setBank] = useState<{ line: string | null; holder: string | null }>({ line: null, holder: null });
   useEffect(() => {
@@ -196,6 +200,13 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
     >
       <Stepper steps={STEPS} current={stepOf(o)} />
 
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-[11.5px] text-gray-600">
+        <span className="font-semibold text-gray-700">이 값 어디에 저장되나요?</span>
+        <span><SourceBadge src="app" /> 고치면 <b>손님 화면·적립</b>에 바로 반영</span>
+        <span><SourceBadge src="ops" /> 우리끼리 보는 <b>영업 기록</b></span>
+        <span><SourceBadge src="sheet" /> 시트를 비추는 <b>메모</b> — 앱은 안 바뀜</span>
+      </div>
+
       <PanelSection title="이행">
         <div className="space-y-3">
           <div>
@@ -225,11 +236,23 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         </div>
       </PanelSection>
 
-      <PanelSection title="계약 (시트 '계약 세부사항' 열)">
+      <PanelSection title="앱에 실제로 나가는 것">
+        <StoreAppSection
+          onAppPin={setAppPin}
+          id={id}
+          isAffiliate={row.is_affiliate !== false}
+          onChanged={() => (onReload ? onReload() : onPatch(id, {}))}
+          /* 제휴 끄기는 위 블록이 한다. 여기서는 종료일만 남긴다 —
+             날짜가 없으면 나중에 "언제 끝났더라"를 아무도 모른다. */
+          onEnd={() => onPatch(id, { contract_ends_on: o.contract_ends_on ?? todayLocal() })}
+        />
+      </PanelSection>
+
+      <PanelSection title="계약 — 우리 영업 기록">
         <div className="grid grid-cols-2 gap-3">
-          <Cell label="계약일" value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
+          <Cell label={<L src="ops">계약일</L>} value={o.contract_signed_on} onCommit={set("contract_signed_on")} placeholder="2026-08-20" />
           {/* 플랜은 여기서 바로 바꾼다 (민열님 0914). 위 '식당 관리' 블록의 것과 같은 값이라 둘 다 따라 움직인다. */}
-          <Field label="플랜" hint={tierMsg ?? "앱과 청구가 같이 보는 값입니다. 바꾸면 바로 반영됩니다."}>
+          <Field label={<L src="app">플랜</L>} hint={tierMsg ?? "앱과 청구가 같이 보는 값입니다. 바꾸면 바로 반영됩니다."}>
             <Select value={tierLocal ?? row.tier ?? ""} disabled={tierBusy} onChange={(e) => changeTier(e.target.value)}>
               <option value="">미지정</option>
               <option value="FREE">FREE</option>
@@ -258,33 +281,33 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
               );
             })()}
           </div>
-          <Field label="청구 시작 월" hint="월 중간 합류면 이번 달/다음 달 중 선택. 비우면 계약 시작월">
+          <Field label={<L src="ops">청구 시작 월</L>} hint="월 중간 합류면 이번 달/다음 달 중 선택. 비우면 계약 시작월">
             <Select value={o.billing_start_period ?? ""} onChange={(e) => stage("billing_start_period")(e.target.value || null)}>
               <option value="">계약 시작월 따름</option>{[0, 1, 2].map((k) => { const p = periodLocal(k); return <option key={p} value={p}>{p.replace("-", "년 ")}월부터</option>; })}{o.billing_start_period && ![0, 1, 2].map(periodLocal).includes(o.billing_start_period) && <option value={o.billing_start_period}>{o.billing_start_period}부터</option>}
             </Select>
           </Field>
-          <Field label="납부 방식">
+          <Field label={<L src="ops">납부 방식</L>}>
             <Select value={o.pay_cycle ?? ""} onChange={(e) => stage("pay_cycle")((e.target.value || null) as PayCycle | null)}>
               <option value="">-</option><option value="MONTHLY">월납</option><option value="LUMP">일시납</option>
             </Select>
           </Field>
-          <Cell label="제1차 이용기간 시작" value={o.contract_started_on} onCommit={set("contract_started_on")} placeholder="2026-09-01" />
-          <Cell label="전체 계약기간 끝" value={o.contract_ends_on} onCommit={set("contract_ends_on")} placeholder="2027-02-28" />
-          <Cell label="담당자" value={o.sheet_owner} onCommit={set("sheet_owner")} placeholder="준영" />
-          <Cell label="계약서 원본 보관" value={o.contract_original} onCommit={set("contract_original")} placeholder="예: 사무실 파일함 / 드라이브" />
+          <Cell label={<L src="ops">제1차 이용기간 시작</L>} value={o.contract_started_on} onCommit={set("contract_started_on")} placeholder="2026-09-01" />
+          <Cell label={<L src="ops">전체 계약기간 끝</L>} value={o.contract_ends_on} onCommit={set("contract_ends_on")} placeholder="2027-02-28" />
+          <Cell label={<L src="ops">담당자</L>} value={o.sheet_owner} onCommit={set("sheet_owner")} placeholder="준영" />
+          <Cell label={<L src="ops">계약서 원본 보관</L>} value={o.contract_original} onCommit={set("contract_original")} placeholder="예: 사무실 파일함 / 드라이브" />
         </div>
       </PanelSection>
 
-      <PanelSection title="혜택 (부속서식 · 혜택 등록서)">
+      <PanelSection title="혜택 — 계약서에 적은 조건 (영업 기록)">
         <div className="space-y-3">
-          <Cell label="기본 쿠폰 (상시)" value={o.coupon_basic} onCommit={set("coupon_basic")} rows={2} placeholder="예: 메뉴당 1,000원 할인 (포장 제외)" />
-          <Cell label="한정 쿠폰" value={o.coupon_limited} onCommit={set("coupon_limited")} rows={2} placeholder="예: 아메리카노 사이즈업" />
+          <Cell label={<L src="ops">기본 쿠폰 (상시)</L>} value={o.coupon_basic} onCommit={set("coupon_basic")} rows={2} placeholder="예: 메뉴당 1,000원 할인 (포장 제외)" />
+          <Cell label={<L src="ops">한정 쿠폰</L>} value={o.coupon_limited} onCommit={set("coupon_limited")} rows={2} placeholder="예: 아메리카노 사이즈업" />
           <div className="grid grid-cols-2 gap-3">
-            <Cell label="스탬프 적립 개수" value={o.stamp_count} onCommit={set("stamp_count")} placeholder="5 / 10 / 20" />
-            <Cell label="식사권 제외 메뉴·시간대" value={o.exclusions} onCommit={set("exclusions")} placeholder="예: 음료 1잔당 1회" />
+            <Cell label={<L src="ops">스탬프 적립 개수</L>} value={o.stamp_count} onCommit={set("stamp_count")} placeholder="5 / 10 / 20" />
+            <Cell label={<L src="ops">식사권 제외 메뉴·시간대</L>} value={o.exclusions} onCommit={set("exclusions")} placeholder="예: 음료 1잔당 1회" />
           </div>
-          <Cell label="스탬프 혜택" value={o.stamp_reward} onCommit={set("stamp_reward")} rows={2} placeholder="예: 5개 타코야끼 · 10개 만원 할인" />
-          <Cell label="별도 견적 항목" value={o.extra_quote} onCommit={set("extra_quote")} placeholder="예: 릴스 8만" />
+          <Cell label={<L src="ops">스탬프 혜택</L>} value={o.stamp_reward} onCommit={set("stamp_reward")} rows={2} placeholder="예: 5개 타코야끼 · 10개 만원 할인" />
+          <Cell label={<L src="ops">별도 견적 항목</L>} value={o.extra_quote} onCommit={set("extra_quote")} placeholder="예: 릴스 8만" />
         </div>
         <p className="text-[12px] text-gray-500 mt-2">앱에 실제로 나가는 쿠폰은 <span className="font-semibold text-gray-700">식당 관리 → 혜택</span>에 등록해야 합니다. 여기는 계약서에 적힌 조건입니다. 둘이 다르면 정합성 점검이 잡습니다.</p>
       </PanelSection>
@@ -299,8 +322,11 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           </label>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3">
-          <Cell label="홍보물 수령 (포스터/QR/배너)" value={o.kit_note} onCommit={set("kit_note")} placeholder="2장/10장" />
-          <Cell label="PIN 번호 (메모)" hint="시트에 적힌 값. 실제로 동작하는 번호는 아래 식당 관리 → 매장 PIN 입니다" value={o.pin} onCommit={set("pin")} placeholder="1234" />
+          <Cell label={<L src="ops">홍보물 수령 (포스터/QR/배너)</L>} value={o.kit_note} onCommit={set("kit_note")} placeholder="2장/10장" />
+          <div>
+              <Cell label={<L src="sheet">PIN 번호</L>} hint="시트에 적어 둔 번호입니다. 실제로 동작하는 값은 아래 '앱에 실제로 나가는 것 → 매장 PIN' 입니다" value={o.pin} onCommit={set("pin")} placeholder="1234" />
+              <Mismatch memo={o.pin} real={appPin} realLabel="매장 PIN" onUseReal={() => stage("pin")(appPin)} />
+            </div>
         </div>
       </PanelSection>
 
@@ -319,32 +345,21 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       )}
 
       {/* 0913: 식당 관리에서 하던 일을 여기로. 이 블록만 백엔드 매장 레코드에 저장된다. */}
-      <PanelSection title="식당 관리 (앱에 보이는 정보)">
-        <StoreAppSection
-          id={id}
-          isAffiliate={row.is_affiliate !== false}
-          onChanged={() => (onReload ? onReload() : onPatch(id, {}))}
-          /* 제휴 끄기는 위 블록이 한다. 여기서는 종료일만 남긴다 —
-             날짜가 없으면 나중에 "언제 끝났더라"를 아무도 모른다. */
-          onEnd={() => onPatch(id, { contract_ends_on: o.contract_ends_on ?? todayLocal() })}
-        />
-      </PanelSection>
-
-      <PanelSection title="매장 정보 (시트 '매장 현황')">
+      <PanelSection title="매장 정보 — 우리 영업 기록">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="캠퍼스"><CampusPicker value={o.campus ?? "경북대"} options={campusOptions} onChange={(v) => onPatch(id, { campus: v as Campus })} /></Field>
-          <Cell label="지도 링크 (네이버 · 카카오)" value={o.map_url} onCommit={set("map_url")} type="url" placeholder="https://naver.me/…" hint={o.map_name ? `지도 표기: ${o.map_name}` : "지도상 공식 상호를 기준으로 부릅니다"} />
-          <Cell label="대표자" value={o.owner_name} onCommit={set("owner_name")} />
-          <Cell label="연락처" value={o.owner_phone} onCommit={set("owner_phone")} type="tel" />
-          <Cell label="사업자등록번호" value={o.biz_no} onCommit={set("biz_no")} placeholder="세금계산서용" />
+          <Field label={<L src="ops">캠퍼스</L>}><CampusPicker value={o.campus ?? "경북대"} options={campusOptions} onChange={(v) => onPatch(id, { campus: v as Campus })} /></Field>
+          <Cell label={<L src="ops">지도 링크 (네이버 · 카카오)</L>} value={o.map_url} onCommit={set("map_url")} type="url" placeholder="https://naver.me/…" hint={o.map_name ? `지도 표기: ${o.map_name}` : "지도상 공식 상호를 기준으로 부릅니다"} />
+          <Cell label={<L src="ops">대표자</L>} value={o.owner_name} onCommit={set("owner_name")} />
+          <Cell label={<L src="ops">연락처</L>} value={o.owner_phone} onCommit={set("owner_phone")} type="tel" />
+          <Cell label={<L src="ops">사업자등록번호</L>} value={o.biz_no} onCommit={set("biz_no")} placeholder="세금계산서용" />
           {/* 볼타는 공급받는자 이메일이 **필수**다. 비면 발행 자체가 거절된다 (0915). */}
-          <Cell label="계산서 받을 이메일" value={o.owner_email} onCommit={set("owner_email")} type="email" placeholder="owner@example.com"
+          <Cell label={<L src="ops">계산서 받을 이메일</L>} value={o.owner_email} onCommit={set("owner_email")} type="email" placeholder="owner@example.com"
             hint={o.owner_email ? undefined : "비어 있으면 세금계산서를 발행할 수 없습니다"} />
         </div>
       </PanelSection>
 
       <PanelSection title="비고">
-        <Cell label="계약 특이사항 · 점주 요청" value={o.memo} onCommit={set("memo")} rows={3} placeholder="예: 방학엔 쉬고 싶다고 하심, 9월 말 재확인" />
+        <Cell label={<L src="ops">계약 특이사항 · 점주 요청</L>} value={o.memo} onCommit={set("memo")} rows={3} placeholder="예: 방학엔 쉬고 싶다고 하심, 9월 말 재확인" />
         <p className="text-[12px] text-gray-500 mt-2">
           이 칸들은 여기가 원본입니다. 0921 부터 팀 시트는 쓰지 않습니다 — 세틀라이트·슬랙·카톡 셋만.
         </p>
