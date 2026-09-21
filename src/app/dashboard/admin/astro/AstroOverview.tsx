@@ -7,6 +7,7 @@ import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, 
 import StoreDetailPanel from "./StoreDetailPanel";
 import CampusPicker, { allCampuses } from "./CampusPicker";
 import CampusMark from "./CampusMark";
+import OnboardReconcile from "./OnboardReconcile";
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 
 /**
@@ -207,6 +208,8 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
         <Kpi label="비치물 미전달" value={loading ? "-" : stuck.kit.length} hint="유료 매장 중" onClick={() => setFilter("kit")} active={filter === "kit"} />
         <Kpi label="학기/방학 미정" value={loading ? "-" : stuck.season.length} hint="방학 전 점주 확인 필요" onClick={() => setFilter("season")} active={filter === "season"} />
       </div>
+
+      <OnboardReconcile onDone={() => load(true)} />
 
       <Card flush title={`매장 ${visible.length}곳`}
         actions={<FilterPills label="매장 범위" value={filter === "paid" ? "paid" : filter === "all" ? "all" : filter === "ended" ? "ended" : filter === "test" ? "test" : "stuck"} onChange={(v) => setFilter(v === "stuck" ? "unpaid" : (v as Filter))} options={[{ key: "all", label: "전체", count: affiliate.length }, { key: "paid", label: "유료", count: paid.length }, { key: "stuck", label: "막힘", count: stuck.unpaid.length }, ...(endedAll.length ? [{ key: "ended", label: "계약 종료", count: ended.length }] : []), ...(testAll.length ? [{ key: "test", label: "테스트", count: test.length }] : [])]} />}>

@@ -94,6 +94,21 @@ async function sheetAppend(row: (string | number | boolean | null)[]): Promise<b
   }
 }
 
+/** 원장 읽기 — 담당자 쪽 대조(reconcile.ts)가 쓴다. 범위는 "A2:X10000" 처럼 준다. */
+export async function sheetRead(range: string): Promise<string[][]> {
+  const url = process.env.ONBOARD_GSHEET_URL, token = process.env.ONBOARD_GSHEET_TOKEN, id = process.env.ONBOARD_GSHEET_ID;
+  const sheet = process.env.ONBOARD_GSHEET_TAB ?? "온보딩기록";
+  if (!url || !token || !id) return [];
+  try {
+    // 이 브리지의 read 는 `sheet` 가 아니라 **`range`** 를 받는다 ("탭!A1:C10"). 잘못 보내면 HTML 이 온다.
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "read", id, range: `${sheet}!${range}`, token }), redirect: "follow", cache: "no-store" });
+    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; values?: string[][] };
+    return j.ok && Array.isArray(j.values) ? j.values : [];
+  } catch {
+    return [];
+  }
+}
+
 /* ── 3. 드라이브 브리지 (자료실_업로드.gs 와 같은 Web App) ── */
 async function driveUpload(name: string, content: string, mime: string): Promise<string | null> {
   const url = process.env.ONBOARD_DRIVE_URL, token = process.env.ONBOARD_DRIVE_TOKEN;
