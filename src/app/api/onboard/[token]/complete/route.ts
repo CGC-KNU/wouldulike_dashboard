@@ -102,6 +102,27 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     `\n• #${shortId(p)}`
   );
 
+  /**
+   * 완료 표식 — 스탬프 규칙 `config_json.onboarded_at`.
+   * 기기가 바뀌어도 "이미 마친 매장"을 알아보려면 어딘가 남아야 하는데, 점주가 쓸 수 있는
+   * 백엔드 자리가 여기뿐이다(astro 는 403, 시트는 페이지 로딩에 쓰기엔 너무 느리다).
+   * config_json 은 통째로 교체되므로 **읽어서 합친다** — thresholds 를 날리면 손님 적립이 멈춘다.
+   */
+  if (API()) {
+    await fetch(`${API()}/api/dashboard/stamp-rule/?restaurant_id=${p.rid}`, { headers: { Authorization: `Bearer ${access}` }, cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) return;
+        const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+        const rule = (j.rule ?? j.stamp_rule ?? j) as { rule_type?: string; config_json?: Record<string, unknown>; active?: boolean };
+        const cfg = { ...(rule.config_json ?? {}), onboarded_at: at };
+        await fetch(`${API()}/api/dashboard/stamp-rule/?restaurant_id=${p.rid}`, {
+          method: "PATCH", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ rule_type: rule.rule_type ?? "THRESHOLD", config_json: cfg, active: rule.active !== false }),
+          cache: "no-store",
+        });
+      }).catch(() => null);
+  }
+
   const secure = process.env.NODE_ENV === "production";
   jar.set(`ob_done_${p.rid}`, stepStamp(p.n, "done"), { httpOnly: true, secure, sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
   return NextResponse.json({ ok: true, at, starts_on, copies, stage_ok, ops_ok, guide_url: process.env.ONBOARD_GUIDE_URL ?? null });

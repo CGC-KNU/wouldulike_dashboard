@@ -41,8 +41,8 @@ export function BrandStack({ size = 56, className = "" }: { size?: number; class
   );
 }
 
-/** 네이비 배경 위 흰색 워드마크 — 포스터 미리보기용 */
-export function BrandWordmarkLight({ height = 14, className = "" }: { height?: number; className?: string }) {
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src="/brand/wordmark.png" alt="우주라이크" height={height} style={{ height, width: "auto" }} className={className} />;
-}
+/* 흰색 워드마크(public/brand/wordmark.png)는 여기서 쓰지 않는다.
+ * logo.png 에서 자른 네이비 워드마크는 소문자 `wouldulike`, 저 파일은 `WouldULike` 로 **글자꼴이 다르다.**
+ * 한 화면에 둘이 같이 나오면 브랜드가 두 개로 보인다. 포스터 미리보기는 실물 이미지를 쓰므로
+ * 그 자리도 없어졌다. 파일은 포스터·인쇄물이 쓰고 있어 지우지 않는다. (0921)
+ */

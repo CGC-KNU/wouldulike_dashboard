@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ImageUploader from "@/components/ImageUploader";
-import { BrandLockup, BrandStack, BrandWordmarkLight } from "./Brand";
+import { BrandLockup, BrandStack } from "./Brand";
 import { Button, Field, Input, Notice, Spinner, Stepper, Textarea } from "@/app/dashboard/admin/_shared/ui";
 
 /**
@@ -82,16 +82,19 @@ export default function OnboardClient({ token }: { token: string }) {
   useEffect(() => { try { sessionStorage.setItem(key, JSON.stringify(d)); } catch { /* 무시 */ } }, [key, d]);
   const patch = useCallback((p: Partial<Draft>) => setD((prev) => ({ ...prev, ...p })), []);
 
+  // 화면 확인용(개발 전용) — `?preview=1&step=4` 로 뒷단계를 바로 연다. 서버도 같은 플래그를 본다.
+  const previewUi = sp.get("preview") === "1";
   const load = useCallback(async () => {
-    const r = await fetch(`/api/onboard/${token}`, { cache: "no-store" });
+    const r = await fetch(`/api/onboard/${token}${sp.get("preview") === "1" ? "?preview=1" : ""}`, { cache: "no-store" });
     if (!r.ok) { setFatal(r.status === 410 ? "이 링크는 기한이 지났습니다." : "유효하지 않은 링크입니다."); return null; }
     const m = (await r.json()) as Meta; setMeta(m); return m;
-  }, [token]);
+  }, [token, sp]);
 
   // 첫 진입 / 카카오에서 돌아옴(?resume=1) → 세션 교환
   useEffect(() => {
     (async () => {
       const m = await load(); if (!m) return;
+      if (previewUi) { const n = Number(sp.get("step")); if (n >= 0 && n <= 6) { patch({ step: n }); return; } }
       if (m.done || m.already) { patch({ step: 6 }); return; }
       if (!m.session.ok && sp.get("resume") === "1") {
         const s = await fetch(`/api/onboard/${token}/session`, { method: "POST" });
@@ -100,7 +103,7 @@ export default function OnboardClient({ token }: { token: string }) {
         else if (!j.need_kakao) setErr(j.message ?? "로그인에 실패했습니다.");
       }
     })();
-  }, [load, patch, sp, token]);
+  }, [load, patch, sp, token, previewUi]);
 
   /**
    * 며칠 뒤 카톡을 스크롤해 링크를 다시 연 경우 — 요약을 보여 주려면 등록된 혜택을 읽어야 한다.
@@ -399,9 +402,14 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
   const saveStamp = () => run(async () => {
     if (!steps.length) throw new Error("스탬프 칸을 골라 주세요.");
     if (blanks.length) throw new Error(`${blanks.join("개, ")}개 칸에 무엇을 드릴지 적어 주세요.`);
+    // config_json 은 통째로 교체된다 — 완료 표식(onboarded_at)이 있으면 지우지 않게 합쳐서 쓴다.
+    // 등록을 마친 뒤 혜택을 고치면 표식이 날아가고, 그 매장은 다시 "안 끝난 매장"이 된다.
+    const prev = await fetch(`/api/dashboard/stamp-rule${rq}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null)).then((j) => (j?.rule ?? j)?.config_json ?? {}).catch(() => ({})) as Record<string, unknown>;
     await post(`/api/dashboard/stamp-rule${rq}`, {
       rule_type: "THRESHOLD",
       config_json: {
+        ...(prev.onboarded_at ? { onboarded_at: prev.onboarded_at } : {}),
         thresholds: steps.map((n) => ({ stamps: n, reward_text: d.stamp_steps[String(n)].trim() })),
         notes: d.stamp_note.trim(),
       },
@@ -598,7 +606,16 @@ function Step4({ d, patch, s, bank, onBack, onNext }: { d: Draft; patch: (p: Par
         <Row k="입금자명" v={`${s.name} 또는 대표자 성함`} />
         <p className="text-[12px] text-gray-500 mt-2">세금계산서는 입금 확인 후 발행됩니다. 입금 확인은 저희가 자동으로 하니 따로 알려주지 않으셔도 됩니다.</p>
       </div>
-      {!d.email && <Notice tone="amber" title="세금계산서 받을 이메일이 비어 있습니다">계약 단계로 돌아가 이메일을 적어 주시면 계산서와 계약서 사본을 바로 받으실 수 있습니다.</Notice>}
+      {/* 예전엔 "계약 단계로 돌아가라"고만 했다 — 돌아가는 버튼이 없어 '이전'을 두 번 눌러야 했고,
+          계약은 이미 체결돼 그 화면에서 이메일을 고칠 수도 없었다. 여기서 바로 받는다.
+          완료 기록(complete)에 그대로 실려 나가므로 계산서·사본 발송에 쓰인다. (0921) */}
+      {!d.email && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-[13px] font-semibold text-amber-900">세금계산서 받으실 이메일을 적어 주세요</p>
+          <p className="text-[12px] text-amber-800 mt-0.5 mb-2">계산서와 계약서 사본을 이 주소로 보내드립니다. 지금 적으셔도 됩니다.</p>
+          <Input type="email" autoComplete="off" inputMode="email" value={d.email} onChange={(e) => patch({ email: e.target.value })} placeholder="owner@example.com" />
+        </div>
+      )}
       <label className="flex gap-3 items-start mt-3 cursor-pointer"><input type="checkbox" className="mt-1 w-4 h-4 accent-[#050072]" checked={d.paid_clicked} onChange={(e) => patch({ paid_clicked: e.target.checked })} /><span className="text-[13px] text-gray-800">입금 안내를 확인했습니다 (지금 바로 입금하지 않으셔도 됩니다)</span></label>
       <Nav onBack={onBack} onNext={onNext} nextDisabled={!d.paid_clicked} nextHint={d.paid_clicked ? undefined : "아직 남았습니다 — 입금 안내 확인"} />
     </section>
@@ -683,10 +700,23 @@ function Step5({ d, patch, s, onBack, onNext, busy, nextLabel }: { d: Draft; pat
     <section>
       <H title="웰컴 키트" time="30초" />
       <p className="text-[13px] text-gray-600 mb-3">포스터 1장, QR 스티커 2장, 테이블 카드, 사용 안내를 택배로 보내드립니다. <b>최초 등록 때 한 번</b> 보내드리는 것이라 배송지만 확인해 주세요.</p>
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 mb-3">
-        <p className="text-[12px] text-gray-500 mb-2">포스터 미리보기</p>
-        <div className="rounded-xl bg-[#050072] text-white p-5 text-center"><BrandWordmarkLight height={13} className="mx-auto opacity-90" /><p className="font-display text-[22px] font-bold mt-1">{s.name}</p><p className="text-[12px] opacity-80 mt-1">우주라이크 앱에서 스탬프 적립 · 쿠폰 사용</p></div>
-        <p className="text-[11.5px] text-gray-400 mt-2">실제 디자인은 다를 수 있습니다. 매장명은 위와 같이 인쇄됩니다.</p>
+      {/* 실물을 그대로 보여 준다. 예전엔 네이비 카드에 매장명을 찍고 "매장명은 위와 같이
+          인쇄됩니다"라고 적었는데 — **실제 포스터에는 매장명이 없다.** 거짓말이었다 (0921). */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 mb-3">
+        <p className="text-[12px] font-semibold text-gray-600 mb-2 px-1">이런 것들을 보내드립니다</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/poster.jpg" alt="우주라이크 파트너 매장 포스터 — 맛있게 드시고 혜택까지 받아보세요. 쿠폰·마일리지·스탬프. 구글플레이·앱스토어 QR." className="w-full rounded-xl border border-gray-100" />
+        <ul className="mt-3 space-y-1.5 px-1">
+          {[["포스터 1장", "A3 · 계산대나 입구에 붙이시면 됩니다"],
+            ["QR 스티커 2장", "테이블·카운터용. 손님이 바로 앱을 받으실 수 있습니다"],
+            ["테이블 카드", "혜택 안내가 적힌 작은 카드"],
+            ["사용 안내", "스탬프 찍는 법·쿠폰 확인하는 법 한 장"]].map(([a, b]) => (
+            <li key={a} className="flex gap-2 text-[12.5px]">
+              <span className="text-navy font-bold shrink-0">·</span>
+              <span><b className="text-gray-900">{a}</b> <span className="text-gray-500">— {b}</span></span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <p className="text-[12px] font-semibold text-gray-700 mb-1.5">배송지 <span className="text-red-500">*</span></p>
@@ -789,7 +819,9 @@ function Nav({ onBack, onNext, nextDisabled, nextLabel = "다음", nextHint }: {
         {onBack && <Button variant="secondary" size="md" onClick={onBack}>이전</Button>}
         <Button variant="primary" size="md" className="flex-1" disabled={nextDisabled} onClick={onNext}>{nextLabel}</Button>
       </div>
-      {nextHint && <p className="text-[11.5px] text-amber-700 mt-2">{nextHint}</p>}
+      {/* 안내지 오류가 아니다. 틀린 값은 칸마다 빨간 글씨로 따로 말한다 —
+          여기까지 붉으면 아무것도 안 한 첫 화면이 혼나는 것처럼 보인다 (0921). */}
+      {nextHint && <p className="text-[11.5px] text-gray-500 mt-2">{nextHint}</p>}
     </div>
   );
 }
