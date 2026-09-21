@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { verifyOnboardToken, shortId, stepStampOk } from "@/lib/onboard/token";
-import { CHECKS, PLAN_LABEL, TERMS_VERSION, articles, campusTerms, termsHash } from "@/lib/onboard/contract";
+import { CHECKS, PLAN_LABEL, TERMS_VERSION, articles, scheduleFrom, termsHash, todaySeoul } from "@/lib/onboard/contract";
 import { COUPON_PRESETS, STAMP_PRESETS } from "@/lib/onboard/records";
 
 /**
@@ -30,12 +30,13 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     }
   }
 
-  const t = campusTerms(p.campus);
+  // 아직 동의 전이므로 "오늘 동의한다면" 기준으로 날짜를 미리 보여 준다. 확정은 consent 에서 한다.
+  const sched = scheduleFrom(todaySeoul());
   return NextResponse.json({
     ok: true,
     short_id: shortId(p),
     store: { rid: p.rid, lid: p.lid, name: p.name, campus: p.campus, plan: p.plan, plan_label: PLAN_LABEL[p.plan], fee: p.fee, vat: Math.round(p.fee * 0.1) },
-    terms: { version: TERMS_VERSION, hash: termsHash(p.campus), campus: t, articles: articles(t), checks: CHECKS.map((c) => ({ id: c.id, article: c.article, text: c.text(t) })) },
+    terms: { version: TERMS_VERSION, hash: termsHash(), schedule: sched, articles: articles(), checks: CHECKS.map((c) => ({ id: c.id, article: c.article, text: c.text(sched) })) },
     presets: { stamp: STAMP_PRESETS, coupon: COUPON_PRESETS },
     session,
     progress: { consent: stepStampOk(p.n, "consent", jar.get(`ob_consent_${p.rid}`)?.value) },

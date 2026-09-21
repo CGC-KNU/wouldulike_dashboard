@@ -21,7 +21,8 @@ function KakaoCallbackInner() {
         const res = await fetch("/api/auth/kakao", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code }),
+          // redirect_uri 는 백엔드 교환이 실패했을 때(localhost·프리뷰) 라우트가 직접 교환하는 데 쓴다 — 인가 요청 때 쓴 값과 같아야 한다
+          body: JSON.stringify({ code, redirect_uri: process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI ?? `${window.location.origin}/auth/kakao/callback` }),
         });
 
         const data = await res.json();

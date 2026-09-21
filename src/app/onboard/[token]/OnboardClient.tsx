@@ -17,7 +17,7 @@ type Plan = "FREE" | "BOOST" | "PREMIUM";
 interface Meta {
   ok: boolean; short_id: string;
   store: { rid: number; lid: string | null; name: string; campus: string; plan: Plan; plan_label: string; fee: number; vat: number };
-  terms: { version: string; hash: string; campus: { first_from: string; first_to: string; starts_on: string; ends_on: string }; articles: { no: string; title: string; body: string[] }[]; checks: { id: string; article: string; text: string }[] };
+  terms: { version: string; hash: string; schedule: { starts_on: string; min_term_to: string; campaign_due: string }; articles: { no: string; title: string; body: string[] }[]; checks: { id: string; article: string; text: string }[] };
   presets: { stamp: readonly { count: number; reward: string }[]; coupon: readonly { title: string; sub: string; cond: string }[] };
   session: { ok: boolean; kakao_id: string | null };
   progress: { consent: boolean };
@@ -30,12 +30,12 @@ interface Draft {
   owner_name: string; biz_no: string; phone: string; email: string; pin_set: boolean;
   checks: Record<string, string>; signature: string; consent_at: string | null; contract_url: string | null;
   stamp_count: number; stamp_code: string; coupon_on: boolean; coupon_idx: number; coupon_code: string; photo_urls: string[];
-  paid_clicked: boolean; kit_address: string; kit_ok: boolean;
+  paid_clicked: boolean; kit_address: string; kit_ok: boolean; starts_on: string | null;
 }
 const STEPS = ["내 매장", "플랜", "계약", "혜택", "입금", "키트", "완료"];
 const fmtWon = (n: number) => n.toLocaleString("ko-KR") + "원";
 const kdate = (iso: string) => { const [y, m, d] = iso.split("-"); return `${y}. ${Number(m)}. ${Number(d)}.`; };
-const emptyDraft = (): Draft => ({ step: 0, owner_name: "", biz_no: "", phone: "", email: "", pin_set: false, checks: {}, signature: "", consent_at: null, contract_url: null, stamp_count: 5, stamp_code: "", coupon_on: false, coupon_idx: 0, coupon_code: "", photo_urls: [], paid_clicked: false, kit_address: "", kit_ok: false });
+const emptyDraft = (): Draft => ({ step: 0, owner_name: "", biz_no: "", phone: "", email: "", pin_set: false, checks: {}, signature: "", consent_at: null, contract_url: null, stamp_count: 5, stamp_code: "", coupon_on: false, coupon_idx: 0, coupon_code: "", photo_urls: [], paid_clicked: false, kit_address: "", kit_ok: false, starts_on: null });
 
 export default function OnboardClient({ token }: { token: string }) {
   const sp = useSearchParams();
@@ -180,8 +180,12 @@ function Step1({ s, paid, terms, onBack, onNext }: { s: Meta["store"]; paid: boo
           {paid && <li>· 캠페인(한정 쿠폰) 편입 · 앱 배너·푸시 · 매거진 게재</li>}
         </ul>
       </div>
-      <p className="text-[12.5px] text-gray-500 mb-1">계약기간 {kdate(terms.campus.starts_on)} ~ {kdate(terms.campus.ends_on)} · 최소 이용기간 1개월 · 매월 말일 통지로 해지 · 위약금 없음</p>
-      <p className="text-[12px] text-gray-400">플랜을 바꾸고 싶으시면 담당자에게 말씀해 주세요. 미팅에서 정한 값이 들어가 있습니다.</p>
+      <div className="rounded-xl bg-navy/[0.04] border border-navy/10 p-3 text-[12.5px] text-gray-700">
+        <p className="mb-1"><b>정해진 종료일이 없습니다.</b> 오늘 동의하시면 오늘부터 시작해서, 그만두겠다고 말씀하실 때까지 매월 이어집니다.</p>
+        <p className="mb-1">최소 이용기간은 <b>1개월 — 오늘부터 {kdate(terms.schedule.min_term_to)}까지</b>입니다.</p>
+        <p style={{marginBottom:0}}>그 뒤에는 <b>매월 말일까지 말씀만 하시면 다음 달 1일자로 끝나고, 위약금은 없습니다.</b></p>
+      </div>
+      <p className="text-[12px] text-gray-400 mt-2">플랜을 바꾸고 싶으시면 담당자에게 말씀해 주세요. 미팅에서 정한 값이 들어가 있습니다.</p>
       <Nav onBack={onBack} onNext={onNext} />
     </section>
   );
@@ -214,8 +218,8 @@ function Step2({ d, patch, meta, token, busy, run, post, onBack, onNext }: StepP
         <Field label="계약서·세금계산서 받을 이메일" hint="비워두셔도 됩니다. 있으면 사본을 바로 보내드립니다"><Input type="email" value={d.email} onChange={(e) => patch({ email: e.target.value })} placeholder="owner@example.com" /></Field>
         {done ? <Notice tone="blue" title="계약이 체결되었습니다">{d.consent_at ? `동의 시각 ${new Date(d.consent_at).toLocaleString("ko-KR")}` : "동의 기록이 저장되어 있습니다."}{d.contract_url && <> · <a className="underline" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a></>}</Notice>
           : <Button variant="primary" size="md" className="w-full" disabled={busy || !allChecked || d.signature.trim().length < 2} onClick={() => run(async () => {
-              const j = await post(`/api/onboard/${token}/consent`, { checks: d.checks, signature: d.signature, owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, terms_hash: meta.terms.hash }) as { at: string; contract_url: string | null };
-              patch({ consent_at: j.at, contract_url: j.contract_url });
+              const j = await post(`/api/onboard/${token}/consent`, { checks: d.checks, signature: d.signature, owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, terms_hash: meta.terms.hash }) as { at: string; starts_on: string; contract_url: string | null };
+              patch({ consent_at: j.at, starts_on: j.starts_on, contract_url: j.contract_url });
             })}>위 내용에 동의하며 계약을 체결합니다</Button>}
       </div>
       <Nav onBack={onBack} onNext={onNext} nextDisabled={!done} />
@@ -318,7 +322,7 @@ function Step6({ d, s, guide }: { d: Draft; s: Meta["store"]; guide: string | nu
     <section className="text-center pt-4">
       <div className="mx-auto w-14 h-14 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-2xl mb-3">✓</div>
       <h2 className="text-[20px] font-bold text-gray-900">등록이 끝났습니다</h2>
-      <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>
+      <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <>오늘({kdate(d.starts_on)})부터 시작합니다. </>}웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>
       <div className="grid gap-2 max-w-xs mx-auto">
         {d.contract_url && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a>}
         {guide && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={guide} target="_blank" rel="noreferrer">점주 안내문 받기</a>}

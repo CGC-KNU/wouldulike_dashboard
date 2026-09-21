@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { shortId, stepStamp, verifyOnboardToken } from "@/lib/onboard/token";
-import { CHECKS, TERMS_VERSION, contractHtml, termsHash } from "@/lib/onboard/contract";
+import { CHECKS, TERMS_VERSION, contractHtml, termsHash, todaySeoul } from "@/lib/onboard/contract";
 import { anyCopy, clientMeta, persistRecord, type ConsentRecord } from "@/lib/onboard/records";
 
 /**
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return NextResponse.json({ detail: "이메일 형식을 확인해 주세요." }, { status: 400 });
 
   // 화면이 본 약관과 서버가 아는 약관이 같은지 — 배포 사이에 문구가 바뀌면 여기서 걸린다.
-  const hash = termsHash(p.campus);
+  const hash = termsHash();
   if (b.terms_hash && b.terms_hash !== hash) return NextResponse.json({ detail: "약관이 갱신되었습니다. 화면을 새로고침한 뒤 다시 확인해 주세요.", reload: true }, { status: 409 });
 
   const { ip, ua } = clientMeta(req);
@@ -51,7 +51,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     terms_version: TERMS_VERSION, terms_hash: hash, checks: b.checks!, signature, owner_name, biz_no, phone,
     phone_verified: Boolean(b.phone_verified) && Boolean(process.env.ONBOARD_SMS_PROVIDER), email, kakao_id, ip, ua, at,
   };
-  const html = contractHtml({ name: p.name, campus: p.campus, plan: p.plan, fee: p.fee, owner_name, biz_no: fmtBiz(biz_no), phone: fmtPhone(phone), email, signed_at: at.replace("T", " ").slice(0, 19) + " (UTC)", signature }, rec.checks);
+  // 개시일 = 동의한 날(서울 기준). 여기서 확정되어 사본에 박힌다.
+  const starts_on = todaySeoul();
+  const html = contractHtml({ name: p.name, campus: p.campus, plan: p.plan, fee: p.fee, owner_name, biz_no: fmtBiz(biz_no), phone: fmtPhone(phone), email, starts_on, signed_at: at.replace("T", " ").slice(0, 19) + " (UTC)", signature }, rec.checks);
 
   const copies = await persistRecord(rec, { ownerToken: access, contractHtml: html });
   if (!anyCopy(copies)) {
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const secure = process.env.NODE_ENV === "production";
   jar.set(`ob_consent_${p.rid}`, stepStamp(p.n, "consent"), { httpOnly: true, secure, sameSite: "lax", maxAge: 60 * 60 * 24 * 14 });
   // 완료 단계에서 다시 쓰려고 당사자 값을 서명된 쿠키 없이 짧게 들고 간다 — 민감값(사업자번호 전체·이메일)은 서버가 다시 받는다.
-  return NextResponse.json({ ok: true, at, copies: { ...copies, errors: copies.errors }, contract_url: copies.drive_contract });
+  return NextResponse.json({ ok: true, at, starts_on, copies: { ...copies, errors: copies.errors }, contract_url: copies.drive_contract });
 }
 
 const fmtBiz = (d: string) => `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;

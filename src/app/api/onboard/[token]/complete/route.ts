@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const at = new Date().toISOString();
   const rec: ConsentRecord = {
     kind: "complete", short_id: shortId(p), rid: p.rid, lid: p.lid, name: p.name, campus: p.campus, plan: p.plan, fee: p.fee,
-    terms_version: TERMS_VERSION, terms_hash: termsHash(p.campus), checks: {}, signature: (b.signature ?? "").trim(),
+    terms_version: TERMS_VERSION, terms_hash: termsHash(), checks: {}, signature: (b.signature ?? "").trim(),
     owner_name: (b.owner_name ?? "").trim(), biz_no: (b.biz_no ?? "").replace(/\D/g, ""), phone: (b.phone ?? "").replace(/\D/g, ""),
     phone_verified: false, email: (b.email ?? "").trim(), kakao_id, ip, ua, at, stamp_ok, kit_address,
   };

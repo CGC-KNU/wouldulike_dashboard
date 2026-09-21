@@ -2,19 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export async function POST(req: NextRequest) {
-  const { code } = await req.json();
+  const { code, redirect_uri } = (await req.json()) as { code?: string; redirect_uri?: string };
 
   if (!code) {
     return NextResponse.json({ success: false, message: "code missing" }, { status: 400 });
   }
 
-  // 백엔드에 code 직접 전달 → 백엔드에서 token exchange + user 조회
+  // 코드 교환은 **여기서 먼저** 한다.
+  // 백엔드도 code 를 받지만 교환에 자기 환경변수의 redirect_uri(운영 주소)를 쓴다 (accounts/views.py:297).
+  // localhost·프리뷰에서 받은 코드는 그 교환이 거절되고, **카카오는 실패한 교환에도 코드를 소모한다** —
+  // 백엔드에 먼저 보냈다가 실패하면 우리가 다시 교환할 코드가 없다 (0921 실측, KOE320).
+  // 그래서 인가 요청 때 쓴 redirect_uri 로 여기서 교환하고, 백엔드에는 access_token 을 넘긴다 (같은 뷰 291행이 받는다).
+  // 교환이 안 되면(예: client_secret 요구) 예전처럼 code 를 그대로 넘긴다.
+  let payload: Record<string, string> = { code };
+  if (redirect_uri && process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID) {
+    const form = new URLSearchParams({ grant_type: "authorization_code", client_id: process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID, redirect_uri, code });
+    if (process.env.KAKAO_CLIENT_SECRET) form.set("client_secret", process.env.KAKAO_CLIENT_SECRET);
+    try {
+      const tokenRes = await fetch("https://kauth.kakao.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=utf-8" }, body: form, cache: "no-store" });
+      const tok = (await tokenRes.json().catch(() => ({}))) as { access_token?: string; error?: string; error_code?: string };
+      if (tokenRes.ok && tok.access_token) payload = { access_token: tok.access_token };
+      else console.error("[kakao/route] self exchange failed → code 로 폴백:", tok.error_code ?? tok.error ?? tokenRes.status, "(redirect_uri:", redirect_uri, ")");
+    } catch (e) {
+      console.error("[kakao/route] self exchange error → code 로 폴백:", e);
+    }
+  }
+
   const backendRes = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL}/api/auth/kakao`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify(payload),
     }
   );
 
