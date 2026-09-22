@@ -30,8 +30,12 @@ export interface OnboardPayload {
   exp: number;
   /** 무작위 nonce — 같은 매장에 두 번 발급해도 토큰이 다르다. */
   n: string;
-  /** 발급한 담당자 */
-  by: string;
+  /**
+   * 발급한 담당자. **새 토큰에는 싣지 않는다** — 발급 시점 슬랙 한 줄에만 쓰고 그 뒤로 쓰이지 않는데,
+   * 한글 이름이 base64 로 12자를 먹는다. 링크가 카톡에서 열 줄 넘게 감기는 걸 한 글자라도 줄인다 (0922).
+   * 옛 토큰에는 남아 있으므로 읽기는 그대로 둔다.
+   */
+  by?: string;
   /**
    * 미팅에서 받아 둔 사장님 번호의 **대조표**(원문 아님).
    *
@@ -84,7 +88,6 @@ export function signOnboardToken(p: Omit<OnboardPayload, "v" | "iat" | "exp" | "
     iat: now,
     exp: now + 60 * 60 * 24 * (p.days ?? 14),
     n: b64u(randomBytes(9)),
-    by: p.by,
   };
   const body = b64u(Buffer.from(JSON.stringify(payload), "utf8"));
   return { token: `${body}.${b64u(mac(body))}`, payload };

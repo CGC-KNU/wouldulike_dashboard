@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   // 미팅에서 받아 둔 번호가 있으면 대조표를 실어 보낸다 — 링크를 잘못 받은 사람이 계약하는 것을 막는다.
   // 번호를 모르면 그냥 뺀다. 확인할 근거가 없다고 링크를 못 내면 본말이 전도된다.
   const ph = phoneTag(b.phone ?? "");
-  const { token, payload } = signOnboardToken({ rid: b.rid, lid: b.lid ?? null, name: b.name, campus: b.campus, plan: b.plan, fee, by, days: b.days ?? 14, ...(ph ? { ph } : {}) });
+  const { token, payload } = signOnboardToken({ rid: b.rid, lid: b.lid ?? null, name: b.name, campus: b.campus, plan: b.plan, fee, days: b.days ?? 14, ...(ph ? { ph } : {}) });
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
   const url = `${base}/onboard/${token}`;
 
@@ -82,8 +82,8 @@ export async function POST(req: NextRequest) {
     // 번호 대조가 걸려 있으면 **미리 알려야 한다.** 모르고 다른 번호를 적으면 [0]에서 막히고,
     // 사장님은 왜 막혔는지 알 길이 없다.
     kakao_text:
-      `사장님, 안녕하세요. 우주라이크입니다.\n\n계약과 혜택 등록을 한 번에 마칠 수 있는 링크를 보내드립니다. 카카오 로그인 후 5분 정도면 끝납니다.\n\n${url}\n\n` +
-      (ph ? `본인 확인을 위해 휴대폰 번호는 **미팅 때 알려주신 번호**로 적어 주세요.\n` : "") +
-      `링크는 ${b.days ?? 14}일간 유효하고, 중간에 나가셔도 이어서 하실 수 있습니다. 막히는 부분이 있으면 편하게 연락 주십시오.`,
+      `사장님, 안녕하세요. 우주라이크입니다.\n\n계약과 혜택 등록을 한 번에 마칠 수 있는 링크를 보내드립니다. 카카오 로그인 후 5분 정도면 끝납니다.\n` +
+      (ph ? `휴대폰 번호는 본인 확인을 위해 **미팅 때 알려주신 번호**로 적어 주세요.\n` : "") +
+      `링크는 ${b.days ?? 14}일간 유효하고, 중간에 나가셔도 이어서 하실 수 있습니다. 막히는 부분이 있으면 편하게 연락 주십시오.\n\n${url}`,
   }, { status: 201 });
 }
