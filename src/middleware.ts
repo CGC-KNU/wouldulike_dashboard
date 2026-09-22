@@ -4,7 +4,8 @@ const PUBLIC_PATHS = ["/login", "/auth/", "/api/auth/"];
 // 점주가 로그인 없이 여는 리포트 링크 — 접두어가 아니라 **정확한 모양**만 연다 (40자 hex, 또는 담당자 미리보기는 쿠키가 있어야 하므로 여기 없음).
 const PUBLIC_EXACT = [/^\/r\/[0-9a-f]{40}$/, /^\/api\/r\/[0-9a-f]{40}\/view$/];
 // 점주 온보딩 — 서명 토큰(base64url.base64url)만 연다. 세션은 라우트 안에서 만든다 (lib/onboard/token.ts).
-const ONBOARD_TOKEN = "[A-Za-z0-9_-]{40,600}\\.[A-Za-z0-9_-]{43}";
+// v1(점 있음)·v2(점 없음) 두 모양 다 연다 — lib/onboard/token.ts ONBOARD_TOKEN_RE 와 같은 규칙
+const ONBOARD_TOKEN = "(?:[A-Za-z0-9_-]{40,600}\\.[A-Za-z0-9_-]{43}|[A-Za-z0-9_-]{60,700})";
 // `/contract` 은 서명한 계약서 사본을 앱이 직접 그려 주는 자리다 (0922).
 // 드라이브가 HTML 을 소스 그대로 펼쳐 보여서 점주가 "이상한 코드"를 받았다.
 const PUBLIC_ONBOARD = [new RegExp(`^/onboard/${ONBOARD_TOKEN}(/contract)?$`), new RegExp(`^/api/onboard/${ONBOARD_TOKEN}(/(session|consent|complete|sms|pin))?$`)];

@@ -77,7 +77,59 @@ function mac(data: string): Buffer {
   return createHmac("sha256", secret()).update(data).digest();
 }
 
-export const ONBOARD_TOKEN_RE = /^[A-Za-z0-9_-]{40,600}\.[A-Za-z0-9_-]{43}$/;
+/**
+ * 토큰 모양은 두 가지다.
+ *   v1  base64url(JSON) "." base64url(HMAC-32)   — 예전 링크. 읽기만 한다.
+ *   v2  base64url(이진 payload + HMAC-16)        — 지금 발급하는 것. 점 없음.
+ *
+ * ## 왜 v2 를 만들었나 (0922)
+ * v1 은 JSON 을 base64 로 싸서 **URL 이 350자**였다. 카톡에서 열 줄 넘게 감겨 내려가
+ * 사장님이 보기에 수상한 문자열 덩어리였다. 저장소가 없어 토큰이 모든 걸 싣고 다녀야 하는 건
+ * 그대로지만, 싣는 방법은 바꿀 수 있다 — 숫자를 글자로 쓰지 않고 바이트로 쓴다.
+ *   rid 3B · iat/exp 각 4B · 플래그 1B · fee 3B · nonce 9B · 상권·매장명 길이+UTF-8 · 번호표 9B
+ * 서명도 32B → 16B 로 줄였다. 128비트면 이 용도에 남는다(링크 하나 위조하려고 2^128 을 시도할
+ * 동기가 없다. 만료도 14일이다).
+ * 결과 350자 → 150자 안팎. 줄 수가 3분의 1이 된다.
+ */
+export const ONBOARD_TOKEN_RE = /^(?:[A-Za-z0-9_-]{40,600}\.[A-Za-z0-9_-]{43}|[A-Za-z0-9_-]{60,700})$/;
+
+const PLAN_CODE: Record<OnboardPlan, number> = { FREE: 0, BOOST: 1, PREMIUM: 2 };
+const PLAN_OF: OnboardPlan[] = ["FREE", "BOOST", "PREMIUM"];
+
+function packStr(s: string): Buffer {
+  const b = Buffer.from(s ?? "", "utf8");
+  if (b.length > 255) throw new Error("너무 긴 값입니다.");
+  return Buffer.concat([Buffer.from([b.length]), b]);
+}
+
+function encodeV2(p: OnboardPayload): Buffer {
+  const head = Buffer.alloc(25);
+  head[0] = 2;
+  head.writeUIntBE(p.rid, 1, 3);
+  head.writeUInt32BE(p.exp, 4);
+  head.writeUInt32BE(p.iat, 8);
+  head[12] = PLAN_CODE[p.plan] | (p.ph ? 4 : 0) | (p.lid ? 8 : 0);
+  head.writeUIntBE(Math.min(p.fee, 0xffffff), 13, 3);
+  fromB64u(p.n).copy(head, 16);
+  const parts = [head, packStr(p.campus), packStr(p.name)];
+  if (p.ph) parts.push(fromB64u(p.ph));           // 12자 base64 = 9바이트
+  if (p.lid) parts.push(packStr(p.lid));
+  return Buffer.concat(parts);
+}
+
+function decodeV2(buf: Buffer): OnboardPayload {
+  if (buf.length < 27 || buf[0] !== 2) throw new Error("형식");
+  const rid = buf.readUIntBE(1, 3), exp = buf.readUInt32BE(4), iat = buf.readUInt32BE(8);
+  const flags = buf[12], fee = buf.readUIntBE(13, 3);
+  const n = b64u(buf.subarray(16, 25));
+  let i = 25;
+  const take = () => { const len = buf[i]; const v = buf.subarray(i + 1, i + 1 + len).toString("utf8"); i += 1 + len; return v; };
+  const campus = take(), name = take();
+  let ph: string | undefined;
+  if (flags & 4) { ph = b64u(buf.subarray(i, i + 9)); i += 9; }
+  const lid = flags & 8 ? take() : null;
+  return { v: 1, rid, lid, name, campus, plan: PLAN_OF[flags & 3], fee, iat, exp, n, ...(ph ? { ph } : {}) };
+}
 
 export function signOnboardToken(p: Omit<OnboardPayload, "v" | "iat" | "exp" | "n"> & { days?: number }): { token: string; payload: OnboardPayload } {
   const now = Math.floor(Date.now() / 1000);
@@ -89,23 +141,31 @@ export function signOnboardToken(p: Omit<OnboardPayload, "v" | "iat" | "exp" | "
     exp: now + 60 * 60 * 24 * (p.days ?? 14),
     n: b64u(randomBytes(9)),
   };
-  const body = b64u(Buffer.from(JSON.stringify(payload), "utf8"));
-  return { token: `${body}.${b64u(mac(body))}`, payload };
+  const body = encodeV2(payload);
+  const sig = createHmac("sha256", secret()).update(body).digest().subarray(0, 16);
+  return { token: b64u(Buffer.concat([body, sig])), payload };
 }
 
 export type VerifyResult = { ok: true; payload: OnboardPayload } | { ok: false; reason: "형식" | "서명" | "만료" };
 
 export function verifyOnboardToken(token: string): VerifyResult {
   if (!ONBOARD_TOKEN_RE.test(token)) return { ok: false, reason: "형식" };
-  const [body, sig] = token.split(".");
-  const expected = mac(body);
-  const given = fromB64u(sig);
-  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return { ok: false, reason: "서명" };
   let payload: OnboardPayload;
-  try {
-    payload = JSON.parse(fromB64u(body).toString("utf8")) as OnboardPayload;
-  } catch {
-    return { ok: false, reason: "형식" };
+  if (token.includes(".")) {
+    // v1 — 예전에 나간 링크. 계속 열어 준다.
+    const [body, sig] = token.split(".");
+    const expected = mac(body);
+    const given = fromB64u(sig);
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return { ok: false, reason: "서명" };
+    try { payload = JSON.parse(fromB64u(body).toString("utf8")) as OnboardPayload; }
+    catch { return { ok: false, reason: "형식" }; }
+  } else {
+    const raw = fromB64u(token);
+    if (raw.length < 43) return { ok: false, reason: "형식" };
+    const body = raw.subarray(0, raw.length - 16), given = raw.subarray(raw.length - 16);
+    const expected = createHmac("sha256", secret()).update(body).digest().subarray(0, 16);
+    if (!timingSafeEqual(given, expected)) return { ok: false, reason: "서명" };
+    try { payload = decodeV2(body); } catch { return { ok: false, reason: "형식" }; }
   }
   if (payload.v !== 1 || typeof payload.rid !== "number") return { ok: false, reason: "형식" };
   if (payload.exp < Math.floor(Date.now() / 1000)) return { ok: false, reason: "만료" };
