@@ -1,5 +1,6 @@
 import { readGa4AppMetrics, readLastEventDate, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { buildAppReportData, appReportFilename, lastCompleteWeekEnd, shiftDay, weekLabel, type AppStats, type Json } from "./appReportData";
+import { buildMonthlyAppReportData, previousPeriod, type SnapshotPayload } from "./appReportMonthly";
 import { fetchBackendJson } from "./toolProxy";
 
 /**
@@ -52,6 +53,64 @@ export async function buildWeeklyAppReport(opts: { end?: string } = {}): Promise
     data: buildAppReportData({ end, cur, prev, stats: stats ?? null }),
     filename: appReportFilename(end),
     week: { start: shiftDay(end, -6), end, label: weekLabel(end) },
+    warnings,
+  };
+}
+
+// ── 월간 ────────────────────────────────────────────────────────────
+/** "2026-09" → { start: "20260901", end: "20260930" } */
+function monthWindow(period: string): { start: string; end: string } {
+  const y = +period.slice(0, 4);
+  const m = +period.slice(5, 7);
+  const last = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 0)).getUTCDate();
+  return { start: `${period.replace("-", "")}01`, end: `${period.replace("-", "")}${String(last).padStart(2, "0")}` };
+}
+
+/** 마지막으로 **다 끝난 달**(KST). 9/22 면 "2026-08". */
+export function lastCompleteMonth(nowMs: number = Date.now()): string {
+  const kst = new Date(nowMs + 9 * 3600 * 1000);
+  const y = kst.getUTCFullYear();
+  const m = kst.getUTCMonth(); // 0-based → 이게 곧 "지난 달"의 1-based 값
+  return m === 0 ? `${y - 1}-12` : `${y}-${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * 월간 보고서 한 벌. `period` 를 안 주면 마지막으로 다 끝난 달.
+ *
+ * GA4 는 그 달과 전월을 **같은 정의로**(`subWindows: "in-period"`) 뽑는다.
+ * DB 칸은 백엔드 월별 스냅샷에서 온다 — 없으면 비운 채로 낸다(0 으로 채우지 않는다).
+ */
+export async function buildMonthlyAppReport(opts: { period?: string } = {}): Promise<AppReportBuild> {
+  const warnings: string[] = [];
+  const period = opts.period ?? lastCompleteMonth();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error(`period 는 "YYYY-MM" 이어야 합니다 — 받은 값: ${period}`);
+
+  const win = monthWindow(period);
+  const prevWin = monthWindow(previousPeriod(period));
+
+  const last = await readLastEventDate();
+  if (last && win.end > last) {
+    warnings.push(`${period} 은 아직 ${last.slice(4, 6)}/${last.slice(6, 8)} 까지만 확정 테이블이 있습니다 — GA4 칸이 그 달 전체가 아닙니다.`);
+  }
+
+  const [curR, prevR, snapshot] = await Promise.all([
+    readGa4AppMetrics(process.env, { ...win, subWindows: "in-period" }),
+    readGa4AppMetrics(process.env, { ...prevWin, subWindows: "in-period" }),
+    fetchBackendJson<SnapshotPayload>("/api/dashboard/admin/metric-snapshots/", `period=${period}`, true),
+  ]);
+
+  const cur = curR.ok ? curR.data : null;
+  const prev = prevR.ok ? prevR.data : null;
+  if (!curR.ok) warnings.push(`GA4 를 읽지 못했습니다 — ${curR.reason === "no_key" ? "GCP_SA_KEY 미설정" : curR.detail ?? "조회 실패"}`);
+  else if (!prevR.ok) warnings.push("전월 GA4 를 읽지 못해 전월 대비를 붙이지 못했습니다.");
+  if (!snapshot?.current) warnings.push(`${period} 월별 스냅샷이 없습니다 — DB 칸이 비었습니다. snapshot_metrics 를 돌리십시오.`);
+  else if (!snapshot.previous) warnings.push("전월 스냅샷이 없어 DB 칸의 전월 대비가 없습니다.");
+  else if (!snapshot.current.complete) warnings.push(`${period} 은 아직 끝나지 않은 달입니다 — DB 칸은 누계입니다.`);
+
+  return {
+    data: buildMonthlyAppReportData({ period, cur, prev, snapshot: snapshot ?? null }),
+    filename: `앱지표_월간보고서_${period}`.replace(/[\\/:*?"<>|\s]+/g, "_"),
+    week: { start: win.start, end: win.end, label: `${+period.slice(0, 4)}년 ${+period.slice(5, 7)}월` },
     warnings,
   };
 }

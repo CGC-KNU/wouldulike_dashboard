@@ -103,13 +103,23 @@ export async function readLastEventDate(env: Record<string, string | undefined> 
 }
 
 /**
- * `opts.end` 를 주면 **그 날로 끝나는 7일**을 센다 — 주간 보고서가 지난주·그 전주를 같은 정의로 뽑을 때 쓴다.
- * 안 주면 예전 그대로 마지막 확정 테이블 기준 최근 7일이다(Probe 앱 지표 화면).
- * 나머지 창(코호트·푸시·배너)도 전부 `end` 에서 거꾸로 잡히므로 같이 따라 움직인다.
+ * 창(窓)을 받아 센다.
+ *
+ *  - 아무것도 안 주면 예전 그대로 — 마지막 확정 테이블 기준 **최근 7일**(Probe 앱 지표 화면).
+ *  - `end` 만 주면 그 날로 끝나는 7일 — 주간 보고서가 지난주·그 전주를 같은 정의로 뽑을 때.
+ *  - `start`+`end` 를 주면 그 구간 — 월간 보고서가 한 달치를 뽑을 때.
+ *
+ * `subWindows` 는 **기간이 있는 지표**(코호트·푸시·배너)의 창을 어떻게 잡을지다.
+ *  - `"anchored"`(기본) — `end` 에서 거꾸로 고정 길이. 7일짜리 창에서는 이 수밖에 없다(한 주 안에
+ *    "첫 실행 후 7~13일" 이 들어갈 자리가 없다).
+ *  - `"in-period"` — 창 **안에서** 잡는다. 코호트는 [start, end-13] 이라 복귀 관찰(7~13일째)이 창 안에
+ *    다 들어오고, 배너는 클릭을 [start, end-7] 로 잡아 7일 추적이 창을 안 넘는다. 한 달처럼 긴 창에서만 뜻이 있다.
+ *
+ * 어느 쪽이든 실제로 센 구간은 응답의 cohort·push·banner 에 그대로 들어간다 — 보고서가 그걸 문장으로 적는다.
  */
 export async function readGa4AppMetrics(
   env: Record<string, string | undefined> = process.env,
-  opts: { end?: string } = {}
+  opts: { end?: string; start?: string; subWindows?: "anchored" | "in-period" } = {}
 ): Promise<Ga4Read> {
   const client = clientFromEnv(env);
   if (!client) return { ok: false, reason: "no_key" };
@@ -117,10 +127,14 @@ export async function readGa4AppMetrics(
 
   const end = opts.end ?? (await lastEventDate(client));
   if (!end) return { ok: false, reason: "error", detail: "확정 테이블(events_YYYYMMDD)이 없습니다" };
-  const start = shift(end, -6);
+  const start = opts.start ?? shift(end, -6);
+  if (start > end) return { ok: false, reason: "error", detail: `창이 거꾸로입니다 — ${start} > ${end}` };
+  // 창 안의 날 수. DAU 평균의 분모다 — 사용자가 0인 날도 하루로 친다.
+  const days = Math.round((Date.parse(dash(end)) - Date.parse(dash(start))) / 86_400_000) + 1;
+  const inPeriod = opts.subWindows === "in-period";
   const events = `\`${dataset}.events_*\``;
 
-  // ① WAU · DAU/WAU — 7일 창. DAU 평균은 7로 나눈다(사용자가 0인 날도 하루로 친다).
+  // ① WAU · DAU/WAU — 창 전체. DAU 평균은 창의 날 수로 나눈다.
   const [act] = await run<{ wau: number; dau_sum: number }>(
     `WITH e AS (
        SELECT event_date, user_pseudo_id FROM ${events}
@@ -150,8 +164,10 @@ export async function readGa4AppMetrics(
 
   // ③ 가입 1주 후 복귀 — 첫 실행(first_open) 코호트 7일치, 각자 7~13일째에 활성이면 복귀.
   //    복귀 창이 확정 테이블 안에 다 들어오도록 코호트를 end-20 ~ end-14 로 잡는다.
-  const cStart = shift(end, -20);
-  const cEnd = shift(end, -14);
+  // in-period: 창 안에서 첫 실행한 사람만 보고, 복귀 관찰(7~13일째)이 end 안에 들어오게 -13 까지만 코호트로 잡는다.
+  // anchored: 7일 창에는 그럴 자리가 없어 end 에서 거꾸로 고정으로 잡는다.
+  const cStart = inPeriod ? start : shift(end, -20);
+  const cEnd = inPeriod ? shift(end, -13) : shift(end, -14);
   const [ret] = await run<{ cohort: number; returned: number }>(
     `WITH f AS (
        SELECT user_pseudo_id, MIN(PARSE_DATE('%Y%m%d', event_date)) AS d FROM ${events}
@@ -170,7 +186,8 @@ export async function readGa4AppMetrics(
   );
 
   // ④ 푸시 → 앱 열기 — 14일 창. 7일이면 수신이 백 건 남짓이라 하루 발송에 크게 흔들린다.
-  const pStart = shift(end, -13);
+  // in-period: 창 전체(한 달이면 충분하다). anchored: 7일이면 수신이 백 건 남짓이라 14일로 넓힌다.
+  const pStart = inPeriod ? start : shift(end, -13);
   const [push] = await run<{ received: number; opened_android: number; opened_ios: number }>(
     `SELECT COUNTIF(event_name = 'notification_receive' AND platform = 'ANDROID') AS received,
             COUNTIF(event_name = 'notification_open' AND platform = 'ANDROID') AS opened_android,
@@ -182,7 +199,9 @@ export async function readGa4AppMetrics(
 
   // ⑤ 배너 클릭 → 쿠폰 사용 — 기기의 첫 배너 클릭 뒤 7일 안에 coupon_redeemed 가 있으면 전환.
   //    모든 클릭이 7일을 다 채우도록 클릭 창을 end-34 ~ end-7 로 잡는다(클릭이 적어 4주치).
-  const bStart = shift(end, -34);
+  // 클릭 뒤 7일을 다 채워야 해서 클릭 창의 끝을 end-7 로 둔다.
+  // in-period: 창 안에서. anchored: 클릭이 적어 4주치를 끌어온다.
+  const bStart = inPeriod ? start : shift(end, -34);
   const bEnd = shift(end, -7);
   const [ban] = await run<{ clicked: number; redeemed: number }>(
     `WITH c AS (
@@ -225,7 +244,7 @@ export async function readGa4AppMetrics(
       week: { from: dash(start), to: dash(end) },
       wau: act ? wau : null,
       new_devices: fresh ? Number(fresh.new_devices ?? 0) : null,
-      dau_wau: pct(Number(act?.dau_sum ?? 0) / 7, wau),
+      dau_wau: pct(Number(act?.dau_sum ?? 0) / days, wau),
       open_to_store: pct(Number(ses?.with_detail ?? 0), sessions),
       sessions,
       retention_w1: pct(Number(ret?.returned ?? 0), cohort),
