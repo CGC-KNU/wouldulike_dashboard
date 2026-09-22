@@ -700,16 +700,27 @@ function Step5({ d, patch, s, onBack, onNext, busy, nextLabel }: { d: Draft; pat
     <section>
       <H title="웰컴 키트" time="30초" />
       <p className="text-[13px] text-gray-600 mb-3">포스터 1장, QR 스티커 2장, 테이블 카드, 사용 안내를 택배로 보내드립니다. <b>최초 등록 때 한 번</b> 보내드리는 것이라 배송지만 확인해 주세요.</p>
-      {/* 실물을 그대로 보여 준다. 예전엔 네이비 카드에 매장명을 찍고 "매장명은 위와 같이
-          인쇄됩니다"라고 적었는데 — **실제 포스터에는 매장명이 없다.** 거짓말이었다 (0921). */}
+      {/* 실물을 그대로 보여 준다. 두 번 틀렸다:
+          ① 네이비 카드에 매장명을 찍고 "매장명은 위와 같이 인쇄됩니다"라고 적었다 — 그런 포스터는 없다.
+          ② 실물이라고 넣은 하늘색 QR 이미지는 **포스터가 아니라 스티커**였다.
+          진짜 포스터는 매장별 딥링크 포스터다 — 상호와 **방금 등록하신 혜택이 그대로 인쇄된다.**
+          그래서 여기가 [3]혜택 단계의 결과를 사장님이 눈으로 확인하는 자리이기도 하다. (0922) */}
       <div className="rounded-2xl border border-gray-200 bg-white p-3 mb-3">
         <p className="text-[12px] font-semibold text-gray-600 mb-2 px-1">이런 것들을 보내드립니다</p>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/poster.jpg" alt="우주라이크 파트너 매장 포스터 — 맛있게 드시고 혜택까지 받아보세요. 쿠폰·마일리지·스탬프. 구글플레이·앱스토어 QR." className="w-full rounded-xl border border-gray-100" />
-        <ul className="mt-3 space-y-1.5 px-1">
-          {[["포스터 1장", "A3 · 계산대나 입구에 붙이시면 됩니다"],
-            ["QR 스티커 2장", "테이블·카운터용. 손님이 바로 앱을 받으실 수 있습니다"],
-            ["테이블 카드", "혜택 안내가 적힌 작은 카드"],
+        <div className="grid grid-cols-2 gap-2">
+          <figure className="m-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/poster.jpg" alt="매장 포스터 예시 — 상호와 쿠폰·스탬프 혜택이 인쇄된 포스터" className="w-full rounded-lg border border-gray-100" />
+            <figcaption className="text-[11.5px] text-gray-500 mt-1.5"><b className="text-gray-800">포스터 1장</b><br />상호와 <b>방금 등록하신 혜택</b>이 그대로 인쇄됩니다 <span className="text-gray-400">(사진은 다른 매장 예시)</span></figcaption>
+          </figure>
+          <figure className="m-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/sticker.jpg" alt="매장 비치용 스티커 — 구글플레이·앱스토어 앱 다운로드 QR" className="w-full rounded-lg border border-gray-100" />
+            <figcaption className="text-[11.5px] text-gray-500 mt-1.5"><b className="text-gray-800">QR 스티커 2장</b><br />손님이 찍으면 바로 앱을 받으십니다. 테이블·카운터용</figcaption>
+          </figure>
+        </div>
+        <ul className="mt-3 space-y-1 px-1 border-t border-gray-100 pt-2.5">
+          {[["테이블 카드", "혜택 안내가 적힌 작은 카드"],
             ["사용 안내", "스탬프 찍는 법·쿠폰 확인하는 법 한 장"]].map(([a, b]) => (
             <li key={a} className="flex gap-2 text-[12.5px]">
               <span className="text-navy font-bold shrink-0">·</span>
