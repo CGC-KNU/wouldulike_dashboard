@@ -28,6 +28,8 @@ export interface Ga4AppMetrics {
   through: string;
   week: { from: string; to: string };
   wau: number | null;
+  /** 활성 기기 중 그 주에 처음 앱을 연 기기 수 — WAU 가 뛰었을 때 "새로 온 것"과 "돌아온 것"을 가른다 */
+  new_devices: number | null;
   /** 7일 평균 DAU ÷ WAU, % */
   dau_wau: number | null;
   /** SDK 세션 중 매장 상세를 연 세션 비율, % */
@@ -63,23 +65,58 @@ function shift(s: string, days: number): string {
 }
 const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 
-export async function readGa4AppMetrics(env: Record<string, string | undefined> = process.env): Promise<Ga4Read> {
+interface Client {
+  dataset: string;
+  run: <T>(query: string, params?: Record<string, string>) => Promise<T[]>;
+}
+
+function clientFromEnv(env: Record<string, string | undefined>): Client | null {
   const credentials = credentialsFromEnv(env);
-  if (!credentials) return { ok: false, reason: "no_key" };
+  if (!credentials) return null;
   const dataset = env.BQ_DATASET || DEFAULT_DATASET;
   const [project] = dataset.split(".");
   const bq = new BigQuery({ projectId: project, credentials });
-  const run = async <T>(query: string, params?: Record<string, string>): Promise<T[]> => {
-    const [rows] = await bq.query({ query, ...(params ? { params } : {}), maximumBytesBilled: MAX_BYTES });
-    return rows as T[];
+  return {
+    dataset,
+    run: async <T>(query: string, params?: Record<string, string>): Promise<T[]> => {
+      const [rows] = await bq.query({ query, ...(params ? { params } : {}), maximumBytesBilled: MAX_BYTES });
+      return rows as T[];
+    },
   };
+}
 
-  // 마지막 확정 테이블 — export 가 늦는 날도 있어 "어제"로 가정하지 않는다. 메타 테이블이라 스캔 비용이 없다.
-  const [last] = await run<{ t: string | null }>(
-    `SELECT MAX(table_id) AS t FROM \`${dataset}.__TABLES__\` WHERE REGEXP_CONTAINS(table_id, r'^events_[0-9]{8}$')`
+// 마지막 확정 테이블 — export 가 늦는 날도 있어 "어제"로 가정하지 않는다. 메타 테이블이라 스캔 비용이 없다.
+async function lastEventDate(c: Client): Promise<string | null> {
+  const [last] = await c.run<{ t: string | null }>(
+    `SELECT MAX(table_id) AS t FROM \`${c.dataset}.__TABLES__\` WHERE REGEXP_CONTAINS(table_id, r'^events_[0-9]{8}$')`
   );
-  if (!last?.t) return { ok: false, reason: "error", detail: "확정 테이블(events_YYYYMMDD)이 없습니다" };
-  const end = last.t.slice("events_".length);
+  return last?.t ? last.t.slice("events_".length) : null;
+}
+
+/**
+ * 어느 날짜까지 확정 테이블이 있는가(YYYYMMDD). 주간 보고서가 "어느 주까지 뽑을 수 있는가"를 이걸로 정한다.
+ * 키가 없거나 테이블이 없으면 null.
+ */
+export async function readLastEventDate(env: Record<string, string | undefined> = process.env): Promise<string | null> {
+  const c = clientFromEnv(env);
+  return c ? lastEventDate(c) : null;
+}
+
+/**
+ * `opts.end` 를 주면 **그 날로 끝나는 7일**을 센다 — 주간 보고서가 지난주·그 전주를 같은 정의로 뽑을 때 쓴다.
+ * 안 주면 예전 그대로 마지막 확정 테이블 기준 최근 7일이다(Probe 앱 지표 화면).
+ * 나머지 창(코호트·푸시·배너)도 전부 `end` 에서 거꾸로 잡히므로 같이 따라 움직인다.
+ */
+export async function readGa4AppMetrics(
+  env: Record<string, string | undefined> = process.env,
+  opts: { end?: string } = {}
+): Promise<Ga4Read> {
+  const client = clientFromEnv(env);
+  if (!client) return { ok: false, reason: "no_key" };
+  const { dataset, run } = client;
+
+  const end = opts.end ?? (await lastEventDate(client));
+  if (!end) return { ok: false, reason: "error", detail: "확정 테이블(events_YYYYMMDD)이 없습니다" };
   const start = shift(end, -6);
   const events = `\`${dataset}.events_*\``;
 
@@ -164,6 +201,20 @@ export async function readGa4AppMetrics(env: Record<string, string | undefined> 
     { bStart, bEnd, end }
   );
 
+  // ⑥ 이번 주 활성 중 신규 — 같은 창에서 first_open 이 있는 기기. WAU 가 뛴 주에 "유입인가 복귀인가"를 가른다.
+  const [fresh] = await run<{ new_devices: number }>(
+    `WITH a AS (
+       SELECT DISTINCT user_pseudo_id FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'user_engagement'
+     ), f AS (
+       SELECT DISTINCT user_pseudo_id FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'first_open'
+     )
+     SELECT COUNTIF(f.user_pseudo_id IS NOT NULL) AS new_devices
+     FROM a LEFT JOIN f USING (user_pseudo_id)`,
+    { start, end }
+  );
+
   const wau = Number(act?.wau ?? 0);
   const sessions = Number(ses?.sessions ?? 0);
   const cohort = Number(ret?.cohort ?? 0);
@@ -173,6 +224,7 @@ export async function readGa4AppMetrics(env: Record<string, string | undefined> 
       through: dash(end),
       week: { from: dash(start), to: dash(end) },
       wau: act ? wau : null,
+      new_devices: fresh ? Number(fresh.new_devices ?? 0) : null,
       dau_wau: pct(Number(act?.dau_sum ?? 0) / 7, wau),
       open_to_store: pct(Number(ses?.with_detail ?? 0), sessions),
       sessions,

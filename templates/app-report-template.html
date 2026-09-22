@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>우주라이크 앱 지표 보고서</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<!--
+  ▣ 우주라이크 앱 지표 보고서 양식 v0.1 — Probe 기준 · 주간/월간 겸용
+  ──────────────────────────────────────────────────────────────────
+  사용법: 아래 id="report-data" JSON 스크립트 블록의 **내용(JSON)만** 교체한다.
+          report.type 을 "weekly" | "monthly" 로 두면 같은 파일이 주간/월간 보고서가 된다.
+          나머지(HTML·CSS·JS)는 건드리지 않는다.
+  계산은 양식이 한다: 전기 대비 증감(%·절대값), 채워진 지표 수, 퍼널 전환율, 막대 길이,
+          빈 칸의 상태 표기, 표본이 작은 칸 경고, 카드 표시 여부(값이 없으면 그 줄·카드를 숨김).
+  발송 전 검사: 렌더 후 <body data-report-status="ok|error">. error면 화면 맨 위에 빠진 필드가 빨갛게 뜬다.
+          경고는 data-report-warnings 에 남는다(화면엔 안 보임).
+
+  ── 지표 출처 (Probe 화면 ↔ 이 보고서) ──
+  Probe → 앱 지표   4개 묶음(앱 이용 · 전환 퍼널 · 스탬프/마일리지 · 푸시/배너)과 그 안의 칸들을 그대로 옮긴다.
+                     칸 정의는 dashboard `src/app/api/probe/app/route.ts` 가 정(正)이다.
+  출처 배지          DB(백엔드 DB) · 푸시(푸시 발송 기록) · GA4 · Firebase
+  상태 3단계         connected(연결됨) · app_fix(앱 수정 대기) · pending(연결 전) — 여기에 undefined(정의 보류)를 더 쓴다
+
+  ── ★ 주간 보고서를 만들 때 반드시 지킬 것 ──
+  백엔드 `/api/dashboard/admin/app-stats/` 는 **KST 이번 달 누계만** 준다(기간 파라미터가 없다).
+  그래서 DB·푸시 출처 칸(가입·쿠폰·스탬프·마일리지·푸시 발송)은 주간으로 쪼갤 수 없다.
+  주간 보고서에서 그 칸을 그대로 실으려면 `"scope": "month_to_date"` 를 붙인다 — 양식이 「이번 달 누계」 배지를
+  달고 전기 대비 계산에서 뺀다. scope 를 안 붙이면 월 누계가 주간 수치처럼 읽힌다(가장 큰 사고).
+  GA4·Firebase 칸(WAU·DAU/WAU·리텐션·퍼널·푸시 열기·배너)은 기간 쿼리라 주간으로 뽑을 수 있다.
+
+  ── 데이터 규칙 (JSON) ──
+  report.type*          "weekly" | "monthly"
+  report.label*         "2026년 9월" / "9월 3주차" — h1 에 그대로 들어간다
+  report.range*         {start,end} "YYYY-MM-DD"
+  report.compare_label  비교 대상 이름("지난달"·"지난주"). 없으면 type 에 맞춰 자동
+  report.generated_at*  "YYYY-MM-DD"
+  report.data_asof      "2026-09-21 18:00 KST" — BigQuery 칸의 기준 시각(확정 테이블 하루 1회 · 화면 6시간 캐시)
+  report.author / report.note
+  sources[]             {key:"backend|push|ga4|firebase", label, status:"connected|app_fix|pending", hint}
+  headline[]            요약 타일에 올릴 metric key 4개. 없으면 앞 묶음에서 자동으로 고른다
+  groups[]*             {key, title, description, metrics[]}
+    metrics[]*          key* label* value(null 가능) unit source*
+                        prev        전기 값 — 있으면 증감칩을 계산한다
+                        status      "connected|app_fix|pending|undefined" — value 가 null 일 때 그 이유를 쓴다
+                        scope       "period"(기본) | "month_to_date" (주간 보고서의 DB 칸)
+                        sample      표본 수. 30 미만이면 「표본 작음」이 붙고 판정을 흐린다
+                        note        Probe 화면의 주석 문구를 그대로
+                        verdict     "good|warn|flat" 직접 지정(없으면 prev 로 자동)
+  funnel[]              {label, value, unit, note} — 앞 단계 대비 전환율은 양식이 계산한다. value null 이면 끊긴 단계로 그린다
+  trend                 {metric, unit, points:[{label, value}]} — 한 지표의 기간별 추이(주간=일별, 월간=주차별)
+  highlights[]          {tone:"good|warn", title, body, action}
+  caveats[]             문자열 배열 — 이 숫자를 읽을 때의 함정
+  actions[]             {title, note} — 다음에 할 일
+  문장 필드 문법: **굵게**, ==강조==, 줄바꿈 \n. 그 외 HTML은 이스케이프된다.
+
+  ── 넣지 않는 것(결정 사항) ──
+  · 빈 칸을 0 으로 쓰지 않는다. 값이 없으면 왜 없는지(연결 전·앱 수정 대기·정의 보류)를 쓴다.
+  · 추정치·보간값. 표본이 작은 칸은 숫자를 쓰되 「표본 작음」을 같이 띄우고 판정에 쓰지 않는다.
+  · 개인별(담당자) 지표.
+-->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --navy:#050072; --peri:#6366E0; --peri2:#A5B0FC; --gold:#E0A23C;
+    --soft:#EEF0FB; --soft2:#F6F7FF;
+    --ink:#111827; --tx:#374151; --sub:#6B7280; --mut:#9CA3AF; --line:#E5E7EB; --line2:#F3F4F6; --bg:#F4F4F9;
+    --good:#15803D; --goodbg:#F0FDF4; --goodln:#DCFCE7;
+    --warn:#B45309; --warnbg:#FFFBEB; --warnln:#FDE68A;
+    --bad:#B91C1C;  --badbg:#FEF2F2;  --badln:#FECACA;
+    --blue:#1D4ED8; --bluebg:#EFF6FF;
+    color-scheme:light;
+  }
+  body{background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased;font-size:13px;
+    font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
+    -webkit-text-size-adjust:100%;word-break:keep-all;overflow-wrap:break-word;
+    padding-bottom:env(safe-area-inset-bottom,0px)}
+  img{max-width:100%;display:block}
+  a{color:inherit}
+  table{border-collapse:collapse;width:100%}
+
+  .bar{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px));
+    display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;font-weight:700;letter-spacing:-.2px}
+  .bar .dot{width:14px;height:14px;border-radius:50%;background:linear-gradient(145deg,var(--peri2),var(--peri) 50%,var(--navy));flex:none}
+  .bar span{color:var(--sub);font-weight:600}
+
+  .wrap{max-width:860px;margin:0 auto;padding:22px 16px 48px}
+
+  .head{padding:2px 4px 18px}
+  .head .chip{display:inline-block;font-size:11px;font-weight:700;color:var(--peri);background:var(--soft);padding:4px 10px;border-radius:999px}
+  h1{font-size:23px;font-weight:800;letter-spacing:-.6px;line-height:1.35;margin-top:10px}
+  .head .sub{margin-top:5px;font-size:12.5px;color:var(--sub)}
+
+  .card{background:#fff;border:1px solid var(--line2);border-radius:16px;margin-bottom:12px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .pad{padding:18px 20px}
+  h2{font-size:12px;font-weight:700;color:var(--sub);letter-spacing:-.1px;margin-bottom:14px}
+  h2 .h2sub{font-weight:500;color:var(--mut);margin-left:6px}
+  h3{font-size:12px;font-weight:700;color:var(--tx);margin-bottom:8px}
+  .note{margin-top:12px;font-size:11.5px;color:var(--sub);line-height:1.7}
+  .hr{height:1px;background:var(--line2);margin:16px 0}
+
+  /* KPI 타일 */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line2)}
+  .tile{background:#fff;padding:16px 18px}
+  .tile .k{font-size:11px;color:var(--sub);font-weight:600}
+  .tile .v{font-size:25px;font-weight:800;letter-spacing:-.8px;margin-top:4px;line-height:1.15;font-variant-numeric:tabular-nums}
+  .tile .v small{font-size:13px;font-weight:700;color:var(--mut);margin-left:2px;letter-spacing:0}
+  .tile .v.empty{font-size:15px;font-weight:700;color:var(--mut);letter-spacing:-.2px}
+  .tile .s{margin-top:5px;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+  .d{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;font-variant-numeric:tabular-nums}
+  .d.up{color:var(--good);background:var(--goodbg)}
+  .d.dn{color:var(--bad);background:var(--badbg)}
+  .d.fl{color:var(--sub);background:var(--line2)}
+
+  /* 지표 줄 */
+  .mrows{display:flex;flex-direction:column}
+  .mrow{display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--line2)}
+  .mrow:last-child{border-bottom:0}
+  .mleft{flex:1;min-width:0}
+  .mlabel{font-size:12.5px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .mnote{font-size:10.5px;color:var(--mut);line-height:1.65;margin-top:2px}
+  .mright{flex:none;text-align:right;min-width:128px}
+  .mval{font-size:17px;font-weight:800;color:var(--ink);letter-spacing:-.4px;font-variant-numeric:tabular-nums;line-height:1.2}
+  .mval small{font-size:11px;font-weight:700;color:var(--mut);margin-left:2px;letter-spacing:0}
+  .mval.empty{font-size:12px;font-weight:700;color:var(--mut);letter-spacing:-.1px}
+  .mdelta{margin-top:4px}
+
+  /* 배지 */
+  .tag{display:inline-block;font-size:9.5px;font-weight:700;border-radius:999px;padding:2px 7px;white-space:nowrap;letter-spacing:-.1px}
+  .tag.backend{color:var(--navy);background:var(--soft)}
+  .tag.push{color:var(--blue);background:var(--bluebg)}
+  .tag.ga4{color:var(--warn);background:var(--warnbg)}
+  .tag.firebase{color:var(--warn);background:var(--warnbg)}
+  .tag.mtd{color:var(--sub);background:var(--line2)}
+  .tag.small{color:var(--warn);background:var(--warnbg)}
+  .tag.connected{color:var(--good);background:var(--goodbg)}
+  .tag.app_fix{color:var(--warn);background:var(--warnbg)}
+  .tag.pending{color:var(--sub);background:var(--line2)}
+  .tag.undefined{color:var(--sub);background:var(--line2)}
+
+  /* 추이 막대 */
+  .trend{display:flex;align-items:flex-end;gap:10px;height:132px;padding-top:18px}
+  .tcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;min-width:0;height:100%}
+  .tbar{width:100%;max-width:56px;border-radius:4px 4px 0 0;background:var(--peri2);position:relative}
+  .tbar.last{background:var(--peri)}
+  .tv{font-size:11px;font-weight:700;color:var(--tx);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tl{font-size:10px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .taxis{border-top:1px solid var(--line2);margin-top:6px;padding-top:6px;display:flex;gap:10px}
+  .taxis span{flex:1;text-align:center;font-size:10px;color:var(--mut);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 퍼널 */
+  .fn{display:flex;flex-direction:column;gap:2px}
+  .fstep{display:flex;align-items:center;gap:10px;padding:7px 0}
+  .flabel{width:120px;flex:none;font-size:11.5px;color:var(--tx);font-weight:600}
+  .ftrack{flex:1;height:22px;border-radius:6px;background:var(--line2);overflow:hidden;min-width:60px}
+  .ffill{height:100%;border-radius:6px;background:var(--peri)}
+  .fhatch{flex:1;height:22px;border-radius:6px;min-width:60px;
+    background:repeating-linear-gradient(135deg,#E5E7EB,#E5E7EB 5px,#F3F4F6 5px,#F3F4F6 10px)}
+  .fval{width:118px;flex:none;text-align:right;font-size:11.5px;font-weight:700;color:var(--tx);font-variant-numeric:tabular-nums}
+  .fval .frate{display:block;font-size:10px;font-weight:600;color:var(--peri);margin-top:1px}
+  .fval.empty{font-weight:600;color:var(--mut)}
+  .fnote{font-size:10.5px;color:var(--mut);margin:-4px 0 4px 130px;line-height:1.6}
+
+  /* 인사이트 */
+  .ins{border-radius:12px;padding:12px 14px;border:1px solid}
+  .ins+.ins{margin-top:8px}
+  .ins.good{background:var(--goodbg);border-color:var(--goodln)}
+  .ins.warn{background:var(--warnbg);border-color:var(--warnln)}
+  .ins .it{font-size:12.5px;font-weight:700;line-height:1.5}
+  .ins .ib{font-size:12px;margin-top:3px;line-height:1.65}
+  .ins .ia{font-size:11.5px;margin-top:6px;line-height:1.6;font-weight:600}
+  .ins.good .it,.ins.good .ib{color:var(--good)} .ins.good .ia{color:#166534}
+  .ins.warn .it,.ins.warn .ib{color:var(--warn)} .ins.warn .ia{color:#92400E}
+
+  /* 목록 */
+  .rows{display:flex;flex-direction:column}
+  .row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--line2)}
+  .row:last-child{border-bottom:0}
+  .rnum{font-size:11px;font-weight:700;color:var(--peri);width:18px;flex:none;line-height:1.6}
+  .rmain{flex:1;min-width:0;font-size:12px;color:var(--tx);line-height:1.6}
+  .rmain .rs{display:block;font-size:10.5px;color:var(--mut);margin-top:1px;line-height:1.65}
+  .bullets{display:flex;flex-direction:column;gap:7px}
+  .bullet{display:flex;gap:8px;font-size:11.5px;color:var(--tx);line-height:1.7}
+  .bullet::before{content:"·";color:var(--mut);font-weight:700;flex:none}
+
+  .kv{display:flex;flex-wrap:wrap;gap:8px}
+  .kvi{border:1px solid var(--line2);border-radius:10px;padding:8px 12px;min-width:112px}
+  .kvi .k{font-size:10.5px;color:var(--mut);font-weight:600}
+  .kvi .v{font-size:15px;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+
+  .foot{margin-top:18px;padding:16px 18px;border:1px dashed var(--line);border-radius:14px;background:#fff}
+  .foot h2{margin-bottom:10px}
+  .foot dl{display:flex;flex-direction:column;gap:8px}
+  .foot dt{font-size:11.5px;font-weight:700;color:var(--tx)}
+  .foot dd{font-size:11.5px;color:var(--sub);line-height:1.7;margin-top:1px}
+
+  mark{background:linear-gradient(transparent 58%,var(--soft) 58%);color:inherit;padding:0 1px}
+  b{font-weight:700;color:var(--ink)}
+
+  #err{display:none;background:var(--badbg);border:1px solid var(--badln);color:var(--bad);
+    border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:12px;line-height:1.7}
+  body[data-report-status="error"] #err{display:block}
+  #err b{color:var(--bad)}
+
+  @media (max-width:640px){
+    .tiles{grid-template-columns:repeat(2,1fr)}
+    h1{font-size:20px}
+    .tile .v{font-size:22px}
+    .mright{min-width:96px}
+    .flabel{width:84px}
+    .fval{width:92px}
+    .fnote{margin-left:94px}
+    .trend{height:112px;gap:6px}
+  }
+  @media print{
+    @page{size:A4;margin:12mm}
+    body{background:#fff}
+    .bar{display:none}
+    .wrap{max-width:none;padding:0}
+    .card,.foot{break-inside:avoid;box-shadow:none;border:1px solid var(--line)}
+  }
+</style>
+</head>
+<body data-report-status="ok">
+
+<div class="bar"><span class="dot"></span>Probe <span>앱 지표 보고서</span></div>
+
+<div class="wrap">
+  <div id="err"></div>
+  <div id="app"></div>
+</div>
+
+<script type="application/json" id="report-data">
+{
+  "report": {
+    "type": "monthly",
+    "label": "2026년 9월",
+    "range": { "start": "2026-09-01", "end": "2026-09-30" },
+    "compare_label": "8월",
+    "generated_at": "2026-10-01",
+    "data_asof": "2026-09-30 18:00 KST",
+    "author": "Probe",
+    "note": "DB 칸은 KST 월 경계로 센 이번 달 누계입니다. GA4·Firebase 칸은 BigQuery 확정 테이블 기준이라 하루 한 번 늘어나고, 화면은 6시간마다 다시 계산합니다."
+  },
+  "sources": [
+    { "key": "backend",  "label": "백엔드 DB",     "status": "connected", "hint": "가입·쿠폰·스탬프·마일리지 — app-stats 집계" },
+    { "key": "push",     "label": "푸시 발송 기록", "status": "connected", "hint": "전체 알림 + 매장 예약 알림 (개발자 테스트 발송 제외)" },
+    { "key": "ga4",      "label": "GA4",           "status": "connected", "hint": "BigQuery 원본 쿼리 — 배너 노출 1칸은 앱 이벤트가 먼저" },
+    { "key": "firebase", "label": "Firebase",      "status": "connected", "hint": "자동 이벤트(푸시 수신·열기, first_open 코호트)" }
+  ],
+  "headline": ["wau", "signups_month", "coupon_rate", "push_open"],
+  "groups": [
+    {
+      "key": "usage", "title": "앱 이용", "description": "얼마나 많은 학생이 앱을 켜고, 돌아오는가.",
+      "metrics": [
+        { "key": "signups_month", "label": "이번 달 가입", "value": 154, "prev": 131, "unit": "명", "source": "backend", "note": "9월 새로 만든 계정" },
+        { "key": "wau", "label": "주간 활성(WAU)", "value": 245, "prev": 198, "unit": "명", "source": "ga4", "note": "9/11~9/17 앱을 켠 기기 수. 재설치하면 새로 센다" },
+        { "key": "dau_wau", "label": "DAU/WAU", "value": 18.4, "prev": 16.9, "unit": "%", "source": "ga4", "note": "끈적함. 20% 넘으면 습관이 붙은 것" },
+        { "key": "retention_w1", "label": "가입 1주 후 복귀", "value": 31.2, "prev": 28.4, "unit": "%", "source": "firebase", "sample": 154, "note": "9/1~9/14 첫 실행 154대 중 7~13일째 다시 켠 비율" }
+      ]
+    },
+    {
+      "key": "funnel", "title": "전환 퍼널", "description": "앱을 켠 사람이 실제로 매장에서 쓰기까지.",
+      "metrics": [
+        { "key": "open_to_store", "label": "앱 열기 → 매장 상세", "value": 42.6, "prev": 39.8, "unit": "%", "source": "ga4", "note": "세션 3,180개 중 매장 상세를 연 비율" },
+        { "key": "store_to_coupon", "label": "매장 상세 → 쿠폰 발급", "value": null, "unit": "%", "source": "backend", "status": "undefined", "note": "앱의 coupon_issued 는 자동 지급 쿠폰이 보일 때도 남아 매장을 보고 받은 쿠폰과 섞인다 — 정의 보류" },
+        { "key": "coupon_issued", "label": "쿠폰 발급", "value": 717, "prev": 402, "unit": "건", "source": "backend", "note": "경로: 학생회 추천코드 477 · 한정 쿠폰 받기 152 · 가입 환영 61 외 3개 경로" },
+        { "key": "coupon_used", "label": "쿠폰 사용", "value": 24, "prev": 31, "unit": "건", "source": "backend" },
+        { "key": "coupon_expiring", "label": "7일 안에 만료", "value": 513, "prev": 62, "unit": "장", "source": "backend", "note": "아직 안 쓴 쿠폰 · 학생회 추천코드 513장 — 만료 전에 알리면 살릴 수 있다" },
+        { "key": "coupon_rate", "label": "발급 → 사용", "value": 3.3, "prev": 7.7, "unit": "%", "source": "backend", "verdict": "flat", "note": "이번 달 발급 717건 중 사용 24건. 발급 대부분이 이벤트 자동 지급이라 「안 쓴다」로 읽으면 안 된다" }
+      ]
+    },
+    {
+      "key": "loyalty", "title": "스탬프 · 마일리지", "description": "재방문 장치가 실제로 도는가.",
+      "metrics": [
+        { "key": "stamp_earned", "label": "스탬프 적립", "value": 1284, "prev": 1102, "unit": "건", "source": "backend" },
+        { "key": "stamp_reward", "label": "스탬프 보상 수령", "value": 96, "prev": 88, "unit": "건", "source": "backend", "note": "스탬프를 채워 발급된 보상 쿠폰" },
+        { "key": "mileage_entries", "label": "마일리지 응모", "value": 412, "prev": 0, "unit": "건", "source": "backend", "note": "9월 운용안 7회차 시작" },
+        { "key": "mileage_winners", "label": "당첨 · 교환", "value": 28, "prev": 0, "unit": "건", "source": "backend", "note": "당첨 21 · 마일리지로 쿠폰 교환 7. 월 발급 한도(재무 캡) 대비" }
+      ]
+    },
+    {
+      "key": "push", "title": "푸시 · 배너", "description": "보낸 알림이 사람을 앱으로 데려오는가.",
+      "metrics": [
+        { "key": "push_sent", "label": "푸시 발송", "value": 14, "prev": 9, "unit": "건", "source": "push", "note": "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺐다" },
+        { "key": "push_open", "label": "푸시 → 앱 열기", "value": 7.2, "prev": null, "unit": "%", "source": "firebase", "sample": 264, "note": "9/5~9/18 안드로이드 수신 264건 중 19건 열림 (iOS 는 수신을 못 세 열기 3건만)" },
+        { "key": "banner_ctr", "label": "배너 노출 → 클릭", "value": null, "unit": "%", "source": "ga4", "status": "app_fix", "note": "home_banner_impression 이 상수만 있고 호출하는 곳이 없다(0건). 노출 이벤트 배포가 먼저" },
+        { "key": "banner_to_coupon", "label": "배너 클릭 → 쿠폰 사용", "value": 9.1, "prev": null, "unit": "%", "source": "ga4", "sample": 22, "note": "배너를 누른 기기 22대 중 7일 안에 쿠폰을 쓴 2대" }
+      ]
+    }
+  ],
+  "funnel": [
+    { "label": "앱 열기", "value": 3180, "unit": "세션" },
+    { "label": "매장 상세", "value": 1354, "unit": "세션" },
+    { "label": "쿠폰 발급", "value": null, "unit": "건", "note": "매장을 보고 받은 쿠폰만 세는 정의가 없어 이 단계는 끊겨 있다" },
+    { "label": "쿠폰 사용", "value": 24, "unit": "건" }
+  ],
+  "trend": {
+    "metric": "주간 활성(WAU)", "unit": "명",
+    "points": [
+      { "label": "8/25~8/31", "value": 187 },
+      { "label": "9/1~9/7", "value": 198 },
+      { "label": "9/8~9/14", "value": 226 },
+      { "label": "9/15~9/21", "value": 245 }
+    ]
+  },
+  "highlights": [
+    { "tone": "warn", "title": "학생회 추천코드 쿠폰 513장이 한 장도 안 쓰인 채 만료를 앞두고 있습니다", "body": "9월 발급 717건 중 477건이 이 경로이고, 그중 513장(8월 발급분 포함)이 7일 안에 만료됩니다.", "action": "만료 3일 전 푸시를 한 번 보내고, 열람·사용률을 다음 보고에서 같은 칸으로 확인합니다." },
+    { "tone": "warn", "title": "「발급 → 사용 3.3%」는 쿠폰이 안 쓰인다는 뜻이 아닙니다", "body": "분모 717건의 대부분이 이벤트로 자동 지급된 쿠폰이라, 받으려고 한 적 없는 쿠폰까지 분모에 들어갑니다.", "action": "발급 경로를 나눠 「직접 받은 쿠폰」만의 사용률을 따로 셉니다. 그 전까지 이 수치를 배너 A/B 판정 기준으로 쓰지 않습니다." },
+    { "tone": "good", "title": "주간 활성이 4주 연속 올랐습니다", "body": "187 → 198 → 226 → 245명. 같은 기간 DAU/WAU 도 16.9% → 18.4% 로 올라, 사람이 늘면서 방문 빈도도 같이 올랐습니다.", "action": "20% 를 넘으면 습관이 붙은 것으로 봅니다 — 다음 달에 한 번 더 확인합니다." }
+  ],
+  "caveats": [
+    "**빈 칸은 0 이 아니라 「아직 연결되지 않음」입니다.** 이 보고서에서 값이 없는 칸은 이유(연결 전·앱 수정 대기·정의 보류)를 같이 적었습니다.",
+    "**푸시 → 앱 열기는 안드로이드 기준입니다.** iOS 는 수신 기록이 없어 분모에 들어가지 못합니다.",
+    "**앱과 DB 를 사람 단위로 합칠 수 없습니다.** 출시된 어느 앱 버전도 user_id 를 보내지 않습니다(0건). setUserId 가 들어간 빌드가 나와야 합니다.",
+    "**배너 클릭 → 쿠폰 사용은 표본 22대입니다.** 숫자는 적었지만 판정 근거로 쓰기엔 모자랍니다.",
+    "**DB 칸은 이번 달 누계입니다.** 백엔드 app-stats 에 기간 파라미터가 없어 달 중간에 보면 달 말보다 작게 나옵니다."
+  ],
+  "actions": [
+    { "title": "배너 노출 이벤트(home_banner_impression) 호출 추가 후 배포", "note": "「배너 노출 → 클릭」 칸이 이것 하나로 살아납니다" },
+    { "title": "「매장 상세 → 쿠폰 발급」 정의 확정", "note": "자동 지급 쿠폰을 뺀 정의로 갈지, 지표를 「매장 상세 → 쿠폰 사용」으로 바꿀지" },
+    { "title": "setUserId 가 들어간 빌드 출시", "note": "DB 와 앱 이벤트를 사용자 단위로 합치는 전제 조건" },
+    { "title": "쿠폰 발급 경로를 「직접 받음 / 자동 지급」으로 가르기", "note": "발급 → 사용률을 판정에 쓰려면 먼저" }
+  ]
+}
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   렌더러 — 이 아래는 건드리지 않는다. 데이터는 위 JSON 블록에만 넣는다.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+  const MISSING = [], WARN = [];
+  let D = {};
+  try { D = JSON.parse(document.getElementById("report-data").textContent); }
+  catch (e) { MISSING.push("JSON 파싱 실패 — " + e.message); }
+
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const has = v => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0);
+  const n = v => has(v) && isFinite(v) ? (Math.abs(v) < 100 && !Number.isInteger(v) ? v.toFixed(1) : Math.round(v).toLocaleString("ko-KR")) : "—";
+  const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/==(.+?)==/g, "<mark>$1</mark>").replace(/\n/g, "<br>");
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+  const need = (v, name) => { if (!has(v)) MISSING.push(name); return v; };
+
+  const SRC = {backend:"DB", push:"푸시", ga4:"GA4", firebase:"Firebase"};
+  const STATUS = {connected:"연결됨", app_fix:"앱 수정 대기", pending:"연결 전", undefined_:"정의 보류"};
+  const statusLabel = s => s === "undefined" ? STATUS.undefined_ : (STATUS[s] || "연결 전");
+  const SMALL_SAMPLE = 30;
+  const isWeekly = () => (D.report || {}).type === "weekly";
+  const cmpLabel = () => has((D.report||{}).compare_label) ? D.report.compare_label : (isWeekly() ? "지난주" : "지난달");
+
+  /* 전기 대비 증감 칩 — 퍼센트포인트 지표는 %p 로 쓴다.
+     verdict 가 있으면 색만 덮어쓴다(숫자는 그대로). 「내려갔지만 나쁜 게 아닌」 칸을 빨갛게 두지 않기 위한 칸이다. */
+  const VERDICT = {good:"up", warn:"dn", flat:"fl"};
+  function delta(cur, prev, unit, verdict){
+    if (!has(cur) || !has(prev)) return "";
+    if (prev === 0) return `<span class="d fl">${cmpLabel()} 없음</span>`;
+    const diff = cur - prev;
+    const isPct = unit === "%";
+    let cls = Math.abs(isPct ? diff : diff / prev * 100) < 0.5 ? "fl" : (diff > 0 ? "up" : "dn");
+    const ar = cls === "fl" && !has(verdict) ? "－" : (diff > 0 ? "▲" : diff < 0 ? "▼" : "－");
+    if (has(verdict)){
+      if (!VERDICT[verdict]) WARN.push(`verdict "${verdict}" 는 good·warn·flat 중 하나여야 합니다`);
+      else cls = VERDICT[verdict];
+    }
+    const body = isPct
+      ? `${ar} ${Math.abs(diff).toFixed(1)}%p`
+      : `${ar} ${Math.abs(diff / prev * 100).toFixed(1)}%`;
+    return `<span class="d ${cls}">${body}${has(verdict) && verdict === "flat" ? " · 판정 유보" : ""}</span>`;
+  }
+
+  const card = (title, sub, body) => !body ? "" : `<section class="card"><div class="pad">
+    <h2>${esc(title)}${sub ? `<span class="h2sub">${esc(sub)}</span>` : ""}</h2>${body}</div></section>`;
+
+  const allMetrics = () => (D.groups || []).flatMap(g => g.metrics || []);
+
+  /* ── 1. 헤더 ── */
+  function header(){
+    const r = D.report || {};
+    need(r.type, "report.type"); need(r.label, "report.label");
+    need(r.range && r.range.start, "report.range.start"); need(r.generated_at, "report.generated_at");
+    if (has(r.type) && r.type !== "weekly" && r.type !== "monthly") MISSING.push('report.type 은 "weekly" 또는 "monthly"');
+    const ms = allMetrics();
+    const filled = ms.filter(m => has(m.value)).length;
+    const bits = [];
+    if (has(r.range && r.range.start) && has(r.range.end)) bits.push(`${esc(r.range.start)} ~ ${esc(r.range.end)}`);
+    if (has(r.data_asof)) bits.push(`데이터 ${esc(r.data_asof)}`);
+    if (has(r.generated_at)) bits.push(`${esc(r.generated_at)} 작성`);
+    if (ms.length) bits.push(`채워진 지표 ${filled}/${ms.length}`);
+    return `<div class="head">
+      <span class="chip">앱 지표 ${isWeekly() ? "주간" : "월간"} 보고서</span>
+      <h1>${esc(r.label || "—")} 앱 지표</h1>
+      <p class="sub">${bits.join(" · ")}</p>
+    </div>`;
+  }
+
+  /* ── 2. 요약 타일 ── */
+  function summary(){
+    const ms = allMetrics(); if (!ms.length) { MISSING.push("groups[].metrics[]"); return ""; }
+    const keys = has(D.headline) ? D.headline : ms.filter(m => has(m.value)).slice(0,4).map(m => m.key);
+    const picked = keys.map(k => ms.find(m => m.key === k)).filter(Boolean).slice(0,4);
+    if (!picked.length) return "";
+    const tiles = picked.map(m => {
+      const sub = [delta(m.value, m.prev, m.unit, m.verdict),
+                   has(m.sample) ? `n=${n(m.sample)}` : "",
+                   m.scope === "month_to_date" ? "이번 달 누계" : ""].filter(Boolean).join(" · ");
+      return `<div class="tile">
+        <p class="k">${esc(m.label)}</p>
+        ${has(m.value)
+          ? `<p class="v">${n(m.value)}${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</p>`
+          : `<p class="v empty">${esc(statusLabel(m.status))}</p>`}
+        ${sub ? `<p class="s">${sub}</p>` : ""}
+      </div>`;
+    });
+    while (tiles.length % 4) tiles.push(`<div class="tile" aria-hidden="true"></div>`);
+    const note = has((D.report||{}).note) ? D.report.note : "";
+    return `<section class="card">
+      <div class="tiles">${tiles.join("")}</div>
+      ${note ? `<div class="pad" style="padding-top:14px;padding-bottom:16px;border-top:1px solid var(--line2)">
+        <p class="note" style="margin-top:0">${md(note)}</p></div>` : ""}
+    </section>`;
+  }
+
+  /* ── 3. 추이 ── */
+  function trend(){
+    const t = D.trend; if (!has(t) || !has(t.points)) return "";
+    const vals = t.points.map(p => has(p.value) ? p.value : 0);
+    const max = Math.max(...vals, 1);
+    return card(`추이 · ${esc(t.metric || "")}`, isWeekly() ? "일별" : "주차별",
+      `<div class="trend">
+        ${t.points.map((p,i) => {
+          const h = has(p.value) ? clamp(p.value / max * 100, 3, 100) : 0;
+          const last = i === t.points.length - 1;
+          return `<div class="tcol">
+            <span class="tv">${n(p.value)}</span>
+            <div class="tbar ${last ? "last" : ""}" style="height:${h}%" title="${esc(p.label)} · ${n(p.value)}${esc(t.unit || "")}"></div>
+          </div>`;
+        }).join("")}
+      </div>
+      <div class="taxis">${t.points.map(p => `<span>${esc(p.label)}</span>`).join("")}</div>
+      <p class="note">단위 ${esc(t.unit || "-")} · 가장 오른쪽이 이번 ${isWeekly() ? "주" : "달"}입니다.</p>`);
+  }
+
+  /* ── 4. 퍼널 ── */
+  function funnel(){
+    const f = D.funnel; if (!has(f)) return "";
+    const first = f.find(s => has(s.value));
+    const base = first ? first.value : 0;
+    let prevVal = null;
+    const rows = f.map(s => {
+      const rate = has(s.value) && has(prevVal) && prevVal > 0 ? (s.value / prevVal * 100) : null;
+      const out = has(s.value)
+        ? `<div class="fstep">
+            <span class="flabel">${esc(s.label)}</span>
+            <div class="ftrack"><div class="ffill" style="width:${base > 0 ? clamp(s.value / base * 100, 2, 100) : 2}%"></div></div>
+            <span class="fval">${n(s.value)}${s.unit ? ` ${esc(s.unit)}` : ""}${rate !== null ? `<span class="frate">앞 단계의 ${rate.toFixed(1)}%</span>` : ""}</span>
+          </div>`
+        : `<div class="fstep">
+            <span class="flabel" style="color:var(--mut)">${esc(s.label)}</span>
+            <div class="fhatch"></div>
+            <span class="fval empty">끊김</span>
+          </div>`;
+      if (has(s.value)) prevVal = s.value;
+      return out + (has(s.note) ? `<p class="fnote">${esc(s.note)}</p>` : "");
+    });
+    return card("전환 퍼널", "앞 단계 대비", `<div class="fn">${rows.join("")}</div>
+      <p class="note">끊긴 단계 뒤의 전환율은 <b>그 앞의 살아 있는 단계</b>를 분모로 계산합니다 — 단계를 건너뛴 값이라 그대로 읽으면 안 됩니다.</p>`);
+  }
+
+  /* ── 5. 지표 묶음 ── */
+  function groups(){
+    const gs = D.groups; if (!has(gs)) return "";
+    return gs.map(g => {
+      (g.metrics || []).forEach((m,i) => {
+        need(m.label, `groups[${esc(g.key)}].metrics[${i}].label`);
+        if (!has(m.value) && !has(m.status))
+          WARN.push(`${m.key || i} 값이 비었는데 status 가 없습니다 — 왜 비었는지 적어야 합니다`);
+        if (has(m.value) && m.status === "pending")
+          WARN.push(`${m.key} 값이 있는데 status 가 "pending" 입니다`);
+        if (!has(m.value) && m.status === "connected")
+          WARN.push(`${m.key} status 가 "connected" 인데 값이 비었습니다 — 배지만 초록이 되는 경우`);
+        if (isWeekly() && has(m.value) && (m.source === "backend" || m.source === "push") && m.scope !== "month_to_date" && m.scope !== "period")
+          WARN.push(`주간 보고서의 ${m.key}(${m.source}) 에 scope 가 없습니다 — app-stats 는 이번 달 누계만 줍니다`);
+        if (has(m.sample) && m.sample < SMALL_SAMPLE && has(m.prev))
+          WARN.push(`${m.key} 표본 ${m.sample} 로 증감을 붙였습니다 — 판정 근거로 쓰지 마십시오`);
+      });
+      const rows = (g.metrics || []).map(m => {
+        const tags = [
+          has(m.source) ? `<span class="tag ${esc(m.source)}">${SRC[m.source] || esc(m.source)}</span>` : "",
+          m.scope === "month_to_date" ? `<span class="tag mtd">이번 달 누계</span>` : "",
+          has(m.sample) && m.sample < SMALL_SAMPLE ? `<span class="tag small">표본 작음 · n=${n(m.sample)}</span>` : "",
+        ].filter(Boolean).join("");
+        const right = has(m.value)
+          ? `<p class="mval">${n(m.value)}${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</p>
+             ${m.scope === "month_to_date" ? "" : `<p class="mdelta">${delta(m.value, m.prev, m.unit, m.verdict)}</p>`}`
+          : `<p class="mval empty"><span class="tag ${esc(m.status || "pending")}">${esc(statusLabel(m.status))}</span></p>`;
+        return `<div class="mrow">
+          <div class="mleft">
+            <p class="mlabel">${esc(m.label)}${tags}</p>
+            ${has(m.note) ? `<p class="mnote">${esc(m.note)}</p>` : ""}
+          </div>
+          <div class="mright">${right}</div>
+        </div>`;
+      }).join("");
+      const filled = (g.metrics || []).filter(m => has(m.value)).length;
+      return card(g.title || "", `${filled}/${(g.metrics || []).length}칸${has(g.description) ? " · " + g.description : ""}`,
+        `<div class="mrows">${rows}</div>`);
+    }).join("");
+  }
+
+  /* ── 6. 이번 기간에 본 것 ── */
+  function highlights(){
+    const hs = D.highlights; if (!has(hs)) return "";
+    return card(`이번 ${isWeekly() ? "주" : "달"}에 본 것`, "",
+      hs.map(h => `<div class="ins ${h.tone === "warn" ? "warn" : "good"}">
+        <p class="it">${md(h.title)}</p>
+        ${has(h.body) ? `<p class="ib">${md(h.body)}</p>` : ""}
+        ${has(h.action) ? `<p class="ia">→ ${md(h.action)}</p>` : ""}
+      </div>`).join(""));
+  }
+
+  /* ── 7. 데이터 신뢰도 ── */
+  function trust(){
+    const ss = D.sources, cv = D.caveats;
+    if (!has(ss) && !has(cv)) return "";
+    const ms = allMetrics();
+    const kv = ms.length ? `<div class="kv" style="margin-bottom:14px">
+      <div class="kvi"><p class="k">채워진 지표</p><p class="v">${ms.filter(m => has(m.value)).length} / ${ms.length}</p></div>
+      ${has(ss) ? `<div class="kvi"><p class="k">연결된 출처</p><p class="v">${ss.filter(s => s.status === "connected").length} / ${ss.length}</p></div>` : ""}
+    </div>` : "";
+    const table = has(ss) ? `<table>
+      <thead><tr><th style="text-align:left">출처</th><th style="text-align:left">상태</th><th style="text-align:left">무엇이 걸려 있는가</th></tr></thead>
+      <tbody>${ss.map(s => `<tr>
+        <td style="text-align:left;font-weight:600;color:var(--ink);font-size:12px;padding:9px 0;border-bottom:1px solid var(--line2)">${esc(s.label)}</td>
+        <td style="text-align:left;padding:9px 12px 9px 0;border-bottom:1px solid var(--line2)"><span class="tag ${esc(s.status || "pending")}">${esc(statusLabel(s.status))}</span></td>
+        <td style="text-align:left;font-size:11.5px;color:var(--sub);padding:9px 0;border-bottom:1px solid var(--line2);white-space:normal">${esc(s.hint || "")}</td>
+      </tr>`).join("")}</tbody></table>` : "";
+    const caveats = has(cv) ? `${table ? '<div class="hr"></div>' : ""}<h3>이 숫자를 읽을 때</h3>
+      <div class="bullets">${cv.map(c => `<p class="bullet">${md(c)}</p>`).join("")}</div>` : "";
+    return card("데이터 신뢰도", "숫자보다 먼저 보는 칸", kv + table + caveats);
+  }
+
+  /* ── 8. 다음에 할 일 ── */
+  function actions(){
+    const as = D.actions; if (!has(as)) return "";
+    return card("다음에 할 일", `${as.length}건`,
+      `<div class="rows">${as.map((a,i) => `<div class="row">
+        <span class="rnum">${i+1}</span>
+        <span class="rmain"><b>${esc(a.title)}</b>${has(a.note) ? `<span class="rs">${esc(a.note)}</span>` : ""}</span>
+      </div>`).join("")}</div>`);
+  }
+
+  /* ── 9. 각주 ── */
+  function footnote(){
+    const items = [
+      ["주간 활성(WAU)", "최근 7일 안에 앱을 켠 기기 수입니다. 사람이 아니라 기기라서, 재설치하면 새로 셉니다."],
+      ["DAU/WAU", "하루 평균 접속 기기 ÷ 주간 활성. 같은 사람이 얼마나 자주 오는지를 봅니다 — 20%를 넘으면 습관이 붙은 것으로 봅니다."],
+      ["가입 1주 후 복귀", "첫 실행(first_open) 코호트가 7~13일째에 다시 앱을 켠 비율입니다."],
+      ["발급 → 사용", "이번 달 발급된 쿠폰 중 이미 쓴 비율입니다. 달 초에는 쓸 시간이 짧아 낮게 나옵니다."],
+      ["푸시 → 앱 열기", "Firebase 자동 이벤트 기준이며 안드로이드만 분모에 들어갑니다(iOS 는 수신 기록이 없습니다)."],
+      ["집계 경계", "DB 칸은 KST 월 경계로 셉니다(서버 시간은 UTC 라 그대로 쓰면 1일 오전 9시에 달이 바뀝니다). GA4·Firebase 칸은 BigQuery 확정 테이블 기준이라 하루 한 번 늘어납니다."],
+      ["빈 칸의 뜻", "연결됨 = 값이 들어온다 · 앱 수정 대기 = 앱에 이벤트가 없어 수정·배포가 먼저 · 연결 전 = 쿼리가 아직 안 붙음 · 정의 보류 = 무엇을 셀지 정하지 못함. 어느 쪽도 0 이 아닙니다."],
+    ];
+    return `<div class="foot"><h2>지표 읽는 법</h2><dl>
+      ${items.map(([t,d]) => `<div><dt>${esc(t)}</dt><dd>${esc(d)}</dd></div>`).join("")}
+    </dl></div>`;
+  }
+
+  const html = [header(), summary(), trend(), funnel(), groups(), highlights(), trust(), actions(), footnote()].join("");
+  document.getElementById("app").innerHTML = html;
+
+  document.body.dataset.reportStatus = MISSING.length ? "error" : "ok";
+  document.body.dataset.reportWarnings = WARN.join(" | ");
+  if (MISSING.length){
+    document.getElementById("err").innerHTML =
+      `<b>보낼 수 없습니다 — 빠진 값 ${MISSING.length}개</b><br>` + MISSING.map(esc).join("<br>");
+  }
+})();
+</script>
+</body>
+</html>
