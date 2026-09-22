@@ -252,11 +252,12 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
       <div className="mt-5 rounded-2xl border border-navy/20 bg-navy/[0.03] p-4">
         <p className="text-[13.5px] font-semibold text-gray-900 mb-1">점주 대시보드 PIN 4자리 정하기 <span className="text-red-600">*</span></p>
         <p className="text-[12px] text-gray-600 mb-3">앞으로 카카오 로그인 뒤 이 번호로 매장을 확인합니다. <b>사장님만 아는 번호</b>로 정해 주세요.</p>
+        {!d.pin_set && !okPhone && <p className="text-[12px] text-gray-500 mb-3">위 <b>휴대폰 번호</b>를 먼저 적어 주세요. 미팅 때 알려주신 번호와 맞는지 확인합니다.</p>}
         {d.pin_set ? <p className="text-[13px] text-green-700 font-semibold">✓ PIN 을 설정했습니다.</p> : (
           <div className="flex flex-wrap items-end gap-2">
             <Field label="PIN"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
             <Field label="확인"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
-            <Button variant="primary" disabled={busy || pin.length !== 4 || pin !== pin2} onClick={() => run(async () => { await post(`/api/onboard/${token}/pin`, { new_pin: pin }); patch({ pin_set: true }); })}>설정</Button>
+            <Button variant="primary" disabled={busy || pin.length !== 4 || pin !== pin2 || !okPhone} onClick={() => run(async () => { await post(`/api/onboard/${token}/pin`, { new_pin: pin, phone: d.phone }); patch({ pin_set: true }); })}>설정</Button>
           </div>
         )}
       </div>

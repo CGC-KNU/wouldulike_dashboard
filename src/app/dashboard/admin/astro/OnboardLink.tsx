@@ -11,7 +11,7 @@ import { Button, Field, Input, Notice, Select } from "@/app/dashboard/admin/_sha
 type Plan = "FREE" | "BOOST" | "PREMIUM";
 const tierToPlan = (tier: string | null): Plan => tier === "BOOST" ? "BOOST" : tier === "PREMIUM" || tier === "CONTENT" ? "PREMIUM" : "FREE";
 
-export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }: { rid: number; lid?: string | null; name: string; campus: string; tier: string | null; fee: number | null }) {
+export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, ownerPhone = null }: { rid: number; lid?: string | null; name: string; campus: string; tier: string | null; fee: number | null; ownerPhone?: string | null }) {
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState<Plan>(tierToPlan(tier));
   const [feeIn, setFeeIn] = useState<string>(fee ? String(fee) : "");
@@ -39,7 +39,8 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
   const issue = async () => {
     setBusy(true); setErr(null); setBlocked(false);
     try {
-      const body: Record<string, unknown> = { rid, lid, name, campus, plan, days: Number(days) || 14 };
+      // 미팅에서 받아 둔 사장님 번호 — 있으면 링크가 그 번호로만 열린다 (lib/onboard/token.ts phoneMatches)
+      const body: Record<string, unknown> = { rid, lid, name, campus, plan, days: Number(days) || 14, ...(ownerPhone ? { phone: ownerPhone } : {}) };
       if (plan !== "FREE" && feeIn.trim()) body.fee = Number(feeIn.replace(/\D/g, ""));
       if (plan === "FREE") body.fee = 0;
       const r = await fetch("/api/onboard/issue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -59,6 +60,11 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee }
           {!out ? (
             <>
               <p className="text-[12px] text-gray-600 mb-2">사장님께 카톡으로 보낼 링크입니다. 계약(약관 동의)·PIN·혜택·입금·키트까지 이 링크 안에서 끝납니다.</p>
+              <p className="text-[12px] mb-2">
+                {ownerPhone
+                  ? <span className="text-gray-700">본인 확인 · <b>대표자 연락처 {ownerPhone}</b> 와 같은 번호를 적어야 넘어갑니다.</span>
+                  : <span className="text-amber-800">이 매장에는 <b>대표자 연락처가 없습니다.</b> 본인 확인 없이 링크가 열립니다 — 아래 운영 항목에 번호를 먼저 넣으시면 그 번호로만 진행됩니다.</span>}
+              </p>
               {hasPin === true && (
                 <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
                   <b>이 매장은 이미 매장 PIN 이 있습니다.</b> 그 번호는 점주 로그인뿐 아니라

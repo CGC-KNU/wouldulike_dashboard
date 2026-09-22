@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
-import { shortId, stepStamp, verifyOnboardToken } from "@/lib/onboard/token";
+import { phoneMatches, shortId, stepStamp, verifyOnboardToken } from "@/lib/onboard/token";
 import { CHECKS, TERMS_VERSION, contractHtml, startsOnAfter, termsHash, todaySeoul } from "@/lib/onboard/contract";
 import { anyCopy, clientMeta, persistRecord, type ConsentRecord } from "@/lib/onboard/records";
 
@@ -38,6 +38,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   if (!owner_name) return NextResponse.json({ detail: "대표자 성함이 필요합니다." }, { status: 400 });
   if (!/^\d{10}$/.test(biz_no)) return NextResponse.json({ detail: "사업자등록번호 10자리를 확인해 주세요." }, { status: 400 });
   if (!/^01\d{8,9}$/.test(phone)) return NextResponse.json({ detail: "휴대폰 번호를 확인해 주세요." }, { status: 400 });
+  // [0]을 건너뛴 세션이 있을 수 있어 여기서도 본다 (lib/onboard/token.ts phoneMatches)
+  if (!phoneMatches(p, phone)) return NextResponse.json({ detail: "미팅 때 알려주신 번호와 다릅니다. 담당자에게 말씀해 주세요.", phone_mismatch: true, step: 0 }, { status: 409 });
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return NextResponse.json({ detail: "이메일 형식을 확인해 주세요." }, { status: 400 });
 
   // 화면이 본 약관과 서버가 아는 약관이 같은지 — 배포 사이에 문구가 바뀌면 여기서 걸린다.

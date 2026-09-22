@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
 import { backendUrl, getAccessToken, proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
-import { shortId, signOnboardToken, tempPinFor, type OnboardPlan } from "@/lib/onboard/token";
+import { phoneTag, shortId, signOnboardToken, tempPinFor, type OnboardPlan } from "@/lib/onboard/token";
 import { defaultFee } from "@/lib/onboard/contract";
 import { remoteGet } from "@/lib/draft/remote";
 
@@ -18,7 +18,7 @@ import { remoteGet } from "@/lib/draft/remote";
 export async function POST(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const b = (await req.json().catch(() => ({}))) as { rid?: number; lid?: string | null; name?: string; campus?: string; plan?: OnboardPlan; fee?: number; days?: number };
+  const b = (await req.json().catch(() => ({}))) as { rid?: number; lid?: string | null; name?: string; campus?: string; plan?: OnboardPlan; fee?: number; days?: number; phone?: string };
   if (!b.rid || !b.name || !b.campus || !b.plan) return NextResponse.json({ detail: "rid · name · campus · plan 이 필요합니다." }, { status: 400 });
   if (!["FREE", "BOOST", "PREMIUM"].includes(b.plan)) return NextResponse.json({ detail: "플랜은 FREE · BOOST · PREMIUM 중 하나입니다." }, { status: 400 });
 
@@ -67,14 +67,17 @@ export async function POST(req: NextRequest) {
   }
 
   const fee = typeof b.fee === "number" && b.fee >= 0 ? b.fee : defaultFee(b.plan, b.campus);
-  const { token, payload } = signOnboardToken({ rid: b.rid, lid: b.lid ?? null, name: b.name, campus: b.campus, plan: b.plan, fee, by, days: b.days ?? 14 });
+  // 미팅에서 받아 둔 번호가 있으면 대조표를 실어 보낸다 — 링크를 잘못 받은 사람이 계약하는 것을 막는다.
+  // 번호를 모르면 그냥 뺀다. 확인할 근거가 없다고 링크를 못 내면 본말이 전도된다.
+  const ph = phoneTag(b.phone ?? "");
+  const { token, payload } = signOnboardToken({ rid: b.rid, lid: b.lid ?? null, name: b.name, campus: b.campus, plan: b.plan, fee, by, days: b.days ?? 14, ...(ph ? { ph } : {}) });
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
   const url = `${base}/onboard/${token}`;
 
   await notifyAstro(`:link: *${b.name}* 온보딩 링크 발급 · ${b.campus} · ${b.plan}${fee ? ` ${fee.toLocaleString()}원` : ""} · ${by} · #${shortId(payload)} (${b.days ?? 14}일 유효)`);
 
   return NextResponse.json({
-    url, expires_at: new Date(payload.exp * 1000).toISOString(), short_id: shortId(payload),
+    url, phone_checked: Boolean(ph), expires_at: new Date(payload.exp * 1000).toISOString(), short_id: shortId(payload),
     kakao_text:
       `사장님, 안녕하세요. 우주라이크입니다.\n\n계약과 혜택 등록을 한 번에 마칠 수 있는 링크를 보내드립니다. 카카오 로그인 후 5분 정도면 끝납니다.\n\n${url}\n\n링크는 ${b.days ?? 14}일간 유효하고, 중간에 나가셔도 이어서 하실 수 있습니다. 막히는 부분이 있으면 편하게 연락 주십시오.`,
   }, { status: 201 });

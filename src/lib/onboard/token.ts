@@ -32,6 +32,28 @@ export interface OnboardPayload {
   n: string;
   /** 발급한 담당자 */
   by: string;
+  /**
+   * 미팅에서 받아 둔 사장님 번호의 **대조표**(원문 아님).
+   *
+   * 토큰 payload 는 base64url 평문이라 번호를 그대로 넣으면 링크를 본 사람이 읽는다.
+   * 그래서 비밀키로 유도한 태그만 싣고, 서버가 입력값을 같은 방식으로 태그해 비교한다.
+   * 없으면(옛 링크·번호 미확보) 대조를 건너뛴다 — 링크가 죽으면 안 된다.
+   */
+  ph?: string;
+}
+
+/** 전화번호 → 대조표. 숫자만 남겨 비교하므로 하이픈 표기 차이는 무시된다. */
+export function phoneTag(phone: string): string {
+  const n = (phone ?? "").replace(/\D/g, "");
+  if (!n) return "";
+  return b64u(createHmac("sha256", secret()).update(`phone:${n}`).digest()).slice(0, 12);
+}
+
+/** 대조 — 토큰에 표가 없으면 통과(확인할 근거가 없으니 막지 않는다). */
+export function phoneMatches(p: OnboardPayload, phone: string): boolean {
+  if (!p.ph) return true;
+  const a = Buffer.from(p.ph), b = Buffer.from(phoneTag(phone));
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 const b64u = (buf: Buffer) => buf.toString("base64url");
@@ -58,6 +80,7 @@ export function signOnboardToken(p: Omit<OnboardPayload, "v" | "iat" | "exp" | "
   const payload: OnboardPayload = {
     v: 1,
     rid: p.rid, lid: p.lid ?? null, name: p.name, campus: p.campus, plan: p.plan, fee: p.fee,
+    ...(p.ph ? { ph: p.ph } : {}),
     iat: now,
     exp: now + 60 * 60 * 24 * (p.days ?? 14),
     n: b64u(randomBytes(9)),
