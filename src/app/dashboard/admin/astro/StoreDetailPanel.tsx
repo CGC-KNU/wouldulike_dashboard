@@ -179,7 +179,7 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
       onClose={closeGuarded}
       title={row.name}
       subtitle={[o.campus ?? "경북대", o.map_name && o.map_name !== row.name ? `지도 표기 ${o.map_name}` : null, `매장 ID ${id}`, o.sheet_owner && `담당 ${o.sheet_owner}`].filter(Boolean).join(" · ")}
-      badge={row.tier ? <Chip tone={row.tier === "BOOST" ? "amber" : row.tier === "CONTENT" ? "navy" : "gray"}>{row.tier}</Chip> : <Chip tone="gray">플랜 미지정</Chip>}
+      badge={row.tier ? <Chip tone={row.tier === "BOOST" ? "amber" : row.tier === "CONTENT" ? "navy" : "gray"}>{row.tier === "CONTENT" ? "Premium" : row.tier === "BOOST" ? "Boost" : "무료"}</Chip> : <Chip tone="gray">플랜 미지정</Chip>}
       width="lg"
       footer={
         <>
@@ -265,9 +265,9 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
           <Field label={<L src="app">플랜</L>} hint={tierMsg ?? "앱과 청구가 같이 보는 값입니다. 바꾸면 바로 반영됩니다."}>
             <Select value={tierLocal ?? row.tier ?? ""} disabled={tierBusy} onChange={(e) => changeTier(e.target.value)}>
               <option value="">미지정</option>
-              <option value="FREE">FREE</option>
-              <option value="BOOST">BOOST</option>
-              <option value="CONTENT">CONTENT</option>
+              <option value="FREE">무료</option>
+              <option value="BOOST">Boost</option>
+              <option value="CONTENT">Premium</option>
             </Select>
           </Field>
           {/* 기본값은 플랜·캠퍼스에서 온다 (영남대·계명대 Boost 49,500). 예외가 많아 늘 고칠 수 있다 — 정든밤 22,000. */}

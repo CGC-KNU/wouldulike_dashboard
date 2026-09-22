@@ -14,7 +14,14 @@ const tierToPlan = (tier: string | null): Plan => tier === "BOOST" ? "BOOST" : t
 export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, ownerPhone = null }: { rid: number; lid?: string | null; name: string; campus: string; tier: string | null; fee: number | null; ownerPhone?: string | null }) {
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState<Plan>(tierToPlan(tier));
-  const [feeIn, setFeeIn] = useState<string>(fee ? String(fee) : "");
+  /**
+   * ⚠️ 두 값의 뜻이 다르다.
+   *   매장 운영행 `monthly_fee` — **부가세 포함** (경북대 Boost 33,000, lib/draft/pricing.ts)
+   *   온보딩 토큰 `fee`        — **부가세 별도** (계약서 제3조 "표시 금액은 부가가치세 별도")
+   * 그대로 옮겨 담으면 33,000 이 별도값이 되어 청구가 36,300 으로 뛴다 (0922 실측).
+   * 그래서 받아올 때 나눠서 채운다.
+   */
+  const [feeIn, setFeeIn] = useState<string>(fee ? String(Math.round(fee / 1.1)) : "");
   const [days, setDays] = useState("14");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -76,7 +83,12 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
                 <Field label="플랜"><Select value={plan} onChange={(e) => setPlan(e.target.value as Plan)}><option value="FREE">무료</option><option value="BOOST">Boost</option><option value="PREMIUM">Premium</option></Select></Field>
                 <Field label="유효기간(일)"><Input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></Field>
                 <div className="col-span-2">
-                  <Field label="월 이용료 (부가세 별도)" hint={plan === "FREE" ? "무료 플랜" : "비우면 상권 기본값"}><Input inputMode="numeric" disabled={plan === "FREE"} value={plan === "FREE" ? "0" : feeIn} onChange={(e) => setFeeIn(e.target.value)} placeholder={campus === "경북대" ? "30000" : "45000"} /></Field>
+                  <Field label="월 이용료 (부가세 별도)" hint={plan === "FREE" ? "무료 플랜" : "비우면 상권 기본값 — 경북대 30,000 · 그 외 45,000"}><Input inputMode="numeric" disabled={plan === "FREE"} value={plan === "FREE" ? "0" : feeIn} onChange={(e) => setFeeIn(e.target.value)} placeholder={campus === "경북대" ? "30000" : "45000"} /></Field>
+                  {/* 계약서와 입금 안내에 찍히는 건 아래 '실제 청구' 금액이다. 두 숫자를 같이 보여 줘야 별도/포함을 헷갈리지 않는다. */}
+                  {plan !== "FREE" && (() => {
+                    const base = Number((feeIn || (campus === "경북대" ? "30000" : "45000")).replace(/\D/g, "")) || 0;
+                    return <p className="text-[12px] text-gray-600 -mt-1">사장님께는 <b className="text-gray-900">월 {(base + Math.round(base * 0.1)).toLocaleString()}원</b> 으로 안내됩니다 <span className="text-gray-400">({base.toLocaleString()} + 부가세 {Math.round(base * 0.1).toLocaleString()})</span></p>;
+                  })()}
                 </div>
               </div>
               {err && <div className="mt-2"><Notice tone="red" title="발급하지 못했습니다">{err}</Notice></div>}

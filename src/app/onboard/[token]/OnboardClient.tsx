@@ -57,6 +57,7 @@ export default function OnboardClient({ token }: { token: string }) {
   const [fatal, setFatal] = useState<string | null>(null);
   const [d, setD] = useState<Draft>(emptyDraft);
   const [busy, setBusy] = useState(false);
+  const [busyMsg, setBusyMsg] = useState<string | null>(null);
   /**
    * 등록을 마친 뒤 내용을 고치러 되돌아간 상태.
    *
@@ -184,11 +185,18 @@ export default function OnboardClient({ token }: { token: string }) {
   };
   // 오류 배너는 화면 맨 위에 있다. 아래쪽 버튼을 누르고 실패하면 점주 눈에는 "안 눌린다"로 보인다 —
   // 그래서 실패하면 위로 데려간다 (0921 실측: 쿠폰 등록 400 이 났는데 점주가 알아채지 못했다).
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true); setErr(null);
+  /**
+   * 지금 무슨 일이 일어나고 있는지 **말해 준다.**
+   *
+   * 계약 기록은 시트·드라이브에 사본을 만드느라 몇 초 걸린다. 그동안 버튼만 흐려져 있으면
+   * 사장님은 멈춘 줄 알고 창을 닫는다 — 그러면 동의는 기록됐는데 화면은 못 넘어간 상태가 된다.
+   * 그래서 무슨 작업인지 이름을 붙여 띠로 띄우고, 닫지 말라고 적는다. (0922)
+   */
+  const run = async (fn: () => Promise<void>, msg?: string) => {
+    setBusy(true); setBusyMsg(msg ?? "처리하고 있습니다"); setErr(null);
     try { await fn(); }
     catch (e) { setErr((e as Error).message); window.scrollTo({ top: 0, behavior: "smooth" }); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setBusyMsg(null); }
   };
 
   return (
@@ -198,6 +206,15 @@ export default function OnboardClient({ token }: { token: string }) {
         <Stepper steps={paid ? STEPS : STEPS_FREE} current={paid ? d.step : Math.max(0, d.step > 4 ? d.step - 1 : d.step)} />
       </div>
       {err && <div className="mb-4"><Notice tone="red" title="확인해 주세요">{err}</Notice></div>}
+      {busy && busyMsg && (
+        <div className="fixed left-0 right-0 bottom-0 z-40 bg-navy text-white px-5 py-3.5" role="status" aria-live="polite">
+          <div className="mx-auto max-w-lg flex items-center gap-3">
+            <Spinner size={18} className="shrink-0 text-white" />
+            <span className="text-[13.5px] font-semibold">{busyMsg}…</span>
+            <span className="text-[12px] opacity-75 ml-auto">창을 닫지 말아 주세요</span>
+          </div>
+        </div>
+      )}
 
       {d.step === 0 && <Step0 d={d} patch={patch} rq={rq} token={token} busy={busy} run={run} post={post} onNext={() => go(1)} sms={meta.sms_enabled} />}
       {d.step === 1 && <Step1 s={s} paid={paid} terms={meta.terms} onBack={() => go(0)} onNext={() => go(2)} />}
@@ -212,8 +229,8 @@ export default function OnboardClient({ token }: { token: string }) {
           // 원장은 append-only 라 수정도 한 줄로 남는다. 그게 맞다(무엇이 언제 바뀌었는지가 증거다).
           const j = await post(`/api/onboard/${token}/complete`, { owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, kit_address: d.kit_address, kit_ok: d.kit_ok, signature: d.signature, revision: editing === "kit", contract_url: d.contract_url }) as { guide_url?: string | null };
           setEditing(null); patch({ step: 6 }); setMeta((m) => m ? { ...m, done: true } : m); (window as unknown as { __guide?: string | null }).__guide = j.guide_url ?? null; window.scrollTo({ top: 0 });
-        })} />}
-      {d.step === 6 && <Step6 d={d} s={s} revisit={Boolean(meta.already) && !meta.done} guide={(window as unknown as { __guide?: string | null }).__guide ?? null} onEdit={(what) => { setEditing(what); go(what === "benefit" ? 3 : 5); }} />}
+        }, "등록을 마무리하고 있습니다")} />}
+      {d.step === 6 && <Step6 d={d} s={s} token={token} revisit={Boolean(meta.already) && !meta.done} guide={(window as unknown as { __guide?: string | null }).__guide ?? null} onEdit={(what) => { setEditing(what); go(what === "benefit" ? 3 : 5); }} />}
     </Shell>
   );
 }
@@ -257,7 +274,7 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
           <div className="flex flex-wrap items-end gap-2">
             <Field label="PIN"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
             <Field label="확인"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
-            <Button variant="primary" disabled={busy || pin.length !== 4 || pin !== pin2 || !okPhone} onClick={() => run(async () => { await post(`/api/onboard/${token}/pin`, { new_pin: pin, phone: d.phone }); patch({ pin_set: true }); })}>설정</Button>
+            <Button variant="primary" disabled={busy || pin.length !== 4 || pin !== pin2 || !okPhone} onClick={() => run(async () => { await post(`/api/onboard/${token}/pin`, { new_pin: pin, phone: d.phone }); patch({ pin_set: true }); }, "PIN 을 설정하고 있습니다")}>설정</Button>
           </div>
         )}
       </div>
@@ -315,11 +332,11 @@ function Step2({ d, patch, meta, token, busy, run, post, onBack, onNext }: StepP
         ))}
         <Field label="서명 — 대표자 성함을 그대로 입력" required hint="입력한 성함·시각·접속 정보가 서명 기록으로 남습니다"><Input value={d.signature} disabled={done} onChange={(e) => patch({ signature: e.target.value })} placeholder={d.owner_name || "홍길동"} /></Field>
         <Field label="계약서·세금계산서 받을 이메일" hint="비워두셔도 됩니다. 있으면 사본을 바로 보내드립니다"><Input type="email" name="owner_email" autoComplete="off" value={d.email} onChange={(e) => patch({ email: e.target.value })} placeholder="owner@example.com" /></Field>
-        {done ? <Notice tone="blue" title="계약이 체결되었습니다">{d.consent_at ? `동의 시각 ${new Date(d.consent_at).toLocaleString("ko-KR")}` : "동의 기록이 저장되어 있습니다."}{d.contract_url && <> · <a className="underline" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a></>}</Notice>
+        {done ? <Notice tone="blue" title="계약이 체결되었습니다">{d.consent_at ? `동의 시각 ${new Date(d.consent_at).toLocaleString("ko-KR")}` : "동의 기록이 저장되어 있습니다."}{d.consent_at && <> · <a className="underline" href={`/onboard/${token}/contract`} target="_blank" rel="noreferrer">계약서 사본 열기</a></>}</Notice>
           : <Button variant="primary" size="md" className="w-full" disabled={busy || !allChecked || d.signature.trim().length < 2} onClick={() => run(async () => {
               const j = await post(`/api/onboard/${token}/consent`, { checks: d.checks, signature: d.signature, owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, terms_hash: meta.terms.hash }) as { at: string; starts_on: string; contract_url: string | null };
               patch({ consent_at: j.at, starts_on: j.starts_on, contract_url: j.contract_url });
-            })}>위 내용에 동의하며 계약을 체결합니다</Button>}
+            }, "계약을 기록하고 있습니다")}>위 내용에 동의하며 계약을 체결합니다</Button>}
       </div>
       <Nav onBack={onBack} onNext={onNext} nextDisabled={!done}
         nextHint={done ? undefined : !allChecked ? "아직 남았습니다 — 중요 내용 확인 (전부 체크해 주세요)" : d.signature.trim().length < 2 ? "아직 남았습니다 — 성함 서명" : "아직 남았습니다 — 계약 체결 버튼"} />
@@ -422,7 +439,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
       subtitle: `${n}개 모으면`, notes: d.stamp_note.trim(),
     })));
     setStampSaved(true);
-  });
+  }, "스탬프를 등록하고 있습니다");
 
   const couponBlank = d.coupons.some((c) => !c.benefit.trim());
   const saveCoupons = () => run(async () => {
@@ -431,14 +448,14 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
     if (couponBlank) throw new Error("비어 있는 쿠폰 칸이 있습니다. 채우거나 삭제해 주세요.");
     await replaceBenefits("GENERAL", list.map((c) => ({ title: c.benefit.trim(), subtitle: c.cond.trim(), notes: c.cond.trim() })));
     setSavedCoupons(list.length);
-  });
+  }, "쿠폰을 등록하고 있습니다");
 
   const saveSpecial = () => run(async () => {
     const sp = d.special;
     if (!sp?.benefit.trim()) throw new Error("한정 쿠폰 혜택을 적어 주세요.");
     await replaceBenefits("SPECIAL", [{ title: sp.benefit.trim(), subtitle: sp.cond.trim(), notes: sp.cond.trim() }]);
     setSpecialSaved(true);
-  });
+  }, "한정 쿠폰을 등록하고 있습니다");
 
   return (
     <section>
@@ -753,7 +770,7 @@ function Step5({ d, patch, s, onBack, onNext, busy, nextLabel }: { d: Draft; pat
   );
 }
 
-function Step6({ d, s, guide, onEdit, revisit }: { d: Draft; s: Meta["store"]; guide: string | null; onEdit: (what: "benefit" | "kit") => void; revisit?: boolean }) {
+function Step6({ d, s, guide, onEdit, revisit, token }: { d: Draft; s: Meta["store"]; guide: string | null; onEdit: (what: "benefit" | "kit") => void; revisit?: boolean; token: string }) {
   const stampRows = Object.entries(d.stamp_steps).filter(([, v]) => v.trim()).sort((a, b) => Number(a[0]) - Number(b[0]));
   const coupons = d.coupons.filter((c) => c.benefit.trim());
   return (
@@ -788,7 +805,7 @@ function Step6({ d, s, guide, onEdit, revisit }: { d: Draft; s: Meta["store"]; g
       </div>
 
       <div className="grid gap-2 max-w-xs mx-auto">
-        {d.contract_url && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={d.contract_url} target="_blank" rel="noreferrer">계약서 사본 열기</a>}
+        {d.consent_at && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={`/onboard/${token}/contract`} target="_blank" rel="noreferrer">계약서 사본 열기</a>}
         {guide && <a className="block rounded-xl border border-gray-200 bg-white py-3 text-[13.5px] font-semibold text-gray-900" href={guide} target="_blank" rel="noreferrer">점주 안내문 받기</a>}
         <a className="block rounded-xl bg-navy text-white py-3 text-[13.5px] font-semibold" href="/dashboard/owner">점주 대시보드 열기</a>
       </div>
@@ -806,7 +823,7 @@ function Step6({ d, s, guide, onEdit, revisit }: { d: Draft; s: Meta["store"]; g
 }
 
 /* ════════════ 조각 ════════════ */
-type StepProps = { d: Draft; patch: (p: Partial<Draft>) => void; busy: boolean; run: (fn: () => Promise<void>) => Promise<void>; post: (path: string, body?: unknown, method?: string) => Promise<Record<string, unknown>>; onBack?: () => void; onNext: () => void };
+type StepProps = { d: Draft; patch: (p: Partial<Draft>) => void; busy: boolean; run: (fn: () => Promise<void>, msg?: string) => Promise<void>; post: (path: string, body?: unknown, method?: string) => Promise<Record<string, unknown>>; onBack?: () => void; onNext: () => void };
 
 function Shell({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (

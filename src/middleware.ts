@@ -5,9 +5,9 @@ const PUBLIC_PATHS = ["/login", "/auth/", "/api/auth/"];
 const PUBLIC_EXACT = [/^\/r\/[0-9a-f]{40}$/, /^\/api\/r\/[0-9a-f]{40}\/view$/];
 // 점주 온보딩 — 서명 토큰(base64url.base64url)만 연다. 세션은 라우트 안에서 만든다 (lib/onboard/token.ts).
 const ONBOARD_TOKEN = "[A-Za-z0-9_-]{40,600}\\.[A-Za-z0-9_-]{43}";
-// (`/contract` 은 만든 적이 없다 — 약관 전문은 [2]단계 화면 안에서 그대로 읽히고,
-//  서명된 사본은 드라이브 링크로 나간다. 없는 경로를 열어 두면 나중에 있는 줄 안다.)
-const PUBLIC_ONBOARD = [new RegExp(`^/onboard/${ONBOARD_TOKEN}$`), new RegExp(`^/api/onboard/${ONBOARD_TOKEN}(/(session|consent|complete|sms|pin))?$`)];
+// `/contract` 은 서명한 계약서 사본을 앱이 직접 그려 주는 자리다 (0922).
+// 드라이브가 HTML 을 소스 그대로 펼쳐 보여서 점주가 "이상한 코드"를 받았다.
+const PUBLIC_ONBOARD = [new RegExp(`^/onboard/${ONBOARD_TOKEN}(/contract)?$`), new RegExp(`^/api/onboard/${ONBOARD_TOKEN}(/(session|consent|complete|sms|pin))?$`)];
 
 interface DashboardJWT {
   is_admin?: boolean;

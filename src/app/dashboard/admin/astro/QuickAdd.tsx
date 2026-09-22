@@ -369,9 +369,9 @@ export default function QuickAdd({
           {mode === "new" && (
             <Field label="플랜">
               <Select value={tier} onChange={(e) => setTier(e.target.value)}>
-                <option value="FREE">FREE</option>
-                <option value="BOOST">BOOST</option>
-                <option value="CONTENT">CONTENT</option>
+                <option value="FREE">무료</option>
+                <option value="BOOST">Boost</option>
+                <option value="CONTENT">Premium</option>
               </Select>
             </Field>
           )}

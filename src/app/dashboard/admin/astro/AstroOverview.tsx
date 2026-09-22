@@ -245,7 +245,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                         월 이용료·청구가 따라 움직여서 그 맥락이 보이는 자리에서 바꾸는 게 맞다. */}
                     <Td>
                       <span className={`text-[12px] font-semibold ${r.tier === "BOOST" ? "text-navy" : r.tier === "CONTENT" ? "text-amber-700" : r.tier ? "text-gray-700" : "text-gray-400"}`}>
-                        {r.tier ?? "미지정"}
+                        {r.tier === "CONTENT" ? "Premium" : r.tier === "BOOST" ? "Boost" : r.tier === "FREE" ? "무료" : "미지정"}
                       </span>
                     </Td>
                     {/* 운영 구분 — 계약이 끝난 곳은 학기/방학이 의미가 없다. 종료를 먼저 말한다 (민열님 0914). */}
@@ -332,7 +332,7 @@ function NewStorePanel({ actor, campus, campusOptions, onClose, onCreated }: { a
       <Field label="매장명" required hint={form.map_name ? `지도 표기: ${form.map_name}` : undefined}><Input value={form.name} onChange={set("name")} placeholder="예: 라라더" /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="캠퍼스"><CampusPicker value={form.campus} options={campusOptions} onChange={(v) => setForm((f) => ({ ...f, campus: v }))} /></Field>
-        <Field label="플랜"><Select value={form.tier} onChange={set("tier")}><option value="FREE">FREE</option><option value="BOOST">BOOST</option><option value="CONTENT">CONTENT</option></Select></Field>
+        <Field label="플랜"><Select value={form.tier} onChange={set("tier")}><option value="FREE">무료</option><option value="BOOST">Boost</option><option value="CONTENT">Premium</option></Select></Field>
         <Field label="월 이용료 (VAT 포함)" hint={feeHint(form.tier, form.campus) ?? "정해진 기본값이 없는 플랜입니다. 계약한 금액을 적으세요."}>
           <Input type="number" inputMode="numeric" value={fee} onChange={(e) => { setFee(e.target.value); setFeeTouched(true); }} placeholder={suggested ? String(suggested) : "예: 22000"} />
         </Field>
