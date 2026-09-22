@@ -33,8 +33,8 @@ export function fillReportTemplate(r: StoreReport, opts: { beaconToken?: string 
  * `<body data-report-status="ok|error">` 라는 설명 글이 먼저 나와서, 거기(주석 속)에 들어가 화면에 안 보인다.
  */
 const BODY_TAG = '<body data-report-status="loading">';
-export function insertAfterBody(html: string, fragment: string): string {
-  const i = html.indexOf(BODY_TAG);
-  if (i < 0) throw new Error("리포트 양식에서 <body> 를 찾지 못했습니다 — 양식이 바뀌었는지 확인하세요");
-  return html.slice(0, i + BODY_TAG.length) + "\n" + fragment + html.slice(i + BODY_TAG.length);
+export function insertAfterBody(html: string, fragment: string, bodyTag: string = BODY_TAG): string {
+  const i = html.indexOf(bodyTag);
+  if (i < 0) throw new Error(`리포트 양식에서 <body> 를 찾지 못했습니다 — 양식이 바뀌었는지 확인하세요 (찾던 것: ${bodyTag})`);
+  return html.slice(0, i + bodyTag.length) + "\n" + fragment + html.slice(i + bodyTag.length);
 }
