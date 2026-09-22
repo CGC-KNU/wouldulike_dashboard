@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     return NextResponse.json({ detail: "계약 동의 단계가 완료되지 않았습니다.", step: 2 }, { status: 409 });
   }
 
-  const b = (await req.json().catch(() => ({}))) as { owner_name?: string; biz_no?: string; phone?: string; email?: string; kit_address?: string; kit_ok?: boolean; signature?: string; revision?: boolean };
+  const b = (await req.json().catch(() => ({}))) as { owner_name?: string; biz_no?: string; phone?: string; email?: string; kit_address?: string; kit_ok?: boolean; signature?: string; revision?: boolean; contract_url?: string | null };
   const kit_address = (b.kit_address ?? "").trim();
   // 이미 끝낸 뒤 배송지만 고치러 돌아온 경우. 원장은 append-only 라 수정도 한 줄로 남는다 —
   // 무엇이 언제 바뀌었는지가 곧 증거다. 다만 슬랙에서 신규 등록처럼 보이면 안 된다.
@@ -99,6 +99,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     `• 스탬프 등록 ✓ · 웰컴 키트 발송 대기 (${kit_address})\n` +
     `• 기록 사본: ${copyTxt}${copies.errors.length ? ` · 실패: ${copies.errors.join(", ")}` : ""}` +
     (p.lid ? `\n• 후보 단계: ${stage_ok ? "계약 완료로 옮김" : "옮기지 못함 — 세틀라이트에서 수동 변경 필요"}` : "") +
+    // 계약서 사본 발송은 **사람이 한다**(자동 발송 없음 — 0922 결정). 완료 화면이 사장님께
+    // "담당자가 보내드립니다"라고 약속하므로, 여기서 할 일과 보낼 링크를 같이 준다.
+    // 링크가 없으면 왜 없는지 적는다 — 조용히 빠지면 아무도 안 보낸다.
+    (revision ? "" :
+      `\n• :envelope: *보낼 것* — 계약서 사본을 ${b.email ? `${(b.email ?? "").trim()} 와 ` : ""}카톡으로 보내 주세요` +
+      // 사본은 **동의 단계**에서 드라이브에 올라간다 — 완료 단계의 copies 에는 없다.
+      // 그때 돌려준 링크를 화면이 들고 있다가 여기로 넘겨 준다.
+      (b.contract_url ? `\n   ${b.contract_url}` : `\n   :warning: 사본 링크를 못 받았습니다 — 드라이브에서 "온보딩_${p.rid}_" 로 찾아 주세요`)) +
     `\n• #${shortId(p)}`
   );
 

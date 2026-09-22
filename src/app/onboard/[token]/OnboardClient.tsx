@@ -210,7 +210,7 @@ export default function OnboardClient({ token }: { token: string }) {
         onNext={() => run(async () => {
           // 배송지는 완료 기록에만 남는 값이다 — 고쳤으면 다시 기록해야 실제로 바뀐다.
           // 원장은 append-only 라 수정도 한 줄로 남는다. 그게 맞다(무엇이 언제 바뀌었는지가 증거다).
-          const j = await post(`/api/onboard/${token}/complete`, { owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, kit_address: d.kit_address, kit_ok: d.kit_ok, signature: d.signature, revision: editing === "kit" }) as { guide_url?: string | null };
+          const j = await post(`/api/onboard/${token}/complete`, { owner_name: d.owner_name, biz_no: d.biz_no, phone: d.phone, email: d.email, kit_address: d.kit_address, kit_ok: d.kit_ok, signature: d.signature, revision: editing === "kit", contract_url: d.contract_url }) as { guide_url?: string | null };
           setEditing(null); patch({ step: 6 }); setMeta((m) => m ? { ...m, done: true } : m); (window as unknown as { __guide?: string | null }).__guide = j.guide_url ?? null; window.scrollTo({ top: 0 });
         })} />}
       {d.step === 6 && <Step6 d={d} s={s} revisit={Boolean(meta.already) && !meta.done} guide={(window as unknown as { __guide?: string | null }).__guide ?? null} onEdit={(what) => { setEditing(what); go(what === "benefit" ? 3 : 5); }} />}
@@ -763,7 +763,7 @@ function Step6({ d, s, guide, onEdit, revisit }: { d: Draft; s: Meta["store"]; g
       <h2 className="font-display text-[22px] font-bold text-gray-900">{revisit ? "이미 등록을 마치셨습니다" : "등록이 끝났습니다"}</h2>
       {revisit
         ? <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 이 링크로 하실 일은 끝났습니다.<br />혜택을 바꾸시거나 매장 정보를 고치시려면 <b>점주 대시보드</b>에서 하시면 됩니다.</p>
-        : <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <><b>{kdate(d.starts_on)}부터 시작</b>합니다. 그때까지는 준비 기간이라 부담하실 것이 없습니다.<br /></>}웰컴 키트는 곧 발송되고, 계약서 사본은 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다.</p>}
+        : <p className="text-[13.5px] text-gray-600 mt-1 mb-5">{s.name} 사장님, 함께하게 되어 반갑습니다.<br />{d.starts_on && <><b>{kdate(d.starts_on)}부터 시작</b>합니다. 그때까지는 준비 기간이라 부담하실 것이 없습니다.<br /></>}웰컴 키트는 곧 발송되고, 계약서 사본은 담당자가 {d.email ? "이메일과 " : ""}카카오톡으로 보내드립니다. 지금 아래에서 바로 받아 두셔도 됩니다.</p>}
       {/* 무엇을 등록했는지 한 장으로 — 사장님이 끝나고 확인하실 곳은 여기뿐이다.
           이게 없으면 "내가 뭘 신청한 거지"로 끝나고, 나중에 담당자에게 되묻는다. */}
       <div className="text-left max-w-sm mx-auto rounded-2xl border border-gray-200 bg-white p-4 mb-4">
