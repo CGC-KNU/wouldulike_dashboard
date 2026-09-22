@@ -4,6 +4,8 @@ import {
   buildAppReportData, fillAppReportTemplate, lastCompleteWeekEnd, normalizeWeekEnd,
   weekLabel, weekRangeLabel, appReportFilename, type AppStats,
 } from "../src/lib/draft/appReportData";
+import { buildMonthlyAppReportData, previousPeriod } from "../src/lib/draft/appReportMonthly";
+import { lastCompleteMonth } from "../src/lib/draft/appReport";
 import type { Ga4AppMetrics } from "../src/lib/bigquery/appMetrics";
 
 /**
@@ -159,4 +161,119 @@ test("백엔드를 못 읽어도 렌더되고, DB 칸이 「연결 전」이 된
   const r = render(fillAppReportTemplate(d));
   assert.equal(r.status, "ok");
   assert.equal(r.warnings, "");
+});
+
+// ── 월간 ────────────────────────────────────────────────────────────
+const augGa4: Ga4AppMetrics = {
+  through: "2026-08-31", week: { from: "2026-08-01", to: "2026-08-31" },
+  wau: 128, new_devices: 61, dau_wau: 5.5, open_to_store: 26.2, sessions: 275,
+  retention_w1: 27.8, cohort: { from: "2026-08-01", to: "2026-08-18", users: 18 },
+  push_open: 1.4, push: { from: "2026-08-01", to: "2026-08-31", received: 70, opened_android: 1, opened_ios: 3 },
+  banner_to_coupon: 0, banner: { from: "2026-08-01", to: "2026-08-24", clicked: 11, redeemed: 0 },
+};
+const julGa4: Ga4AppMetrics = {
+  ...augGa4, through: "2026-07-31", week: { from: "2026-07-01", to: "2026-07-31" },
+  wau: 116, new_devices: 38, dau_wau: 4.6, open_to_store: 23.6, sessions: 212,
+};
+const side = (period: string, over: Record<string, number | null> = {}, complete = true) => ({
+  period, complete, counted_at: "2026-09-22T02:10:00+09:00", failed: [] as string[],
+  stats: {
+    signups: 120, coupon_issued: 400, coupon_redeemed: 31, coupon_redeem_rate: 7.8,
+    stamp_earned: 1102, stamp_reward: 88, mileage_entries: 0, mileage_winners: 0,
+    mileage_exchanges: 0, push_sent: 9, ...over,
+  },
+});
+
+test("월간: DB 칸은 그 달만의 값이라 전월 대비가 붙는다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07", { signups: 90 }) },
+    today: "2026-09-22",
+  });
+  const signups = find(d, "signups");
+  assert.equal(signups.value, 120);
+  assert.equal(signups.prev, 90, "월간은 전월 대비가 있어야 한다 — 이게 월간 보고서의 이유다");
+  assert.equal(signups.scope, "period", "주간의 month_to_date 와 달라야 한다");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "");
+  assert.match(r.text, /2026년 8월/);
+  assert.doesNotMatch(r.text, /이번 달 누계/, "월간에 「이번 달 누계」 배지가 뜨면 안 된다");
+});
+
+test("월간: 창이 한 달이라 DAU/MAU 로 이름이 바뀌고 각주도 갈린다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07") },
+    today: "2026-09-22",
+  });
+  assert.equal((find(d, "dau_wau") as unknown as { label: string }).label, "DAU/MAU");
+  assert.equal((find(d, "wau") as unknown as { label: string }).label, "월간 활성(MAU)");
+  const r = render(fillAppReportTemplate(d));
+  assert.match(r.text, /DAU\/MAU/);
+  assert.match(r.text, /월간 활성\(MAU\)/);
+  assert.doesNotMatch(r.text, /20%를 넘으면 습관이 붙은 것으로 봅니다/, "20% 기준은 주간 각주에만 있어야 한다");
+});
+
+test("월간: 스냅샷이 없으면 DB 칸은 0 이 아니라 「연결 전」", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-07", cur: julGa4, prev: null, snapshot: null, today: "2026-09-22",
+  });
+  const signups = find(d, "signups");
+  assert.equal(signups.value, null);
+  assert.equal(signups.status, "pending");
+  assert.equal(signups.prev, undefined);
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "");
+  assert.match(r.text, /스냅샷이 없어 DB 칸이 비었습니다/);
+});
+
+test("월간: 전월 스냅샷만 없으면 값은 있고 증감만 빠진다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: null },
+    today: "2026-09-22",
+  });
+  const signups = find(d, "signups");
+  assert.equal(signups.value, 120);
+  assert.equal(signups.prev, undefined, "0 으로 두면 「0에서 늘었다」가 된다");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.match(r.text, /전월\(2026년 7월\) 스냅샷이 없어/);
+});
+
+test("월간: 아직 안 끝난 달은 누계라고 알린다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-09", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-09", current: side("2026-09", {}, false), previous: side("2026-08") },
+    today: "2026-09-22",
+  });
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.match(r.text, /아직 끝나지 않았습니다/);
+});
+
+test("월간: 스냅샷이 못 센 칸은 그 이유를 적는다", () => {
+  const snap = { ...side("2026-08", { mileage_entries: null }), failed: ["mileage_entries"] };
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: snap, previous: side("2026-07") },
+    today: "2026-09-22",
+  });
+  const m = find(d, "mileage_entries");
+  assert.equal(m.value, null);
+  assert.equal(m.status, "pending");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.match(r.text, /스냅샷을 만들 때 이 칸을 세지 못했습니다/);
+});
+
+test("마지막으로 다 끝난 달", () => {
+  assert.equal(lastCompleteMonth(Date.parse("2026-09-22T03:00:00Z")), "2026-08");
+  assert.equal(lastCompleteMonth(Date.parse("2026-01-05T03:00:00Z")), "2025-12");
+  // KST 로 넘어가는 경계 — UTC 12/31 16:00 은 KST 1/1
+  assert.equal(lastCompleteMonth(Date.parse("2025-12-31T16:00:00Z")), "2025-12");
+  assert.equal(previousPeriod("2026-01"), "2025-12");
+  assert.equal(previousPeriod("2026-09"), "2026-08");
 });

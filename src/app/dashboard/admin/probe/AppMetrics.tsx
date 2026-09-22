@@ -64,7 +64,11 @@ export default function AppMetrics() {
             {data?.draft && <DraftBadge note={data.draft_note} />}
             {/* 보고서는 서버가 그 자리에서 만든다(스냅샷 없음) — 양식에 끼워 파일 한 장으로 나온다. 위 띠에서 PNG·HTML·인쇄. */}
             <a href="/r/app" target="_blank" rel="noreferrer" title="마지막으로 다 끝난 주(월~일)의 주간 보고서를 새 탭에서 엽니다">
-              <Button variant="primary" icon={<IconFileDescription />}>주간 보고서 만들기</Button>
+              <Button variant="primary" icon={<IconFileDescription />}>주간 보고서</Button>
+            </a>
+            {/* 월간은 DB 칸을 백엔드 월별 스냅샷에서 읽어 전월 대비를 붙인다. 스냅샷이 없는 달은 그 칸이 빈다(0 아님). */}
+            <a href="/r/app?type=monthly" target="_blank" rel="noreferrer" title="마지막으로 다 끝난 달의 월간 보고서를 새 탭에서 엽니다 — DB 칸에 전월 대비가 붙습니다">
+              <Button icon={<IconFileDescription />}>월간 보고서</Button>
             </a>
             <Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>
           </>
