@@ -37,13 +37,18 @@ function parseJwtPayload(token: string): DashboardJWT {
  * (`//evil.com` 같은 값이 들어오면 열린 리다이렉트가 된다).
  */
 function toLogin(req: NextRequest): NextResponse {
-  const res = NextResponse.redirect(new URL("/login", req.url));
   const { pathname, search } = req.nextUrl;
   // 문서 이동만 기억한다. API·정적 요청까지 담으면 마지막에 실패한 fetch 주소로 끌려간다.
   const wantsHtml = (req.headers.get("accept") ?? "").includes("text/html");
-  if (wantsHtml && pathname.startsWith("/dashboard")) {
-    res.cookies.set("post_login_to", pathname + search, { sameSite: "lax", maxAge: 60 * 10, path: "/" });
-  }
+  const want = wantsHtml && pathname.startsWith("/dashboard") ? pathname + search : null;
+
+  const url = new URL("/login", req.url);
+  // **주소와 쿠키 둘 다에 담는다.** 카카오 로그인이 외부로 나갔다 오는 사이에 쿠키가 없어지는
+  // 경우가 있다(브라우저가 바뀌거나, 인앱 브라우저에서 외부 브라우저로 넘어가거나).
+  // 주소는 그 왕복을 못 견디고, 쿠키는 브라우저 전환을 못 견딘다 — 하나만으로는 새는 길이 남는다.
+  if (want) url.searchParams.set("next", want);
+  const res = NextResponse.redirect(url);
+  if (want) res.cookies.set("post_login_to", want, { sameSite: "lax", maxAge: 60 * 30, path: "/" });
   return res;
 }
 

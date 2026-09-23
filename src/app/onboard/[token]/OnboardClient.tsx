@@ -134,7 +134,7 @@ export default function OnboardClient({ token }: { token: string }) {
     // 환경변수가 없으면 지금 열린 주소로 되돌아온다 — 콜백 라우트도 같은 폴백을 쓰므로 두 값이 어긋나지 않는다.
     // (카카오는 authorize 의 redirect_uri 와 token 교환의 redirect_uri 가 다르면 거절한다.)
     // 없다고 링크가 죽으면 안 된다: 점주는 이 화면에서 더 갈 데가 없다.
-    const uri = process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI || `${location.origin}/auth/kakao/callback`;
+    const uri = `${location.origin}/auth/kakao/callback`;
     const q = new URLSearchParams({ client_id: id, redirect_uri: uri, response_type: "code", scope: "profile_nickname", state: `onboard:${token}` });
     location.href = `https://kauth.kakao.com/oauth/authorize?${q}`;
   };

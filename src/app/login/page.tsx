@@ -1,9 +1,26 @@
 "use client";
 
 export default function LoginPage() {
+  /**
+   * 카카오로 돌아올 주소는 **지금 열려 있는 도메인**이어야 한다.
+   *
+   * 환경변수(`NEXT_PUBLIC_KAKAO_REDIRECT_URI`)에 `vercel.app` 으로 고정돼 있어서,
+   * `app.wouldulike.kr` 에서 로그인해도 카카오가 `vercel.app` 으로 돌려보냈다 — 로그인 도중
+   * 도메인이 바뀌니 세션 쿠키도, 가려던 주소를 담아 둔 쿠키도 다른 호스트에 남아 못 읽는다.
+   * 슬랙 딥링크가 첫 화면으로 떨어진 진짜 이유다 (0923 실측).
+   * 카카오 콘솔에 두 주소가 모두 등록돼 있으므로 현재 origin 을 쓰는 것이 맞다.
+   */
   const handleKakaoLogin = () => {
     const kakaoClientId = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID;
-    const redirectUri = process.env.NEXT_PUBLIC_KAKAO_REDIRECT_URI;
+
+    // 미들웨어가 주소(`?next=`)와 쿠키 둘 다에 가려던 곳을 담아 준다. 쿠키가 지워진 브라우저라도
+    // 주소는 남아 있으니 여기서 쿠키를 다시 세운다 — 카카오에 다녀오면 `?next=` 는 사라진다.
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/dashboard") && !next.startsWith("//")) {
+      document.cookie = `post_login_to=${encodeURIComponent(next)}; path=/; max-age=1800; samesite=lax`;
+    }
+
+    const redirectUri = `${window.location.origin}/auth/kakao/callback`;
     window.location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${kakaoClientId}&redirect_uri=${redirectUri}&response_type=code&scope=profile_nickname`;
   };
 
