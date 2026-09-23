@@ -263,6 +263,8 @@ export interface PerformanceMetric {
   cohort: PerformanceMetricCohort;
   pi: number | null;
   percentile: number | null;
+  /** 건수 창 — 최근 5건 · 10건 · 전체. n 이 분모, rank 는 1 이 최고. 0923 이전 응답엔 없다. */
+  baskets?: import("@/lib/draft/types").MetricBaskets;
 }
 
 export interface PerformanceInsight {

@@ -447,6 +447,28 @@ export interface ReportMetric {
   delta_pct: number | null;
   /** 어디서 온 숫자인가 — 출처 배지. graph = 인스타그램 Graph API, app = 우리 DB, sheet = 수기 시트. 0917 이전 스냅샷엔 없다. */
   source?: ReportMetricSource;
+  /**
+   * 건수 창 — 최근 5건 · 10건 · 전체. `n` 이 분모이고 `rank` 는 1 이 최고다.
+   * 시간 창(p10·p90)을 대신한다: 이 계정 분포에서는 어떤 폭의 구간을 써도 절반이 분산에 찍힌다.
+   * 0923 이전 스냅샷에는 없다 — 없으면 옛 방식(p10·p90)으로 떨어진다.
+   */
+  baskets?: MetricBaskets;
+}
+
+export interface MetricBasket {
+  /** 분모 — 순위를 매긴 집합의 크기. 이 게시물을 포함한다. */
+  n: number;
+  /** 1 이 최고. 같은 값이면 위쪽 순위. */
+  rank: number | null;
+  median: number | null;
+  pi: number | null;
+  /** 표본이 얕다 — 순위·분모는 쓰되 중앙값으로 판정하지 않는다 */
+  thin: boolean;
+}
+export interface MetricBaskets {
+  recent5: MetricBasket;
+  recent10: MetricBasket;
+  all: MetricBasket;
 }
 export type ReportMetricSource = "graph" | "app" | "sheet";
 
