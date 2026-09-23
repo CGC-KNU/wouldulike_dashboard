@@ -22,7 +22,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   return `
 <div data-preview-bar style="background:#FFF7E6;border-bottom:1px solid #F3D9A4;padding:8px 16px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;font:600 12px/1.4 -apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;color:#9A6414">
   <span>미리보기 · ${esc(opts.statusLabel)}</span>
-  <button type="button" data-dl="png" style="${btn};background:#312E81;color:#fff"${off}>PNG 저장</button>
+  <button type="button" data-dl="png" style="${btn};background:#312E81;color:#fff"${off}>PNG 저장 (3장)</button>
   <button type="button" data-dl="html" style="${btn};background:#fff;color:#312E81;box-shadow:inset 0 0 0 1px #C7CCFB"${off}>HTML 저장</button>
   <button type="button" data-dl="print" style="${btn};background:#fff;color:#312E81;box-shadow:inset 0 0 0 1px #C7CCFB"${off}>인쇄(PDF)</button>
   <span data-dl-msg>${opts.canDownload ? "카톡으로 보낼 파일을 받습니다" : "승인한 리포트만 받을 수 있습니다 (금지 표현·필수 값 검사)"}</span>
@@ -94,6 +94,37 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     });
   }
 
+  // 카톡에서 읽기 좋게 **세 장**으로 나눈다. 한 장이면 1:4.2 라 말풍선에서 가느다란 띠가 된다(0923 실측).
+  // 픽셀로 자르면 글자가 잘린다 — 양식이 이미 구획(id)으로 나뉘어 있으므로 **그 경계로** 자른다.
+  // 빈 구획(앱 카드·지난 보고·업셀은 없을 때가 있다)은 그냥 아무것도 안 그린다.
+  var PAGES = [
+    { no: 1, ids: ["r-head", "r-post"] },
+    { no: 2, ids: ["r-metrics", "r-app", "r-change", "r-compare"] },
+    { no: 3, ids: ["r-insight", "r-upsell", "r-foot"] }
+  ];
+  var ALL_IDS = PAGES.reduce(function (a, p) { return a.concat(p.ids); }, []);
+
+  /** 이 장에 안 들어가는 구획만 숨긴다. 되돌리는 함수를 준다. */
+  function showOnly(ids) {
+    var was = [];
+    ALL_IDS.forEach(function (id) {
+      var n = document.getElementById(id); if (!n) return;
+      was.push([n, n.style.display]);
+      n.style.display = ids.indexOf(id) < 0 ? "none" : "";
+    });
+    return function () { was.forEach(function (w) { w[0].style.display = w[1]; }); };
+  }
+
+  /** 머리띠에 "1/3" 을 잠깐 붙인다 — 카톡 앨범에서는 파일 이름이 안 보인다. */
+  function pageMark(no, total) {
+    var host = document.querySelector(".bar"); if (!host) return function () {};
+    var el = document.createElement("span");
+    el.textContent = " " + no + "/" + total;
+    el.setAttribute("data-page-mark", "1");
+    host.appendChild(el);
+    return function () { el.remove(); };
+  }
+
   function png() {
     var W = 640, body = document.body, prev = body.getAttribute("style"), undoImgs = null;
     return Promise.all([loadLib(), fontCss(), inlineImages()]).then(function (r) {
@@ -116,7 +147,19 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
       if (undoImgs) { undoImgs(); undoImgs = null; }  // 화면의 src 를 되돌린다 — 안 되돌리면 페이지가 무거워진 채로 남는다
     }
   }
-  window.__reportFiles = { png: png, html: staticHtml }; // 점검용
+  /** 세 장을 차례로. 한 번에 한 장만 화면에 두고 찍는다 — 레이아웃이 섞이지 않는다. */
+  function pngPages() {
+    var out = [], total = PAGES.length;
+    return PAGES.reduce(function (chain, p) {
+      return chain.then(function () {
+        var back = showOnly(p.ids), unmark = pageMark(p.no, total);
+        return png().then(function (blob) { back(); unmark(); out.push({ no: p.no, blob: blob }); },
+                          function (e) { back(); unmark(); throw e; });
+      });
+    }, Promise.resolve()).then(function () { return out; });
+  }
+
+  window.__reportFiles = { png: png, pngPages: pngPages, html: staticHtml }; // 점검용
 
   bar.addEventListener("click", function (e) {
     var b = e.target.closest("button[data-dl]"); if (!b || !CAN) return;
@@ -124,9 +167,11 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     if (kind === "print") { var prev = document.title; document.title = FN; window.print(); setTimeout(function () { document.title = prev; }, 1000); return; }
     busy(true); say(kind === "png" ? "이미지를 만드는 중… (글꼴을 받느라 몇 초 걸립니다)" : "파일을 만드는 중…");
     var job = kind === "png"
-      ? png().then(function (blob) {
-          save(blob, FN + ".png");
-          say("PNG " + Math.round(blob.size / 1024) + "KB 저장" + (png.missed ? " — 이미지 " + png.missed + "개를 못 넣었습니다" : ""));
+      ? pngPages().then(function (pages) {
+          // 한꺼번에 내려받으면 브라우저가 막는다 — 조금씩 띄운다
+          pages.forEach(function (p, i) { setTimeout(function () { save(p.blob, FN + "_" + p.no + ".png"); }, i * 400); });
+          var kb = Math.round(pages.reduce(function (a, p) { return a + p.blob.size; }, 0) / 1024);
+          say("PNG " + pages.length + "장 저장 (" + kb + "KB)" + (png.missed ? " — 이미지 " + png.missed + "개를 못 넣었습니다" : ""));
         })
       : staticHtml().then(function (html) {
           var blob = new Blob([html], { type: "text/html;charset=utf-8" }); save(blob, FN + ".html");

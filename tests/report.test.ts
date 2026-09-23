@@ -197,3 +197,38 @@ test("PNG 도 이미지를 직접 인라인한다 — 변환 도구에 맡기지
   assert.match(bar, /undoImgs\(\)/, "캡처 뒤 화면의 src 를 되돌려야 한다");
   assert.match(bar, /PNG .*개를 못 넣었습니다|개를 못 넣었습니다/, "실패하면 말해야 한다");
 });
+
+// ── PNG 3장 나누기 (카톡) ────────────────────────────────────────────
+import REPORT_TEMPLATE_HTML from "../src/lib/draft/reportTemplateHtml";
+
+test("PNG 는 카톡용으로 세 장을 낸다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  assert.match(bar, /PNG 저장 \(3장\)/);
+  assert.match(bar, /function pngPages\(\)/);
+  assert.match(bar, /_" \+ p\.no \+ "\.png/, "파일 이름에 장 번호가 들어가야 한다");
+  assert.match(bar, /i \* 400/, "한꺼번에 내려받으면 브라우저가 막는다");
+  assert.match(bar, /data-page-mark/, "앨범에서는 파일 이름이 안 보인다 — 화면에 1/3 을 찍는다");
+});
+
+/**
+ * 양식에 구획이 새로 생겼는데 PAGES 에 안 넣으면, 그 카드가 **PNG 에서 조용히 사라진다**
+ * (showOnly 가 목록에 없는 건 건드리지 않으니 화면엔 남고 PNG 에만 빠지는 게 아니라,
+ *  목록 밖 구획은 어느 장에도 안 들어가 세 장 어디에도 안 나온다).
+ * 양식이 가진 구획과 PAGES 가 덮는 구획이 **정확히 같아야** 한다.
+ */
+test("양식의 모든 구획이 세 장 어딘가에 들어간다", () => {
+  const inTemplate = new Set(
+    [...REPORT_TEMPLATE_HTML.matchAll(/id="(r-[a-z]+)"/g)].map((m) => m[1])
+  );
+  inTemplate.delete("r-errors"); // 발송 전 검사용 — 리포트 내용이 아니다
+
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  const pages = bar.match(/var PAGES = \[([\s\S]*?)\n  \];/);
+  assert.ok(pages, "PAGES 를 못 찾았습니다");
+  const covered = new Set([...pages[1].matchAll(/"(r-[a-z]+)"/g)].map((m) => m[1]));
+
+  const missing = [...inTemplate].filter((id) => !covered.has(id));
+  assert.deepEqual(missing, [], `양식에 있는데 어느 장에도 안 들어간 구획: ${missing.join(", ")}`);
+  const extra = [...covered].filter((id) => !inTemplate.has(id));
+  assert.deepEqual(extra, [], `PAGES 에 있는데 양식엔 없는 구획: ${extra.join(", ")}`);
+});
