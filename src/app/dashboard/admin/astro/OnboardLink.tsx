@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconLink, IconCopy, IconCheck } from "@tabler/icons-react";
+import { IconLink, IconCopy, IconCheck, IconSend } from "@tabler/icons-react";
 import { Button, Field, Input, Notice, Select } from "@/app/dashboard/admin/_shared/ui";
 
 /**
@@ -11,7 +11,7 @@ import { Button, Field, Input, Notice, Select } from "@/app/dashboard/admin/_sha
 type Plan = "FREE" | "BOOST" | "PREMIUM";
 const tierToPlan = (tier: string | null): Plan => tier === "BOOST" ? "BOOST" : tier === "PREMIUM" || tier === "CONTENT" ? "PREMIUM" : "FREE";
 
-export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, ownerPhone = null }: { rid: number; lid?: string | null; name: string; campus: string; tier: string | null; fee: number | null; ownerPhone?: string | null }) {
+export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, ownerPhone = null, actor = "", actorPhone = "" }: { rid: number; lid?: string | null; name: string; campus: string; tier: string | null; fee: number | null; ownerPhone?: string | null; actor?: string; actorPhone?: string }) {
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState<Plan>(tierToPlan(tier));
   /**
@@ -35,6 +35,15 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
   const [blocked, setBlocked] = useState(false);
   const [restorePin, setRestorePin] = useState("");
   const [restored, setRestored] = useState<string | null>(null);
+  // 알림톡 — 키·템플릿이 아직 없을 수 있다. 그때는 "보낸 척"하지 않고 무엇이 비었는지 그대로 적는다.
+  const [talk, setTalk] = useState<{ configured: boolean; missing: string[] } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || talk) return;
+    fetch("/api/alimtalk/send?template=onboard_link").then((r) => (r.ok ? r.json() : null))
+      .then((j) => setTalk(j ?? { configured: false, missing: ["설정을 읽지 못했습니다"] })).catch(() => null);
+  }, [open, talk]);
   useEffect(() => {
     if (!open || hasPin !== null) return;
     // 기존 PIN 이 있으면 발급이 막힌다. 다만 우리가 심은 임시 PIN 이면 재발급이므로 서버가 허용한다 —
@@ -57,6 +66,32 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
       setOut({ url: j.url, kakao_text: j.kakao_text ?? j.url, expires_at: j.expires_at ?? "", short_id: j.short_id ?? "" });
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
+  /** 손으로 카톡에 붙여넣던 것을 그대로 알림톡으로. 번호는 링크를 묶어 둔 사장님 번호와 같다. */
+  const sendTalk = async () => {
+    if (!out || !ownerPhone) return;
+    setSending(true); setSent(null);
+    try {
+      const won = plan === "FREE" ? "0" : String(Math.round(Number(feeIn.replace(/\D/g, "") || 0) * 1.1));
+      const r = await fetch("/api/alimtalk/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template: "onboard_link", to: ownerPhone,
+          variables: {
+            "#{매장명}": name,
+            "#{플랜}": plan === "FREE" ? "무료" : plan === "BOOST" ? "Boost" : "Premium",
+            "#{이용료}": won,
+            "#{시작월}": new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long" }),
+            "#{담당자}": actor || "담당자",
+            "#{담당자연락처}": actorPhone || "-",
+            "#{토큰}": out.url.split("/onboard/")[1] ?? "",
+          },
+        }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { detail?: string };
+      setSent(j.detail ?? (r.ok ? "보냈습니다." : "보내지 못했습니다."));
+    } catch { setSent("보내지 못했습니다."); } finally { setSending(false); }
+  };
+
   const copy = async (what: "url" | "text") => { if (!out) return; await navigator.clipboard.writeText(what === "url" ? out.url : out.kakao_text).catch(() => null); setCopied(what); setTimeout(() => setCopied(null), 1500); };
 
   return (
@@ -125,7 +160,16 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
               <p className="text-[12px] text-gray-700 mb-1"><b>#{out.short_id}</b> · {new Date(out.expires_at).toLocaleDateString("ko-KR")}까지 유효 · 채널에는 토큰이 안 올라갑니다</p>
               <div className="flex gap-1 items-center"><Input readOnly value={out.url} className="text-[11px]" /><Button size="sm" icon={copied === "url" ? <IconCheck /> : <IconCopy />} onClick={() => copy("url")}>{copied === "url" ? "복사됨" : "URL"}</Button></div>
               <textarea readOnly value={out.kakao_text} rows={6} className="mt-2 w-full text-[12px] rounded-[10px] bg-white border border-gray-200 p-2 text-gray-800" />
-              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" icon={copied === "text" ? <IconCheck /> : <IconCopy />} onClick={() => copy("text")}>{copied === "text" ? "복사됨" : "카톡 문안 복사"}</Button><Button variant="ghost" size="sm" onClick={() => { setOut(null); }}>다시 발급</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
+              <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" icon={copied === "text" ? <IconCheck /> : <IconCopy />} onClick={() => copy("text")}>{copied === "text" ? "복사됨" : "카톡 문안 복사"}</Button>{talk?.configured && ownerPhone && <Button variant="secondary" size="sm" icon={<IconSend />} onClick={sendTalk} disabled={sending}>{sending ? "보내는 중…" : "알림톡 보내기"}</Button>}<Button variant="ghost" size="sm" onClick={() => { setOut(null); }}>다시 발급</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
+              {sent && <p className="text-[11.5px] text-gray-600 mt-1.5">{sent}</p>}
+              {talk && !talk.configured && (
+                <p className="text-[11.5px] text-gray-400 mt-1.5">
+                  알림톡은 아직 설정 전입니다 — {talk.missing.join(" · ")}. 그때까지는 위 문안을 복사해 보내 주세요.
+                </p>
+              )}
+              {talk?.configured && !ownerPhone && (
+                <p className="text-[11.5px] text-amber-700 mt-1.5">사장님 번호가 없어 알림톡을 보낼 수 없습니다 — 매장에 번호를 먼저 적어 주세요.</p>
+              )}
             </>
           )}
         </div>

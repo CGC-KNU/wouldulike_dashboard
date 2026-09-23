@@ -119,7 +119,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                     {r.blocked && <p className="text-[11.5px] text-gray-400 mt-0.5">{r.blocked}</p>}
                     {(r.stage === "미발급" || r.stage === "대기") && (
                       <div className="mt-1.5">
-                        <OnboardLink rid={r.rid} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} />
+                        <OnboardLink rid={r.rid} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} />
                       </div>
                     )}
                   </Td>
