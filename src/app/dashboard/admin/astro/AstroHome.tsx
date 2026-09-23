@@ -7,6 +7,7 @@ import { BLOCKER_KIND_LABEL, buildBlockers, monthlyFromPlan, type BlockerKind } 
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import { Button, Card, Chip, Empty, Kpi, PageHeader, Skeleton, agoLabel, daysSince, focusRing, todayLocal, type ChipTone, periodLocal } from "../_shared/ui";
 import CampusMark from "./CampusMark";
+import MonthlySnapshot from "./MonthlySnapshot";
 
 /**
  * Astro · 홈. Pitchr 대시보드를 따랐다 — 상단 "지금 막힌 것" KPI, 파이프라인 요약(단계별 막대), 최근 기록.
@@ -89,6 +90,8 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
         <Kpi label="진행 중 후보" value={loading ? "-" : active.length} hint={`유료 매장 ${paid.length}곳`} onClick={() => onGo("astro-leads")} />
       </div>
 
+
+      <MonthlySnapshot />
 
       {/* ── 지금 막힌 것 (애딧 Pitchr '오늘 끝내야 할 일' 차용, 민열님 0914)
              숫자만 보여 주면 "그래서 뭘 하지"가 남는다. 무엇이 없어서 안 굴러가는지 한 줄과 버튼 하나. */}
