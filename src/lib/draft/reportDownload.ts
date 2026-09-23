@@ -92,7 +92,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     // 실패를 삼키면 안 된다 — 예전엔 조용히 넘어가서, 저장된 파일에 썸네일이 빠진 걸 열어 보고서야 알았다(0923).
     var missed = 0;
     return Promise.all(imgs.map(function (i) {
-      return dataUrl(i.src).then(function (u) { i.setAttribute("src", u); }).catch(function () { missed++; });
+      return shrunkDataUrl(i.src, 1400).then(function (u) { i.setAttribute("src", u); }).catch(function () { missed++; });
     })).then(function () {
       staticHtml.missed = missed;
       return "<!doctype html>\\n" + doc.outerHTML;
@@ -102,6 +102,38 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   // 리포트 전체 → PNG (폭 640 · 2배)
   // 변환 도구는 요소마다 **지금 계산된** 스타일을 복사한다 — 넓은 화면의 가운데 정렬 여백이 그대로 박혀 오른쪽이 잘린다.
   // 그래서 만드는 동안만 실제 화면을 폰 폭(640)으로 좁혔다가 되돌린다.
+  /**
+   * 원본을 화면에 필요한 크기로 줄여 **다시 압축**해서 data: 로 만든다.
+   *
+   * 실측(0923): 게시물 사진이 1080x1440 · 805KB 였다. 그대로 넣으면
+   *   · 카톡으로 보낼 PNG·HTML 이 무겁다(HTML 저장이 1.1MB 였고 그 대부분이 이 사진이다).
+   *   · 스냅샷에도 같은 사진이 base64 로 들어간다 — 리포트 한 건이 1MB 를 넘는다.
+   * jpeg q85 로 다시 뽑으면 실측 805KB → 430KB. 리포트는 폭 640 으로 그리므로 2배를 쳐도
+   * 1280 이면 충분해서, 그보다 큰 원본은 폭도 줄인다.
+   *
+   * 캔버스가 막히거나 이미지를 못 읽으면 원본을 그대로 쓴다 — 없는 것보단 낫다.
+   */
+  function shrunkDataUrl(url, maxW) {
+    return dataUrl(url).then(function (u) {
+      return new Promise(function (ok) {
+        var im = new Image();
+        im.onload = function () {
+          var w = Math.min(maxW, im.naturalWidth || maxW);
+          var h = Math.round((im.naturalHeight || w) * w / (im.naturalWidth || w));
+          if (!w || !h) return ok(u);
+          try {
+            var c = document.createElement("canvas"); c.width = w; c.height = h;
+            c.getContext("2d").drawImage(im, 0, 0, w, h);
+            var out = c.toDataURL("image/jpeg", 0.85);
+            ok(out.length < u.length ? out : u);   // 더 커지면 원본을 쓴다(작은 png 등)
+          } catch (e) { ok(u); }
+        };
+        im.onerror = function () { ok(u); };
+        im.src = u;
+      });
+    });
+  }
+
   // 변환 도구에 넘기기 전에 이미지를 **직접** data: 로 바꿔 둔다.
   // 도구도 이미지를 스스로 받아 오긴 하는데, 실패하면 imagePlaceholder(투명 1x1)로 갈아치워서
   // **크기만 남은 빈 상자**가 된다 — 0923 에 PNG 썸네일 자리가 비어 나온 게 이것이다.
@@ -112,7 +144,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     var undo = [], missed = 0;
     return Promise.all(imgs.map(function (i) {
       var was = i.getAttribute("src");
-      return dataUrl(was).then(function (u) {
+      return shrunkDataUrl(was, 1400).then(function (u) {
         undo.push([i, was]); i.setAttribute("src", u);
         // 새 src 가 실제로 그려질 때까지 기다린다 — 안 기다리면 도구가 빈 이미지를 복사한다
         return i.decode ? i.decode().catch(function () {}) : null;
