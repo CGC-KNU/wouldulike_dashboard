@@ -47,8 +47,14 @@ export default function LoginPage() {
           카카오로 로그인
         </button>
 
-        {/* Apple 로그인 (iOS 전용) */}
-        <AppleLoginButton />
+        {/*
+          Apple 로그인은 뺐다 (민열님 0923).
+          버튼은 `response_mode=form_post` 로 애플에 보내는데, **그 POST 를 받는 곳이 어디에도 없었다** —
+          프론트에 콜백 라우트가 없고, 백엔드 `AppleLoginView` 는 Flutter 앱용이라 `identity_token` JSON 만 받는다.
+          즉 도메인 문제가 아니라 웹 플로우 자체가 없었다. 눌러도 아무 데도 가지 않는 버튼을
+          점주가 처음 보는 화면에 두는 것이 없는 것보다 나쁘다.
+          웹 Apple 로그인이 필요해지면 콜백부터 만든다 — 버튼은 그 다음이다.
+        */}
 
         <p className="text-center text-xs text-gray-400 mt-2">
           점주로 등록된 계정만 이용할 수 있습니다
@@ -72,38 +78,3 @@ function KakaoIcon() {
   );
 }
 
-function AppleLoginButton() {
-  // iOS 환경에서만 표시
-  const isIOS =
-    typeof window !== "undefined" &&
-    /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-  if (!isIOS) return null;
-
-  const handleAppleLogin = () => {
-    const clientId = process.env.NEXT_PUBLIC_APPLE_CLIENT_ID;
-    const redirectUri = process.env.NEXT_PUBLIC_APPLE_REDIRECT_URI;
-    window.location.href = `https://appleid.apple.com/auth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code id_token&scope=name email&response_mode=form_post`;
-  };
-
-  return (
-    <button
-      onClick={handleAppleLogin}
-      className="w-full flex items-center justify-center gap-3 bg-black text-white font-semibold py-3 px-4 rounded-xl hover:bg-gray-900 transition-colors"
-    >
-      <AppleIcon />
-      Apple로 로그인
-    </button>
-  );
-}
-
-function AppleIcon() {
-  return (
-    <svg width="18" height="22" viewBox="0 0 18 22" fill="none">
-      <path
-        d="M14.94 11.39c-.02-2.03 1.66-3.01 1.73-3.06-0.94-1.38-2.41-1.57-2.93-1.59-1.25-.13-2.44.74-3.07.74-.63 0-1.6-.72-2.63-.7-1.35.02-2.6.79-3.29 2-1.41 2.44-.36 6.05 1.01 8.03.67.97 1.46 2.06 2.5 2.02 1.01-.04 1.39-.65 2.61-.65 1.22 0 1.56.65 2.62.63 1.08-.02 1.76-0.98 2.42-1.95.77-1.12 1.08-2.2 1.1-2.26-.02-.01-2.11-.81-2.13-3.22zm-2-5.9c.56-.67.93-1.6.83-2.53-.8.03-1.77.53-2.34 1.19-.51.59-.96 1.55-.84 2.46.89.07 1.79-.45 2.35-1.12z"
-        fill="white"
-      />
-    </svg>
-  );
-}

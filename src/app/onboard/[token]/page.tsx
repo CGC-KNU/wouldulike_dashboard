@@ -20,7 +20,11 @@ import { BrandStack } from "./Brand";
 /**
  * 미리보기 문구. **주장도 시간 약속도 넣지 않는다** (민열님 0923: "너무 사기꾼같음 → 정직하고 심플하게").
  * "5분이면 끝납니다" 는 광고 배너 문법이고, 계약 서명을 앞둔 화면의 첫인상으로는 정반대였다.
- * 이미지(`/brand/og-onboard.jpg`, 생성기는 같은 폴더의 `og-onboard.source.html`)와 같은 톤으로 맞춘다.
+ * 이미지(`/brand/og-onboard-0923.jpg`, 생성기는 같은 폴더의 `og-onboard.source.html`)와 같은 톤으로 맞춘다.
+ *
+ * **이미지를 바꾸면 파일 이름도 바꾼다.** 카카오는 미리보기 이미지를 URL 기준으로 캐시해서,
+ * 같은 이름으로 덮어쓰면 설명만 새로 나가고 그림은 옛 것이 그대로 나간다(0923 실측).
+ * 디버거로 긁어도 마찬가지다 — 주소가 같으면 캐시가 산다.
  */
 const OG_DESC = "계약서 확인과 혜택 등록을 하실 수 있습니다.";
 export const metadata: Metadata = {
@@ -32,7 +36,7 @@ export const metadata: Metadata = {
     title: "우주라이크 파트너 등록",
     description: OG_DESC,
     locale: "ko_KR",
-    images: [{ url: "/brand/og-onboard.jpg", width: 1200, height: 630, alt: "우주라이크 파트너 등록" }],
+    images: [{ url: "/brand/og-onboard-0923.jpg", width: 1200, height: 630, alt: "우주라이크 파트너 등록" }],
   },
 };
 
