@@ -330,6 +330,13 @@ function Step2({ d, patch, meta, token, busy, run, post, onBack, onNext }: StepP
             <span className="text-[13px] text-gray-800">{c.text} <span className="text-gray-400 text-[11px]">({c.article})</span></span>
           </label>
         ))}
+        {/* 약관 제12조에만 있으면 아무도 안 읽는다. 서명 바로 위에 한 번 더 적는다 —
+            개인정보보호법이 요구하는 것은 '알리는 것'이고, 알리려면 보이는 자리에 있어야 한다. */}
+        <div className="rounded-xl bg-gray-50 border border-gray-200 px-3.5 py-2.5 text-[12px] text-gray-600 leading-relaxed">
+          <b className="text-gray-800">서명하시면 아래 정보가 기록됩니다.</b> 대표자 성함 · 사업자등록번호 · 휴대전화번호{d.email ? " · 이메일" : ""} ·
+          카카오 계정 식별자 · 동의 시각 · 접속 IP와 브라우저 정보. <b>계약의 체결·이행과 그 증거 보전</b>에만 쓰고,
+          계약 종료일부터 <b>5년</b> 보관한 뒤 파기합니다(상법 제33조·국세기본법). 광고에는 쓰지 않습니다. (제12조)
+        </div>
         <Field label="서명 — 대표자 성함을 그대로 입력" required hint="입력한 성함·시각·접속 정보가 서명 기록으로 남습니다"><Input value={d.signature} disabled={done} onChange={(e) => patch({ signature: e.target.value })} placeholder={d.owner_name || "홍길동"} /></Field>
         <Field label="계약서·세금계산서 받을 이메일" hint="비워두셔도 됩니다. 있으면 사본을 바로 보내드립니다"><Input type="email" name="owner_email" autoComplete="off" value={d.email} onChange={(e) => patch({ email: e.target.value })} placeholder="owner@example.com" /></Field>
         {done ? <Notice tone="blue" title="계약이 체결되었습니다">{d.consent_at ? `동의 시각 ${new Date(d.consent_at).toLocaleString("ko-KR")}` : "동의 기록이 저장되어 있습니다."}{d.consent_at && <> · <a className="underline" href={`/onboard/${token}/contract`} target="_blank" rel="noreferrer">계약서 사본 열기</a></>}</Notice>
