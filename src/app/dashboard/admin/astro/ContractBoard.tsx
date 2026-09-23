@@ -7,6 +7,7 @@ import OnboardLink from "./OnboardLink";
 import OnboardReconcile from "./OnboardReconcile";
 import SpecialApprovals from "./SpecialApprovals";
 import CampusMark from "./CampusMark";
+import NewStorePanel from "./NewStorePanel";
 
 /**
  * 파트너 계약 — **매장 추가 → 링크 발급 → 계약 → 반영** 한 사이클을 한 화면에서.
@@ -42,6 +43,13 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
   const [ledgerOn, setLedgerOn] = useState(true);
   const [filter, setFilter] = useState<Stage | "all">("all");
   const [busy, setBusy] = useState(false);
+  /**
+   * 매장 추가를 **이 탭 안에서** 한다 (민열님 0923 인계 §3).
+   * 전에는 파트너 매장 탭으로 보냈다 — 거기서 만들고 다시 여기로 돌아와 그 매장을 찾아야 했다.
+   * 팀원이 실제로 하는 일은 "추가 → 링크 발급 → 문안 전달" 한 줄인데 화면이 그 줄을 끊고 있었다.
+   */
+  const [adding, setAdding] = useState(false);
+  const [justAdded, setJustAdded] = useState<{ rid: number; name: string } | null>(null);
 
   const load = useCallback(() => {
     setBusy(true);
@@ -66,7 +74,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
         actions={
           <>
             <Button icon={<IconRefresh size={16} />} disabled={busy} onClick={load}>{busy ? "읽는 중…" : "새로고침"}</Button>
-            <Button variant="primary" icon={<IconPlus />} onClick={() => onGo?.("astro-ops")}>매장 추가</Button>
+            <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button>
           </>
         }
       />
@@ -119,7 +127,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                     {r.blocked && <p className="text-[11.5px] text-gray-400 mt-0.5">{r.blocked}</p>}
                     {(r.stage === "미발급" || r.stage === "대기") && (
                       <div className="mt-1.5">
-                        <OnboardLink rid={r.rid} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} />
+                        <OnboardLink rid={r.rid} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} />
                       </div>
                     )}
                   </Td>
@@ -129,10 +137,24 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
           </Table>
         )}
       </Card>
+      {justAdded && (
+        <p className="text-[12px] text-navy font-semibold mt-2">
+          「{justAdded.name}」 을(를) 추가했습니다 — 아래 목록에서 링크 발급 칸이 열려 있습니다.
+        </p>
+      )}
       <p className="text-[11.5px] text-gray-400 mt-2">
         단계는 저장된 값이 아니라 흔적으로 되짚은 것입니다 — 임시 PIN 이 남아 있으면 <b>대기</b>, 온보딩 원장에 기록이 있으면 <b>동의·완료</b>.
         매장 정보 수정과 발급은 <button type="button" className="underline" onClick={() => onGo?.("astro-ops")}>파트너 매장</button> 에서도 그대로 됩니다. · {actor}
       </p>
+      {adding && (
+        <NewStorePanel
+          actor={actor}
+          campus="경북대"
+          campusOptions={["경북대", "영남대", "계명대"]}
+          onClose={() => setAdding(false)}
+          onCreated={(made) => { setJustAdded(made); load(); }}
+        />
+      )}
     </>
   );
 }
