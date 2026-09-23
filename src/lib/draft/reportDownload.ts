@@ -35,10 +35,29 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   var FACES = [[400, "Regular"], [600, "SemiBold"], [700, "Bold"], [800, "ExtraBold"]];
   var bar = document.querySelector("[data-preview-bar]"), msg = bar.querySelector("[data-dl-msg]");
   function say(t) { msg.textContent = t; }
+  /** 오류를 사람이 읽을 수 있게. 이미지 로드 실패는 Error 가 아니라 Event 로 와서 그냥 찍으면 "[object Event]" 다. */
+  function why(e) {
+    if (!e) return "알 수 없는 오류";
+    if (e.message) return e.message;
+    if (e.target && e.target.src) return "이미지를 불러오지 못했습니다 — " + String(e.target.src).slice(0, 120);
+    if (e.type) return "실패(" + e.type + ")";
+    return String(e);
+  }
   function busy(on) { bar.querySelectorAll("button").forEach(function (b) { b.disabled = on || !CAN; }); }
+  // 바이트를 읽어 data: 로. 바깥 출처(메타 CDN · S3)는 CORS 가 없어 곧장 읽으면 막히므로,
+  // 막히면 **우리 도메인의 /api/img** 로 한 번 더 시도한다. 상대경로라 배포 도메인을 몰라도 맞는다
+  // (0923: 절대경로로 박았다가 app.wouldulike.kr 을 vercel 주소로 잘못 짚어 이미지가 통째로 깨졌다).
+  function readAsDataUrl(b) {
+    return new Promise(function (ok, no) { var f = new FileReader(); f.onload = function () { ok(f.result); }; f.onerror = no; f.readAsDataURL(b); });
+  }
+  function fetchBlob(u) {
+    return fetch(u, { mode: "cors" }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); });
+  }
   function dataUrl(url) {
-    return fetch(url, { mode: "cors" }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.blob(); })
-      .then(function (b) { return new Promise(function (ok, no) { var f = new FileReader(); f.onload = function () { ok(f.result); }; f.onerror = no; f.readAsDataURL(b); }); });
+    return fetchBlob(url).catch(function () {
+      if (/^data:|^blob:/.test(url)) throw new Error("읽을 수 없는 주소");
+      return fetchBlob("/api/img?u=" + encodeURIComponent(url));
+    }).then(readAsDataUrl);
   }
   function save(blob, name) {
     var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
@@ -177,7 +196,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
           var blob = new Blob([html], { type: "text/html;charset=utf-8" }); save(blob, FN + ".html");
           say("HTML " + Math.round(blob.size / 1024) + "KB 저장" + (staticHtml.missed ? " — 이미지 " + staticHtml.missed + "개를 파일에 못 넣었습니다" : ""));
         });
-    job.catch(function (err) { say("만들지 못했습니다: " + (err && err.message ? err.message : err)); }).then(function () { busy(false); });
+    job.catch(function (err) { say("만들지 못했습니다: " + why(err)); }).then(function () { busy(false); });
   });
   if (CAN && /[?&]print=1/.test(location.search)) setTimeout(function () { document.title = FN; window.print(); }, 600);
 })();

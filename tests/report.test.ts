@@ -133,48 +133,16 @@ test("근거 줄이 분모 셋을 다 보여 준다", () => {
 });
 
 // ── 이미지 프록시 (PNG·HTML 저장이 썸네일을 못 가져오던 문제) ──────────
-import { imageProxyHref } from "../src/lib/draft/imageProxy";
 
-const SITE = "https://dash.example.com";
 
-test("바깥 이미지는 우리 도메인으로 돌린다 — 반드시 절대 주소로", () => {
-  const meta = "https://scontent-ssn1-1.cdninstagram.com/v/t51/123_n.jpg?_nc_cat=1&oh=abc";
-  const out = imageProxyHref(meta, SITE);
-  assert.ok(out.startsWith(`${SITE}/api/img?u=`), "같은 출처여야 fetch 가 막히지 않는다");
-  // 서명 쿼리가 통째로 살아 있어야 한다 — 하나라도 잘리면 403
-  assert.equal(decodeURIComponent(out.slice(`${SITE}/api/img?u=`.length)), meta);
-
-  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.amazonaws.com/a.jpg?X-Amz-Signature=x", SITE).startsWith(`${SITE}/api/img?u=`));
-  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.ap-northeast-2.amazonaws.com/a.jpg", SITE).startsWith(`${SITE}/api/img?u=`));
-});
 
 /**
  * 0923 회귀 — 프록시를 붙이면서 상대경로(/api/img?...)를 줬더니 양식의 url() 이 통째로 걸러
  * 미리보기에서 썸네일이 사라지고 「게시물 이미지 · post.image」 자리표시가 떴다.
  * 양식이 무엇을 통과시키는지 여기서 못 박는다.
  */
-test("양식의 url() 이 통과시키는 모양이어야 한다", () => {
-  const PASSES = /^(https?:|data:image\/)/; // reportTemplateHtml 의 url() 과 같은 규칙
-  const out = imageProxyHref("https://scontent-x.cdninstagram.com/v/9_n.jpg", SITE);
-  assert.match(out, PASSES, "상대경로를 주면 양식이 이미지를 통째로 버린다");
-  assert.doesNotMatch(out, /^\/api\//, "상대경로 금지");
-});
 
-test("이미 안전한 주소는 건드리지 않는다", () => {
-  assert.equal(imageProxyHref("data:image/png;base64,AAAA"), "data:image/png;base64,AAAA");
-  assert.equal(imageProxyHref("/brand/appicon.png"), "/brand/appicon.png");
-  assert.equal(imageProxyHref("https://example.com/a.jpg"), "https://example.com/a.jpg", "모르는 호스트는 그대로 — 공개 프록시가 되면 안 된다");
-  assert.equal(imageProxyHref(""), "");
-  assert.equal(imageProxyHref(null), "");
-  assert.equal(imageProxyHref("그냥 글자"), "그냥 글자");
-  assert.equal(imageProxyHref("http://scontent.cdninstagram.com/a.jpg"), "http://scontent.cdninstagram.com/a.jpg", "https 가 아니면 그대로");
-});
 
-test("양식에 들어가는 이미지가 프록시 주소다", () => {
-  const r = report({}, { post: { ...report().snapshot.post, cover_url: "https://scontent-x.cdninstagram.com/v/t51/9_n.jpg" } });
-  const d = toTemplateData(r) as { post: { image: string } };
-  assert.match(d.post.image, /^https:\/\/[^/]+\/api\/img\?u=/, "절대 주소여야 양식의 url() 을 통과한다");
-});
 
 test("PNG 를 만들 때 서명된 URL을 깨뜨리지 않는다", () => {
   // cacheBust 는 img src 에 쿼리를 덧붙인다 — 서명 URL이면 403 이 나서 이미지가 통째로 빠진다
@@ -231,4 +199,29 @@ test("양식의 모든 구획이 세 장 어딘가에 들어간다", () => {
   assert.deepEqual(missing, [], `양식에 있는데 어느 장에도 안 들어간 구획: ${missing.join(", ")}`);
   const extra = [...covered].filter((id) => !inTemplate.has(id));
   assert.deepEqual(extra, [], `PAGES 에 있는데 양식엔 없는 구획: ${extra.join(", ")}`);
+});
+
+// ── 이미지 읽기 (저장할 때만 프록시) ──────────────────────────────────
+test("양식에는 원본 주소가 그대로 들어간다", () => {
+  const meta = "https://scontent-x.cdninstagram.com/v/t51/9_n.jpg?oh=abc";
+  const r = report({}, { post: { ...report().snapshot.post, cover_url: meta } });
+  const d = toTemplateData(r) as { post: { image: string } };
+  assert.equal(d.post.image, meta, "화면에 보이는 데는 CORS 가 필요 없다 — 프록시를 끼우면 도메인을 짚어야 해서 깨진다");
+  assert.doesNotMatch(d.post.image, /\/api\/img/);
+});
+
+test("저장할 때만 /api/img 로 우회한다 — 상대경로여야 도메인을 몰라도 맞는다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  assert.match(bar, /"\/api\/img\?u=" \+ encodeURIComponent\(url\)/);
+  // 절대경로를 박으면 배포 도메인(app.wouldulike.kr)을 잘못 짚는 순간 다른 출처가 된다
+  assert.doesNotMatch(bar, /https:\/\/[a-z0-9.-]*vercel\.app/);
+  assert.match(bar, /fetchBlob\(url\)\.catch/, "곧장 읽어 보고, 막히면 우회한다");
+});
+
+test("오류를 사람이 읽을 수 있게 적는다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  // 이미지 로드 실패는 Error 가 아니라 Event 로 와서 그냥 찍으면 "[object Event]" 다 (0923 에 실제로 그렇게 나왔다)
+  assert.match(bar, /function why\(e\)/);
+  assert.match(bar, /이미지를 불러오지 못했습니다/);
+  assert.doesNotMatch(bar, /err && err\.message \? err\.message : err/);
 });
