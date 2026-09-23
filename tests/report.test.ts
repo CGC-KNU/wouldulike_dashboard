@@ -186,3 +186,14 @@ test("HTML 저장이 이미지를 못 넣으면 그렇다고 말한다", () => {
   const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
   assert.match(bar, /파일에 못 넣었습니다/, "조용히 삼키면 열어 보고서야 안다");
 });
+
+test("PNG 도 이미지를 직접 인라인한다 — 변환 도구에 맡기지 않는다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  // 도구가 이미지를 못 받으면 imagePlaceholder(투명 1x1)로 갈아쳐 「크기만 남은 빈 상자」가 된다.
+  // 그래서 넘기기 전에 우리가 data: 로 바꾼다 — HTML 저장이 쓰는 dataUrl() 과 같은 길.
+  assert.match(bar, /function inlineImages\(\)/);
+  assert.match(bar, /Promise\.all\(\[loadLib\(\), fontCss\(\), inlineImages\(\)\]\)/, "캡처 전에 인라인이 끝나야 한다");
+  assert.match(bar, /i\.decode/, "새 src 가 그려질 때까지 기다려야 한다");
+  assert.match(bar, /undoImgs\(\)/, "캡처 뒤 화면의 src 를 되돌려야 한다");
+  assert.match(bar, /PNG .*개를 못 넣었습니다|개를 못 넣었습니다/, "실패하면 말해야 한다");
+});

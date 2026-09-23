@@ -74,9 +74,30 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   // 리포트 전체 → PNG (폭 640 · 2배)
   // 변환 도구는 요소마다 **지금 계산된** 스타일을 복사한다 — 넓은 화면의 가운데 정렬 여백이 그대로 박혀 오른쪽이 잘린다.
   // 그래서 만드는 동안만 실제 화면을 폰 폭(640)으로 좁혔다가 되돌린다.
+  // 변환 도구에 넘기기 전에 이미지를 **직접** data: 로 바꿔 둔다.
+  // 도구도 이미지를 스스로 받아 오긴 하는데, 실패하면 imagePlaceholder(투명 1x1)로 갈아치워서
+  // **크기만 남은 빈 상자**가 된다 — 0923 에 PNG 썸네일 자리가 비어 나온 게 이것이다.
+  // HTML 저장이 쓰는 dataUrl() 은 같은 이미지를 잘 받아 오므로(그쪽은 정상) 같은 길을 쓴다.
+  function inlineImages() {
+    var imgs = Array.prototype.slice.call(document.querySelectorAll("img[src]"))
+      .filter(function (i) { return !/^data:/.test(i.getAttribute("src")); });
+    var undo = [], missed = 0;
+    return Promise.all(imgs.map(function (i) {
+      var was = i.getAttribute("src");
+      return dataUrl(was).then(function (u) {
+        undo.push([i, was]); i.setAttribute("src", u);
+        // 새 src 가 실제로 그려질 때까지 기다린다 — 안 기다리면 도구가 빈 이미지를 복사한다
+        return i.decode ? i.decode().catch(function () {}) : null;
+      }).catch(function () { missed++; });
+    })).then(function () {
+      return { missed: missed, undo: function () { undo.forEach(function (r) { r[0].setAttribute("src", r[1]); }); } };
+    });
+  }
+
   function png() {
-    var W = 640, body = document.body, prev = body.getAttribute("style");
-    return Promise.all([loadLib(), fontCss()]).then(function (r) {
+    var W = 640, body = document.body, prev = body.getAttribute("style"), undoImgs = null;
+    return Promise.all([loadLib(), fontCss(), inlineImages()]).then(function (r) {
+      undoImgs = r[2].undo; png.missed = r[2].missed;
       body.style.width = W + "px"; body.style.margin = "0";
       return new Promise(function (ok) { requestAnimationFrame(function () { requestAnimationFrame(ok); }); }).then(function () {
         return window.htmlToImage.toBlob(body, {
@@ -90,7 +111,10 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     }).then(function (blob) { restore(); return blob; }, function (err) { restore(); throw err; });
     // 리포트 끝(바닥글)까지만 — body 높이로 자르면 아래에 빈 공간이 남는다. 미리보기 띠 높이는 뺀다.
     function reportBottom() { var w = document.querySelector(".wrap"); return Math.ceil(w.getBoundingClientRect().bottom + window.scrollY - bar.getBoundingClientRect().height); }
-    function restore() { if (prev === null) body.removeAttribute("style"); else body.setAttribute("style", prev); }
+    function restore() {
+      if (prev === null) body.removeAttribute("style"); else body.setAttribute("style", prev);
+      if (undoImgs) { undoImgs(); undoImgs = null; }  // 화면의 src 를 되돌린다 — 안 되돌리면 페이지가 무거워진 채로 남는다
+    }
   }
   window.__reportFiles = { png: png, html: staticHtml }; // 점검용
 
@@ -100,7 +124,10 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     if (kind === "print") { var prev = document.title; document.title = FN; window.print(); setTimeout(function () { document.title = prev; }, 1000); return; }
     busy(true); say(kind === "png" ? "이미지를 만드는 중… (글꼴을 받느라 몇 초 걸립니다)" : "파일을 만드는 중…");
     var job = kind === "png"
-      ? png().then(function (blob) { save(blob, FN + ".png"); say("PNG " + Math.round(blob.size / 1024) + "KB 저장"); })
+      ? png().then(function (blob) {
+          save(blob, FN + ".png");
+          say("PNG " + Math.round(blob.size / 1024) + "KB 저장" + (png.missed ? " — 이미지 " + png.missed + "개를 못 넣었습니다" : ""));
+        })
       : staticHtml().then(function (html) {
           var blob = new Blob([html], { type: "text/html;charset=utf-8" }); save(blob, FN + ".html");
           say("HTML " + Math.round(blob.size / 1024) + "KB 저장" + (staticHtml.missed ? " — 이미지 " + staticHtml.missed + "개를 파일에 못 넣었습니다" : ""));
