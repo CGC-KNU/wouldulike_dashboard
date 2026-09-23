@@ -1,0 +1,55 @@
+<!--
+  og-onboard.jpg 생성기 (민열님 0923).
+
+  왜 여기 두나 — 전에는 카드 이미지만 있고 만든 방법이 없어서, 문구 하나 고치려면 처음부터
+  다시 그려야 했다. 이미지와 생성기는 같이 살아야 한다.
+
+  쓰는 법 (자산은 리포에 없다 — 아래 폴더에서 같이 띄운다)
+    cd ~/Desktop/CGC/04_사내툴_개발/0923_온보딩_OG
+    cp <이 파일> og.html
+    python3 -m http.server 8781          # 8765 는 리브라 서버다. 절대 쓰지 말 것
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
+      --hide-scrollbars --force-device-scale-factor=2 --window-size=1200,630 \
+      --screenshot=og-new.png http://localhost:8781/og.html
+    sips -s format jpeg -s formatOptions 90 -z 630 1200 og-new.png --out og-onboard.jpg
+
+  symbol.png · wordmark-navy.png · RiaSans-Bold.woff2 는 **일부러 리포에 안 넣었다** —
+  이 저장소는 공개라 유료 서체(Ria Sans)를 같이 올릴 수 없다. 자산은 위 디자인 폴더에 있다.
+
+  카카오는 미리보기를 캐시한다. 바꾼 뒤 디버거로 새로 긁어야 반영된다:
+    https://developers.kakao.com/tool/debugger/sharing
+-->
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Ria Sans"; src: url("./RiaSans-Bold.woff2") format("woff2"); font-weight: 700; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background: #fff;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 100px 24px;
+    position: relative;
+    font-family: -apple-system, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 장식은 아래 선 하나뿐. 브랜드 색을 쓰되 얇게 — 배너처럼 보이지 않게. */
+  .rule { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; background: #050072; }
+
+  .brand { display: flex; align-items: center; gap: 16px; margin-bottom: 56px; }
+  .brand img.sym  { height: 50px; width: auto; }
+  .brand img.word { height: 30px; width: auto; }
+
+  h1 { font-family: "Ria Sans", -apple-system, sans-serif; font-weight: 700;
+       font-size: 78px; line-height: 1.1; color: #050072; letter-spacing: -0.015em; }
+  p  { margin-top: 24px; font-size: 31px; line-height: 1.5; color: #4b5563; font-weight: 500; }
+  .foot { margin-top: 44px; font-size: 24px; color: #9ca3af; font-weight: 500; }
+</style>
+<div class="brand">
+  <img class="sym"  src="./symbol.png" alt="">
+  <img class="word" src="./wordmark-navy.png" alt="">
+</div>
+<h1>파트너 등록</h1>
+<p>계약서 확인과 혜택 등록을 하실 수 있습니다.</p>
+<div class="foot">app.wouldulike.kr</div>
+<div class="rule"></div>
