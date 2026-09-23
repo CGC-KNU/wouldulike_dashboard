@@ -1,5 +1,6 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
-import { SMALL_SAMPLE, type Json, type Metric } from "./appReportData";
+import { SMALL_SAMPLE, couponMetrics, dominantNote, type Json, type Metric } from "./appReportData";
+import type { CouponFunnel } from "@/lib/bigquery/couponFunnel";
 
 /**
  * Probe · 앱 지표 **월간 보고서**의 데이터 변환 — 순수 함수만(가져오기는 appReport.ts).
@@ -43,6 +44,9 @@ export interface MonthlyReportInput {
   snapshot: SnapshotPayload | null;
   /** 작성일(KST, YYYY-MM-DD). 안 주면 오늘. */
   today?: string;
+  /** 쿠폰 발급→사용 (GA4). 스냅샷의 DB 칸과 달리 기간이 정확하다. */
+  coupons?: CouponFunnel | null;
+  couponsPrev?: CouponFunnel | null;
 }
 
 const MONTH_LABEL = (p: string) => `${+p.slice(0, 4)}년 ${+p.slice(5, 7)}월`;
@@ -73,7 +77,7 @@ const UNIT: Record<string, string> = {
   mileage_exchanges: "건", push_sent: "건",
 };
 
-export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today }: MonthlyReportInput): Json {
+export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today, coupons, couponsPrev }: MonthlyReportInput): Json {
   const snap = snapshot?.current ?? null;
   const snapPrev = snapshot?.previous ?? null;
   const s = snap?.stats ?? null;
@@ -95,6 +99,8 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
     return {
       key, label, value, unit: UNIT[key], source: key === "push_sent" ? "push" : "backend",
       scope: "period",
+      // 한 경로가 발급의 절반을 넘으면 「발급 → 사용」은 그 경로 얘기라 색을 중립으로 둔다 (주간과 같은 규칙)
+      ...(key === "coupon_redeem_rate" && dom.verdict ? { verdict: dom.verdict } : {}),
       ...(value !== null ? { prev: np(key) ?? undefined } : {}),
       ...(value === null ? { status: "pending" as const } : {}),
       ...(note || failedHere || !snap
@@ -110,6 +116,7 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
   const pushSample = g?.push.received;
   const banSample = g?.banner.clicked;
   const ratioVerdict = verdictForRatio(g?.wau ?? null, p?.wau ?? null);
+  const dom = dominantNote(coupons ?? null);
   const win = g ? `${md(bare(g.week.from))}~${md(bare(g.week.to))}` : MONTH_LABEL(period);
 
   const groups = [
@@ -156,7 +163,8 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
         { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend", status: "undefined", note: "앱의 coupon_issued 는 자동 지급 쿠폰이 화면에 보일 때도 남아 매장을 보고 받은 쿠폰과 섞입니다 — 정의 보류" },
         dbMetric("coupon_issued", "쿠폰 발급"),
         dbMetric("coupon_redeemed", "쿠폰 사용"),
-        dbMetric("coupon_redeem_rate", "발급 → 사용", "그 달 발급분 중 쓴 비율. 달이 끝난 뒤 센 값이라 달 중간에 보던 수치보다 높습니다"),
+        dbMetric("coupon_redeem_rate", "발급 → 사용", `그 달 발급분 중 쓴 비율. 달이 끝난 뒤 센 값이라 달 중간에 보던 수치보다 높습니다${dom.extra}`),
+        ...couponMetrics(coupons ?? null, couponsPrev ?? null),
         // 「7일 안에 만료」는 월간에 없다 — 누계가 아니라 읽는 시점 기준 앞으로 7일이라 지난 달에 대고 물을 수 없다.
       ] as Metric[],
     },

@@ -1,4 +1,5 @@
 import { readGa4AppMetrics, readLastEventDate, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
+import { readCouponFunnel, type CouponFunnel } from "@/lib/bigquery/couponFunnel";
 import { buildAppReportData, appReportFilename, lastCompleteWeekEnd, shiftDay, weekLabel, type AppStats, type Json } from "./appReportData";
 import { buildMonthlyAppReportData, previousPeriod, type SnapshotPayload } from "./appReportMonthly";
 import { fetchBackendJson } from "./toolProxy";
@@ -37,11 +38,19 @@ export async function buildWeeklyAppReport(opts: { end?: string } = {}): Promise
   if (last && end > last) warnings.push(`${end} 까지의 확정 테이블이 아직 없습니다 (${last} 까지). 그 주는 일부만 셉니다.`);
 
   // 지난주·그 전주를 같은 함수로 뽑는다 — 정의가 갈라지면 전주 대비가 뜻이 없다.
-  const [curR, prevR, stats] = await Promise.all([
+  const start = shiftDay(end, -6);
+  const prevEnd = shiftDay(end, -7);
+  const [curR, prevR, stats, cpR, cpPrevR] = await Promise.all([
     readGa4AppMetrics(process.env, { end }),
-    readGa4AppMetrics(process.env, { end: shiftDay(end, -7) }),
+    readGa4AppMetrics(process.env, { end: prevEnd }),
     fetchBackendJson<AppStats>("/api/dashboard/admin/app-stats/", undefined, true),
+    // 쿠폰 발급→사용은 GA4 라 주간에서도 기간이 정확하다 — DB 칸처럼 월 누계로 새지 않는다
+    readCouponFunnel(process.env, { start, end }),
+    readCouponFunnel(process.env, { start: shiftDay(prevEnd, -6), end: prevEnd }),
   ]);
+  const coupons: CouponFunnel | null = cpR.ok ? cpR.data : null;
+  const couponsPrev: CouponFunnel | null = cpPrevR.ok ? cpPrevR.data : null;
+  if (!cpR.ok && cpR.reason !== "no_key") warnings.push(`쿠폰 퍼널을 읽지 못했습니다 — ${cpR.detail ?? "조회 실패"}`);
 
   const cur: Ga4AppMetrics | null = curR.ok ? curR.data : null;
   const prev: Ga4AppMetrics | null = prevR.ok ? prevR.data : null;
@@ -50,7 +59,7 @@ export async function buildWeeklyAppReport(opts: { end?: string } = {}): Promise
   if (!stats?.stats) warnings.push("백엔드 app-stats 를 읽지 못했습니다 — DB·푸시 칸이 비었습니다.");
 
   return {
-    data: buildAppReportData({ end, cur, prev, stats: stats ?? null }),
+    data: buildAppReportData({ end, cur, prev, stats: stats ?? null, coupons, couponsPrev }),
     filename: appReportFilename(end),
     week: { start: shiftDay(end, -6), end, label: weekLabel(end) },
     warnings,
@@ -93,11 +102,17 @@ export async function buildMonthlyAppReport(opts: { period?: string } = {}): Pro
     warnings.push(`${period} 은 아직 ${last.slice(4, 6)}/${last.slice(6, 8)} 까지만 확정 테이블이 있습니다 — GA4 칸이 그 달 전체가 아닙니다.`);
   }
 
-  const [curR, prevR, snapshot] = await Promise.all([
+  const [curR, prevR, snapshot, cpR, cpPrevR] = await Promise.all([
     readGa4AppMetrics(process.env, { ...win, subWindows: "in-period" }),
     readGa4AppMetrics(process.env, { ...prevWin, subWindows: "in-period" }),
     fetchBackendJson<SnapshotPayload>("/api/dashboard/admin/metric-snapshots/", `period=${period}`, true),
+    readCouponFunnel(process.env, win),
+    readCouponFunnel(process.env, prevWin),
   ]);
+  const coupons: CouponFunnel | null = cpR.ok ? cpR.data : null;
+  const couponsPrev: CouponFunnel | null = cpPrevR.ok ? cpPrevR.data : null;
+  if (!cpR.ok && cpR.reason !== "no_key") warnings.push(`쿠폰 퍼널을 읽지 못했습니다 — ${cpR.detail ?? "조회 실패"}`);
+  if (coupons?.coverage.wallet_to_use === "none") warnings.push("「쿠폰함 → 사용 화면」은 그 달에 앱 이벤트가 없어 비웠습니다.");
 
   const cur = curR.ok ? curR.data : null;
   const prev = prevR.ok ? prevR.data : null;
@@ -108,7 +123,7 @@ export async function buildMonthlyAppReport(opts: { period?: string } = {}): Pro
   else if (!snapshot.current.complete) warnings.push(`${period} 은 아직 끝나지 않은 달입니다 — DB 칸은 누계입니다.`);
 
   return {
-    data: buildMonthlyAppReportData({ period, cur, prev, snapshot: snapshot ?? null }),
+    data: buildMonthlyAppReportData({ period, cur, prev, snapshot: snapshot ?? null, coupons, couponsPrev }),
     filename: `앱지표_월간보고서_${period}`.replace(/[\\/:*?"<>|\s]+/g, "_"),
     week: { start: win.start, end: win.end, label: `${+period.slice(0, 4)}년 ${+period.slice(5, 7)}월` },
     warnings,

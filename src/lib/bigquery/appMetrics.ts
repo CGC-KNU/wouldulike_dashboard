@@ -65,12 +65,12 @@ function shift(s: string, days: number): string {
 }
 const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 
-interface Client {
+export interface Client {
   dataset: string;
   run: <T>(query: string, params?: Record<string, string>) => Promise<T[]>;
 }
 
-function clientFromEnv(env: Record<string, string | undefined>): Client | null {
+export function clientFromEnv(env: Record<string, string | undefined>): Client | null {
   const credentials = credentialsFromEnv(env);
   if (!credentials) return null;
   const dataset = env.BQ_DATASET || DEFAULT_DATASET;

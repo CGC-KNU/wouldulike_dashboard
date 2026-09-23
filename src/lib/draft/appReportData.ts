@@ -1,4 +1,5 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
+import { dominantSource, sourceRateNote, type CouponFunnel } from "@/lib/bigquery/couponFunnel";
 import APP_REPORT_TEMPLATE_HTML from "./appReportTemplateHtml";
 
 /**
@@ -121,10 +122,13 @@ export interface AppReportInput {
   stats: AppStats | null;
   /** 작성일(KST, YYYY-MM-DD). 안 주면 오늘. */
   today?: string;
+  /** 쿠폰 발급→사용 (GA4). DB 칸과 달리 주간에서도 기간이 정확하다. 없으면 그 네 칸이 「연결 전」이 된다. */
+  coupons?: CouponFunnel | null;
+  couponsPrev?: CouponFunnel | null;
 }
 
 // ── 본체 ──────────────────────────────────────────────────────────
-export function buildAppReportData({ end, cur: g, prev: p, stats, today }: AppReportInput): Json {
+export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons, couponsPrev }: AppReportInput): Json {
   const start = shiftDay(end, -6);
   const prevEnd = shiftDay(end, -7);
 
@@ -137,6 +141,8 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today }: AppRe
 
   /** DB·푸시 칸 — 값이 있으면 반드시 month_to_date 를 달고, 없으면 왜 없는지를 단다. */
   const dbMetric = (key: string, label: string, value: Num, note?: string): Metric => ({
+    // 한 경로가 발급의 절반을 넘으면 「발급 → 사용」은 그 경로 얘기라 색을 중립으로 둔다
+    ...(key === "coupon_rate" && dom.verdict ? { verdict: dom.verdict } : {}),
     key,
     label,
     value,
@@ -158,6 +164,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today }: AppRe
   const pushSample = g?.push.received;
   const banSample = g?.banner.clicked;
   const ratioVerdict = verdictForRatio(g?.wau ?? null, p?.wau ?? null);
+  const dom = dominantNote(coupons ?? null);
 
   const groups = [
     {
@@ -196,7 +203,8 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today }: AppRe
         dbMetric("coupon_used", "쿠폰 사용", n("coupon_redeemed_this_month")),
         // 이 칸만은 누계가 아니라 읽는 시점 기준 앞으로 7일이다 — 월 경계와 상관이 없어 scope 를 period 로 되돌린다.
         { ...dbMetric("coupon_expiring", "7일 안에 만료", n("coupon_expiring_7d"), "아직 안 쓴 쿠폰. 이 칸만은 누계가 아니라 읽는 시점 기준 앞으로 7일입니다"), scope: "period" as const },
-        dbMetric("coupon_rate", "발급 → 사용", n("coupon_redeem_rate"), `${monthLabel} 발급분 중 이미 쓴 비율. 달 초엔 낮게 나옵니다`),
+        dbMetric("coupon_rate", "발급 → 사용", n("coupon_redeem_rate"), `${monthLabel} 발급분 중 이미 쓴 비율. 달 초엔 낮게 나옵니다${dom.extra}`),
+        ...couponMetrics(coupons ?? null, couponsPrev ?? null),
       ] as Metric[],
     },
     {
@@ -291,4 +299,98 @@ const BLOCK = /(<script type="application\/json" id="report-data">)[\s\S]*?(<\/s
 export function fillAppReportTemplate(data: Json): string {
   if (!BLOCK.test(APP_REPORT_TEMPLATE_HTML)) throw new Error("앱 지표 양식에서 report-data 블록을 찾지 못했습니다 — 양식이 바뀌었는지 확인하세요");
   return APP_REPORT_TEMPLATE_HTML.replace(BLOCK, (_m, open: string, close: string) => `${open}\n${safeJson(data)}\n${close}`);
+}
+
+// ── 쿠폰 발급 → 사용 (GA4) ──────────────────────────────────────────
+/**
+ * 백엔드 「발급 → 사용」 한 칸을 대신할 네 칸. **GA4 기반이라 주간에서도 기간이 정확하다**
+ * (DB 칸처럼 월 누계로 새지 않는다).
+ *
+ * 왜 네 칸인가: 2026-09 실측으로 전체 사용률 3.2% 는 사실상 학생회 추천코드 489장 중 1장(0.2%) 얘기였다.
+ * 분모의 63%가 한 경로라 그 숫자로는 아무 판정도 못 한다. 캠페인 지급분과 그 외를 갈라 놓으면
+ * "쿠폰이 안 쓰인다"와 "그 캠페인이 안 먹혔다"를 가를 수 있다.
+ *
+ * 그리고 진짜 병목은 발급이 아니라 **쿠폰함 → 사용 화면**(9월 36%)이었다. 지금까지 그 칸이 없었다.
+ *
+ * 이벤트가 나중에 생긴 칸은 창이 그보다 앞서면 **값을 내지 않는다**(coverage). 8월 「쿠폰함 → 사용 화면」은
+ * 4.3% 로 계산되지만 그건 이벤트가 8/31 에 생겨서지 정말 낮았던 게 아니다 — 9월 36% 와 나란히 두면 거짓말이 된다.
+ */
+export function couponMetrics(f: CouponFunnel | null, p: CouponFunnel | null): Metric[] {
+  const pv = (v: number | null | undefined, sample?: number) =>
+    v === null || v === undefined || (sample !== undefined && sample < SMALL_SAMPLE) ? undefined : v;
+
+  const org = f?.organic, camp = f?.campaign, w = f?.wallet, at = f?.attempt;
+  const cov = f?.coverage;
+  const top = f ? dominantSource(f) : null;
+
+  // "full" 일 때만 값을 낸다. partial(기간 중간에 이벤트가 배포됨)도 비운다 —
+  // 8월 「쿠폰함 → 사용 화면」은 4.3% 로 계산되지만 이벤트가 8/31 하루만 있던 값이라
+  // 9월 36% 옆에 놓으면 "8배 좋아졌다"가 된다. 부분만 덮인 비율은 온전한 기간과 비교할 수 없다.
+  const walletLive = cov?.wallet_to_use === "full";
+  const outcomeLive = cov?.redeem_outcome === "full";
+  const why = (c?: "full" | "partial" | "none", ev = "") =>
+    c === "partial"
+      ? `${ev} 이벤트가 이 기간 중간에 앱에 배포됐습니다 — 기간의 일부만 세게 되어 비웁니다. 0 이 아닙니다`
+      : `${ev} 이벤트가 이 기간에는 앱에 없었습니다 — 0 이 아니라 못 센 것입니다`;
+
+  return [
+    {
+      key: "coupon_rate_organic", label: "쿠폰 사용률 (캠페인 외)",
+      value: org?.rate ?? null, prev: pv(p?.organic.rate, org?.issued), unit: "%", source: "ga4",
+      ...(org ? { sample: org.issued } : {}),
+      note: org
+        ? `가입 환영·스탬프 보상·추천·한정 등 ${org.issued.toLocaleString()}장 중 ${org.redeemed.toLocaleString()}장. 기획전으로 뿌린 쿠폰은 뺐습니다`
+        : "GA4 를 읽지 못했습니다",
+      ...(f ? {} : { status: "pending" as const }),
+    },
+    {
+      key: "coupon_rate_campaign", label: "쿠폰 사용률 (캠페인)",
+      value: camp?.rate ?? null, prev: pv(p?.campaign.rate, camp?.issued), unit: "%", source: "ga4",
+      ...(camp ? { sample: camp.issued } : {}),
+      note: camp
+        ? `기획전으로 뿌린 ${camp.issued.toLocaleString()}장 중 ${camp.redeemed.toLocaleString()}장`
+          + (f && sourceRateNote(f, 4, "campaign") ? ` · 경로별: ${sourceRateNote(f, 4, "campaign")}` : "")
+        : "GA4 를 읽지 못했습니다",
+      ...(f ? {} : { status: "pending" as const }),
+    },
+    {
+      key: "wallet_to_use", label: "쿠폰함 → 사용 화면",
+      value: walletLive ? w?.rate ?? null : null,
+      prev: walletLive ? pv(p?.coverage.wallet_to_use === "full" ? p.wallet.rate : null, w?.saw) : undefined,
+      unit: "%", source: "ga4",
+      ...(walletLive && w ? { sample: w.saw } : {}),
+      note: !walletLive
+        ? why(cov?.wallet_to_use, "coupon_use_screen_view")
+        : w
+          ? `쿠폰함을 본 기기 ${w.saw.toLocaleString()}대 중 사용 화면까지 간 ${w.opened_use.toLocaleString()}대`
+          : "GA4 를 읽지 못했습니다",
+      ...(walletLive && f ? {} : { status: "app_fix" as const }),
+    },
+    {
+      key: "redeem_success", label: "사용 시도 성공률",
+      value: outcomeLive ? at?.rate ?? null : null,
+      prev: outcomeLive ? pv(p?.coverage.redeem_outcome === "full" ? p.attempt.rate : null, (at?.ok ?? 0) + (at?.failed ?? 0)) : undefined,
+      unit: "%", source: "ga4",
+      ...(outcomeLive && at ? { sample: at.ok + at.failed } : {}),
+      note: !outcomeLive
+        ? why(cov?.redeem_outcome, "coupon_redeem_failed")
+        : at
+          ? `성공 ${at.ok} · 실패 ${at.failed}`
+            + (at.reasons.length ? ` (${at.reasons.map((r) => `${r.reason} ${r.n}`).join(" · ")})` : "")
+            + (f?.pinFailStores.length ? ` · PIN 불일치가 몰린 매장 ${f.pinFailStores.slice(0, 3).map((s) => `#${s.restaurant_id}(${s.n})`).join(" ")}` : "")
+          : "GA4 를 읽지 못했습니다",
+      ...(outcomeLive && f ? {} : { status: "app_fix" as const }),
+    },
+  ];
+}
+
+/** 한 경로가 발급의 절반을 넘으면 백엔드 「발급 → 사용」은 사실상 그 경로 얘기다 — 판정을 유보시킨다. */
+export function dominantNote(f: CouponFunnel | null): { verdict?: "flat"; extra: string } {
+  const top = f ? dominantSource(f) : null;
+  if (!top) return { extra: "" };
+  const total = f!.bySource.reduce((a, r) => a + r.issued, 0);
+  return {
+    verdict: "flat",
+    extra: ` · 발급의 ${Math.round((top.issued / total) * 100)}%가 「${top.source}」 한 경로(${top.issued}장 중 ${top.redeemed}장)라 이 숫자는 사실상 그 경로 얘기입니다 — 판정은 위 「캠페인 외」 칸으로 하십시오`,
+  };
 }
