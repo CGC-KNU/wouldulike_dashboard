@@ -32,11 +32,43 @@ export function comparable(m: ReportMetric): boolean {
 }
 
 /**
+ * 판정에 쓰는 기준 바구니. 최근 5건은 흔들리고 전체는 둔해서, **최근 10건**이 가운데다.
+ * 이게 없는(0923 이전) 스냅샷은 옛 방식(p10·p90)으로 떨어진다.
+ */
+export const VERDICT_BASKET = "recent10" as const;
+
+/**
+ * 순위가 위/아래 **몇 분의 몇**에 들면 판정할지. 1/3 이면 위 1/3 · 아래 1/3 이 찍히고 가운데는 안 찍힌다.
+ *
+ * 폭을 정하는 문제가 아니었다 — 이 계정 분포(중앙값 61 · 최고 4,270 · CV 2.9)에서 p10~p90 은
+ * 80% 를 「범위 안」으로 만들고, p25~p75 로 좁히면 절반이 찍히는데 그 절반은 신호가 아니라 분산이다.
+ * 순위는 분포 모양에 안 흔들리므로 "몇 건 중 몇 위"로 말하고, 경계는 여기 한 줄로 조정한다.
+ */
+export const VERDICT_FRACTION = 1 / 3;
+
+/** 순위 기반 판정 — 표본이 얕아도 순위·분모는 뜻이 있어 그대로 쓴다. */
+function rankVerdict(m: ReportMetric): { tone: VerdictTone; text: string } | null {
+  const b = m.baskets?.[VERDICT_BASKET];
+  if (!b || b.rank === null || b.n < 2) return null;
+  const where = `${b.n}건 중 ${b.rank}위`;
+  if (b.rank === 1) return { tone: "good", text: `최고 기록 (${where})` };
+  const edge = Math.max(1, Math.floor(b.n * VERDICT_FRACTION));
+  if (b.rank <= edge) return { tone: "good", text: `상위권 (${where})` };
+  if (b.rank > b.n - edge) return { tone: "warn", text: `하위권 (${where})` };
+  return { tone: "gray", text: `가운데 (${where})` };
+}
+
+/**
  * 지표 판정 한 마디 — 목록 · 게시물 패널 · 리포트 편집이 같이 부른다(따로 쓰면 같은 상태를 다른 말로 부른다).
- * p10·p90 은 숫자로 보여 주지 않고 **경계선**으로 쓴다 — 점주에게 "p90 480" 은 뜻이 없고 "평소보다 높음" 은 있다.
- * 경계가 없으면 가운데 값 대비 % 로 말한다. 문구에 들어가는 숫자는 n 과 delta_pct 뿐이다.
+ *
+ * **순위로 말한다.** 「최근 10건 중 3위」는 분포가 어떻든 뜻이 같고 분모가 눈에 보인다.
+ * 「평소 범위 안」은 이 계정에서 80% 의 게시물에 붙어 아무 말도 안 했다(0923 민찬).
+ * baskets 가 없는 옛 스냅샷만 예전 p10·p90 방식으로 떨어진다.
  */
 export function verdict(m: ReportMetric): { tone: VerdictTone; text: string } {
+  const byRank = rankVerdict(m);
+  if (byRank) return byRank;
+
   if (!comparable(m)) return m.hidden || m.n < MIN_COHORT ? { tone: "gray", text: `표본 부족 (n=${m.n})` } : { tone: "gray", text: "비교 기준 없음" };
   // comparable 이어도 기준(D7/누적)이 어긋나거나 가운데 값이 0 이면 metricsOf 가 delta 를 비워 둔다 — 비교하지 않는다
   if (m.delta_pct === null) return { tone: "gray", text: "비교 기준 없음" };
@@ -58,13 +90,27 @@ export function interpret(m: ReportMetric): string {
   // 점주 문장에는 통계 용어를 안 쓴다("평균"도 "중앙값"도). 정확한 정의는 근거 줄·라벨이 맡는다.
   const med = m.median as number;
   const base = `우리 채널이 평소 올리는 게시물 ${m.n}건의 가운데 값(${approx(med)})`;
-  const rng = m.p10 !== null && m.p90 !== null ? ` 평소 범위는 ${approx(m.p10)}~${approx(m.p90)}입니다.` : "";
+  // 「평소 범위 A~B」는 이 계정에서 너무 넓어 아무 말도 안 했다 — 대신 순위를 적는다.
+  // 순위는 분모가 같이 보여서 점주가 "몇 건 중 몇 위"로 바로 읽는다.
+  const b = m.baskets?.all;
+  const rng = b && b.rank !== null && b.n >= 2
+    ? ` 같은 형식으로 올린 ${b.n}건 중 ${b.rank}번째입니다.`
+    : m.p10 !== null && m.p90 !== null ? ` 평소 범위는 ${approx(m.p10)}~${approx(m.p90)}입니다.` : "";
   if (m.value >= med * 1.2) return `${label} ${m.value.toLocaleString()}은(는) ${base}보다 높습니다.${rng}`;
   if (m.value <= med * 0.8) return `${label} ${m.value.toLocaleString()}은(는) ${base}보다 낮았습니다.${rng}`;
   return `${label} ${m.value.toLocaleString()}은(는) ${base} 근처입니다.${rng}`;
 }
 
 export function cohortNote(metrics: ReportMetric[]): string | null {
+  // 순위가 있으면 분모를 셋 다 보여 준다 — "몇 건과 견줬는지"가 곧 이 숫자를 얼마나 믿을지다
+  const r = metrics.find((x) => x.baskets?.all?.rank != null);
+  if (r?.baskets) {
+    const b = r.baskets;
+    const part = (label: string, k: keyof typeof b) =>
+      b[k].rank !== null && b[k].n >= 2 ? `${label} ${b[k].n}건 중 ${b[k].rank}위` : null;
+    const bits = [part("최근", "recent5"), part("최근", "recent10"), part("전체", "all")].filter(Boolean);
+    if (bits.length) return `같은 포맷 게시물과 견준 순위 — ${bits.join(" · ")} (1위가 최고)`;
+  }
   const m = metrics.find(comparable);
   if (!m) return null;
   return `우리 채널이 최근 ${m.window_days ?? "-"}일 동안 올린 게시물 ${m.n}건의 중앙값(가운데 값) 기준`;

@@ -2,8 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
+import { VERDICT_FRACTION, cohortNote, verdict } from "../src/lib/draft/report";
 import { downloadBar } from "../src/lib/draft/reportDownload";
-import type { ReportData, StoreReport } from "../src/lib/draft/types";
+import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
 
 const metric = (key: string, value: number, median: number | null = null, n = 0) =>
   ({ key, value, median, p10: null, p90: null, n, window_days: 90, hidden: n < 5, delta_pct: null, source: "graph" as const });
@@ -81,4 +82,52 @@ test("미리보기 띠는 주석이 아니라 진짜 <body> 뒤에 들어간다"
 
 test("승인 전에는 파일을 받을 수 없다", () => {
   assert.ok(downloadBar({ filename: "r", canDownload: false, statusLabel: "승인 전" }).includes("disabled"));
+});
+
+// ── 순위 판정 (건수 창) ───────────────────────────────────────────────
+
+const withBaskets = (over: Partial<ReportMetric> = {}, baskets?: ReportMetric["baskets"]): ReportMetric =>
+  ({ key: "views", value: 3000, median: 2000, p10: 100, p90: 9000, n: 30, window_days: 90,
+     hidden: false, delta_pct: 50, source: "graph", baskets, ...over }) as ReportMetric;
+
+const basket = (rank: number | null, n: number) => ({ n, rank, median: 2000, pi: 150, thin: n < 5 });
+
+test("순위가 있으면 「평소 범위 안」 대신 순위로 말한다", () => {
+  const m = withBaskets({}, { recent5: basket(2, 5), recent10: basket(3, 10), all: basket(12, 48) });
+  const v = verdict(m);
+  assert.equal(v.tone, "good");
+  assert.match(v.text, /10건 중 3위/, "분모가 문구에 보여야 한다");
+  assert.doesNotMatch(v.text, /평소 범위/);
+});
+
+test("1위는 최고 기록이라고 말한다", () => {
+  const m = withBaskets({}, { recent5: basket(1, 5), recent10: basket(1, 10), all: basket(1, 48) });
+  assert.match(verdict(m).text, /최고 기록/);
+});
+
+test("가운데면 색을 안 칠한다 — 위·아래 1/3 만 판정", () => {
+  const edge = Math.max(1, Math.floor(10 * VERDICT_FRACTION)); // 3
+  assert.equal(verdict(withBaskets({}, { recent5: basket(1, 5), recent10: basket(edge, 10), all: basket(1, 48) })).tone, "good");
+  assert.equal(verdict(withBaskets({}, { recent5: basket(1, 5), recent10: basket(edge + 1, 10), all: basket(1, 48) })).tone, "gray");
+  assert.equal(verdict(withBaskets({}, { recent5: basket(1, 5), recent10: basket(10, 10), all: basket(1, 48) })).tone, "warn");
+});
+
+test("표본이 얕아도 순위·분모는 쓴다", () => {
+  const m = withBaskets({ n: 2, hidden: true, median: null }, { recent5: basket(1, 2), recent10: basket(1, 2), all: basket(1, 2) });
+  const v = verdict(m);
+  assert.match(v.text, /2건 중 1위/, "표본 부족으로 흘려보내지 않는다");
+  assert.equal(v.tone, "good");
+});
+
+test("baskets 가 없는 옛 스냅샷은 예전 방식 그대로", () => {
+  const v = verdict(withBaskets({ value: 9500 }));
+  assert.equal(v.tone, "good");
+  assert.match(v.text, /평소보다 높음/);
+});
+
+test("근거 줄이 분모 셋을 다 보여 준다", () => {
+  const note = cohortNote([withBaskets({}, { recent5: basket(2, 5), recent10: basket(3, 10), all: basket(12, 48) })]);
+  assert.match(note!, /최근 5건 중 2위/);
+  assert.match(note!, /최근 10건 중 3위/);
+  assert.match(note!, /전체 48건 중 12위/);
 });
