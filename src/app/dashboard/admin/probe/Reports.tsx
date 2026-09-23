@@ -5,6 +5,7 @@ import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink
 import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, reportAllText, verdict } from "@/lib/draft/report";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
+import InsightsSummary from "./InsightsSummary";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, rowClickable, type ChipTone } from "../_shared/ui";
 
@@ -184,6 +185,11 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
         비교는 우리 채널 평소 게시물의 <b>가운데 값</b> 기준이고 표본이 5건 미만이면 비교하지 않습니다. 평소 게시물의 아래 10%·위 10% 선을 넘으면 「평소보다 낮음·높음」, 그 사이면 「평소 범위 안」이라고 씁니다. 링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
         {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-navy font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
       </p>
+
+      {/* 추이 — 「평소 범위」(p10~p90)가 넓어 한 편의 판정으로는 안 보이는 것. "요즘 우리가 잘하고 있나"에 답한다. */}
+      <div className="mt-6">
+        <InsightsSummary />
+      </div>
 
       {openP && <PostPanel p={openP} onClose={() => setOpenPost(null)} onMake={(force) => make(openP, force)} making={making === postKey(openP)} askForce={askForce === postKey(openP)} onOpenReport={(id) => { setOpenPost(null); setOpenId(id); }} />}
       {open && <ReportEditor r={open} onClose={() => setOpenId(null)} onChanged={load} />}
