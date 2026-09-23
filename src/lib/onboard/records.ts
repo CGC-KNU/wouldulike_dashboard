@@ -94,34 +94,6 @@ async function sheetAppend(row: (string | number | boolean | null)[]): Promise<b
   }
 }
 
-/**
- * 같은 시트의 **다른 탭**을 읽고 쓴다 — 월별 스냅샷(api/astro/snapshot)이 쓴다.
- * 온보딩 원장과 같은 브리지·같은 문서라 열쇠를 하나 더 만들지 않는다.
- */
-export async function sheetReadFrom(tab: string, range: string): Promise<string[][]> {
-  const url = process.env.ONBOARD_GSHEET_URL, token = process.env.ONBOARD_GSHEET_TOKEN, id = process.env.ONBOARD_GSHEET_ID;
-  if (!url || !token || !id) return [];
-  try {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "read", id, range: `${tab}!${range}`, token }), redirect: "follow", cache: "no-store" });
-    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; values?: string[][] };
-    return j.ok && Array.isArray(j.values) ? j.values : [];
-  } catch {
-    return [];
-  }
-}
-
-export async function sheetAppendTo(tab: string, row: (string | number | boolean | null)[]): Promise<boolean> {
-  const url = process.env.ONBOARD_GSHEET_URL, token = process.env.ONBOARD_GSHEET_TOKEN, id = process.env.ONBOARD_GSHEET_ID;
-  if (!url || !token || !id) return false;
-  try {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "append", id, sheet: tab, row, token }), redirect: "follow", cache: "no-store" });
-    const j = (await res.json().catch(() => ({}))) as { ok?: boolean };
-    return Boolean(j.ok);
-  } catch {
-    return false;
-  }
-}
-
 /** 원장 읽기 — 담당자 쪽 대조(reconcile.ts)가 쓴다. 범위는 "A2:X10000" 처럼 준다. */
 export async function sheetRead(range: string): Promise<string[][]> {
   const url = process.env.ONBOARD_GSHEET_URL, token = process.env.ONBOARD_GSHEET_TOKEN, id = process.env.ONBOARD_GSHEET_ID;

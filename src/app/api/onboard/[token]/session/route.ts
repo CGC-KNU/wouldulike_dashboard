@@ -34,12 +34,19 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ token: st
     return NextResponse.json({ success: false, message: data.message ?? "이 링크로는 더 이상 로그인할 수 없습니다. 이미 등록을 마치셨다면 점주 대시보드로 로그인해 주세요.", used: res.status === 400 }, { status: 400 });
   }
 
-  // 백엔드 `VerifyOwnerView` 는 이 카카오 계정에 **이미 OwnerProfile(OneToOne) 이 있으면** restaurant_id·pin 을 보지 않고
-  // 그 매장의 토큰을 돌려준다 (0921 소스 확인). 그대로 두면 다른 매장 세션으로 이 매장 온보딩을 진행하게 된다 — 여기서 막는다.
+  /**
+   * 받은 토큰이 **이 매장의 것인지** 확인한다.
+   *
+   * 0921 에는 `OwnerProfile.user` 가 OneToOne 이라, 이미 다른 매장 점주인 계정은 restaurant_id·pin 을
+   * 보지도 않고 그 매장 토큰이 돌아왔다 — 그래서 "한 계정에 매장 하나"라고 안내하고 막았다.
+   * 0923 에 재민이 풀었다(`dashboard/migrations/0019_owner_profile_multi_store`): 한 계정이 매장을
+   * 여럿 가질 수 있고, 새 매장은 PIN 으로 인증해 붙는다. 그 안내는 이제 **사실이 아니라서** 걷어냈다.
+   * 검사는 남긴다 — 다른 매장 토큰으로 이 매장 온보딩이 진행되면 안 되는 건 그대로다.
+   */
   if (typeof data.restaurant_id === "number" && data.restaurant_id !== p.rid) {
     return NextResponse.json({
       success: false, wrong_store: true,
-      message: "이 카카오 계정은 이미 다른 매장의 점주로 등록되어 있습니다. 한 카카오 계정에는 매장 하나만 연결할 수 있어, 이 매장은 다른 카카오 계정으로 진행하시거나 담당자에게 말씀해 주세요.",
+      message: "다른 매장의 로그인 정보가 돌아왔습니다. 화면을 새로고침해 다시 시도해 주시고, 계속 이러면 담당자에게 말씀해 주세요.",
     }, { status: 409 });
   }
 

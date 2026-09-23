@@ -83,9 +83,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   if (API() && !revision) {
     ops_ok = await fetch(`${API()}/api/astro/stores/${p.rid}/`, {
       method: "PATCH", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ contract_started_on: starts_on, ...(paid ? { billing_start_period: billing_period } : {}), updated_by: "온보딩" }),
+      // 0923 재민이 연 범위: owner_name · biz_no · contract_started_on · billing_start_period 넷.
+      // **비어 있는 칸만** 채워진다(astro/views.py `_owner_store_ops_patch`) — 담당자가 적어 둔 값은 안 건드린다.
+      // 그 밖의 칸(연락처·이메일·월 이용료·홍보물 수령)은 여전히 관리자만이라 reconcile 이 맡는다.
+      body: JSON.stringify({
+        owner_name: (b.owner_name ?? "").trim(), biz_no: (b.biz_no ?? "").replace(/\D/g, ""),
+        contract_started_on: starts_on, ...(paid ? { billing_start_period: billing_period } : {}),
+      }),
       cache: "no-store",
-    }).then((r) => r.ok).catch(() => false);
+    }).then(async (r) => {
+      if (!r.ok) return false;
+      // 무엇이 채워졌는지 응답이 알려 준다. skipped 는 이미 값이 있어 건너뛴 것이라 실패가 아니다.
+      const j = (await r.json().catch(() => ({}))) as { changed?: string[] };
+      return Array.isArray(j.changed);
+    }).catch(() => false);
   }
 
   // 승인 대기 중인 한정 쿠폰이 있는가 — 슬랙에 한 줄 띄워 잊히지 않게 한다
