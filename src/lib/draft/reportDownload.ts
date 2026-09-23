@@ -62,7 +62,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   function dataUrl(url) {
     // 양식이 이미 /api/img 로 돌려 둔 주소면 그대로 읽는다(같은 출처라 막히지 않는다).
     // 그게 아닌 바깥 주소만, 막혔을 때 한 번 더 프록시로 시도한다.
-    if (/\/api\/img\?/.test(url)) return fetchBlob(url).then(readAsDataUrl);
+    if (/\\/api\\/img\\?/.test(url)) return fetchBlob(url).then(readAsDataUrl);
     return fetchBlob(url).catch(function (e) {
       if (/^data:|^blob:/.test(url)) throw e;
       return fetchBlob("/api/img?u=" + encodeURIComponent(url));

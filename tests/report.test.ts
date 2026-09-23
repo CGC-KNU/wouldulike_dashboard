@@ -246,3 +246,30 @@ test("프록시가 막히면 그 이유를 문구에 싣는다", () => {
   const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
   assert.match(bar, /j\.detail/, "「HTTP 403」만으로는 서명 만료인지 차단인지 모른다");
 });
+
+// ── 미리보기 띠 스크립트가 **실제로 도는가** ──────────────────────────
+import vm from "node:vm";
+
+/**
+ * 0923: 템플릿 리터럴 안의 정규식에 백슬래시를 한 겹만 써서 `/\/api\/img\?/` 가 `//api/img?/` 로 나갔다.
+ * `//` 가 주석이 되어 **스크립트 전체가 문법 오류**였고, 버튼을 눌러도 아무 반응이 없었다.
+ * 타입 검사도 테스트도 못 잡는다 — 문자열 안의 JS 라서. 그래서 여기서 직접 파싱한다.
+ */
+test("띠 스크립트가 문법 오류 없이 파싱된다", () => {
+  for (const can of [true, false]) {
+    const bar = downloadBar({ filename: "테스트 · 리포트", canDownload: can, statusLabel: "승인됨" });
+    const m = bar.match(/<script>\n([\s\S]*?)\n<\/script>/);
+    assert.ok(m, "스크립트 블록이 있어야 한다");
+    assert.doesNotThrow(() => new vm.Script(m![1]), `canDownload=${can} 에서 문법 오류`);
+  }
+});
+
+test("띠 스크립트에 주석으로 죽은 정규식이 없다", () => {
+  const js = downloadBar({ filename: "x", canDownload: true, statusLabel: "s" }).match(/<script>\n([\s\S]*?)\n<\/script>/)![1];
+  // `(//` 나 `= //` 는 정규식을 쓰려다 백슬래시가 먹힌 자국이다
+  for (const [i, line] of js.split("\n").entries()) {
+    const code = line.trim();
+    if (code.startsWith("//")) continue; // 진짜 주석 줄
+    assert.ok(!/[(=,]\s*\/\//.test(code), `${i + 1}줄에서 정규식이 주석이 됐습니다: ${code.slice(0, 80)}`);
+  }
+});
