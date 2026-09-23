@@ -11,8 +11,9 @@ import { Button, Field, Input, Notice, Select } from "@/app/dashboard/admin/_sha
 type Plan = "FREE" | "BOOST" | "PREMIUM";
 const tierToPlan = (tier: string | null): Plan => tier === "BOOST" ? "BOOST" : tier === "PREMIUM" || tier === "CONTENT" ? "PREMIUM" : "FREE";
 
-export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, ownerPhone = null, actor = "", actorPhone = "" }: { rid: number; lid?: string | null; name: string; campus: string; tier: string | null; fee: number | null; ownerPhone?: string | null; actor?: string; actorPhone?: string }) {
-  const [open, setOpen] = useState(false);
+export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, ownerPhone = null, actor = "", actorPhone = "", autoOpen = false }: { rid: number; lid?: string | null; name: string; campus: string; tier: string | null; fee: number | null; ownerPhone?: string | null; actor?: string; actorPhone?: string; autoOpen?: boolean }) {
+  // 방금 만든 매장이면 열린 채로 시작한다 — 추가하자마자 링크를 뽑는 흐름이라 한 번 더 누를 이유가 없다 (0923)
+  const [open, setOpen] = useState(autoOpen);
   const [plan, setPlan] = useState<Plan>(tierToPlan(tier));
   /**
    * ⚠️ 두 값의 뜻이 다르다.
