@@ -321,3 +321,13 @@ test("빈 값·data: 는 건드리지 않는다", async () => {
   assert.equal(await embedImage(""), null);
   assert.equal(await embedImage("data:image/png;base64,AA"), "data:image/png;base64,AA");
 });
+
+test("사진을 다시 압축해서 넘긴다 — PNG·HTML·스냅샷이 같이 가벼워진다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  assert.match(bar, /function shrunkDataUrl\(url, maxW\)/);
+  assert.match(bar, /toDataURL\("image\/jpeg", 0\.85\)/);
+  assert.match(bar, /shrunkDataUrl\(was, 1400\)/, "PNG 로 넘길 때");
+  assert.match(bar, /shrunkDataUrl\(i\.src, 1400\)/, "HTML 저장할 때");
+  // 작은 png 을 jpeg 로 바꾸면 되레 커질 수 있다 — 그때는 원본을 쓴다
+  assert.match(bar, /out\.length < u\.length \? out : u/);
+});
