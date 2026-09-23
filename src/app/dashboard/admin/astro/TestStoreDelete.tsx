@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconTrash } from "@tabler/icons-react";
 import { focusRing } from "../_shared/ui";
 
 /**
- * 테스트로 만든 매장 지우기 — 파트너 계약 탭 안에서 (민열님 0923 인계 ②).
+ * 테스트로 만든 매장 지우기 (민열님 0923 인계 ②).
  *
- * 왜 여기냐 — 삭제 UI 가 원래 `식당 관리` 탭에 있는데 그 탭이 **어느 제품에도 안 묶인 고아 탭**이라
- * `?tab=restaurants` 로 딥링크해도 런처로 떨어진다. 갈 수가 없으니 지울 수가 없었다.
- * 테스트 매장이 생기는 자리가 여기(온보딩 링크 발급)이니, 치우는 자리도 여기가 맞다.
+ * 삭제 화면이 원래 **어느 제품에도 안 묶인 고아 탭**(`restaurants`)에 있어 갈 수가 없었다.
+ * 테스트 매장이 보이는 자리는 파트너 매장 탭의 '테스트' 필터라, 치우는 자리도 거기다.
  *
- * **테스트로 보이는 매장에만** 뜬다(`looksLikeTest`). 진짜 파트너 매장 옆에 삭제 버튼을 두지 않는다 —
- * 실수로 누르면 되돌릴 수 없고, 손님 스탬프·쿠폰이 같이 사라진다.
+ * ## 왜 표 안이 아니라 덮는 창인가 (0923 사고)
+ * 처음에는 표 줄 안에서 비밀번호 칸을 열었다. 그랬더니 **크롬이 그 칸을 로그인 폼으로 오해해서
+ * 저장해 둔 아이디를 화면의 매장 검색창에 자동으로 채웠다.** 검색어가 생기니 목록이 0곳이 되고,
+ * 누른 사람에게는 "지우기를 눌렀더니 매장이 다 사라졌다"로 보인다.
+ * 그래서 (1) 표 밖 덮는 창으로 빼고 (2) 자동완성이 물 미끼 칸을 창 안에 둔다.
  *
  * 2차 비밀번호는 백엔드가 요구한다(`AdminRestaurantView.delete`). 여기서 받아 그대로 넘기고
  * **어디에도 남기지 않는다** — 상태에만 잠깐 있다가 닫으면 사라진다.
@@ -34,6 +36,17 @@ export default function TestStoreDelete({ rid, name, onDeleted }: { rid: number;
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const pwRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => pwRef.current?.focus(), 40);
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); setPw(""); setErr(""); } };
+    window.addEventListener("keydown", esc);
+    return () => { clearTimeout(t); window.removeEventListener("keydown", esc); };
+  }, [open]);
+
+  function close() { setOpen(false); setPw(""); setErr(""); }
 
   async function run() {
     if (!pw) { setErr("2차 비밀번호를 입력해 주세요."); return; }
@@ -46,41 +59,54 @@ export default function TestStoreDelete({ rid, name, onDeleted }: { rid: number;
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(data.detail ?? "삭제하지 못했습니다."); return; }
-      setPw(""); setOpen(false);
+      close();
       onDeleted();
     } catch {
       setErr("연결하지 못했습니다.");
     } finally { setBusy(false); }
   }
 
-  if (!open) {
-    return (
-      <button type="button" onClick={() => { setOpen(true); setErr(""); }}
-        className={`inline-flex items-center gap-1 text-[11.5px] font-semibold text-gray-400 hover:text-red-600 rounded ${focusRing}`}>
-        <IconTrash size={13} aria-hidden="true" />테스트 매장 지우기
-      </button>
-    );
-  }
-
   return (
-    <div className="mt-1.5 rounded-xl border border-red-200 bg-red-50/60 p-2.5">
-      <p className="text-[12px] font-semibold text-red-700">「{name}」 을(를) 지웁니다</p>
-      <p className="text-[11.5px] text-gray-600 mt-0.5">되돌릴 수 없습니다. 쿠폰·스탬프 기록도 같이 사라집니다.</p>
-      <div className="flex gap-1.5 mt-2">
-        <input
-          type="password" value={pw} onChange={(e) => setPw(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") run(); }}
-          placeholder="2차 비밀번호" aria-label="2차 비밀번호" autoComplete="off"
-          className="flex-1 min-w-0 text-[12.5px] border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-red-400"
-        />
-        <button type="button" onClick={run} disabled={busy}
-          className={`shrink-0 text-[12.5px] font-bold text-white bg-red-600 rounded-lg px-3 disabled:opacity-60 ${focusRing}`}>
-          {busy ? "지우는 중…" : "삭제"}
-        </button>
-        <button type="button" onClick={() => { setOpen(false); setPw(""); setErr(""); }}
-          className={`shrink-0 text-[12.5px] font-semibold text-gray-500 px-2 ${focusRing}`}>취소</button>
-      </div>
-      {err && <p role="alert" className="text-[11.5px] text-red-700 mt-1.5">{err}</p>}
-    </div>
+    <>
+      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(true); setErr(""); }}
+        className={`inline-flex items-center gap-1 text-[11.5px] font-semibold text-gray-400 hover:text-red-600 rounded ${focusRing}`}>
+        <IconTrash size={13} aria-hidden="true" />지우기
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={`${name} 삭제`}
+          onClick={(e) => { e.stopPropagation(); close(); }}>
+          <div className="absolute inset-0 bg-black/45" />
+          <div className="relative w-full max-w-sm rounded-[18px] bg-white shadow-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-[15px] font-bold text-gray-900">「{name}」 을(를) 지웁니다</h2>
+            <p className="text-[12.5px] text-gray-500 mt-1 leading-relaxed">
+              되돌릴 수 없습니다. 이 매장의 쿠폰·스탬프 기록도 같이 사라집니다.
+            </p>
+
+            {/* 자동완성 미끼 — 크롬은 비밀번호 칸 옆에서 아이디 칸을 찾는다. 이게 없으면 화면의 검색창을 채운다(0923). */}
+            <input type="text" name="fake-user" autoComplete="username" tabIndex={-1} aria-hidden="true"
+              className="absolute opacity-0 pointer-events-none w-0 h-0" />
+
+            <input
+              ref={pwRef} type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") run(); }}
+              placeholder="2차 비밀번호" aria-label="2차 비밀번호"
+              autoComplete="new-password" name="secondary-password"
+              className="mt-3 w-full text-[13px] border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-red-400"
+            />
+            {err && <p role="alert" className="text-[12px] text-red-700 mt-2">{err}</p>}
+
+            <div className="flex gap-2 mt-4">
+              <button type="button" onClick={run} disabled={busy}
+                className={`flex-1 text-[13px] font-bold text-white bg-red-600 rounded-lg py-2 disabled:opacity-60 ${focusRing}`}>
+                {busy ? "지우는 중…" : "삭제"}
+              </button>
+              <button type="button" onClick={close}
+                className={`text-[13px] font-semibold text-gray-600 px-4 rounded-lg border border-gray-200 ${focusRing}`}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
