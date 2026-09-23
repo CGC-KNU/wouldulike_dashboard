@@ -12,8 +12,8 @@ const safeJson = (d: unknown) => JSON.stringify(d, null, 2).replace(/</g, "\\u00
 
 const BLOCK = /(<script type="application\/json" id="report-data">)[\s\S]*?(<\/script>)/;
 
-export function fillReportTemplate(r: StoreReport, opts: { beaconToken?: string } = {}): string {
-  const data = toTemplateData(r);
+export function fillReportTemplate(r: StoreReport, opts: { beaconToken?: string; origin?: string } = {}): string {
+  const data = toTemplateData(r, { origin: opts.origin });
   let html = REPORT_TEMPLATE_HTML.replace(BLOCK, (_m, open: string, close: string) => `${open}\n${safeJson(data)}\n${close}`);
   // 게시물 사진이 없으면 양식은 "게시물 이미지 / post.image" 자리표시를 크게 띄운다(자동화 점검용). 점주에게는 빈 칸이라 숨긴다.
   if (!(data.post as { image?: string }).image) html = html.replace("</head>", "<style>.post .shot{display:none}</style>\n</head>");

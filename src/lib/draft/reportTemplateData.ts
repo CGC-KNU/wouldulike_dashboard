@@ -35,7 +35,28 @@ function excerpt(c: string | null): string | null {
   return lines.length > 160 ? `${lines.slice(0, 160).trimEnd()}…` : lines;
 }
 
-export function toTemplateData(r: StoreReport): Json {
+/**
+ * 바깥 이미지는 **우리 출처의 /api/img** 로 돌린다.
+ * 메타 CDN 은 브라우저가 직접 부르면 막고 서버가 부르면 준다 — 그래서 화면에 보이려면 프록시를 거쳐야 하고,
+ * 저장(바이트 읽기)까지 되려면 그 프록시가 **지금 보고 있는 도메인**이어야 한다(다른 출처면 CORS 로 막힌다).
+ * `origin` 이 없으면(화면에서 필수값만 볼 때) 원본을 그대로 둔다 — 그 경로는 이미지를 그리지 않는다.
+ */
+const PROXY_HOSTS = [".cdninstagram.com", ".fbcdn.net", ".amazonaws.com"];
+function viaProxy(url: string, origin?: string): string {
+  if (!url || !origin || url.startsWith("data:")) return url;
+  let host: string;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return url;
+    host = u.hostname;
+  } catch {
+    return url;
+  }
+  if (!PROXY_HOSTS.some((s) => host.endsWith(s))) return url;
+  return `${origin.replace(/\/$/, "")}/api/img?u=${encodeURIComponent(url)}`;
+}
+
+export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): Json {
   const s = r.snapshot;
   const rd = s.report_data?.available ? s.report_data : null;
   const val = (k: string) => rd?.metrics?.[k as keyof NonNullable<typeof rd.metrics>] ?? s.metrics.find((m) => m.key === k)?.value ?? null;
@@ -61,11 +82,7 @@ export function toTemplateData(r: StoreReport): Json {
       duration_sec: null,
       permalink: rd?.post?.permalink ?? s.post.permalink,
       // 게시물 사진: 인스타 썸네일(메타) 우선, 없으면 기획 커버
-      // 원본 주소를 그대로 둔다. 화면에 <img> 로 **보이는 데는** CORS 가 필요 없다.
-      // 막히는 건 저장할 때 바이트를 읽는 fetch 뿐이라, 그건 reportDownload 가 /api/img 로 우회한다.
-      // (0923: 여기서 프록시 주소를 넣었다가 두 번 깨뜨렸다 — 상대경로는 양식의 url() 이 걸러내고,
-      //  절대경로는 배포 도메인을 잘못 짚으면 다른 출처가 된다. 양식은 원본만 알면 된다.)
-      image: rd?.post?.thumb_url || s.post.cover_url || "",
+      image: viaProxy(rd?.post?.thumb_url || s.post.cover_url || "", opts.origin),
       caption: excerpt(s.post.caption),
       store_count: multi ? s.post.co_stores : null,
       multi_store: multi,

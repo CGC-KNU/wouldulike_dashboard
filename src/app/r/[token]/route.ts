@@ -19,6 +19,24 @@ import type { StoreReport } from "@/lib/draft/types";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://wouldulike-dashboard.vercel.app";
 
+/**
+ * **요청이 들어온 그 출처.** 리포트 안 이미지는 이 출처의 `/api/img` 를 거쳐야 한다.
+ *
+ * 고정값(NEXT_PUBLIC_SITE_URL·vercel 기본값)으로 짚으면 안 된다 — 운영은 app.wouldulike.kr 인데
+ * 그 값이 비어 있어 vercel 주소를 가리켰고, 이미지가 **다른 출처**가 되어 저장이 통째로 실패했다(0923).
+ * 프록시 앞에 붙는 출처는 언제나 지금 보고 있는 도메인이어야 한다.
+ */
+function originOf(req: Request): string {
+  const h = req.headers;
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  if (host) return `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
+  try {
+    return new URL(req.url).origin;
+  } catch {
+    return SITE;
+  }
+}
+
 async function load(token: string): Promise<{ r: StoreReport; preview: boolean } | null> {
   if (!/^[0-9a-f]{40}$/.test(token)) {
     if (token.startsWith("preview-")) {
@@ -68,7 +86,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { r, preview } = hit;
   if (r.status === "REVOKED" && !preview) return plain(410, "이 리포트는 더 이상 공개되지 않습니다.", "새 리포트를 받으셨다면 그 링크로 열어 주세요.");
 
-  let html = fillReportTemplate(r, { beaconToken: preview ? undefined : r.token ?? undefined });
+  let html = fillReportTemplate(r, { beaconToken: preview ? undefined : r.token ?? undefined, origin: originOf(req) });
   html = html.replace("</head>", `${headTags(r)}\n</head>`);
   if (preview) {
     const day = toTemplateData(r).report as { day: number | null; measured_at: string };
