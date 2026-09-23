@@ -24,7 +24,10 @@ export const DEFAULT_DATASET = "wouldulike-efe19.analytics_494806625";
 const MAX_BYTES = String(1024 ** 3); // 쿼리당 1GB — 넘으면 BigQuery 가 실행을 거절한다
 
 export interface Ga4AppMetrics {
-  /** 마지막 확정 테이블 날짜 (YYYY-MM-DD) — "○일까지" */
+  /**
+   * 이 응답이 **실제로 센 마지막 날** (YYYY-MM-DD). 요청한 창의 끝과 확정 테이블 중 이른 쪽이다.
+   * 보고서 머리의 "확정 테이블 ○일까지"가 이 값이라, 창이 앞서가면 없는 날짜를 적게 된다 — 그래서 가둔다.
+   */
   through: string;
   week: { from: string; to: string };
   wau: number | null;
@@ -125,8 +128,15 @@ export async function readGa4AppMetrics(
   if (!client) return { ok: false, reason: "no_key" };
   const { dataset, run } = client;
 
-  const end = opts.end ?? (await lastEventDate(client));
-  if (!end) return { ok: false, reason: "error", detail: "확정 테이블(events_YYYYMMDD)이 없습니다" };
+  // 확정 테이블은 늘 확인한다(메타 테이블이라 스캔 비용이 없다). 창의 끝을 여기에 **가둔다** —
+  // 아직 오지 않은 날을 창에 넣으면 두 가지가 동시에 거짓말을 한다:
+  //   ① `through` 가 "확정 테이블 ○일까지"로 보고서 머리에 찍히는데 없는 날짜를 적게 된다.
+  //   ② DAU 평균의 분모가 창의 날 수라, 9/22 에 9월(30일)을 뽑으면 21일치를 30으로 나눠 3할쯤 낮게 나온다.
+  // 부르는 쪽은 돌려받은 `week.to` 를 요청한 end 와 비교해 "기간 끝까지 데이터가 없다"를 알 수 있다.
+  const last = await lastEventDate(client);
+  if (!last) return { ok: false, reason: "error", detail: "확정 테이블(events_YYYYMMDD)이 없습니다" };
+  const requested = opts.end ?? last;
+  const end = requested > last ? last : requested;
   const start = opts.start ?? shift(end, -6);
   if (start > end) return { ok: false, reason: "error", detail: `창이 거꾸로입니다 — ${start} > ${end}` };
   // 창 안의 날 수. DAU 평균의 분모다 — 사용자가 0인 날도 하루로 친다.

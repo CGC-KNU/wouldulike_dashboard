@@ -118,6 +118,9 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
   const ratioVerdict = verdictForRatio(g?.wau ?? null, p?.wau ?? null);
   const dom = dominantNote(coupons ?? null);
   const win = g ? `${md(bare(g.week.from))}~${md(bare(g.week.to))}` : MONTH_LABEL(period);
+  // 확정 테이블이 달 끝까지 없으면 GA4 칸은 그 달 전체가 아니다. 숫자를 내되 반드시 알린다.
+  const lastDayOfMonth = `${period}-${String(new Date(Date.UTC(+period.slice(0,4), +period.slice(5,7), 0)).getUTCDate()).padStart(2, "0")}`;
+  const ga4Short = g ? g.week.to < lastDayOfMonth : false;
 
   const groups = [
     {
@@ -216,6 +219,9 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
     "**푸시 → 앱 열기는 안드로이드만 분모입니다.** iOS 는 백그라운드 수신을 못 세서 열기 건수가 어디에도 들어가지 못합니다.",
     "**빈 칸은 0 이 아닙니다.** 연결 전 · 앱 수정 대기 · 정의 보류 중 어느 쪽인지 칸마다 적었습니다.",
   ];
+  if (ga4Short) {
+    caveats.unshift(`**GA4 칸은 ${g!.week.to} 까지만 센 값입니다.** ${MONTH_LABEL(period)} 이 아직 끝나지 않았거나 확정 테이블이 덜 왔습니다 — 달 전체 수치가 아닙니다.`);
+  }
   if (!snap) {
     caveats.unshift(`**${MONTH_LABEL(period)} 스냅샷이 없어 DB 칸이 비었습니다.** 스냅샷을 걸기 전 달은 되살릴 수 없습니다 — \`snapshot_metrics --period ${period}\` 로 만들 수 있는지 먼저 확인하십시오.`);
   } else if (!snapPrev) {
@@ -239,7 +245,7 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
       range: { start: `${period}-01`, end: `${period}-${String(lastDay).padStart(2, "0")}` },
       compare_label: prevLabel,
       generated_at: today ?? new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
-      data_asof: g ? `GA4 ${g.through} 확정 테이블${snap ? ` · DB 스냅샷 ${snap.counted_at.slice(0, 10)}` : ""}` : "GA4 미연결",
+      data_asof: g ? `GA4 ${g.through} 까지${ga4Short ? "(달 끝 전)" : ""}${snap ? ` · DB 스냅샷 ${snap.counted_at.slice(0, 10)}` : ""}` : "GA4 미연결",
       author: "Probe",
       note:
         `GA4·Firebase 칸은 ${MONTH_LABEL(period)} **그 달만** 센 값입니다. 창이 한 달이라 ==DAU/MAU== 이며, 주간 보고서의 DAU/WAU 와 같은 줄에 놓고 읽으면 안 됩니다.\n`
@@ -253,7 +259,9 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
       { key: "ga4", label: "GA4", status: g ? "connected" : "pending", hint: g ? `BigQuery 확정 테이블 ${g.through} 까지. 배너 노출 1칸만 앱 이벤트가 없어 비어 있습니다` : "BigQuery 를 읽지 못했습니다" },
       { key: "firebase", label: "Firebase", status: g ? "connected" : "pending", hint: "자동 이벤트 — 푸시 수신·열기, first_open 코호트" },
     ],
-    headline: ["wau", "signups", "coupon_redeem_rate", "retention_w1"],
+    // 스냅샷이 없으면 signups·coupon_redeem_rate 가 비어 타일 넷 중 둘이 「연결 전」이 된다 —
+    // 보고서를 열자마자 보이는 줄이라 값이 있는 칸으로 채운다(양식은 headline 이 없으면 채워진 칸에서 고른다).
+    ...(snap ? { headline: ["wau", "signups", "coupon_redeem_rate", "retention_w1"] } : {}),
     groups,
     funnel,
     caveats,

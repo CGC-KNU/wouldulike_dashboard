@@ -266,7 +266,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
       range: { start: dash(start), end: dash(end) },
       compare_label: "지난주",
       generated_at: today ?? new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10),
-      data_asof: g ? `${g.through} 확정 테이블 기준` : "GA4 미연결",
+      data_asof: g ? `${g.through} 까지` : "GA4 미연결",
       author: "Probe",
       note:
         `GA4·Firebase 칸은 ${md(start)}~${md(end)} **그 주만** 센 값이라 전주(${md(shiftDay(prevEnd, -6))}~${md(prevEnd)})와 비교할 수 있습니다.\n` +

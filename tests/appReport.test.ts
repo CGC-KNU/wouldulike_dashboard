@@ -379,3 +379,46 @@ test("월간도 같은 네 칸을 받는다", () => {
   assert.equal(r.status, "ok");
   assert.equal(r.warnings, "");
 });
+
+// ── 데이터 신선도 (fix) ───────────────────────────────────────────────
+test("월간 요약 타일은 스냅샷이 없어도 빈 칸으로 채우지 않는다", () => {
+  const withSnap = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07") }, today: "2026-09-23",
+  }) as { headline?: string[] };
+  assert.deepEqual(withSnap.headline, ["wau", "signups", "coupon_redeem_rate", "retention_w1"]);
+
+  // 스냅샷이 없으면 headline 을 아예 안 준다 — 양식이 값 있는 칸에서 넷을 고른다
+  const without = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4, snapshot: null, today: "2026-09-23",
+  }) as { headline?: string[] };
+  assert.equal(without.headline, undefined);
+  const r = render(fillAppReportTemplate(without as never));
+  assert.equal(r.status, "ok");
+  // 타일 줄(요약)에 「연결 전」이 뜨면 안 된다 — 본문에는 있어도 된다
+  const tiles = r.text.slice(0, r.text.indexOf("GA4·Firebase 칸은"));
+  assert.doesNotMatch(tiles, /연결 전/, "보고서를 열자마자 보이는 줄이 빈 칸이면 안 된다");
+});
+
+test("달이 안 끝났으면 GA4 칸이 어디까지인지 알린다", () => {
+  // 확정 테이블이 9/21 까지라 9월 창은 9/21 에서 끊긴다
+  const short: Ga4AppMetrics = { ...augGa4, through: "2026-09-21", week: { from: "2026-09-01", to: "2026-09-21" } };
+  const d = buildMonthlyAppReportData({
+    period: "2026-09", cur: short, prev: augGa4,
+    snapshot: { period: "2026-09", current: side("2026-09", {}, false), previous: side("2026-08") },
+    today: "2026-09-23",
+  });
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.match(r.text, /GA4 칸은 2026-09-21 까지만 센 값입니다/);
+  assert.match(r.text, /GA4 2026-09-21 까지\(달 끝 전\)/);
+
+  // 달이 다 끝났으면 그 문구가 없어야 한다
+  const full = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07") }, today: "2026-09-23",
+  });
+  const rf = render(fillAppReportTemplate(full));
+  assert.doesNotMatch(rf.text, /까지만 센 값입니다/);
+  assert.doesNotMatch(rf.text, /달 끝 전/);
+});
