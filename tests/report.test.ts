@@ -202,13 +202,6 @@ test("양식의 모든 구획이 세 장 어딘가에 들어간다", () => {
 });
 
 // ── 이미지 읽기 (저장할 때만 프록시) ──────────────────────────────────
-test("양식에는 원본 주소가 그대로 들어간다", () => {
-  const meta = "https://scontent-x.cdninstagram.com/v/t51/9_n.jpg?oh=abc";
-  const r = report({}, { post: { ...report().snapshot.post, cover_url: meta } });
-  const d = toTemplateData(r) as { post: { image: string } };
-  assert.equal(d.post.image, meta, "화면에 보이는 데는 CORS 가 필요 없다 — 프록시를 끼우면 도메인을 짚어야 해서 깨진다");
-  assert.doesNotMatch(d.post.image, /\/api\/img/);
-});
 
 test("저장할 때만 /api/img 로 우회한다 — 상대경로여야 도메인을 몰라도 맞는다", () => {
   const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
@@ -224,4 +217,32 @@ test("오류를 사람이 읽을 수 있게 적는다", () => {
   assert.match(bar, /function why\(e\)/);
   assert.match(bar, /이미지를 불러오지 못했습니다/);
   assert.doesNotMatch(bar, /err && err\.message \? err\.message : err/);
+});
+
+test("양식 이미지는 지금 보고 있는 도메인의 프록시를 거친다", () => {
+  const meta = "https://scontent-x.cdninstagram.com/v/t51/9_n.jpg?oh=abc";
+  const r = report({}, { post: { ...report().snapshot.post, cover_url: meta } });
+
+  // 메타 CDN 은 브라우저가 직접 부르면 막는다 — 프록시를 거쳐야 화면에 보인다
+  const d = toTemplateData(r, { origin: "https://app.wouldulike.kr" }) as { post: { image: string } };
+  assert.equal(d.post.image, `https://app.wouldulike.kr/api/img?u=${encodeURIComponent(meta)}`);
+
+  // 출처가 다르면 저장할 때 CORS 로 막힌다 — 고정값을 쓰면 안 되는 이유
+  const other = toTemplateData(r, { origin: "https://dash.vercel.app" }) as { post: { image: string } };
+  assert.notEqual(other.post.image, d.post.image);
+
+  // 출처를 모르면(필수값 검사 등) 원본 그대로 — 그 경로는 이미지를 그리지 않는다
+  const none = toTemplateData(r) as { post: { image: string } };
+  assert.equal(none.post.image, meta);
+});
+
+test("이미 프록시된 주소를 또 감싸지 않는다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  assert.ok(bar.includes("그대로 읽는다(같은 출처라 막히지 않는다)"), "같은 출처 주소는 그대로 읽어야 한다");
+  assert.ok(bar.includes(".test(url)) return fetchBlob(url).then(readAsDataUrl)"), "프록시 주소면 곧장 읽는다");
+});
+
+test("프록시가 막히면 그 이유를 문구에 싣는다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  assert.match(bar, /j\.detail/, "「HTTP 403」만으로는 서명 만료인지 차단인지 모른다");
 });

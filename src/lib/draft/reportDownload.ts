@@ -51,11 +51,20 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     return new Promise(function (ok, no) { var f = new FileReader(); f.onload = function () { ok(f.result); }; f.onerror = no; f.readAsDataURL(b); });
   }
   function fetchBlob(u) {
-    return fetch(u, { mode: "cors" }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); });
+    return fetch(u, { mode: "cors" }).then(function (r) {
+      if (r.ok) return r.blob();
+      // 프록시가 막힌 이유를 그대로 올린다 — "HTTP 403" 만으로는 서명 만료인지 차단인지 모른다
+      return r.json().catch(function () { return null; }).then(function (j) {
+        throw new Error((j && j.detail ? j.detail : "HTTP " + r.status) + " — " + String(u).slice(0, 120));
+      });
+    });
   }
   function dataUrl(url) {
-    return fetchBlob(url).catch(function () {
-      if (/^data:|^blob:/.test(url)) throw new Error("읽을 수 없는 주소");
+    // 양식이 이미 /api/img 로 돌려 둔 주소면 그대로 읽는다(같은 출처라 막히지 않는다).
+    // 그게 아닌 바깥 주소만, 막혔을 때 한 번 더 프록시로 시도한다.
+    if (/\/api\/img\?/.test(url)) return fetchBlob(url).then(readAsDataUrl);
+    return fetchBlob(url).catch(function (e) {
+      if (/^data:|^blob:/.test(url)) throw e;
       return fetchBlob("/api/img?u=" + encodeURIComponent(url));
     }).then(readAsDataUrl);
   }
