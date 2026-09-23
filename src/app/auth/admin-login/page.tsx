@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { takePostLoginPath } from "@/lib/postLogin";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
@@ -64,7 +65,7 @@ function AdminLoginInner() {
       const data = await res.json();
 
       if (data.success) {
-        router.replace("/dashboard");
+        router.replace(takePostLoginPath());
       } else {
         setError(data.message || "로그인에 실패했습니다.");
         setNeedsKakao(!!data.requiresKakao);

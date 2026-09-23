@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { takePostLoginPath } from "@/lib/postLogin";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
@@ -65,7 +66,7 @@ export default function VerifyPinPage() {
       });
       const data = await res.json();
       if (data.success) {
-        router.replace("/dashboard");
+        router.replace(takePostLoginPath());
       } else {
         setError(data.message || "PIN이 올바르지 않습니다.");
         setPin("");

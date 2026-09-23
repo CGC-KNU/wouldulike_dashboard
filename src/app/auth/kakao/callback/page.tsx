@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { takePostLoginPath } from "@/lib/postLogin";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
@@ -48,7 +49,7 @@ function KakaoCallbackInner() {
         } else if (data.requiresPinVerification) {
           router.replace("/auth/verify-pin");
         } else if (data.success) {
-          router.replace("/dashboard");
+          router.replace(takePostLoginPath());
         } else {
           const msg = encodeURIComponent(data.message || `http_${res.status}`);
           router.replace(`/login?error=${msg}`);

@@ -25,6 +25,28 @@ function parseJwtPayload(token: string): DashboardJWT {
   return JSON.parse(json) as DashboardJWT;
 }
 
+/**
+ * 로그인으로 보내면서 **가려던 곳을 들고 간다.**
+ *
+ * 슬랙 알림의 딥링크(`?tab=probe-reports&plan=123`)를 로그아웃 상태로 열면 `/login` 으로 갔다가
+ * 로그인 뒤 `/dashboard` 로만 떨어졌다 — tab·plan 이 사라져 "그냥 메인 페이지만 뜬다" (0923 실측).
+ * 알림을 보고 누르는 사람은 대개 로그아웃 상태라(슬랙 인앱 브라우저) 사실상 딥링크가 안 되고 있었다.
+ *
+ * 쿠키에 담는 이유: 카카오 로그인이 외부로 한 번 나갔다 오므로 주소만으로는 못 들고 간다.
+ * 비밀이 아니라 경로일 뿐이라 httpOnly 로 두지 않는다 — 대신 **쓰는 쪽에서 내부 경로인지 반드시 검사한다**
+ * (`//evil.com` 같은 값이 들어오면 열린 리다이렉트가 된다).
+ */
+function toLogin(req: NextRequest): NextResponse {
+  const res = NextResponse.redirect(new URL("/login", req.url));
+  const { pathname, search } = req.nextUrl;
+  // 문서 이동만 기억한다. API·정적 요청까지 담으면 마지막에 실패한 fetch 주소로 끌려간다.
+  const wantsHtml = (req.headers.get("accept") ?? "").includes("text/html");
+  if (wantsHtml && pathname.startsWith("/dashboard")) {
+    res.cookies.set("post_login_to", pathname + search, { sameSite: "lax", maxAge: 60 * 10, path: "/" });
+  }
+  return res;
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -48,7 +70,7 @@ export function middleware(req: NextRequest) {
       url.pathname = "/auth/app-login";
       return NextResponse.redirect(url);
     }
-    return NextResponse.redirect(new URL("/login", req.url));
+    return toLogin(req);
   }
 
   // /dashboard/admin 경로: 관리자 또는 마케팅 계정만 통과 (개발 환경 제외)
@@ -64,7 +86,7 @@ export function middleware(req: NextRequest) {
         return NextResponse.redirect(new URL("/dashboard/owner", req.url));
       }
     } catch {
-      return NextResponse.redirect(new URL("/login", req.url));
+      return toLogin(req);
     }
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { takePostLoginPath } from "@/lib/postLogin";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
@@ -29,7 +30,7 @@ function AppLoginInner() {
         });
 
         if (res.ok) {
-          router.replace("/dashboard");
+          router.replace(takePostLoginPath());
         } else {
           router.replace("/login?error=invalid_token");
         }
