@@ -18,8 +18,14 @@ import { focusRing } from "../_shared/ui";
  * **어디에도 남기지 않는다** — 상태에만 잠깐 있다가 닫으면 사라진다.
  */
 
-/** 이름만 보고 테스트인지 고른다. 애매하면 '아니다' — 진짜 매장에 삭제 버튼이 뜨는 쪽이 훨씬 나쁘다. */
-export function looksLikeTest(name: string): boolean {
+/**
+ * 테스트 매장인가. **`ops.is_test` 가 먼저다** — 사람이 그렇게 표시한 값이라 이름 짐작보다 정확하다.
+ * 플래그가 없을 때만 이름으로 본다(플래그를 안 켜고 만든 옛 테스트 매장). 애매하면 '아니다' —
+ * 진짜 매장 옆에 삭제 버튼이 뜨는 쪽이 훨씬 나쁘다.
+ */
+export function looksLikeTest(name: string, isTest?: boolean | null): boolean {
+  if (isTest === true) return true;
+  if (isTest === false) return false;
   return /(^|[\s_-])?(테스트|test|더미|dummy|샘플|sample)/i.test(name || "");
 }
 
