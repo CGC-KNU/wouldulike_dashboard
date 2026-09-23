@@ -1,4 +1,5 @@
 import { DEFAULT_SUMMARY, comparable } from "./report";
+import { isEmbedded } from "./coverImage";
 import type { StoreReport } from "./types";
 
 /**
@@ -82,7 +83,11 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       duration_sec: null,
       permalink: rd?.post?.permalink ?? s.post.permalink,
       // 게시물 사진: 인스타 썸네일(메타) 우선, 없으면 기획 커버
-      image: viaProxy(rd?.post?.thumb_url || s.post.cover_url || "", opts.origin),
+      // 스냅샷에 파일째 담긴 그림이 있으면 **그게 1순위**다 — 만료도 CORS 도 없다.
+      // 없으면(옛 스냅샷) 예전처럼 주소를 쓰되, 바깥 주소는 우리 출처의 프록시를 거친다.
+      image: isEmbedded(s.post.cover_url)
+        ? (s.post.cover_url as string)
+        : viaProxy(rd?.post?.thumb_url || s.post.cover_url || "", opts.origin),
       caption: excerpt(s.post.caption),
       store_count: multi ? s.post.co_stores : null,
       multi_store: multi,

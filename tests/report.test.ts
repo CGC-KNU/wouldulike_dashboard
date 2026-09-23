@@ -273,3 +273,51 @@ test("띠 스크립트에 주석으로 죽은 정규식이 없다", () => {
     assert.ok(!/[(=,]\s*\/\//.test(code), `${i + 1}줄에서 정규식이 주석이 됐습니다: ${code.slice(0, 80)}`);
   }
 });
+
+// ── 썸네일을 스냅샷에 파일째 담는다 ───────────────────────────────────
+import { embedImage, isEmbedded } from "../src/lib/draft/coverImage";
+
+/**
+ * 0923: 스냅샷에 **주소**만 넣었더니 며칠 뒤 403 이었다.
+ * cover_url 은 S3 presigned TTL 600초, thumb_url 은 메타 서명 주소 — 둘 다 짧게 살다 죽는다.
+ * 프록시로는 못 고친다. 서버에서 불러도 똑같이 403 이다.
+ */
+test("살아 있는 주소는 파일째 담는다", async () => {
+  const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(png, { status: 200, headers: { "Content-Type": "image/png" } })) as never;
+  try {
+    const out = await embedImage("https://s3.example.com/a.png?X-Amz-Signature=x");
+    assert.ok(isEmbedded(out), "data: 로 담겨야 만료가 없다");
+    assert.match(out!, /^data:image\/png;base64,/);
+  } finally { globalThis.fetch = orig; }
+});
+
+test("못 담으면 주소를 그대로 둔다 — 리포트 만들기가 실패하면 안 된다", async () => {
+  const url = "https://s3.example.com/a.png";
+  const orig = globalThis.fetch;
+  for (const res of [
+    new Response("no", { status: 403 }),
+    new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }), // 403 본문이 그림인 척
+  ]) {
+    globalThis.fetch = (async () => res.clone()) as never;
+    assert.equal(await embedImage(url), url);
+  }
+  globalThis.fetch = (async () => { throw new Error("망"); }) as never;
+  assert.equal(await embedImage(url), url);
+  globalThis.fetch = orig;
+});
+
+test("담긴 그림은 프록시를 거치지 않는다", () => {
+  const data = "data:image/png;base64,AAAA";
+  const r = report({}, { post: { ...report().snapshot.post, cover_url: data } });
+  const d = toTemplateData(r, { origin: "https://app.wouldulike.kr" }) as { post: { image: string } };
+  assert.equal(d.post.image, data, "만료도 CORS 도 없다 — 그대로 쓴다");
+  assert.doesNotMatch(d.post.image, /\/api\/img/);
+});
+
+test("빈 값·data: 는 건드리지 않는다", async () => {
+  assert.equal(await embedImage(null), null);
+  assert.equal(await embedImage(""), null);
+  assert.equal(await embedImage("data:image/png;base64,AA"), "data:image/png;base64,AA");
+});

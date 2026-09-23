@@ -68,7 +68,10 @@ function plain(status: number, title: string, body: string): Response {
 /** 카톡 미리보기 — 매장 제공 사진(게시물 커버)만. 없으면 앱 아이콘. */
 function headTags(r: StoreReport): string {
   const s = r.snapshot;
-  const img = s.post.cover_url ?? new URL("/brand/appicon.png", SITE).toString();
+  // data: 는 og:image 로 못 쓴다(카톡 미리보기가 주소를 받아 간다) — 그때는 앱 아이콘으로.
+  const img = s.post.cover_url && !s.post.cover_url.startsWith("data:")
+    ? s.post.cover_url
+    : new URL("/brand/appicon.png", SITE).toString();
   return [
     `<meta name="robots" content="noindex,nofollow">`,
     `<meta property="og:type" content="article">`,
