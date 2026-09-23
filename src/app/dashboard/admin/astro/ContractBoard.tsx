@@ -7,6 +7,7 @@ import OnboardLink from "./OnboardLink";
 import OnboardReconcile from "./OnboardReconcile";
 import SpecialApprovals from "./SpecialApprovals";
 import CampusMark from "./CampusMark";
+import TestStoreDelete, { looksLikeTest } from "./TestStoreDelete";
 
 /**
  * 파트너 계약 — **매장 추가 → 링크 발급 → 계약 → 반영** 한 사이클을 한 화면에서.
@@ -120,6 +121,12 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                     {(r.stage === "미발급" || r.stage === "대기") && (
                       <div className="mt-1.5">
                         <OnboardLink rid={r.rid} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} />
+                      </div>
+                    )}
+                    {/* 테스트로 만든 매장은 여기서 치운다 — 삭제 화면이 고아 탭에 있어 갈 수가 없었다 (0923 인계 ②) */}
+                    {looksLikeTest(r.name) && (
+                      <div className="mt-1.5">
+                        <TestStoreDelete rid={r.rid} name={r.name} onDeleted={load} />
                       </div>
                     )}
                   </Td>

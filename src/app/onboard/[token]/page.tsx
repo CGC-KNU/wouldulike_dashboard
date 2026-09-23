@@ -17,7 +17,12 @@ import { BrandStack } from "./Brand";
  * 반면 미리보기 카드는 사장님이 링크를 믿을지 말지를 가르는 첫인상이다 — 그쪽이 훨씬 크다.
  * (서명한 계약서 사본 `/contract` 은 개인정보가 들어가므로 거기 noindex 는 그대로 둔다.)
  */
-const OG_DESC = "카카오 로그인 후 5분이면 계약과 혜택 등록이 끝납니다. 중간에 나가셔도 이어서 하실 수 있습니다.";
+/**
+ * 미리보기 문구. **주장도 시간 약속도 넣지 않는다** (민열님 0923: "너무 사기꾼같음 → 정직하고 심플하게").
+ * "5분이면 끝납니다" 는 광고 배너 문법이고, 계약 서명을 앞둔 화면의 첫인상으로는 정반대였다.
+ * 이미지(`/brand/og-onboard.jpg`, 생성기는 같은 폴더의 `og-onboard.source.html`)와 같은 톤으로 맞춘다.
+ */
+const OG_DESC = "계약서 확인과 혜택 등록을 하실 수 있습니다.";
 export const metadata: Metadata = {
   title: { absolute: "우주라이크 파트너 등록" },
   description: OG_DESC,
