@@ -92,7 +92,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     // 실패를 삼키면 안 된다 — 예전엔 조용히 넘어가서, 저장된 파일에 썸네일이 빠진 걸 열어 보고서야 알았다(0923).
     var missed = 0;
     return Promise.all(imgs.map(function (i) {
-      return dataUrl(i.src).then(function (u) { i.setAttribute("src", u); }).catch(function () { missed++; });
+      return shrunkDataUrl(i.src, 1400).then(function (u) { i.setAttribute("src", u); }).catch(function () { missed++; });
     })).then(function () {
       staticHtml.missed = missed;
       return "<!doctype html>\\n" + doc.outerHTML;
@@ -102,6 +102,34 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   // 리포트 전체 → PNG (폭 640 · 2배)
   // 변환 도구는 요소마다 **지금 계산된** 스타일을 복사한다 — 넓은 화면의 가운데 정렬 여백이 그대로 박혀 오른쪽이 잘린다.
   // 그래서 만드는 동안만 실제 화면을 폰 폭(640)으로 좁혔다가 되돌린다.
+  /**
+   * 원본을 화면에 필요한 크기로 **줄여서** data: 로 만든다.
+   *
+   * 실측(0923): 게시물 사진이 1080x1440 · 805KB 였다. 리포트는 폭 640 으로 그리므로 2배를 쳐도
+   * 1280 이면 충분한데, 원본을 그대로 넘기면 Safari 가 foreignObject 안의 큰 이미지를 **빈 칸으로**
+   * 그려 버린다 — PNG 에서 사진 자리가 균일한 색 상자로 나온 것이 이것이다(HTML 저장은 멀쩡했다).
+   * 줄이면 그 문제를 피하고 카톡으로 보낼 파일도 가벼워진다.
+   */
+  function shrunkDataUrl(url, maxW) {
+    return dataUrl(url).then(function (u) {
+      return new Promise(function (ok) {
+        var im = new Image();
+        im.onload = function () {
+          var w = Math.min(maxW, im.naturalWidth || maxW);
+          var h = Math.round((im.naturalHeight || w) * w / (im.naturalWidth || w));
+          if (!w || !h) return ok(u);
+          try {
+            var c = document.createElement("canvas"); c.width = w; c.height = h;
+            c.getContext("2d").drawImage(im, 0, 0, w, h);
+            ok(c.toDataURL("image/jpeg", 0.85));
+          } catch (e) { ok(u); }   // 캔버스가 막히면 원본 그대로 — 없는 것보단 낫다
+        };
+        im.onerror = function () { ok(u); };
+        im.src = u;
+      });
+    });
+  }
+
   // 변환 도구에 넘기기 전에 이미지를 **직접** data: 로 바꿔 둔다.
   // 도구도 이미지를 스스로 받아 오긴 하는데, 실패하면 imagePlaceholder(투명 1x1)로 갈아치워서
   // **크기만 남은 빈 상자**가 된다 — 0923 에 PNG 썸네일 자리가 비어 나온 게 이것이다.
@@ -112,7 +140,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     var undo = [], missed = 0;
     return Promise.all(imgs.map(function (i) {
       var was = i.getAttribute("src");
-      return dataUrl(was).then(function (u) {
+      return shrunkDataUrl(was, 1400).then(function (u) {
         undo.push([i, was]); i.setAttribute("src", u);
         // 새 src 가 실제로 그려질 때까지 기다린다 — 안 기다리면 도구가 빈 이미지를 복사한다
         return i.decode ? i.decode().catch(function () {}) : null;
@@ -175,16 +203,32 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
       if (undoImgs) { undoImgs(); undoImgs = null; }  // 화면의 src 를 되돌린다 — 안 되돌리면 페이지가 무거워진 채로 남는다
     }
   }
+  /**
+   * **첫 판을 한 번 버린다.** Safari 는 foreignObject 안의 이미지를 첫 렌더에서 자주 비운다 —
+   * 두 번째부터는 캐시가 더워져 제대로 그려진다(html-to-image 에서 널리 쓰는 회피법).
+   * 0923 실측: HTML 저장에는 사진(1080x1440)이 들어갔는데 PNG 에서만 균일한 색 상자로 나왔다.
+   */
+  function warmUp() {
+    return window.htmlToImage.toCanvas(document.body, { width: 64, height: 64, pixelRatio: 1 })
+      .then(function () {}, function () {});   // 실패해도 그냥 넘어간다 — 본 렌더가 따로 있다
+  }
+
   /** 세 장을 차례로. 한 번에 한 장만 화면에 두고 찍는다 — 레이아웃이 섞이지 않는다. */
   function pngPages() {
     var out = [], total = PAGES.length;
-    return PAGES.reduce(function (chain, p) {
+    return Promise.all([loadLib(), inlineImages()]).then(function (r) {
+      // 예열은 그림이 data: 로 바뀐 뒤에 해야 뜻이 있다. 원래대로 되돌리는 건 각 png() 가 알아서 한다.
+      r[1].undo();
+      return warmUp();
+    }).then(function () {
+      return PAGES.reduce(function (chain, p) {
       return chain.then(function () {
         var back = showOnly(p.ids), unmark = pageMark(p.no, total);
         return png().then(function (blob) { back(); unmark(); out.push({ no: p.no, blob: blob }); },
                           function (e) { back(); unmark(); throw e; });
       });
-    }, Promise.resolve()).then(function () { return out; });
+      }, Promise.resolve());
+    }).then(function () { return out; });
   }
 
   window.__reportFiles = { png: png, pngPages: pngPages, html: staticHtml }; // 점검용

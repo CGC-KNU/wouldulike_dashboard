@@ -321,3 +321,14 @@ test("빈 값·data: 는 건드리지 않는다", async () => {
   assert.equal(await embedImage(""), null);
   assert.equal(await embedImage("data:image/png;base64,AA"), "data:image/png;base64,AA");
 });
+
+test("PNG 는 사진을 줄여서 넘기고, 첫 판을 한 번 버린다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  // 0923: HTML 저장에는 사진(1080x1440·805KB)이 들어갔는데 PNG 에서만 균일한 색 상자였다.
+  // Safari 가 foreignObject 안의 이미지를 첫 렌더에서 비우는 것 — 널리 쓰는 회피법 둘을 같이 쓴다.
+  assert.match(bar, /function shrunkDataUrl\(url, maxW\)/);
+  assert.match(bar, /toDataURL\("image\/jpeg", 0\.85\)/, "재압축해서 가볍게");
+  assert.match(bar, /function warmUp\(\)/);
+  assert.match(bar, /toCanvas\(document\.body/, "버리는 판은 작게");
+  assert.match(bar, /shrunkDataUrl\(i\.src, 1400\)/, "HTML 저장도 같이 가벼워진다");
+});
