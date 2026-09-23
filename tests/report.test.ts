@@ -135,15 +135,29 @@ test("근거 줄이 분모 셋을 다 보여 준다", () => {
 // ── 이미지 프록시 (PNG·HTML 저장이 썸네일을 못 가져오던 문제) ──────────
 import { imageProxyHref } from "../src/lib/draft/imageProxy";
 
-test("바깥 이미지는 우리 도메인으로 돌린다", () => {
-  const meta = "https://scontent-ssn1-1.cdninstagram.com/v/t51/123_n.jpg?_nc_cat=1&oh=abc";
-  const out = imageProxyHref(meta);
-  assert.ok(out.startsWith("/api/img?u="), "같은 출처여야 fetch 가 막히지 않는다");
-  // 서명 쿼리가 통째로 살아 있어야 한다 — 하나라도 잘리면 403
-  assert.equal(decodeURIComponent(out.slice("/api/img?u=".length)), meta);
+const SITE = "https://dash.example.com";
 
-  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.amazonaws.com/a.jpg?X-Amz-Signature=x").startsWith("/api/img?u="));
-  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.ap-northeast-2.amazonaws.com/a.jpg").startsWith("/api/img?u="));
+test("바깥 이미지는 우리 도메인으로 돌린다 — 반드시 절대 주소로", () => {
+  const meta = "https://scontent-ssn1-1.cdninstagram.com/v/t51/123_n.jpg?_nc_cat=1&oh=abc";
+  const out = imageProxyHref(meta, SITE);
+  assert.ok(out.startsWith(`${SITE}/api/img?u=`), "같은 출처여야 fetch 가 막히지 않는다");
+  // 서명 쿼리가 통째로 살아 있어야 한다 — 하나라도 잘리면 403
+  assert.equal(decodeURIComponent(out.slice(`${SITE}/api/img?u=`.length)), meta);
+
+  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.amazonaws.com/a.jpg?X-Amz-Signature=x", SITE).startsWith(`${SITE}/api/img?u=`));
+  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.ap-northeast-2.amazonaws.com/a.jpg", SITE).startsWith(`${SITE}/api/img?u=`));
+});
+
+/**
+ * 0923 회귀 — 프록시를 붙이면서 상대경로(/api/img?...)를 줬더니 양식의 url() 이 통째로 걸러
+ * 미리보기에서 썸네일이 사라지고 「게시물 이미지 · post.image」 자리표시가 떴다.
+ * 양식이 무엇을 통과시키는지 여기서 못 박는다.
+ */
+test("양식의 url() 이 통과시키는 모양이어야 한다", () => {
+  const PASSES = /^(https?:|data:image\/)/; // reportTemplateHtml 의 url() 과 같은 규칙
+  const out = imageProxyHref("https://scontent-x.cdninstagram.com/v/9_n.jpg", SITE);
+  assert.match(out, PASSES, "상대경로를 주면 양식이 이미지를 통째로 버린다");
+  assert.doesNotMatch(out, /^\/api\//, "상대경로 금지");
 });
 
 test("이미 안전한 주소는 건드리지 않는다", () => {
@@ -159,7 +173,7 @@ test("이미 안전한 주소는 건드리지 않는다", () => {
 test("양식에 들어가는 이미지가 프록시 주소다", () => {
   const r = report({}, { post: { ...report().snapshot.post, cover_url: "https://scontent-x.cdninstagram.com/v/t51/9_n.jpg" } });
   const d = toTemplateData(r) as { post: { image: string } };
-  assert.ok(d.post.image.startsWith("/api/img?u="), "여기가 바깥 주소면 PNG·HTML 저장에서 썸네일이 빠진다");
+  assert.match(d.post.image, /^https:\/\/[^/]+\/api\/img\?u=/, "절대 주소여야 양식의 url() 을 통과한다");
 });
 
 test("PNG 를 만들 때 서명된 URL을 깨뜨리지 않는다", () => {
