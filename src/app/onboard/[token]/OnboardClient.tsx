@@ -415,6 +415,23 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
     }
   };
 
+  /**
+   * 한정 쿠폰만 **비활성으로 넣는다.**
+   *
+   * 한정 쿠폰은 학생회 채널로 나가는 캠페인 자리다 — 사장님이 적었다고 해서 그대로 편성되지 않는다.
+   * 편성은 우리가 상권 밸런스를 보고 정하고, 그 전에 내용도 봐야 한다(문구·조건이 캠페인에 맞는지).
+   * 그래서 `active:false` 로 저장하고 아스트로에서 승인할 때 켠다. 애딧 콘솔의 파트너 승인과 같은 맥락이다.
+   * 사장님 화면에는 "확인 후 반영된다"고 적는다 — 바로 나가는 줄 알면 약속이 어긋난다. (0923)
+   */
+  const saveSpecialPending = async (row: Record<string, unknown>) => {
+    const cur = await fetch(`/api/dashboard/restaurant-benefits${rq}&kind=SPECIAL`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : [])).catch(() => []) as { id?: number }[];
+    for (const b of Array.isArray(cur) ? cur : []) {
+      if (b?.id) await fetch(`/api/dashboard/restaurant-benefits/${b.id}${rq}`, { method: "DELETE" }).catch(() => null);
+    }
+    await post(`/api/dashboard/restaurant-benefits${rq}`, { kind: "SPECIAL", sort_order: 0, active: false, ...row });
+  };
+
   // 고른 칸은 전부 채워야 한다 — 빈 칸이 있으면 그 칸은 보상 없이 저장돼 손님이 헛걸음한다
   const blanks = steps.filter((n) => !(d.stamp_steps[String(n)] ?? "").trim());
   const saveStamp = () => run(async () => {
@@ -453,7 +470,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
   const saveSpecial = () => run(async () => {
     const sp = d.special;
     if (!sp?.benefit.trim()) throw new Error("한정 쿠폰 혜택을 적어 주세요.");
-    await replaceBenefits("SPECIAL", [{ title: sp.benefit.trim(), subtitle: sp.cond.trim(), notes: sp.cond.trim() }]);
+    await saveSpecialPending({ title: sp.benefit.trim(), subtitle: sp.cond.trim(), notes: sp.cond.trim() });
     setSpecialSaved(true);
   }, "한정 쿠폰을 등록하고 있습니다");
 
@@ -553,7 +570,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
           <div className="rounded-xl bg-white border border-gray-200 p-3 text-[12.5px] text-gray-500">
             무료 플랜에서는 등록하실 수 없습니다. <b className="text-gray-700">Boost 플랜</b>으로 바꾸시면 매달 학생회 채널 홍보에 함께 나갑니다 — 담당자에게 말씀해 주세요.
           </div>
-        ) : specialSaved ? <Saved text="한정 쿠폰을 등록했습니다." onEdit={() => setSpecialSaved(false)} /> : (
+        ) : specialSaved ? <Saved text="한정 쿠폰을 접수했습니다 — 담당자 확인 후 반영됩니다." onEdit={() => setSpecialSaved(false)} /> : (
           <div className="space-y-2">
             <Field label="무엇을 드릴지"><Input autoComplete="off" value={d.special?.benefit ?? ""} placeholder="사이드 1종"
               onChange={(e) => patch({ special: { benefit: e.target.value, cond: d.special?.cond ?? "" } })} /></Field>
@@ -797,7 +814,7 @@ function Step6({ d, s, guide, onEdit, revisit, token }: { d: Draft; s: Meta["sto
             <dd className="text-gray-900">{coupons.map((c, i) => <span key={i} className="block"><b>{c.benefit}</b>{c.cond.trim() ? <span className="text-gray-500"> · {c.cond.trim()}</span> : null}</span>)}</dd></div>}
           {d.special?.benefit.trim() && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">한정 쿠폰</dt>
             <dd className="text-gray-900"><b>{d.special.benefit.trim()}</b>{d.special.cond.trim() ? <span className="text-gray-500"> · {d.special.cond.trim()}</span> : null}
-              <span className="block text-[12px] text-gray-500">학생회 채널로 매달 홍보됩니다</span></dd></div>}
+              <span className="block text-[12px] text-gray-500">학생회 채널로 매달 홍보됩니다 · <b>담당자 확인 후 반영</b>됩니다</span></dd></div>}
           {d.kit_address && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">키트 배송</dt>
             <dd className="text-gray-900">{d.kit_address}</dd></div>}
         </dl>

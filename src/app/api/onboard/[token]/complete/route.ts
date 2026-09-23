@@ -88,6 +88,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     }).then((r) => r.ok).catch(() => false);
   }
 
+  // 승인 대기 중인 한정 쿠폰이 있는가 — 슬랙에 한 줄 띄워 잊히지 않게 한다
+  const special_pending = await fetch(`${API()}/api/dashboard/restaurant-benefits/?restaurant_id=${p.rid}&kind=SPECIAL`, { headers: { Authorization: `Bearer ${access}` }, cache: "no-store" })
+    .then(async (r) => (r.ok ? ((await r.json()) as { active?: boolean }[]) : []))
+    .then((l) => Array.isArray(l) && l.some((x) => x.active === false)).catch(() => false);
+
   const feeTxt = p.fee ? ` ${p.fee.toLocaleString()}원` : "";
   const copyTxt = [copies.activity && "활동기록", copies.sheet && "시트", copies.drive_json && "드라이브"].filter(Boolean).join("·") || "없음";
   await notifyOnboard(
@@ -97,6 +102,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     (revision ? "" : `• 개시일 ${kdate(starts_on)}${paid ? ` · 청구 시작 월 ${billing_period}` : " · 무료 플랜(청구 없음)"}\n`) +
     (ops_ok || revision ? "" : `• :warning: 매장 운영 값이 자동 반영되지 않았습니다 — 파트너 매장 ${p.rid} 상세에서 *계약 시작일 ${starts_on}*${paid ? ` · *청구 시작 월 ${billing_period}*` : ""} 를 넣어 주세요\n`) +
     `• 스탬프 등록 ✓ · 웰컴 키트 발송 대기 (${kit_address})\n` +
+    // 한정 쿠폰은 학생회 채널로 나가는 캠페인 자리라 사장님이 적었다고 그대로 편성되지 않는다.
+    // 비활성으로 들어가 있으니, 승인해야 앱에 나간다 (0923 결정).
+    (special_pending ? `• :lock: *승인 대기* — 한정 쿠폰이 있습니다. 파트너 계약 탭에서 내용을 보고 승인해 주세요\n` : "") +
     `• 기록 사본: ${copyTxt}${copies.errors.length ? ` · 실패: ${copies.errors.join(", ")}` : ""}` +
     (p.lid ? `\n• 후보 단계: ${stage_ok ? "계약 완료로 옮김" : "옮기지 못함 — 세틀라이트에서 수동 변경 필요"}` : "") +
     // 계약서 사본 발송은 **사람이 한다**(자동 발송 없음 — 0922 결정). 완료 화면이 사장님께
