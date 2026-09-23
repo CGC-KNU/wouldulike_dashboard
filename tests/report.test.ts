@@ -175,7 +175,7 @@ test("PNG 는 카톡용으로 세 장을 낸다", () => {
   assert.match(bar, /function pngPages\(\)/);
   assert.match(bar, /_" \+ p\.no \+ "\.png/, "파일 이름에 장 번호가 들어가야 한다");
   assert.match(bar, /i \* 400/, "한꺼번에 내려받으면 브라우저가 막는다");
-  assert.match(bar, /data-page-mark/, "앨범에서는 파일 이름이 안 보인다 — 화면에 1/3 을 찍는다");
+  assert.match(bar, /function hideBar\(\)/, "장마다 반복되는 머리띠는 PNG 에서 뺀다");
 });
 
 /**

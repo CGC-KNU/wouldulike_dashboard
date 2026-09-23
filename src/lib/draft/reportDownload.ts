@@ -143,14 +143,15 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     return function () { was.forEach(function (w) { w[0].style.display = w[1]; }); };
   }
 
-  /** 머리띠에 "1/3" 을 잠깐 붙인다 — 카톡 앨범에서는 파일 이름이 안 보인다. */
-  function pageMark(no, total) {
-    var host = document.querySelector(".bar"); if (!host) return function () {};
-    var el = document.createElement("span");
-    el.textContent = " " + no + "/" + total;
-    el.setAttribute("data-page-mark", "1");
-    host.appendChild(el);
-    return function () { el.remove(); };
+  /**
+   * PNG 를 찍는 동안 머리띠(「우주라이크 · 매장 성과 리포트」)를 감춘다 (0923 민찬).
+   * 한 장짜리일 때는 표지 구실을 했지만, 세 장으로 나누니 장마다 같은 줄이 반복돼 자리만 먹는다.
+   * 화면과 HTML 저장에는 그대로 둔다 — 거기선 한 번만 나온다.
+   */
+  function hideBar() {
+    var el = document.querySelector(".bar"); if (!el) return function () {};
+    var was = el.style.display; el.style.display = "none";
+    return function () { el.style.display = was; };
   }
 
   function png() {
@@ -177,12 +178,12 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   }
   /** 세 장을 차례로. 한 번에 한 장만 화면에 두고 찍는다 — 레이아웃이 섞이지 않는다. */
   function pngPages() {
-    var out = [], total = PAGES.length;
+    var out = [];
     return PAGES.reduce(function (chain, p) {
       return chain.then(function () {
-        var back = showOnly(p.ids), unmark = pageMark(p.no, total);
-        return png().then(function (blob) { back(); unmark(); out.push({ no: p.no, blob: blob }); },
-                          function (e) { back(); unmark(); throw e; });
+        var back = showOnly(p.ids), showBar = hideBar();
+        return png().then(function (blob) { back(); showBar(); out.push({ no: p.no, blob: blob }); },
+                          function (e) { back(); showBar(); throw e; });
       });
     }, Promise.resolve()).then(function () { return out; });
   }
