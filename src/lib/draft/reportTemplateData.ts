@@ -1,5 +1,4 @@
 import { DEFAULT_SUMMARY, comparable } from "./report";
-import { imageProxyHref } from "./imageProxy";
 import type { StoreReport } from "./types";
 
 /**
@@ -62,8 +61,11 @@ export function toTemplateData(r: StoreReport): Json {
       duration_sec: null,
       permalink: rd?.post?.permalink ?? s.post.permalink,
       // 게시물 사진: 인스타 썸네일(메타) 우선, 없으면 기획 커버
-      // 바깥 출처(메타 CDN · S3 presigned)를 우리 도메인으로 돌린다 — 안 그러면 PNG·HTML 저장에서 이미지가 빠진다
-      image: imageProxyHref(rd?.post?.thumb_url || s.post.cover_url || ""),
+      // 원본 주소를 그대로 둔다. 화면에 <img> 로 **보이는 데는** CORS 가 필요 없다.
+      // 막히는 건 저장할 때 바이트를 읽는 fetch 뿐이라, 그건 reportDownload 가 /api/img 로 우회한다.
+      // (0923: 여기서 프록시 주소를 넣었다가 두 번 깨뜨렸다 — 상대경로는 양식의 url() 이 걸러내고,
+      //  절대경로는 배포 도메인을 잘못 짚으면 다른 출처가 된다. 양식은 원본만 알면 된다.)
+      image: rd?.post?.thumb_url || s.post.cover_url || "",
       caption: excerpt(s.post.caption),
       store_count: multi ? s.post.co_stores : null,
       multi_store: multi,
