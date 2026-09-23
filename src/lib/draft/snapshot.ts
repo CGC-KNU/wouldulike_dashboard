@@ -1,3 +1,4 @@
+import { embedImage } from "./coverImage";
 import { fetchBackendJson } from "./toolProxy";
 import { fetchPerformance, fetchReportData, mentions } from "./papillon";
 import type { ContentPlan, PlanDetail, PostPerformance } from "@/app/dashboard/admin/satellite/types";
@@ -34,7 +35,11 @@ export async function buildSnapshot(store: BackendRestaurant & { campus?: Report
     fetchBackendJson<PlanDetail>(`/api/satellite/plans/${plan.id}/detail/`),
     fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${store.restaurant_id}`),
   ]);
-  const cover = detail?.assets?.find((a) => a.kind === "image" && a.is_ready)?.preview_url ?? null;
+  // 주소는 10분이면 죽는다(presigned TTL 600초) — **지금** 받아서 스냅샷에 파일째 담는다.
+  // 못 담으면 주소를 그대로 둔다. 리포트 만들기가 이미지 때문에 실패하면 안 된다.
+  const cover = await embedImage(
+    detail?.assets?.find((a) => a.kind === "image" && a.is_ready)?.preview_url ?? null
+  );
   const stats = env?.stats ?? null;
   const now = new Date();
   return {
