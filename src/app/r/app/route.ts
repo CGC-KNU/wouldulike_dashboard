@@ -21,6 +21,12 @@ import { downloadBar } from "@/lib/draft/reportDownload";
  * 정적 구간이라 같은 폴더의 `/r/[token]` 보다 먼저 잡힌다. 예전에도 `/r/app` 은 토큰 모양이 아니라 404 였다.
  */
 
+/**
+ * 보고서 한 장이 BigQuery 쿼리 스무 개쯤을 때린다(GA4 6 × 창 2 + 쿠폰 퍼널 4 × 창 2).
+ * 각 묶음은 Promise.all 로 같이 쏘지만 기본 타임아웃(10초)으로는 모자랄 때가 있어 넉넉히 둔다.
+ */
+export const maxDuration = 60;
+
 const HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
   "X-Robots-Tag": "noindex, nofollow",

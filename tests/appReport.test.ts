@@ -7,6 +7,7 @@ import {
 import { buildMonthlyAppReportData, previousPeriod } from "../src/lib/draft/appReportMonthly";
 import { lastCompleteMonth } from "../src/lib/draft/appReport";
 import type { Ga4AppMetrics } from "../src/lib/bigquery/appMetrics";
+import { eventCoverage, isCampaignSource, type CouponFunnel } from "../src/lib/bigquery/couponFunnel";
 
 /**
  * 앱 지표 주간 보고서 — 양식에 끼운 결과가 **보낼 수 있는 상태**인지까지 본다.
@@ -38,6 +39,25 @@ const stats: AppStats = {
     mileage_exchanges_this_month: 7, push_sent_this_month: 14,
   },
 };
+
+/** 2026-09-01~21 실측 (BigQuery) */
+const funnel = (over: Partial<CouponFunnel> = {}): CouponFunnel => ({
+  window: { from: "2026-09-14", to: "2026-09-20" },
+  bySource: [
+    { source: "KNUSCSEPT_EVENT", campaign: true, issued: 489, redeemed: 1 },
+    { source: "LIMITED_SELECT_TEMP_EVENT", campaign: true, issued: 159, redeemed: 17 },
+    { source: "SIGNUP_WELCOME", campaign: false, issued: 56, redeemed: 4 },
+    { source: "LIMITED_BONUS", campaign: false, issued: 18, redeemed: 1 },
+  ],
+  campaign: { issued: 648, redeemed: 18, rate: 2.8 },
+  organic: { issued: 74, redeemed: 5, rate: 6.8 },
+  wallet: { saw: 209, opened_use: 75, rate: 35.9 },
+  attempt: { attempts: 41, ok: 25, failed: 15, rate: 62.5,
+             reasons: [{ reason: "http_403", n: 12 }, { reason: "server_error", n: 2 }] },
+  pinFailStores: [{ restaurant_id: "56", n: 4 }, { restaurant_id: "233", n: 3 }],
+  coverage: { wallet_to_use: "full", redeem_outcome: "full" },
+  ...over,
+});
 
 type Metric = { key: string; value: number | null; prev?: number | null; scope?: string; status?: string; sample?: number; verdict?: string };
 const metrics = (d: unknown): Metric[] =>
@@ -132,13 +152,13 @@ test("분모가 반 이상 달라진 주의 비율은 판정을 유보한다", (
 });
 
 test("양식에 끼우면 보낼 수 있는 상태로 렌더된다", () => {
-  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" });
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22", coupons: funnel(), couponsPrev: funnel() });
   const r = render(fillAppReportTemplate(d));
   assert.equal(r.status, "ok", `빠진 값이 있습니다`);
   assert.equal(r.warnings, "", `양식 경고: ${r.warnings}`);
   assert.match(r.text, /9월 3주차/);
   // 18칸 중 2칸은 일부러 비운다 — 「매장 상세 → 쿠폰 발급」(정의 보류) · 「배너 노출 → 클릭」(앱 수정 대기)
-  assert.match(r.text, /채워진 지표 16\/18/);
+  assert.match(r.text, /채워진 지표 20\/22/);
   const empty = metrics(d).filter((m) => m.value === null).map((m) => m.key).sort();
   assert.deepEqual(empty, ["banner_ctr", "store_to_coupon"]);
   assert.match(r.text, /이번 달 누계/);
@@ -276,4 +296,86 @@ test("마지막으로 다 끝난 달", () => {
   assert.equal(lastCompleteMonth(Date.parse("2025-12-31T16:00:00Z")), "2025-12");
   assert.equal(previousPeriod("2026-01"), "2025-12");
   assert.equal(previousPeriod("2026-09"), "2026-08");
+});
+
+// ── 쿠폰 발급 → 사용 ─────────────────────────────────────────────────
+test("캠페인 코드인지 아닌지는 코드가 이미 그어 둔 경계로 가른다", () => {
+  // issue_key 에서 나온 값들 (frontend resolveCouponIssueSource 의 반환값)
+  for (const s of ["SIGNUP_WELCOME", "STAMP_REWARD", "REFERRAL", "LIMITED_BONUS", "other", "unknown"]) {
+    assert.equal(isCampaignSource(s), false, `${s} 는 캠페인이 아니다`);
+  }
+  // 그 밖은 전부 campaign_code — 새 캠페인이 생겨도 저절로 맞는 쪽에 들어간다
+  for (const s of ["KNUSCSEPT_EVENT", "LIMITED_SELECT_TEMP_EVENT", "APP_OPEN_MON_EVENT", "무엇이든_새_캠페인"]) {
+    assert.equal(isCampaignSource(s), true, `${s} 는 캠페인이다`);
+  }
+});
+
+test("한 경로가 발급의 절반을 넘으면 「발급 → 사용」은 판정을 유보한다", () => {
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22", coupons: funnel(), couponsPrev: null });
+  const rate = find(d, "coupon_rate");
+  assert.equal(rate.verdict, "flat", "489/722 가 한 경로인데 빨갛게 칠하면 안 된다");
+  const r = render(fillAppReportTemplate(d));
+  assert.match(r.text, /발급의 \d+%가 「KNUSCSEPT_EVENT」 한 경로/);
+  assert.match(r.text, /판정은 위 「캠페인 외」 칸으로/);
+});
+
+test("캠페인과 그 외를 갈라 두 칸으로 낸다", () => {
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22", coupons: funnel(), couponsPrev: null });
+  assert.equal(find(d, "coupon_rate_organic").value, 6.8);
+  assert.equal(find(d, "coupon_rate_organic").sample, 74);
+  assert.equal(find(d, "coupon_rate_campaign").value, 2.8);
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.match(r.text, /쿠폰 사용률 \(캠페인 외\)/);
+  assert.match(r.text, /KNUSCSEPT_EVENT 489장 중 1장/);
+});
+
+test("이벤트가 없던 기간은 0 이 아니라 비운다 — 8월 「쿠폰함 → 사용 화면」", () => {
+  // 8/31 에 생긴 이벤트라 8월 창은 계산상 4.3% 가 나오지만 그건 값이 아니다
+  assert.equal(eventCoverage("coupon_use_screen_view", "20260801", "20260831"), "partial");
+  assert.equal(eventCoverage("coupon_use_screen_view", "20260701", "20260731"), "none");
+  assert.equal(eventCoverage("coupon_use_screen_view", "20260901", "20260930"), "full");
+  assert.equal(eventCoverage("coupon_page_view", "20260101", "20260131"), "full", "오래된 이벤트는 늘 full");
+
+  // 8월 창은 partial(8/31 하루만 덮임) — 4.3% 가 계산되지만 값이 아니다
+  const julyFunnel = funnel({ wallet: { saw: 47, opened_use: 2, rate: 4.3 },
+                              coverage: { wallet_to_use: "partial", redeem_outcome: "none" } });
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22", coupons: julyFunnel, couponsPrev: null });
+  const w = find(d, "wallet_to_use");
+  assert.equal(w.value, null, "4.3% 를 그대로 실으면 9월 36% 와 나란히 놓여 거짓말이 된다");
+  assert.equal(w.status, "app_fix");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.match(r.text, /기간 중간에 앱에 배포됐습니다/);
+  assert.match(r.text, /이 기간에는 앱에 없었습니다/);  // 성공률 쪽은 none
+});
+
+test("사용 시도 성공률의 분모는 시도가 아니라 성공+실패다", () => {
+  // coupon_redeem_attempt 는 8/31 에 생겨 옛 버전에서 안 찍힌다 — 시도를 분모로 쓰면 8월에 150% 가 나왔다
+  const f = funnel({ attempt: { attempts: 2, ok: 3, failed: 0, rate: 100, reasons: [] } });
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22", coupons: f, couponsPrev: null });
+  const m = find(d, "redeem_success");
+  assert.equal(m.value, 100);
+  assert.equal(m.sample, 3, "표본은 결과 수(성공+실패)");
+  assert.ok((m.value ?? 0) <= 100, "100% 를 넘으면 안 된다");
+});
+
+test("PIN 불일치가 몰린 매장을 지표 줄에 적는다", () => {
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22", coupons: funnel(), couponsPrev: null });
+  const r = render(fillAppReportTemplate(d));
+  assert.match(r.text, /http_403 12/);
+  assert.match(r.text, /PIN 불일치가 몰린 매장 #56\(4\)/);
+});
+
+test("월간도 같은 네 칸을 받는다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07") },
+    today: "2026-09-23", coupons: funnel(), couponsPrev: funnel(),
+  });
+  assert.equal(find(d, "coupon_rate_campaign").value, 2.8);
+  assert.equal(find(d, "coupon_redeem_rate").verdict, "flat");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "");
 });
