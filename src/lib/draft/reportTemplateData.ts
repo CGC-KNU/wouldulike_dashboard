@@ -1,4 +1,5 @@
 import { DEFAULT_SUMMARY, comparable } from "./report";
+import { imageProxyHref } from "./imageProxy";
 import type { StoreReport } from "./types";
 
 /**
@@ -61,7 +62,8 @@ export function toTemplateData(r: StoreReport): Json {
       duration_sec: null,
       permalink: rd?.post?.permalink ?? s.post.permalink,
       // 게시물 사진: 인스타 썸네일(메타) 우선, 없으면 기획 커버
-      image: rd?.post?.thumb_url || s.post.cover_url || "",
+      // 바깥 출처(메타 CDN · S3 presigned)를 우리 도메인으로 돌린다 — 안 그러면 PNG·HTML 저장에서 이미지가 빠진다
+      image: imageProxyHref(rd?.post?.thumb_url || s.post.cover_url || ""),
       caption: excerpt(s.post.caption),
       store_count: multi ? s.post.co_stores : null,
       multi_store: multi,

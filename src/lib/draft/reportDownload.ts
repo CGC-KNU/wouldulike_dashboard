@@ -61,8 +61,14 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     doc.querySelectorAll("script, noscript, [data-preview-bar], [data-preview-style], a[download]").forEach(function (n) { n.remove(); });
     var t = doc.querySelector("title"); if (t) t.textContent = FN;
     var imgs = Array.prototype.slice.call(doc.querySelectorAll("img[src]")).filter(function (i) { return !/^data:/.test(i.getAttribute("src")); });
-    return Promise.all(imgs.map(function (i) { return dataUrl(i.src).then(function (u) { i.setAttribute("src", u); }).catch(function () {}); }))
-      .then(function () { return "<!doctype html>\\n" + doc.outerHTML; });
+    // 실패를 삼키면 안 된다 — 예전엔 조용히 넘어가서, 저장된 파일에 썸네일이 빠진 걸 열어 보고서야 알았다(0923).
+    var missed = 0;
+    return Promise.all(imgs.map(function (i) {
+      return dataUrl(i.src).then(function (u) { i.setAttribute("src", u); }).catch(function () { missed++; });
+    })).then(function () {
+      staticHtml.missed = missed;
+      return "<!doctype html>\\n" + doc.outerHTML;
+    });
   }
 
   // 리포트 전체 → PNG (폭 640 · 2배)
@@ -74,7 +80,9 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
       body.style.width = W + "px"; body.style.margin = "0";
       return new Promise(function (ok) { requestAnimationFrame(function () { requestAnimationFrame(ok); }); }).then(function () {
         return window.htmlToImage.toBlob(body, {
-          width: W, height: reportBottom(), pixelRatio: 2, backgroundColor: "#F1F2F7", cacheBust: true, fontEmbedCSS: r[1],
+          width: W, height: reportBottom(), pixelRatio: 2, backgroundColor: "#F1F2F7", fontEmbedCSS: r[1],
+          // cacheBust 는 쓰지 않는다 — 붙이는 쿼리가 **서명된 URL을 깨뜨려** 403 이 난다.
+          // 이미지는 우리 도메인(/api/img)을 거치고 거기서 짧게 캐시하므로 굳이 우회할 이유도 없다.
           imagePlaceholder: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
           filter: function (n) { return !(n.hasAttribute && (n.hasAttribute("data-preview-bar") || n.hasAttribute("data-preview-style"))) && n.tagName !== "SCRIPT" && n.tagName !== "NOSCRIPT"; }
         });
@@ -93,7 +101,10 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
     busy(true); say(kind === "png" ? "이미지를 만드는 중… (글꼴을 받느라 몇 초 걸립니다)" : "파일을 만드는 중…");
     var job = kind === "png"
       ? png().then(function (blob) { save(blob, FN + ".png"); say("PNG " + Math.round(blob.size / 1024) + "KB 저장"); })
-      : staticHtml().then(function (html) { var blob = new Blob([html], { type: "text/html;charset=utf-8" }); save(blob, FN + ".html"); say("HTML " + Math.round(blob.size / 1024) + "KB 저장"); });
+      : staticHtml().then(function (html) {
+          var blob = new Blob([html], { type: "text/html;charset=utf-8" }); save(blob, FN + ".html");
+          say("HTML " + Math.round(blob.size / 1024) + "KB 저장" + (staticHtml.missed ? " — 이미지 " + staticHtml.missed + "개를 파일에 못 넣었습니다" : ""));
+        });
     job.catch(function (err) { say("만들지 못했습니다: " + (err && err.message ? err.message : err)); }).then(function () { busy(false); });
   });
   if (CAN && /[?&]print=1/.test(location.search)) setTimeout(function () { document.title = FN; window.print(); }, 600);

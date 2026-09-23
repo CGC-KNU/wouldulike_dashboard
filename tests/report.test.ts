@@ -131,3 +131,44 @@ test("근거 줄이 분모 셋을 다 보여 준다", () => {
   assert.match(note!, /최근 10건 중 3위/);
   assert.match(note!, /전체 48건 중 12위/);
 });
+
+// ── 이미지 프록시 (PNG·HTML 저장이 썸네일을 못 가져오던 문제) ──────────
+import { imageProxyHref } from "../src/lib/draft/imageProxy";
+
+test("바깥 이미지는 우리 도메인으로 돌린다", () => {
+  const meta = "https://scontent-ssn1-1.cdninstagram.com/v/t51/123_n.jpg?_nc_cat=1&oh=abc";
+  const out = imageProxyHref(meta);
+  assert.ok(out.startsWith("/api/img?u="), "같은 출처여야 fetch 가 막히지 않는다");
+  // 서명 쿼리가 통째로 살아 있어야 한다 — 하나라도 잘리면 403
+  assert.equal(decodeURIComponent(out.slice("/api/img?u=".length)), meta);
+
+  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.amazonaws.com/a.jpg?X-Amz-Signature=x").startsWith("/api/img?u="));
+  assert.ok(imageProxyHref("https://wouldulike-default-bucket-lunching.s3.ap-northeast-2.amazonaws.com/a.jpg").startsWith("/api/img?u="));
+});
+
+test("이미 안전한 주소는 건드리지 않는다", () => {
+  assert.equal(imageProxyHref("data:image/png;base64,AAAA"), "data:image/png;base64,AAAA");
+  assert.equal(imageProxyHref("/brand/appicon.png"), "/brand/appicon.png");
+  assert.equal(imageProxyHref("https://example.com/a.jpg"), "https://example.com/a.jpg", "모르는 호스트는 그대로 — 공개 프록시가 되면 안 된다");
+  assert.equal(imageProxyHref(""), "");
+  assert.equal(imageProxyHref(null), "");
+  assert.equal(imageProxyHref("그냥 글자"), "그냥 글자");
+  assert.equal(imageProxyHref("http://scontent.cdninstagram.com/a.jpg"), "http://scontent.cdninstagram.com/a.jpg", "https 가 아니면 그대로");
+});
+
+test("양식에 들어가는 이미지가 프록시 주소다", () => {
+  const r = report({}, { post: { ...report().snapshot.post, cover_url: "https://scontent-x.cdninstagram.com/v/t51/9_n.jpg" } });
+  const d = toTemplateData(r) as { post: { image: string } };
+  assert.ok(d.post.image.startsWith("/api/img?u="), "여기가 바깥 주소면 PNG·HTML 저장에서 썸네일이 빠진다");
+});
+
+test("PNG 를 만들 때 서명된 URL을 깨뜨리지 않는다", () => {
+  // cacheBust 는 img src 에 쿼리를 덧붙인다 — 서명 URL이면 403 이 나서 이미지가 통째로 빠진다
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  assert.doesNotMatch(bar, /cacheBust:\s*true/);
+});
+
+test("HTML 저장이 이미지를 못 넣으면 그렇다고 말한다", () => {
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "승인됨" });
+  assert.match(bar, /파일에 못 넣었습니다/, "조용히 삼키면 열어 보고서야 안다");
+});
