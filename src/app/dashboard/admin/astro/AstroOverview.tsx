@@ -7,6 +7,7 @@ import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, 
 import StoreDetailPanel from "./StoreDetailPanel";
 import CampusPicker, { allCampuses } from "./CampusPicker";
 import CampusMark from "./CampusMark";
+import TestStoreDelete from "./TestStoreDelete";
 import OnboardReconcile from "./OnboardReconcile";
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 
@@ -252,7 +253,16 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                     <Td>{r.ops?.is_test ? <Chip tone="gray">테스트</Chip> : !r.is_affiliate ? <Chip tone="red" dot>계약 종료</Chip> : isPaidTier(r.tier) ? <Chip tone={s.tone}>{s.text}</Chip> : <span className="text-gray-400">-</span>}</Td>
                     <Td>{p.key === "free" ? <span className="text-gray-400">무료</span> : <Chip tone={p.tone} dot={p.stuck}>{p.label}</Chip>}</Td>
                     <Td align="center">{o?.kit_delivered ? <span className="text-emerald-700 font-semibold">전달</span> : <span className="text-gray-300">-</span>}</Td>
-                    <Td align="right" className="text-gray-500 text-[12px]">{agoLabel(o?.updated_at)}</Td>
+                    <Td align="right" className="text-gray-500 text-[12px]">
+                      {agoLabel(o?.updated_at)}
+                      {/* 테스트로 표시된 매장만 여기서 지운다 (0923 인계 ②). 삭제 화면이 원래 어느 제품에도
+                          안 묶인 고아 탭에 있어 갈 수가 없었다. 진짜 매장에는 뜨지 않는다. */}
+                      {o?.is_test && (
+                        <span className="block mt-1" onClick={(e) => e.stopPropagation()}>
+                          <TestStoreDelete rid={r.restaurant_id} name={r.name} onDeleted={() => load(true)} />
+                        </span>
+                      )}
+                    </Td>
                   </tr>
                 );
               })}
