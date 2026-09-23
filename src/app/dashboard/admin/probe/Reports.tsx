@@ -47,12 +47,34 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   // 딥링크 `?open=<id>` — 슬랙 알림·런처 최근 목록에서 바로 이 리포트를 연다
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
+
   const loadPosts = useCallback(() => { setPostsLoading(true); fetch("/api/probe/insights").then((r) => r.json()).then(setPosts).catch(() => setPosts(null)).finally(() => setPostsLoading(false)); }, []);
   const loadList = useCallback(() => { fetch("/api/probe/reports").then((r) => r.json()).then((d) => { setList(d.reports ?? []); setNote(d.draft_note); }).catch(() => setList([])); }, []);
   const load = useCallback(() => { loadPosts(); loadList(); }, [loadPosts, loadList]);
   useEffect(load, [load]);
 
   const allPosts = posts?.insights ?? [];
+
+  /**
+   * 슬랙에서 한 번에 들어오는 길 — `?tab=probe-reports&plan=<plan_id>`.
+   *
+   * 7일·14일 알림이 "인사이트를 공유해 주세요"라고 하는데, 링크는 대시보드 첫 화면으로만 보냈다.
+   * 받는 사람이 탭을 찾고 게시물을 다시 찾아야 했다 — 그 사이에 잊힌다 (민열님 0923).
+   * 이제 그 게시물 카드를 바로 연다. 이미 만든 리포트가 있으면 리포트를 연다.
+   * 게시물 목록이 온 뒤에 한 번만 — 목록이 비어 있을 때 먼저 돌면 못 찾는다.
+   */
+  const [planJumped, setPlanJumped] = useState(false);
+  useEffect(() => {
+    if (planJumped || !allPosts.length) return;
+    let plan: string | null = null;
+    try { plan = new URL(window.location.href).searchParams.get("plan"); } catch { /* 무시 */ }
+    if (!plan) return;
+    const hit = allPosts.find((p) => String(p.plan_id) === plan);
+    setPlanJumped(true);
+    if (!hit) return;
+    if (hit.sent_report?.id) setOpenId(hit.sent_report.id);
+    else setOpenPost(postKey(hit));
+  }, [allPosts, planJumped]);
   const visiblePosts = useMemo(() => allPosts.filter((p) => pf === "all" || (pf === "due" ? p.due : !p.sent_report)), [allPosts, pf]);
   const dueCount = allPosts.filter((p) => p.due).length;
   const noneCount = allPosts.filter((p) => !p.sent_report).length;
