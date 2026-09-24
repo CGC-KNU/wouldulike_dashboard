@@ -18,6 +18,7 @@ export default async function OwnerContentPage({ searchParams }: { searchParams:
   } catch { data = null; }
 
   const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
+  const failed = data === null;
   const rows = (data?.feed ?? []).filter((f) => f.kind === "post" || f.kind === "campaign");
   const label: Record<string, string> = { published: "게시됨", scheduled: "예정", failed: "실패", done: "지남", active: "진행 중" };
   const chip: Record<string, string> = { published: "bg-emerald-50 text-emerald-700", scheduled: "bg-navy/[0.07] text-navy", failed: "bg-red-50 text-red-600", done: "bg-gray-100 text-gray-500", active: "bg-amber-50 text-amber-800" };
@@ -26,7 +27,14 @@ export default async function OwnerContentPage({ searchParams }: { searchParams:
     <div className="max-w-3xl mx-auto px-4 pt-5 pb-8">
       <h1 className="text-[18px] font-bold text-gray-900">콘텐츠</h1>
       <p className="text-[12.5px] text-gray-500 mt-1 mb-4">{data ? `${data.store.name}이 나온 게시물과, 손님을 보내는 캠페인 주간입니다. 최근 30일과 앞으로 30일.` : "불러오지 못했습니다."}</p>
-      {rows.length === 0 ? (
+      {/* 0924: 못 읽었을 때도 "아직 없습니다" 가 떴다. 위에서는 못 읽었다고 하고 아래에서는
+          없다고 하니 서로 반대말이었다. 없는 것과 못 읽은 것은 다르다. */}
+      {failed ? (
+        <div className="bg-white rounded-[18px] border border-gray-200 p-5 text-center">
+          <p className="text-[13px] font-semibold text-gray-700">지금 불러오지 못했습니다</p>
+          <p className="text-[12px] text-gray-400 mt-1">게시물이 없는 것이 아니라 읽지 못한 것입니다. 잠시 뒤 다시 열어 주세요.</p>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="bg-white rounded-[18px] border border-gray-200 p-5 text-center">
           <p className="text-[13px] font-semibold text-gray-700">아직 올라간 게시물이 없습니다</p>
           <p className="text-[12px] text-gray-400 mt-1">제작이 잡히면 예정일부터 여기에 보입니다. 우주라이크 인스타그램은 <a href="https://www.instagram.com/w_ouldulike/" target="_blank" rel="noreferrer" className="text-navy font-semibold">@w_ouldulike</a></p>

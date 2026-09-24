@@ -65,14 +65,15 @@ export default async function OwnerHomePage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      {/* 온보딩을 마친 사장님이 곧장 들어오는 화면이다. 아직 손보는 중인데 아무 말이 없으면
-          "이게 다인가" 하고 실망한 채로 나가신다. 사실대로 먼저 적는다. (0922) */}
+      {/* 0924: 이 띠가 "쿠폰·스탬프 지표를 곧 붙입니다" 라고 말하는 동안 바로 아래에 그 숫자가
+          이미 있었다. 사장님은 숫자를 보면서 "아직 없다" 는 말을 같이 읽었다.
+          숫자는 이제 앱에서 실제로 찍힌 것을 센다. 그러니 **아직 없는 것만** 적는다. */}
       <div className="mx-auto max-w-5xl px-4 pt-4">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-[13px] font-semibold text-amber-900">지금 보완하고 있는 화면입니다</p>
+          <p className="text-[13px] font-semibold text-amber-900">아직 붙이는 중인 것</p>
           <p className="text-[12.5px] text-amber-800 mt-0.5">
-            쿠폰·스탬프 사용 내역과 성과 지표를 곧 여기에 붙입니다. 그때까지 궁금하신 것은 담당자에게 물어봐 주세요.
-            <b> 손님께 나가는 혜택과 적립은 지금도 정상으로 돌아갑니다.</b>
+            콘텐츠가 몇 명에게 닿았는지와 저장·공유 수는 월간 리포트로 먼저 보내 드리고 있습니다.
+            아래 숫자는 <b>우주라이크 앱에서 실제로 찍힌 것</b>입니다.
           </p>
         </div>
       </div>

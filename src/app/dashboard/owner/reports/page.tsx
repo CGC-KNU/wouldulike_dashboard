@@ -28,6 +28,10 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
     .sort((a, b) => (b.sent_at ?? b.linked_at ?? b.created_at).localeCompare(a.sent_at ?? a.linked_at ?? a.created_at));
   const ymd = (iso: string) => `${iso.slice(0, 4)}.${iso.slice(5, 7)}.${iso.slice(8, 10)}`;
 
+  // 0924: 못 읽은 것과 계약 시작일이 안 적힌 것을 구분한다. 전에는 서버가 한 번 안 되면
+  // "계약 시작일이 아직 안 적혀 있어…담당자에게 알려 주세요" 가 떠서, 사장님이 없는 문제로
+  // 담당자에게 전화하게 만들었다.
+  const failed = data === null;
   const days = data?.store.contract_days ?? null;
   const left = days === null ? null : Math.max(0, 30 - days);
   const s = data?.stats;
@@ -38,7 +42,9 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
       <p className="text-[12.5px] text-gray-500 -mt-1">매달 A4 한 장. 쿠폰이 몇 장 나갔고 그중 몇 장이 실제로 쓰였는지, 무엇을 했는지를 적어 드립니다. 매출을 약속하지는 않습니다.</p>
 
       <div className="bg-white rounded-[18px] border border-gray-200 p-4">
-        {left === null ? (
+        {failed ? (
+          <p className="text-[13px] text-gray-600">지금 불러오지 못했습니다. 잠시 뒤 다시 열어 주세요.</p>
+        ) : left === null ? (
           <p className="text-[13px] text-gray-600">계약 시작일이 아직 안 적혀 있어 첫 리포트 시점을 계산할 수 없습니다. 담당자에게 알려 주세요.</p>
         ) : left > 0 ? (
           <>
@@ -47,10 +53,24 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
             <div className="h-[8px] rounded-full bg-black/[0.06] overflow-hidden mt-3"><div className="h-full rounded-full bg-[linear-gradient(90deg,#050072,#6366E0)]" style={{ width: `${Math.min(100, ((days ?? 0) / 30) * 100)}%` }} /></div>
           </>
         ) : (
-          <>
-            <p className="text-[14px] font-bold text-gray-900">월간 리포트가 준비됩니다</p>
-            <p className="text-[12.5px] text-gray-500 mt-1">담당자가 카카오톡으로 링크를 보내 드립니다. 못 받으셨으면 <a href="mailto:hello@wouldulike.kr" className="text-navy font-semibold">hello@wouldulike.kr</a></p>
-          </>
+          /* 0924: 계약 30일만 넘으면 리포트가 실제로 있든 없든 영원히 "준비됩니다" 였다.
+             받은 것이 있으면 그렇게 말하고, 30일을 한참 넘겼는데 하나도 없으면 그 사실을 적는다. */
+          reports.length > 0 ? (
+            <>
+              <p className="text-[14px] font-bold text-gray-900">받으신 리포트가 {reports.length}건 있습니다</p>
+              <p className="text-[12.5px] text-gray-500 mt-1">아래에서 다시 보실 수 있습니다. 다음 리포트는 다음 달에 보내 드립니다.</p>
+            </>
+          ) : days !== null && days > 45 ? (
+            <>
+              <p className="text-[14px] font-bold text-gray-900">아직 보내 드린 리포트가 없습니다</p>
+              <p className="text-[12.5px] text-gray-500 mt-1">계약 {days}일차인데 밀렸습니다. 담당자에게 말씀해 주시거나 <a href="mailto:hello@wouldulike.kr" className="text-navy font-semibold">hello@wouldulike.kr</a> 로 알려 주세요.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-[14px] font-bold text-gray-900">월간 리포트가 준비됩니다</p>
+              <p className="text-[12.5px] text-gray-500 mt-1">담당자가 카카오톡으로 링크를 보내 드립니다. 못 받으셨으면 <a href="mailto:hello@wouldulike.kr" className="text-navy font-semibold">hello@wouldulike.kr</a></p>
+            </>
+          )
         )}
       </div>
 
