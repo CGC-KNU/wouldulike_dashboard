@@ -1,6 +1,23 @@
 "use client";
 
-export default function LoginPage() {
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
+/**
+ * 0924: 로그인이 실패하면 콜백이 `/login?error=…` 로 돌려보내는데 **이 화면이 그걸 읽지 않았다.**
+ * 사장님은 카카오를 다녀온 뒤 아무 설명 없이 제자리로 돌아왔고, 같은 버튼을 다시 눌렀다.
+ * 원문은 그대로 쓰지 않는다 — `http_500` 같은 문자열은 "고장났다" 로만 읽힌다.
+ */
+const LOGIN_ERROR: Record<string, string> = {
+  server: "로그인 중에 문제가 생겼습니다. 잠시 뒤 다시 해 주세요.",
+};
+
+function loginErrorText(raw: string | null): string {
+  if (!raw) return "";
+  return LOGIN_ERROR[raw] ?? "로그인하지 못했습니다. 잠시 뒤 다시 해 주시고, 계속 안 되면 알려 주세요.";
+}
+
+function LoginInner() {
   /**
    * 카카오로 돌아올 주소는 **지금 열려 있는 도메인**이어야 한다.
    *
@@ -10,6 +27,12 @@ export default function LoginPage() {
    * 슬랙 딥링크가 첫 화면으로 떨어진 진짜 이유다 (0923 실측).
    * 카카오 콘솔에 두 주소가 모두 등록돼 있으므로 현재 origin 을 쓰는 것이 맞다.
    */
+  const sp = useSearchParams();
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    setErr(loginErrorText(sp.get("error")));
+  }, [sp]);
+
   const handleKakaoLogin = () => {
     const kakaoClientId = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID;
 
@@ -38,6 +61,12 @@ export default function LoginPage() {
           사용 중인 계정으로 로그인하세요
         </p>
 
+        {err && (
+          <p role="alert" className="text-center text-[12.5px] text-red-700 bg-red-50 rounded-xl px-3 py-2.5 leading-relaxed">
+            {err}
+          </p>
+        )}
+
         {/* 카카오 로그인 */}
         <button
           onClick={handleKakaoLogin}
@@ -62,6 +91,15 @@ export default function LoginPage() {
       </div>
 
     </main>
+  );
+}
+
+export default function LoginPage() {
+  // useSearchParams 를 쓰는 화면은 Suspense 경계가 필요하다 (Next 15).
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-background" />}>
+      <LoginInner />
+    </Suspense>
   );
 }
 

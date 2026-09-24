@@ -28,7 +28,9 @@ function KakaoCallbackInner() {
         });
 
         const data = await res.json();
-        console.log("[callback] status:", res.status, "body:", JSON.stringify(data));
+        // 0924: 여기서 응답 본문 전체를 콘솔에 찍고 있었다. 로그인 응답에는 그 사람의 매장과
+        // 상태가 들어 있고, 콘솔은 화면을 공유하거나 캡처하면 그대로 남는다. 상태 코드만 남긴다.
+        if (!res.ok) console.warn("[callback] status:", res.status);
 
         // 점주 온보딩에서 온 로그인 — 카카오 `state` 에 실어 보낸 토큰으로 되돌아간다.
         // PIN 화면을 거치지 않는다: 온보딩 라우트가 임시 PIN 으로 세션을 만든다 (api/onboard/[token]/session).
