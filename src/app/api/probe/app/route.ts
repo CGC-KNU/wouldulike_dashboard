@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { credentialsFromEnv, readGa4AppMetrics, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
+import { readStoreToCoupon, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 
 /**
  * Probe · 앱 지표.
@@ -75,6 +76,30 @@ const cachedGa4 = unstable_cache(
   { revalidate: 6 * 60 * 60 }
 );
 
+/**
+ * 「매장 상세 → 쿠폰 발급」 — GA4 안에서 이어진다(DB 불필요). 창은 GA4 칸과 같은 7일로 맞춘다.
+ * 성공만 캐시되는 것은 위와 같다.
+ */
+const cachedS2C = unstable_cache(
+  async (start: string, end: string): Promise<StoreToCoupon> => {
+    const r = await readStoreToCoupon(process.env, { start, end });
+    if (!r.ok) throw new Error(r.detail ?? r.reason);
+    return r.data;
+  },
+  ["probe-app-store-to-coupon-v1"],
+  { revalidate: 6 * 60 * 60 }
+);
+
+async function storeToCoupon(g: Ga4AppMetrics | null): Promise<StoreToCoupon | null> {
+  if (!g || !credentialsFromEnv()) return null;
+  try {
+    return await cachedS2C(g.week.from.replace(/-/g, ""), g.week.to.replace(/-/g, ""));
+  } catch (e) {
+    console.error("[probe/app] 매장상세→쿠폰 조회 실패", e);
+    return null;
+  }
+}
+
 async function ga4(): Promise<{ data: Ga4AppMetrics | null; error: string | null }> {
   try {
     if (!credentialsFromEnv()) return { data: null, error: null };
@@ -108,6 +133,7 @@ export async function GET() {
   const expiringList = [...bySource].sort((a, b) => (b[1].expiring ?? 0) - (a[1].expiring ?? 0)).filter(([, v]) => v.expiring).slice(0, 3).map(([k, v]) => `${ko(k)} ${v.expiring!.toLocaleString()}장`).join(" · ");
   const rateList = bySource.filter(([, v]) => v.issued >= 10).slice(0, 4).map(([k, v]) => `${ko(k)} ${Math.round((v.redeemed / v.issued) * 1000) / 10}%`).join(" · ");
   const { data: g, error: gErr } = await ga4();
+  const s2c = await storeToCoupon(g);
   const week = g ? `${md(g.week.from)}~${md(g.week.to)}` : "";
 
   const groups: AppMetricGroup[] = [
@@ -128,7 +154,16 @@ export async function GET() {
       description: "앱을 켠 사람이 실제로 매장에서 쓰기까지.",
       metrics: [
         { key: "open_to_store", label: "앱 열기 → 매장 상세", value: g?.open_to_store ?? null, unit: "%", source: "ga4", note: g ? `${week} 세션 ${g.sessions.toLocaleString()}개 중 매장 상세를 연 비율` : "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
-        { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend", note: "분모(매장 상세 열람)는 앱 이벤트 숫자 — DB 와 BigQuery 를 합쳐야 한다" },
+        // 예전 주석은 "DB 와 BigQuery 를 합쳐야 한다" 였는데 틀린 전제였다 —
+        // restaurant_detail_open 과 coupon_issued 가 둘 다 restaurant_id 를 실어서 GA4 안에서 이어진다.
+        // 캠페인 자동 지급은 분자에서 뺀다. 그걸 넣으면 "상세를 보면 10%가 받는다"로 읽히는데 사실이 아니다.
+        { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: s2c?.rate ?? null, unit: "%", source: "ga4",
+          ...(s2c ? {} : { status: "pending" as const }),
+          note: s2c
+            ? `${week} 매장 상세 ${s2c.views.toLocaleString()}번 중 같은 자리에서 그 매장 쿠폰을 받은 ${s2c.claimed.toLocaleString()}번.`
+              + ` 기획전 자동 지급은 뺐습니다 — 넣으면 ${s2c.claimed_including_campaign.toLocaleString()}번이지만 상세를 본 것과 무관합니다`
+              + (s2c.claimed < 10 ? " · 표본이 얕어 비율보다 건수를 보십시오" : "")
+            : "매장 상세와 쿠폰 발급을 (기기·세션·매장)으로 잇는다 — BigQuery 조회 전" },
         { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend", note: issuedList ? `경로: ${issuedList}${bySource.length > 3 ? ` 외 ${bySource.length - 3}개 경로` : ""}` : undefined },
         { key: "coupon_used", label: "쿠폰 사용", value: n("coupon_redeemed_this_month"), unit: "건", source: "backend" },
         // 0920: 학생회 쿠폰 513장이 한 장도 안 쓰인 채 만료를 이틀 앞두고 있던 것을 늦게 알았다. "안 쓴다"와 "아직 안 썼다"는 다르다.
@@ -159,7 +194,13 @@ export async function GET() {
       metrics: [
         { key: "push_sent", label: "푸시 발송", value: n("push_sent_this_month"), unit: "건", source: "push", note: s ? "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺐다" : undefined },
         { key: "push_open", label: "푸시 → 앱 열기", value: g?.push_open ?? null, unit: "%", source: "firebase", note: g ? `${md(g.push.from)}~${md(g.push.to)} 안드로이드 수신 ${g.push.received.toLocaleString()}건 중 ${g.push.opened_android}건 열림 (iOS 는 수신을 못 세 열기 ${g.push.opened_ios}건만)` : "Firebase 자동 이벤트(notification_receive/open) — BigQuery 쿼리 연결 전" },
-        { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix", note: "배너 노출 이벤트가 없다(0건). 노출 이벤트 배포가 먼저" },
+        // 분모가 없는 칸이다. home_banner_impression 이 analytics_events.dart 에 **선언만** 돼 있고
+        // 앱 어디서도 부르지 않는다 — 클릭은 찍히는데 몇 번 보였는지를 모른다. 억지 분모(홈을 본 세션 등)를
+        // 끼우면 다른 지표가 되므로 비워 둔다. 심을 이벤트 명세는 probe/Castor_이벤트_설계_0924.html.
+        { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix",
+          note: g
+            ? `home_banner_impression 이 앱에 선언만 있고 호출이 없어 분모가 없습니다(노출 0건). ${week} 클릭은 ${g.banner.clicked.toLocaleString()}대에서 찍혔습니다 — 노출 이벤트가 배포되면 이 칸이 살아납니다`
+            : "배너 노출 이벤트가 없다(0건). 노출 이벤트 배포가 먼저" },
         { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: g?.banner_to_coupon ?? null, unit: "%", source: "ga4", note: g ? `${md(g.banner.from)}~${md(g.banner.to)} 배너를 누른 기기 ${g.banner.clicked}대 중 7일 안에 쿠폰을 쓴 ${g.banner.redeemed}대. 표본이 작다` : "배너 클릭 기기의 7일 내 coupon_redeemed — BigQuery 쿼리 연결 전" },
       ],
     },

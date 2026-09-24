@@ -223,3 +223,83 @@ export function dominantSource(f: CouponFunnel): SourceRow | null {
   const top = f.bySource[0];
   return top && total > 0 && top.issued / total >= DOMINANT_SHARE ? top : null;
 }
+
+// ── 매장 상세 → 그 매장 쿠폰 받기 ─────────────────────────────────────
+/**
+ * Probe 앱 지표의 「매장 상세 → 쿠폰 발급」 칸.
+ *
+ * 그동안 이 칸은 "분모(매장 상세 열람)는 앱 이벤트이고 발급은 DB 라 합쳐야 한다"는 이유로 비어 있었다.
+ * **틀린 전제였다.** `restaurant_detail_open` 과 `coupon_issued` 둘 다 `restaurant_id` 를 싣고 있어서,
+ * (기기 · ga_session_id · restaurant_id) 로 GA4 안에서 그대로 이어진다 — DB 가 필요 없다.
+ *
+ * ── 캠페인 자동 지급은 분자에서 뺀다 ──
+ * `coupon_issued` 는 지갑 목록 diff 로 찍혀서, 기획전 쿠폰이 그 세션에 **화면에 보이기만 해도** 잡힌다.
+ * 그건 매장 상세를 본 것과 아무 상관이 없다. 실측(2026-08-25~09-22):
+ *   · 아무 쿠폰이나 세면   상세 520 → 50   (9.6%)
+ *   · 캠페인 지급을 빼면   상세 520 → 18   (3.5%)
+ * 섞어서 9.6% 로 내보내면 "상세를 보면 10%가 쿠폰을 받는다"로 읽힌다 — 사실이 아니다.
+ * 가르는 기준은 `isCampaignSource` 와 같다(코드가 이미 그어 둔 경계).
+ *
+ * 표본이 얕다. 7일 창에서는 분자가 한 자리다 — 부르는 쪽이 건수를 같이 적어야 한다.
+ */
+export interface StoreToCoupon {
+  window: { from: string; to: string };
+  /** 매장 상세를 연 (기기·세션·매장) 조합 수 — 분모 */
+  views: number;
+  /** 그중 같은 자리에서 **캠페인이 아닌** 쿠폰을 받은 수 — 분자 */
+  claimed: number;
+  /** 캠페인까지 포함하면 몇 건인지 — 주석에 같이 적으려고 준다 */
+  claimed_including_campaign: number;
+  rate: number | null;
+}
+
+export async function readStoreToCoupon(
+  env: Record<string, string | undefined> = process.env,
+  opts: { start: string; end: string }
+): Promise<{ ok: true; data: StoreToCoupon } | { ok: false; reason: "no_key" | "error"; detail?: string }> {
+  const client = clientFromEnv(env);
+  if (!client) return { ok: false, reason: "no_key" };
+  const { dataset, run } = client;
+  const { start, end } = opts;
+  if (start > end) return { ok: false, reason: "error", detail: `창이 거꾸로입니다 — ${start} > ${end}` };
+
+  const events = `\`${dataset}.events_*\``;
+  const rid = `(SELECT COALESCE(CAST(value.int_value AS STRING), value.string_value) FROM UNNEST(event_params) WHERE key='restaurant_id')`;
+  const src = `(SELECT value.string_value FROM UNNEST(event_params) WHERE key='coupon_issue_source')`;
+  const sess = `(SELECT value.int_value FROM UNNEST(event_params) WHERE key='ga_session_id')`;
+  const known = [...ISSUE_KEY_SOURCES].map((s) => `'${s}'`).join(",");
+
+  try {
+    const [r] = await run<{ views: number; claimed: number; any_claimed: number }>(
+      `WITH d AS (
+         SELECT DISTINCT user_pseudo_id uid, ${sess} sess, ${rid} rid FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'restaurant_detail_open' AND ${rid} IS NOT NULL
+       ), any_c AS (
+         SELECT DISTINCT user_pseudo_id uid, ${sess} sess, ${rid} rid FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_issued'
+       ), organic AS (
+         SELECT DISTINCT user_pseudo_id uid, ${sess} sess, ${rid} rid FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_issued'
+           AND ${src} IN (${known})
+       )
+       SELECT COUNT(*) AS views,
+              COUNTIF(o.uid IS NOT NULL) AS claimed,
+              COUNTIF(a.uid IS NOT NULL) AS any_claimed
+       FROM d LEFT JOIN any_c a USING (uid, sess, rid) LEFT JOIN organic o USING (uid, sess, rid)`,
+      { start, end }
+    );
+    const views = Number(r?.views ?? 0);
+    const claimed = Number(r?.claimed ?? 0);
+    return {
+      ok: true,
+      data: {
+        window: { from: dash(start), to: dash(end) },
+        views, claimed,
+        claimed_including_campaign: Number(r?.any_claimed ?? 0),
+        rate: pct(claimed, views),
+      },
+    };
+  } catch (e) {
+    return { ok: false, reason: "error", detail: e instanceof Error ? e.message.slice(0, 160) : "알 수 없는 오류" };
+  }
+}
