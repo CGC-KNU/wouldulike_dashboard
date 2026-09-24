@@ -70,7 +70,7 @@ export default function BenefitApprovals({ onGo }: { onGo?: (tab: string) => voi
       if (!res.ok) throw new Error(d?.detail ?? "신청을 읽지 못했습니다.");
       setRows(Array.isArray(d.requests) ? d.requests : []);
     } catch (e) {
-      setRows([]);
+      setRows(null);
       setErr(e instanceof Error ? e.message : "신청을 읽지 못했습니다.");
     }
   }, []);
@@ -132,7 +132,8 @@ export default function BenefitApprovals({ onGo }: { onGo?: (tab: string) => voi
       {err && <p role="alert" className="text-[13px] text-red-700 bg-red-50 rounded-[12px] px-3.5 py-2.5 mb-4">{err}</p>}
 
       {rows === null ? (
-        <div className="flex justify-center py-12"><Spinner size={18} /></div>
+        /* 못 읽었으면 '없다'고 말하지 않는다 — 오류 줄만 남기고 목록 자리는 비운다. */
+        err ? null : <div className="flex justify-center py-12"><Spinner size={18} /></div>
       ) : shown.length === 0 ? (
         <Card>
           <p className="text-[13px] text-gray-500 py-6 text-center">

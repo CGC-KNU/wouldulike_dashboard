@@ -100,6 +100,18 @@ function useRid() {
 }
 function ridQ(rid: string | null) { return rid ? `?rid=${rid}` : ""; }
 
+/**
+ * 사장님께 보일 한 줄. **백엔드 원문을 그대로 보여 주지 않는다** —
+ * 0924 리허설에서 "Given token not valid for any token type" 이 혜택 탭에 그대로 떴다.
+ * 무슨 뜻인지 모르는 문장은 "고장났다"로만 읽히고, 사장님이 할 수 있는 일도 알려 주지 못한다.
+ * 다만 **못 읽었다는 사실은 숨기지 않는다** — 빈 화면으로 위장하면 혜택이 없는 줄 안다.
+ */
+function friendlyError(raw: unknown): string {
+  const msg = raw instanceof Error ? raw.message : String(raw ?? "");
+  if (/token|credential|authenticat|로그인/i.test(msg)) return "로그인이 풀렸습니다. 다시 로그인해 주세요.";
+  return "지금 불러오지 못했습니다. 잠시 뒤 다시 열어 주세요.";
+}
+
 function benefitLabel(bj: Record<string, unknown>): string {
   if (!bj || typeof bj !== "object" || Object.keys(bj).length === 0) return "";
   const { type, value, max } = bj as { type?: string; value?: number; max?: number };
@@ -228,7 +240,7 @@ function CouponBenefitsViewOnly({ rid }: { rid: string | null }) {
         const d = await res.json();
         if (!res.ok) throw new Error(d?.detail ?? "불러오기 실패");
         setBenefits(Array.isArray(d) ? d : []);
-      } catch (e: unknown) { setErr(e instanceof Error ? e.message : "불러오기 실패"); }
+      } catch (e: unknown) { setErr(friendlyError(e)); }
       finally { setLoading(false); }
     })();
   }, [rq]);
@@ -288,7 +300,7 @@ function StampRuleViewOnly({ rid }: { rid: string | null }) {
         else if (rRes.status !== 404) throw new Error(rData?.detail ?? "불러오기 실패");
         setCouponTypes(Array.isArray(tData) ? tData : []);
         setBenefits(Array.isArray(bData) ? bData : []);
-      } catch (e: unknown) { setErr(e instanceof Error ? e.message : "불러오기 실패"); }
+      } catch (e: unknown) { setErr(friendlyError(e)); }
       finally { setLoading(false); }
     })();
   }, [rq]);

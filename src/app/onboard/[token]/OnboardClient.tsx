@@ -166,7 +166,19 @@ export default function OnboardClient({ token }: { token: string }) {
           <Row k="매장" v={s.name} /><Row k="상권" v={s.campus} /><Row k="플랜" v={`${s.plan_label}${paid ? ` · 월 ${fmtWon(s.fee)} (부가세 별도)` : ""}`} />
         </div>
         {err && <Notice tone="red" title="로그인 오류">{err}</Notice>}
-        <Button variant="primary" size="md" className="w-full bg-[#FEE500] text-[#191919] hover:bg-[#f5dc00]" onClick={startKakao}>카카오로 시작하기</Button>
+        {/* 카카오 버튼은 **카카오 노랑이어야 한다.** 공용 Button 의 primary 는 배경을
+            `linear-gradient` 로 깔아서 `bg-[#FEE500]`(배경색)이 그림 아래 깔려 보이지 않는다 —
+            0924 로컬 리허설에서 네이비 버튼으로 떴다. 색으로 알아보는 버튼이라 여기는 직접 그린다. */}
+        <button
+          type="button"
+          onClick={startKakao}
+          className="w-full h-11 rounded-[10px] bg-[#FEE500] text-[#191919] text-[14px] font-bold inline-flex items-center justify-center gap-2 hover:brightness-[0.97] active:scale-[0.98] transition-[filter,transform] duration-150 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#191919]/40"
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 3C6.99 3 3 6.2 3 10.14c0 2.5 1.65 4.7 4.15 5.96l-1.05 3.86c-.1.35.3.63.6.42l4.6-3.04c.23.02.46.03.7.03 5.01 0 9-3.2 9-7.23C21 6.2 17.01 3 12 3z" />
+          </svg>
+          카카오로 시작하기
+        </button>
         <button type="button" onClick={restart} className="mt-2 w-full text-[11.5px] text-gray-400 hover:text-gray-600 underline underline-offset-2">
           다른 계정으로 로그인되어 있나요? 로그아웃하고 다시 시작
         </button>
@@ -825,7 +837,7 @@ function Step6({ d, s, guide, onEdit, revisit, token }: { d: Draft; s: Meta["sto
           {d.kit_address && <div className="flex gap-3"><dt className="w-[68px] shrink-0 text-gray-500">키트 배송</dt>
             <dd className="text-gray-900">{d.kit_address}</dd></div>}
         </dl>
-        <p className="text-[11.5px] text-gray-400 mt-3">혜택은 점주 대시보드에서 언제든 바꾸실 수 있습니다. 바꾸시면 앱에 바로 반영됩니다.</p>
+        <p className="text-[11.5px] text-gray-400 mt-3">등록을 마치면 혜택은 점주 대시보드에서 <b className="text-gray-500">변경 신청</b>으로 바꾸실 수 있습니다. 손님에게 나가는 약속이라 우주라이크가 확인한 뒤 반영됩니다.</p>
       </div>
 
       <div className="grid gap-2 max-w-xs mx-auto">
