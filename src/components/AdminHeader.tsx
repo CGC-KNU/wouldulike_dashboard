@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import NotificationBell from "./NotificationBell";
 import { useThemeToggle } from "./ThemeClock";
 
 type Department = "SUPERADMIN" | "ADMIN" | "MARKETING" | "SALES";
@@ -76,6 +77,9 @@ export default function AdminHeader() {
             <span className="truncate">{me.display_name || me.username}</span>
           </span>
         )}
+        {/* 처리해야 할 것 — 지금은 혜택 변경 신청. 슬랙은 흘러가지만 이 숫자는 남는다 (0924). */}
+        <NotificationBell />
+
         {/* 18시부터 저절로 어두워진다. 여기서 바꾸면 그날은 그 선택이다. */}
         <button type="button" onClick={toggle} aria-label={theme === "dark" ? "라이트 모드로" : "다크 모드로"} title={theme === "dark" ? "라이트 모드로 (오늘만)" : "다크 모드로 (오늘만)"}
            className="w-8 h-8 rounded-lg flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60">
