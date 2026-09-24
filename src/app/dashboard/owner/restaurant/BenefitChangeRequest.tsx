@@ -79,7 +79,9 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
       const [ad, bd] = await Promise.all([a.json().catch(() => ({})), b.json().catch(() => ({}))]);
       if (!a.ok) throw new Error(ad?.detail ?? "신청 내역을 읽지 못했습니다.");
       setRows(Array.isArray(ad.requests) ? ad.requests : []);
-      setBenefits(b.ok && Array.isArray(bd.benefits) ? bd.benefits : []);
+      // 목록을 못 읽은 것과 혜택이 없는 것은 다르다. [] 로 채우면 "아직 등록된 혜택이
+      // 없습니다" 가 떠서, 등록된 혜택이 있는 사장님께 없다고 말하게 된다.
+      setBenefits(b.ok && Array.isArray(bd.benefits) ? bd.benefits : null);
     } catch (e) {
       setRows(null);
       setErr(e instanceof Error ? e.message : "신청 내역을 읽지 못했습니다.");
@@ -188,9 +190,14 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
               ))}
               <option value="OTHER">그 밖의 요청 (스탬프 개수, 새 쿠폰 등)</option>
             </select>
-            {benefits !== null && benefits.length === 0 && (
+            {benefits === null ? (
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                지금 혜택 목록을 읽지 못했습니다. 없는 것이 아니라 못 읽은 것입니다 —
+                아래 &lsquo;그 밖의 요청&rsquo;으로 적어 주셔도 됩니다.
+              </p>
+            ) : benefits.length === 0 ? (
               <p className="text-[11px] text-gray-400 mt-1.5">아직 등록된 혜택이 없습니다. 아래에 원하시는 내용을 적어 주세요.</p>
-            )}
+            ) : null}
           </div>
 
           {action !== "OTHER" && picked && (
