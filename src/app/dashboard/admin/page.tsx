@@ -5,6 +5,7 @@ import PapillonShell from "./satellite/PapillonShell";
 import ProductShell from "./ProductShell";
 import ToolShell, { Dock } from "./_shared/ToolShell";
 import AstroHome from "./astro/AstroHome";
+import BenefitApprovals from "./astro/BenefitApprovals";
 import CalendarPage from "./astro/CalendarPage";
 import SpotBoard from "./astro/SpotBoard";
 import ProbeHome from "./probe/ProbeHome";
@@ -64,6 +65,7 @@ type Tab =
   | "astro-ops"
   | "astro-leads"
   | "astro-contracts"
+  | "astro-benefits"
   | "astro-billing"
   | "astro-docs"
   | "astro-tax"
@@ -2537,6 +2539,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "astro-ops", label: "파트너 매장", icon: "◉", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-leads", label: "파트너 후보", icon: "◇", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-contracts", label: "파트너 계약", icon: "✎", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-benefits", label: "혜택 신청", icon: "◈", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-tax", label: "세금계산서", icon: "▥", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-docs", label: "자료실", icon: "▤", allow: (me) => me.permissions.can_restaurants },
@@ -2600,7 +2603,7 @@ const PRODUCTS: {
     /* 0913 민열님: 식당 관리에서 하던 일(사진·플랜·PIN·제휴·포스터/QR)이 파트너 매장 상세로 옮겨져
        탭을 없앤다. 데이터 풀은 그대로 백엔드 매장 레코드다 — 화면만 하나로 합쳤다.
        (식당 관리 화면 자체는 남아 있다. `?tab=restaurants` 로 열 수 있고, Aether 쪽에서도 쓴다.) */
-    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-spots", "astro-leads", "astro-contracts", "astro-billing", "astro-tax", "astro-docs"],
+    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-spots", "astro-leads", "astro-contracts", "astro-benefits", "astro-billing", "astro-tax", "astro-docs"],
     ready: true,
   },
   {
@@ -2970,6 +2973,7 @@ export default function AdminHomePage() {
           {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} onGo={go} />}
           {activeTab === "astro-leads" && <LeadPipeline actor={actorName} />}
           {activeTab === "astro-contracts" && <ContractBoard actor={actorName} onGo={go} />}
+          {activeTab === "astro-benefits" && <BenefitApprovals onGo={go} />}
           {activeTab === "astro-billing" && <BillingBoard actor={actorName} onGo={go} />}
 
           {/* Probe: 지표·데이터. 정합성 점검의 '고치러 가기'는 다른 제품의 탭으로도 뛴다. */}
