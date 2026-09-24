@@ -422,3 +422,23 @@ test("달이 안 끝났으면 GA4 칸이 어디까지인지 알린다", () => {
   assert.doesNotMatch(rf.text, /까지만 센 값입니다/);
   assert.doesNotMatch(rf.text, /달 끝 전/);
 });
+
+// ── 매장 상세 → 쿠폰 발급 (프로브 빈 칸 연결) ─────────────────────────
+import { ISSUE_KEY_SOURCES } from "../src/lib/bigquery/couponFunnel";
+
+/**
+ * 이 칸은 "분모는 앱 이벤트, 발급은 DB 라 합쳐야 한다"는 이유로 비어 있었다 — **틀린 전제**였다.
+ * restaurant_detail_open 과 coupon_issued 가 둘 다 restaurant_id 를 실어서 GA4 안에서 이어진다.
+ * 다만 coupon_issued 는 지갑 diff 라 기획전 쿠폰이 "보이기만 해도" 잡히므로, 분자에서 빼야 한다.
+ * 실측(0924, 9/17~23): 상세 174 → 캠페인 포함 10(5.7%) vs 제외 2(1.1%).
+ */
+test("캠페인 쿠폰을 분자에서 빼는 기준이 코드 한 곳에 있다", () => {
+  // readStoreToCoupon 의 SQL 이 쓰는 목록과 isCampaignSource 가 같은 집합이어야 한다 —
+  // 갈라지면 화면(캠페인 제외)과 보고서(캠페인/그 외)가 서로 다른 말을 한다.
+  for (const s of ["SIGNUP_WELCOME", "STAMP_REWARD", "REFERRAL", "LIMITED_BONUS", "other", "unknown"]) {
+    assert.ok(ISSUE_KEY_SOURCES.has(s), `${s} 는 캠페인이 아니어야 한다`);
+  }
+  for (const s of ["KNUSCSEPT_EVENT", "LIMITED_SELECT_TEMP_EVENT", "무엇이든_새_캠페인"]) {
+    assert.ok(!ISSUE_KEY_SOURCES.has(s), `${s} 는 캠페인이어야 한다`);
+  }
+});
