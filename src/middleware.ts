@@ -55,6 +55,12 @@ function toLogin(req: NextRequest): NextResponse {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // 온보딩 화면 리허설용 토큰 발급 — **개발 서버에서만.** 운영 빌드에서는 이 줄이 통하지 않고
+  // 라우트 자체도 404 를 낸다. 서명만 하는 길이라 매장 PIN 을 건드리지 않는다 (0924).
+  if (process.env.NODE_ENV === "development" && pathname === "/api/onboard/dev-token") {
+    return NextResponse.next();
+  }
+
   // 공개 경로는 통과
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || PUBLIC_EXACT.some((re) => re.test(pathname)) || PUBLIC_ONBOARD.some((re) => re.test(pathname))) {
     return NextResponse.next();
