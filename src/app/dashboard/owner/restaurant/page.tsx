@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import ImageUploader from "@/components/ImageUploader";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
+import BenefitChangeRequest from "./BenefitChangeRequest";
 
 /* ═══════════════════════════════════════════════
    타입
@@ -98,6 +99,18 @@ function useRid() {
   return rid;
 }
 function ridQ(rid: string | null) { return rid ? `?rid=${rid}` : ""; }
+
+/**
+ * 사장님께 보일 한 줄. **백엔드 원문을 그대로 보여 주지 않는다** —
+ * 0924 리허설에서 "Given token not valid for any token type" 이 혜택 탭에 그대로 떴다.
+ * 무슨 뜻인지 모르는 문장은 "고장났다"로만 읽히고, 사장님이 할 수 있는 일도 알려 주지 못한다.
+ * 다만 **못 읽었다는 사실은 숨기지 않는다** — 빈 화면으로 위장하면 혜택이 없는 줄 안다.
+ */
+function friendlyError(raw: unknown): string {
+  const msg = raw instanceof Error ? raw.message : String(raw ?? "");
+  if (/token|credential|authenticat|로그인/i.test(msg)) return "로그인이 풀렸습니다. 다시 로그인해 주세요.";
+  return "지금 불러오지 못했습니다. 잠시 뒤 다시 열어 주세요.";
+}
 
 function benefitLabel(bj: Record<string, unknown>): string {
   if (!bj || typeof bj !== "object" || Object.keys(bj).length === 0) return "";
@@ -206,171 +219,58 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
     </div>
   );
 }
-
-/* ═══════════════════════════════════════════════
-   쿠폰 혜택 폼
-═══════════════════════════════════════════════ */
-function BenefitForm({
-  couponTypes, initial, onSave, onCancel,
-}: {
-  couponTypes: CouponType[];
-  initial?: Partial<CouponBenefit>;
-  onSave: (data: Omit<CouponBenefit, "id" | "updated_at" | "benefit_json" | "coupon_type_title">) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [code, setCode]       = useState(initial?.coupon_type_code ?? "");
-  const [title, setTitle]     = useState(initial?.title ?? "");
-  const [sub, setSub]         = useState(initial?.subtitle ?? "");
-  const [notes, setNotes]     = useState(initial?.notes ?? "");
-  const [active, setActive]   = useState(initial?.active ?? true);
-  const [saving, setSaving]   = useState(false);
-  const [err, setErr]         = useState("");
-  const selectedCt = couponTypes.find((ct) => ct.code === code);
-
-  const submit = async () => {
-    if (!code)       { setErr("쿠폰 타입을 선택해주세요."); return; }
-    if (!title.trim()) { setErr("제목을 입력해주세요."); return; }
-    setSaving(true); setErr("");
-    try {
-      await onSave({ coupon_type_code: code, title, subtitle: sub, notes, sort_order: initial?.sort_order ?? 0, active });
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "저장 실패"); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="bg-periwinkle/5 border border-periwinkle/20 rounded-2xl p-4 flex flex-col gap-3">
-      <div>
-        <label className="text-xs text-gray-500 mb-1 block">쿠폰 타입 *</label>
-        <select value={code} onChange={(e) => { setCode(e.target.value); const ct = couponTypes.find((c) => c.code === e.target.value); if (ct && !title) setTitle(ct.title); }} disabled={!!initial?.coupon_type_code} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 bg-white disabled:bg-gray-50">
-          <option value="">-- 선택 --</option>
-          {couponTypes.map((ct) => <option key={ct.code} value={ct.code}>{ct.code} · {ct.title}</option>)}
-        </select>
-        {selectedCt && <p className="text-[10px] text-periwinkle mt-1">{benefitLabel(selectedCt.benefit_json)}</p>}
-      </div>
-      <div>
-        <label className="text-xs text-gray-500 mb-1 block">제목 *</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 우주라이크 쿠폰 1,000원 할인" className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40" />
-      </div>
-      <div>
-        <label className="text-xs text-gray-500 mb-1 block">부제목</label>
-        <input value={sub} onChange={(e) => setSub(e.target.value)} placeholder="예: 1인 이상 방문 시" className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40" />
-      </div>
-      <div>
-        <label className="text-xs text-gray-500 mb-1 block">사용 조건</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="예: 최소 주문 1만원 이상, 1인 1회 사용 가능" rows={2} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 resize-none" />
-      </div>
-      <div className="flex items-center gap-2">
-        <button onClick={() => setActive((v) => !v)} className={`relative w-10 h-5 rounded-full transition-colors ${active ? "bg-periwinkle" : "bg-gray-200"}`}>
-          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${active ? "translate-x-5" : "translate-x-0.5"}`} />
-        </button>
-        <span className="text-xs text-gray-500">{active ? "활성" : "비활성"}</span>
-      </div>
-      {err && <p className="text-xs text-red-500">{err}</p>}
-      <div className="flex gap-2">
-        <button onClick={submit} disabled={saving} className="flex-1 py-2.5 bg-navy text-white text-sm font-semibold rounded-xl hover:bg-navy/90 disabled:opacity-60">{saving ? "저장 중..." : "저장"}</button>
-        <button onClick={onCancel} className="px-4 py-2.5 text-sm text-gray-400 rounded-xl hover:bg-gray-100">취소</button>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════
-   쿠폰 혜택 섹션 (수정 가능)
-═══════════════════════════════════════════════ */
-function CouponBenefitsSection({ rid }: { rid: string | null }) {
-  const [benefits, setBenefits]     = useState<CouponBenefit[]>([]);
-  const [couponTypes, setCouponTypes] = useState<CouponType[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [err, setErr]               = useState("");
-  const [showForm, setShowForm]     = useState(false);
-  const [editId, setEditId]         = useState<number | null>(null);
+/**
+ * 쿠폰 혜택 — **확인만.** 바꾸는 건 신청해서 우리가 승인한다 (민열님 0924).
+ *
+ * 전에는 여기서 만들고 고치고 지우면 그 자리에서 앱에 반영됐다. 혜택은 손님에게 나가는
+ * 약속이라, 바뀌는 순간 그날 온 손님이 아침에 본 것과 다른 걸 받는다.
+ * 그래서 이 목록은 읽기만 하고, 바꾸는 길은 아래 신청 칸으로 하나만 남긴다.
+ */
+function CouponBenefitsViewOnly({ rid }: { rid: string | null }) {
+  const [benefits, setBenefits] = useState<CouponBenefit[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [err, setErr]           = useState("");
   const rq = ridQ(rid);
 
-  const load = useCallback(async () => {
-    setLoading(true); setErr("");
-    try {
-      const [bRes, tRes] = await Promise.all([
-        fetch(`/api/dashboard/coupon-benefits${rq}`),
-        fetch(`/api/dashboard/coupon-types${rq}`),
-      ]);
-      const [bData, tData] = await Promise.all([bRes.json(), tRes.json()]);
-      if (!bRes.ok) throw new Error(bData?.detail ?? "불러오기 실패");
-      setBenefits(Array.isArray(bData) ? bData : []);
-      setCouponTypes(Array.isArray(tData) ? tData : []);
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "불러오기 실패"); }
-    finally { setLoading(false); }
+  useEffect(() => {
+    (async () => {
+      setLoading(true); setErr("");
+      try {
+        const res = await fetch(`/api/dashboard/coupon-benefits${rq}`);
+        const d = await res.json();
+        if (!res.ok) throw new Error(d?.detail ?? "불러오기 실패");
+        setBenefits(Array.isArray(d) ? d : []);
+      } catch (e: unknown) { setErr(friendlyError(e)); }
+      finally { setLoading(false); }
+    })();
   }, [rq]);
 
-  useEffect(() => { load(); }, [load]);
-
-  async function create(data: Omit<CouponBenefit, "id" | "updated_at" | "benefit_json" | "coupon_type_title">) {
-    const res = await fetch(`/api/dashboard/coupon-benefits${rq}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...data, sort_order: benefits.length }) });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.detail ?? "생성 실패");
-    setBenefits((prev) => [...prev, d]); setShowForm(false);
-  }
-
-  async function patch(id: number, data: Omit<CouponBenefit, "id" | "updated_at" | "benefit_json" | "coupon_type_title">) {
-    const res = await fetch(`/api/dashboard/coupon-benefits/${id}${rq}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.detail ?? "수정 실패");
-    setBenefits((prev) => prev.map((b) => (b.id === id ? d : b))); setEditId(null);
-  }
-
-  async function remove(id: number) {
-    if (!confirm("이 쿠폰 혜택을 삭제할까요?")) return;
-    const res = await fetch(`/api/dashboard/coupon-benefits/${id}${rq}`, { method: "DELETE" });
-    if (!res.ok && res.status !== 204) { setErr("삭제 실패"); return; }
-    setBenefits((prev) => prev.filter((b) => b.id !== id));
-  }
-
-  async function toggleActive(b: CouponBenefit) {
-    const res = await fetch(`/api/dashboard/coupon-benefits/${b.id}${rq}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !b.active }) });
-    const d = await res.json();
-    if (res.ok) setBenefits((prev) => prev.map((x) => (x.id === b.id ? d : x)));
-  }
-
   if (loading) return <div className="flex justify-center py-8"><Spinner size={16} /></div>;
+  if (err)     return <p className="text-xs text-red-500">{err}</p>;
+
+  if (benefits.length === 0) return (
+    <div className="text-center py-8 bg-gray-50 rounded-2xl">
+      <p className="text-sm text-gray-500">등록된 쿠폰 혜택이 없습니다.</p>
+      <p className="text-xs text-gray-400 mt-1">아래에서 원하시는 혜택을 신청해 주세요.</p>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-3">
-      {err && <p className="text-xs text-red-500">{err}</p>}
-      {benefits.length === 0 && !showForm && (
-        <div className="text-center py-8 bg-gray-50 rounded-2xl">
-          <p className="text-sm text-gray-400">등록된 쿠폰 혜택이 없습니다.</p>
-          <p className="text-xs text-gray-300 mt-1">아래 버튼으로 첫 혜택을 등록해보세요.</p>
-        </div>
-      )}
-      {benefits.map((b) =>
-        editId === b.id ? (
-          <BenefitForm key={b.id} couponTypes={couponTypes} initial={b} onSave={(data) => patch(b.id, data)} onCancel={() => setEditId(null)} />
-        ) : (
-          <div key={b.id} className={`bg-white border rounded-2xl p-4 shadow-sm ${b.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
-            <div className="flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="text-[10px] font-mono bg-periwinkle/10 text-periwinkle px-2 py-0.5 rounded-full">{b.coupon_type_code}</span>
-                  {b.active ? <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span> : <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>}
-                </div>
-                <p className="text-sm font-semibold text-gray-800">{b.title}</p>
-                {b.subtitle && <p className="text-xs text-gray-500 mt-0.5">{b.subtitle}</p>}
-                {b.notes && <p className="text-[10px] text-gray-400 mt-1 bg-gray-50 rounded-lg px-2 py-1">{b.notes}</p>}
-                <p className="text-[10px] text-periwinkle mt-1">{benefitLabel(b.benefit_json)}</p>
-              </div>
-              <div className="flex flex-col gap-1 shrink-0">
-                <button onClick={() => toggleActive(b)} className="text-[10px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:border-periwinkle hover:text-periwinkle transition-colors">{b.active ? "중단" : "재개"}</button>
-                <button onClick={() => setEditId(b.id)} className="text-[10px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:border-periwinkle hover:text-periwinkle transition-colors">수정</button>
-                <button onClick={() => remove(b.id)} className="text-[10px] px-2 py-1 rounded-lg border border-gray-100 text-gray-300 hover:border-red-200 hover:text-red-400 transition-colors">삭제</button>
-              </div>
-            </div>
+      {benefits.map((b) => (
+        <div key={b.id} className={`bg-white border rounded-2xl p-4 shadow-sm ${b.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-[10px] font-mono bg-periwinkle/10 text-periwinkle px-2 py-0.5 rounded-full">{b.coupon_type_code}</span>
+            {b.active
+              ? <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
+              : <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>}
           </div>
-        )
-      )}
-      {showForm ? (
-        <BenefitForm couponTypes={couponTypes} onSave={create} onCancel={() => setShowForm(false)} />
-      ) : (
-        <button onClick={() => setShowForm(true)} className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-2xl text-xs text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors">+ 쿠폰 혜택 추가</button>
-      )}
+          <p className="text-sm font-semibold text-gray-800">{b.title}</p>
+          {b.subtitle && <p className="text-xs text-gray-500 mt-0.5">{b.subtitle}</p>}
+          {b.notes && <p className="text-[10px] text-gray-400 mt-1 bg-gray-50 rounded-lg px-2 py-1">{b.notes}</p>}
+          <p className="text-[10px] text-periwinkle mt-1">{benefitLabel(b.benefit_json)}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -400,7 +300,7 @@ function StampRuleViewOnly({ rid }: { rid: string | null }) {
         else if (rRes.status !== 404) throw new Error(rData?.detail ?? "불러오기 실패");
         setCouponTypes(Array.isArray(tData) ? tData : []);
         setBenefits(Array.isArray(bData) ? bData : []);
-      } catch (e: unknown) { setErr(e instanceof Error ? e.message : "불러오기 실패"); }
+      } catch (e: unknown) { setErr(friendlyError(e)); }
       finally { setLoading(false); }
     })();
   }, [rq]);
@@ -682,9 +582,21 @@ export default function RestaurantPage() {
           <section>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800">쿠폰 혜택</h2>
-              <span className="text-[10px] text-gray-400">앱에서 사용자에게 발급되는 혜택</span>
+              <span className="text-[10px] text-gray-400">앱에서 손님에게 발급되는 혜택</span>
             </div>
-            <CouponBenefitsSection rid={rid ?? null} />
+            <CouponBenefitsViewOnly rid={rid ?? null} />
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-800">혜택 변경 신청</h2>
+              <span className="text-[10px] text-gray-400">우주라이크 확인 후 반영</span>
+            </div>
+            <p className="text-[11.5px] text-gray-500 leading-relaxed mb-3">
+              혜택은 손님에게 나가는 약속이라 바로 바뀌지 않습니다. 바꾸고 싶은 내용을 남겨 주시면
+              우주라이크가 확인한 뒤 앱에 반영하고, 여기에 결과를 적어 드립니다.
+            </p>
+            <BenefitChangeRequest rid={rid ?? null} />
           </section>
 
           <section>
