@@ -47,7 +47,7 @@ test("report-data 가 있으면 그 수치와 며칠차를 쓴다", () => {
   assert.equal(d.report.measured_at, "2026-09-18");
   assert.equal(d.metrics.saved, 644);           // 스냅샷의 D+7(538) 이 아니라 D+14
   assert.equal(d.post.image, "https://t/x.jpg"); // 메타 썸네일 우선
-  assert.ok(d.previous, "지난 보고 표가 들어간다");
+  assert.ok(d.previous, "지난 보고 값은 그대로 넘긴다 — 양식의 앱 카드가 쓴다");
   assert.deepEqual(d.benchmarks, {}, "우리 계정 비교값은 점주 리포트에 넣지 않는다");
 });
 
@@ -129,6 +129,12 @@ test("카톡용 텍스트에 채널 비교·순위·작은 숫자가 없다", ()
   assert.doesNotMatch(t, /쿠폰 0장/, "앱도 0 은 싣지 않는다");
   assert.match(t, /스탬프 4개가 적립됐습니다\./);
   assert.match(t, /'대구 면 요리 맛집' 게시물에 라라더를 소개해/, "내부 표시 「(… 포함)」을 떼고 조사를 맞춘다");
+});
+
+test("양식이 「지난 보고 이후」 표와 「게시물 전체의 숫자」 문장을 그리지 않는다 (0925 마케팅 결정)", () => {
+  assert.ok(!REPORT_TEMPLATE_HTML.includes('put("r-change"'), "r-change 는 PNG 나누기용 빈 자리로만 남는다");
+  assert.ok(REPORT_TEMPLATE_HTML.includes('<div id="r-change"></div>'));
+  assert.ok(!REPORT_TEMPLATE_HTML.includes("게시물 전체의 숫자입니다"));
 });
 
 test("양식 필수 값이 비면 승인 전에 잡는다", () => {
