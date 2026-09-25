@@ -22,11 +22,26 @@ import type { NextConfig } from "next";
 const CANONICAL = "https://app.wouldulike.kr";
 const LEGACY_HOST = "wouldulike-dashboard.vercel.app";
 
+/**
+ * 2026-09-25 일시 중단.
+ *
+ * 파일 업로드는 우리 서버가 아니라 S3 로 직접 나간다(presigned PUT). 그 버킷의 허용
+ * 주소 목록에는 구 주소만 들어 있고 app.wouldulike.kr 이 없다. 그래서 리다이렉트를 켠
+ * 순간, 슬랙 알림의 구 주소 링크로 들어온 사람이 전부 새 주소로 넘어가면서 업로드하는
+ * 화면 여섯 곳이 한꺼번에 막혔다 (카드뉴스·자유 블록·배너랩 2곳·콘텐츠 탭·공용 업로더).
+ *
+ * 버킷 CORS 에 app.wouldulike.kr 을 넣는 것이 근본 해결이고 재민 님께 요청해 둔 상태다.
+ * 반영되면 이 값을 true 로 되돌린다 — 지우지 말 것. 주소를 하나로 모으는 이유(호스트별
+ * 쿠키 분리로 세션이 따로 논다)는 그대로 유효하다.
+ */
+const REDIRECT_LEGACY_HOST = false;
+
 const nextConfig: NextConfig = {
   images: {
     domains: ["wouldulike-bucket.s3.ap-northeast-2.amazonaws.com"],
   },
   async redirects() {
+    if (!REDIRECT_LEGACY_HOST) return [];
     return [
       {
         source: "/:path((?!auth/kakao/callback).*)",

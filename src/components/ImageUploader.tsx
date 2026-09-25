@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { uploadFailureMessage } from "@/lib/uploadError";
 import { useImagePreview } from "@/components/ImagePreview";
 
 /* ─── 압축 설정 타입 ─── */
@@ -118,26 +119,32 @@ export default function ImageUploader({
 
       setProgress(`업로드 중 (${i + 1}/${toUpload.length})...`);
 
-      const presignRes = await fetch("/api/dashboard/images/presign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          restaurant_id: restaurantId,
-          filename: file.name,
-          content_type: "image/jpeg",
-          upload_type: uploadType,
-        }),
-      });
-      if (!presignRes.ok) { setError("업로드 URL 발급 실패"); continue; }
-      const { upload_url, public_url } = await presignRes.json();
+      try {
+        const presignRes = await fetch("/api/dashboard/images/presign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            restaurant_id: restaurantId,
+            filename: file.name,
+            content_type: "image/jpeg",
+            upload_type: uploadType,
+          }),
+        });
+        if (!presignRes.ok) { setError("업로드 URL 발급 실패"); continue; }
+        const { upload_url, public_url } = await presignRes.json();
 
-      const putRes = await fetch(upload_url, {
-        method: "PUT",
-        headers: { "Content-Type": "image/jpeg" },
-        body: blob,
-      });
-      if (!putRes.ok) { setError("S3 업로드 실패"); continue; }
-      newUrls.push(public_url);
+        const putRes = await fetch(upload_url, {
+          method: "PUT",
+          headers: { "Content-Type": "image/jpeg" },
+          body: blob,
+        });
+        if (!putRes.ok) { setError(`S3 업로드 실패 (${putRes.status})`); continue; }
+        newUrls.push(public_url);
+      } catch (e) {
+        // fetch 가 던지면 아래 setUploading(false) 에 닿지 못해 "업로드 중…" 에서 멈춘다.
+        setError(uploadFailureMessage(e, file.name));
+        continue;
+      }
     }
 
     setUrls((prev) => [...prev, ...newUrls]);

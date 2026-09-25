@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { uploadFailureMessage } from "@/lib/uploadError";
 
 import { PreviewableImg } from "@/components/ImagePreview";
 import { safeDownloadHref } from "@/lib/downloadProxy";
@@ -422,7 +423,7 @@ function WeekFolderCard({
       if (!reg.ok) alert(r.detail ?? "사진 등록 실패");
       else onChanged();
     } catch (e) {
-      alert((e as Error).message);
+      alert(uploadFailureMessage(e, file.name));
     } finally {
       setUploadingPhoto(false);
       if (fileInput.current) fileInput.current.value = "";
@@ -541,7 +542,7 @@ function WeekFolderCard({
       setDirectClickUrl("");
       onChanged();
     } catch (e) {
-      alert((e as Error).message);
+      alert(uploadFailureMessage(e, directFile?.name));
     } finally {
       setApplyingDirect(false);
     }
