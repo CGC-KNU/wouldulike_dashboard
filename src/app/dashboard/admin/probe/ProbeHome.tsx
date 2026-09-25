@@ -18,13 +18,27 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const [ins, setIns] = useState<{ insights?: { store: string; topic: string; checkpoint: string; age_days: number | null; due?: boolean }[]; papillon_reachable?: boolean } | null>(null);
   const [mil, setMil] = useState<{ rounds?: { id: string; date: string; weekday: string; result: string; pool_count: number | null; seats: { fixed: number; random: number } }[] } | null>(null);
 
+  /**
+   * 0925: 못 읽은 것을 `{}` 로 채웠다. `{}` 는 참이라 `loading` 이 꺼지고, 화면은
+   * "정합성 높음 0 · 조용한 매장 0 · 이번 달 쿠폰 사용 0" 을 **사실처럼** 찍었다.
+   * 아무것도 못 읽은 그 순간에. 무엇을 못 읽었는지 위에서 말한다.
+   */
+  const [failed, setFailed] = useState<string[]>([]);
+
   useEffect(() => {
-    const j = (u: string) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    j("/api/probe/overview").then((d) => setOv(d ?? {}));
-    j("/api/probe/quality").then((d) => setQ(d ?? {}));
-    j("/api/probe/app").then((d) => setApp(d ?? {}));
-    j("/api/probe/insights").then((d) => setIns(d ?? {}));
-    j("/api/probe/mileage").then((d) => setMil(d ?? {}));
+    const j = (u: string, label: string) =>
+      fetch(u)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .then((d) => {
+          if (d === null) setFailed((prev) => (prev.includes(label) ? prev : [...prev, label]));
+          return d;
+        });
+    j("/api/probe/overview", "매장 지표").then((d) => setOv(d ?? {}));
+    j("/api/probe/quality", "정합성").then((d) => setQ(d ?? {}));
+    j("/api/probe/app", "앱 지표").then((d) => setApp(d ?? {}));
+    j("/api/probe/insights", "인사이트").then((d) => setIns(d ?? {}));
+    j("/api/probe/mileage", "마일리지").then((d) => setMil(d ?? {}));
   }, []);
   const today = todayLocal();
   const due = (ins?.insights ?? []).filter((i) => i.due);
@@ -40,7 +54,9 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
     <>
       <PageHeader
         title="데이터 홈"
-        description="리포트 만들 때가 된 홍보 게시물, 추첨 응모풀, 어긋난 데이터. 숫자를 누르면 해당 화면으로 갑니다."
+        description={failed.length
+          ? `${failed.join(" · ")} 을(를) 읽지 못했습니다. 아래 숫자는 그만큼 비어 있습니다 — 0 이 아니라 모름입니다.`
+          : "리포트 만들 때가 된 홍보 게시물, 추첨 응모풀, 어긋난 데이터. 숫자를 누르면 해당 화면으로 갑니다."}
         actions={<a href={slackUrl(probe)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{probe.slack.channel}</Button></a>}
       />
 

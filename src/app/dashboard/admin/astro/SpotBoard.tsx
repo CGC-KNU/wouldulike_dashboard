@@ -448,7 +448,7 @@ function ResearchPanel({ onClose }: { onClose: () => void }) {
     setBusy(true); setErr(null); setData(null);
     try {
       const res = await fetch(`/api/astro/research?q=${encodeURIComponent(q.trim())}`);
-      const j = (await res.json()) as Research;
+      const j = (await res.json().catch(() => ({}))) as Research;
       if (!res.ok) { setErr(j.detail ?? "리서치에 실패했습니다."); return; }
       setData(j);
     } catch { setErr("서버에 연결하지 못했습니다."); } finally { setBusy(false); }

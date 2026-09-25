@@ -39,13 +39,18 @@ export function SourceStatusChip({ s }: { s: { connected: boolean; status?: Sour
 export default function AppMetrics() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
+  /** 못 읽은 것과 '아직 안 붙음' 은 다르다 (0925) */
+  const [failed, setFailed] = useState(false);
 
   const load = () => {
     setLoading(true);
+    // 0925: 실패와 "아직 안 붙음" 을 구분한다. 전에는 둘 다 data=null 이라 화면이
+    // "아직 어떤 출처도 연결되지 않았습니다" 와 0/0 을 띄웠다 — 못 읽은 것뿐인데.
+    setFailed(false);
     fetch("/api/probe/app")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then(setData)
-      .catch(() => setData(null))
+      .catch(() => { setData(null); setFailed(true); })
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
@@ -86,7 +91,15 @@ export default function AppMetrics() {
         <Kpi label="주요 지표 후보" value={loading ? "-" : "발급 → 사용"} hint="배너 A/B 의 판정 기준 (Castor)" />
       </div>
 
-      {!loading && connected === 0 && (
+      {!loading && failed && (
+        <div className="mb-4">
+          <Notice tone="red" title="지금 읽지 못했습니다">
+            앱 지표를 읽지 못했습니다. 출처가 없는 것이 아니라 확인하지 못한 것입니다 — 새로고침해 주세요.
+          </Notice>
+        </div>
+      )}
+
+      {!loading && !failed && connected === 0 && (
         <div className="mb-4">
           <Notice tone="amber" title="아직 어떤 출처도 연결되지 않았습니다">
             아래 표는 지표의 자리와 출처를 먼저 못 박은 것입니다. 백엔드 집계 엔드포인트 하나만 붙어도 DB 칸이 채워집니다.

@@ -142,7 +142,7 @@ async function toError(res: Response, source: string): Promise<LoadError | null>
   if (res.ok) return null;
   let detail = `HTTP ${res.status}`;
   try {
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (d?.detail) detail = String(d.detail);
   } catch {
     /* 프록시가 항상 JSON 을 주지만 방어적으로 */
@@ -223,7 +223,7 @@ export default function PapillonDashboard() {
         if (!opts?.soft) setData(null);
       } else {
         setErrors((prev) => prev.filter((x) => x.source !== "콘텐츠 목록"));
-        setData(await res.json());
+        setData(await res.json().catch(() => ({})));
       }
     } catch (ex) {
       setErrors((prev) => [
@@ -245,7 +245,7 @@ export default function PapillonDashboard() {
         setMembers([]);
       } else {
         setErrors((prev) => prev.filter((x) => x.source !== "담당자 목록"));
-        const d = await res.json();
+        const d = await res.json().catch(() => ({}));
         setMembers(Array.isArray(d) ? d : []);
       }
     } catch {
@@ -256,7 +256,7 @@ export default function PapillonDashboard() {
   const loadPubStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/satellite/publish-status");
-      if (res.ok) setPubStatus(await res.json());
+      if (res.ok) setPubStatus(await res.json().catch(() => ({})));
     } catch {
       /* 상태 배너는 부가 정보 */
     }

@@ -92,7 +92,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
     if (making) return; setMaking(postKey(p));
     try {
       const res = await fetch("/api/probe/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: p.restaurant_id, plan_id: p.plan_id, force }) });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (res.status === 409 && !force) { setAskForce(postKey(p)); return; }
       if (!res.ok) { setAskForce(null); alert(d.detail ?? "만들지 못했습니다."); return; }
       setAskForce(null); setOpenPost(null); load(); setOpenId(d.report?.id ?? null);
@@ -272,7 +272,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     setBusy(true); setMsg(null);
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props }) });
-      const d = await res.json(); if (!res.ok) { setMsg({ tone: "red", text: d.detail }); return; }
+      const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail }); return; }
       setMsg({ tone: "blue", text: "저장했습니다. 승인은 다시 받아야 합니다." }); onChanged();
     } finally { setBusy(false); }
   }
@@ -280,7 +280,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     setBusy(true); setMsg(null);
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
-      const d = await res.json(); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
+      const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
       setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 문구는 그대로 두었습니다 — 숫자가 달라졌으면 문장도 확인해 주세요." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '카톡으로 보냈음'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "보냈음으로 표시했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }

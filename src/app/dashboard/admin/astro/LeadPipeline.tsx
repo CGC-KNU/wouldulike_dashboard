@@ -70,7 +70,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
     try {
       const res = await fetch(`/api/astro/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) return setLeads(snapshot);
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       setLeads((prev) => prev.map((l) => (l.id === id ? d.lead : l)));
     } catch { setLeads(snapshot); }
   }, []);
@@ -471,7 +471,7 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
     if (!text.trim()) { setDry(null); return; }
     const id = setTimeout(() => {
       fetch("/api/astro/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, dry: true }) })
-        .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.detail); setDry(d); setError(null); })
+        .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail); setDry(d); setError(null); })
         .catch((e) => { setDry(null); setError(e.message); });
     }, 300);
     return () => clearTimeout(id);
@@ -481,7 +481,7 @@ function ImportPanel({ onClose, onDone }: { onClose: () => void; onDone: () => v
     setBusy(true); setError(null);
     try {
       const res = await fetch("/api/astro/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-      const d = await res.json(); if (!res.ok) throw new Error(d.detail);
+      const d = await res.json().catch(() => ({})); if (!res.ok) throw new Error(d.detail);
       setResult(`${d.created}곳 추가, ${d.updated}곳 갱신${d.skipped ? `, ${d.skipped}행 건너뜀(매장명 없음)` : ""}.`); onDone();
     } catch (e) { setError((e as Error).message ?? "불러오지 못했습니다."); } finally { setBusy(false); }
   }

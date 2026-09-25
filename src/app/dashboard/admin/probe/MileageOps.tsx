@@ -50,7 +50,7 @@ export default function MileageOps({ actor }: { actor: string }) {
 
   async function patch(id: string, body: Partial<Pick<Round, "pool_count" | "result" | "note">>) {
     const res = await fetch("/api/probe/mileage", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...body, by: actor }) });
-    if (res.ok) { const d = await res.json(); setData((prev) => prev && { ...prev, rounds: prev.rounds.map((r) => (r.id === id ? d.round : r)) }); }
+    if (res.ok) { const d = await res.json().catch(() => ({})); setData((prev) => prev && { ...prev, rounds: prev.rounds.map((r) => (r.id === id ? d.round : r)) }); }
   }
 
   return (

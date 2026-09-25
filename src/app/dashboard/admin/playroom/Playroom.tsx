@@ -150,7 +150,7 @@ export default function Playroom({ onBack }: { onBack?: () => void }) {
       const r = await fetch("/api/playroom/care", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
       });
-      const j = (await r.json()) as Data;
+      const j = (await r.json().catch(() => ({}))) as Data;
       if (j.pet) setD(j);                       // 상한을 넘겨 거절당해도 지금 상태는 같이 온다
       if (!r.ok) { if (!quiet) say(j.detail ?? "지금은 안 돼요"); return; }
       if (quiet) return;

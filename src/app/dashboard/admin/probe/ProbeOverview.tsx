@@ -32,6 +32,8 @@ export default function ProbeOverview() {
   const [scope, setScope] = useState<"all" | "paid" | "free" | "silent">("all");
   const [generatedAt, setGeneratedAt] = useState("");
   const [source, setSource] = useState("");
+  /** 매장 목록 자체를 못 읽었는가 — 그러면 모든 합계가 0 이지만 그건 모름이다 (0925) */
+  const [storesUnreadable, setStoresUnreadable] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -42,6 +44,7 @@ export default function ProbeOverview() {
         setTotals(d.totals ?? null);
         setGeneratedAt(d.generated_at ?? "");
         setSource(d.source ?? "");
+        setStoresUnreadable(Boolean(d.stores_unreadable));
       })
       .catch(() => setStores([]))
       .finally(() => setLoading(false));
@@ -95,6 +98,14 @@ export default function ProbeOverview() {
           ]}
         />
       </PageHeader>
+
+      {!loading && storesUnreadable && (
+        <div className="mb-4">
+          <Notice tone="red" title="매장 목록을 읽지 못했습니다">
+            아래 숫자는 전부 비어 있습니다 — <b>0 이 아니라 모름</b>입니다. 새로고침해 주세요.
+          </Notice>
+        </div>
+      )}
 
       {allUnavailable && (
         <div className="mb-4">

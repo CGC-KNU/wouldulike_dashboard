@@ -117,7 +117,7 @@ export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; i
     setBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/astro/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, requested_by: actor }) });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (!res.ok) { setMsg(d.detail); return; }
       setMsg(`${period} 품의 ${d.created}건 생성${d.skipped?.length ? ` · 건너뜀 ${d.skipped.length}건 (${d.skipped.join(", ")})` : ""}`);
       load();

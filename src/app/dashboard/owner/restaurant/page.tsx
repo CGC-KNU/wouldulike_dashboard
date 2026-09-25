@@ -153,7 +153,7 @@ function PinChangeSection({ hasPin, updatedAt, rid }: { hasPin: boolean; updated
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(hasPin ? { current_pin: currentPin, new_pin: newPin } : { new_pin: newPin }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(data.detail ?? "저장에 실패했습니다."); return; }
       setSuccess(true);
       setNewPin(""); setConfirmPin(""); setCurrentPin("");
@@ -254,7 +254,7 @@ function CouponBenefitsViewOnly({ rid }: { rid: string | null }) {
       setLoading(true); setErr("");
       try {
         const res = await fetch(`/api/dashboard/coupon-benefits${rq}`);
-        const d = await res.json();
+        const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d?.detail ?? "불러오기 실패");
         setBenefits(Array.isArray(d) ? d : []);
       } catch (e: unknown) { setErr(friendlyError(e)); }
@@ -450,7 +450,7 @@ export default function RestaurantPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone_number: draft.phone_number, main_menu: draft.main_menu, url: draft.url, description: draft.description, address: draft.address, category: draft.category, promotion_text: draft.promotion_text }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.detail || "저장에 실패했습니다."); return; }
       originalRef.current = { ...originalRef.current!, ...draft };
       setSaved(true); setTimeout(() => setSaved(false), 2500);

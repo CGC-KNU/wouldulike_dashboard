@@ -62,7 +62,7 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
       {/* KPI 4 */}
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpi("파트너 매장", d.loading ? "…" : d.failed.stores ? "—" : `${i.stores.total}곳`, d.failed.stores ? "매장 목록을 읽지 못했습니다 — 0 이 아니라 모름" : `유료 ${i.stores.paid} · 무료 ${i.stores.total - i.stores.paid}`, <Delta pct={rows[0].pct} note={rows[0].note} />, "Astro", i.stores.total ? (i.stores.paid / i.stores.total) * 100 : 0, "astro-ops")}
-        {kpi(`${month}월 수익`, d.loading ? "…" : d.failed.invoices ? "—" : `${won(i.revenue.paid)}원`, d.failed.invoices ? "계산서 목록을 읽지 못했습니다 — 0 이 아니라 모름" : `청구 ${won(i.revenue.billed)} · 미수 ${won(Math.max(0, i.revenue.billed - i.revenue.paid))}`, <span className={`text-[11.5px] font-semibold ${d.unpaid ? "text-red-600" : "text-gray-400"}`}>{d.unpaid ? `미입금 ${d.unpaid}곳` : "회수 완료"}</span>, `회수 ${paidPct}%`, paidPct, "astro-billing")}
+        {kpi(`${month}월 수익`, d.loading ? "…" : d.failed.invoices ? "—" : `${won(i.revenue.paid)}원`, d.failed.invoices ? "계산서 목록을 읽지 못했습니다 — 0 이 아니라 모름" : `청구 ${won(i.revenue.billed)} · 미수 ${won(Math.max(0, i.revenue.billed - i.revenue.paid))}`, <span className={`text-[11.5px] font-semibold ${d.failed.invoices ? "text-gray-400" : d.unpaid ? "text-red-600" : "text-gray-400"}`}>{d.failed.invoices ? "—" : d.unpaid ? `미입금 ${d.unpaid}곳` : "회수 완료"}</span>, d.failed.invoices ? "—" : `회수 ${paidPct}%`, d.failed.invoices ? undefined : paidPct, "astro-billing")}
         {kpi("주간 활성 (WAU)", d.probeLoading ? "…" : i.app.wau === undefined ? "—" : `${i.app.wau}명`, i.app.dauWau === undefined ? "Probe 연결 전" : `DAU/WAU ${i.app.dauWau}% · 20% 넘으면 습관`, <span className="text-[11.5px] text-gray-400">{i.app.openToStore !== undefined ? `앱→매장 ${i.app.openToStore}%` : ""}</span>, i.app.wau === undefined ? "연결 전" : "GA4", i.app.dauWau, "probe-app")}
         {kpi("쿠폰·스탬프 전환율", d.probeLoading ? "…" : i.coupon.rate === undefined ? "—" : `${i.coupon.rate}%`, i.coupon.rate === undefined ? "발급 → 사용 · Probe 집계 붙으면 자동" : "발급 → 사용", <span className="text-[11.5px] text-gray-400">{i.coupon.rate === undefined ? "민찬 설계 중" : ""}</span>, i.coupon.rate === undefined ? "연결 전" : "Probe", i.coupon.rate, "probe-metrics")}
       </div>
@@ -101,7 +101,13 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
             <div className="absolute left-[6%] right-[6%] top-[60px] h-[2px] bg-[linear-gradient(90deg,rgba(199,201,247,.15),rgba(199,201,247,.6),rgba(199,201,247,.15))]" />
             {PHASES.map((p, idx) => {
               const left = [8, 50, 92][idx];
-              const done = idx === 0, next = idx === 1;
+              /**
+               * 0925: `idx === 0` 이라 P1 이 **언제나 완료**로 칠해졌다. 바로 위 제목은
+               * "다음 행성까지 — Gate A 13%" 라고 말하는데, 게이트 A 가 P1 을 닫는 조건이다.
+               * 그림이 옆 숫자를 부정하고 있었다. 게이트가 다 차야 P1 이 끝난 것이다.
+               */
+              const p1Done = gate.pct !== null && gate.pct >= 1;
+              const done = idx === 0 && p1Done, next = idx === (p1Done ? 2 : 1);
               return (
                 <div key={p.key} className="absolute top-[40px] -translate-x-1/2 text-center w-[120px]" style={{ left: `${left}%` }}>
                   <div className={`w-[40px] h-[40px] rounded-full mx-auto grid place-items-center text-[11px] font-bold border-2 ${done ? "bg-periwinkle border-periwinkle" : "border-[rgba(199,201,247,.55)] bg-white/[0.04]"} ${next ? "shadow-[0_0_0_6px_rgba(99,102,224,.18)]" : ""}`}>{p.key}</div>
