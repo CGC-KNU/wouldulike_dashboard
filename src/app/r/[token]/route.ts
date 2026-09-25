@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { requireTool } from "@/lib/draft/guard";
 import { getReport, getReportByToken } from "@/lib/draft/reportStore";
 import { fillReportTemplate, insertAfterBody } from "@/lib/draft/reportTemplate";
 import { toTemplateData } from "@/lib/draft/reportTemplateData";
@@ -42,8 +43,16 @@ function originOf(req: Request): string {
 async function load(token: string): Promise<{ r: StoreReport; preview: boolean } | null> {
   if (!/^[0-9a-f]{40}$/.test(token)) {
     if (token.startsWith("preview-")) {
-      const has = (await cookies()).get("access_token")?.value;
-      if (!has) return null;
+      /**
+       * 0925: 여기가 **쿠키가 있는지만** 봤다. 그런데 그 쿠키는 점주도 손님도 들고 있다
+       * (lib/draft/guard.ts 머리말). 게다가 리포트 id 는 `rep-<시각>` 이라 추측이 된다 —
+       * 사장님 한 분이 로그인만 하면 **남의 매장 미승인 초안**을 열 수 있었다.
+       *
+       * 초안은 우리끼리 보는 것이다. 담당자 권한을 확인한다.
+       * (승인·발송된 리포트는 아래 40자 토큰 경로로 열리고, 그쪽은 저장소가 범위를 지킨다.)
+       */
+      const deny = await requireTool("restaurants");
+      if (deny) return null;
       const r = await getReport(token.slice(8)).catch(() => null);
       return r ? { r, preview: true } : null;
     }
