@@ -284,6 +284,7 @@ function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
   const p = productOf(spot.product);
   const amount = spotAmount(spot);
   const [removing, setRemoving] = useState(false);
+  const [err, setErr] = useState("");
 
   return (
     <SlideOver open onClose={onClose} title={spot.name} subtitle={`${p?.label ?? "상품 미정"}${amount === null ? "" : ` · ${won(amount)}`}`}
@@ -292,7 +293,17 @@ function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
         <span className="ml-auto">
           {removing ? (
             <span className="inline-flex items-center gap-2">
-              <Button size="sm" variant="danger" onClick={async () => { await fetch(`/api/astro/spots/${spot.id}`, { method: "DELETE" }); onDeleted(); }}>네, 지웁니다</Button>
+              {err && <span role="alert" className="text-[12px] text-red-700">{err}</span>}
+              <Button size="sm" variant="danger" onClick={async () => {
+                // 0925: 성공 여부를 안 보고 닫았다. 500 이 나면 "지웠는데 다시 나타났다" 로 보인다.
+                const res = await fetch(`/api/astro/spots/${spot.id}`, { method: "DELETE" });
+                if (!res.ok && res.status !== 204) {
+                  const d = (await res.json().catch(() => ({}))) as { detail?: string };
+                  setErr(d.detail ?? `지우지 못했습니다 (${res.status}).`);
+                  return;
+                }
+                onDeleted();
+              }}>네, 지웁니다</Button>
               <Button size="sm" variant="ghost" onClick={() => setRemoving(false)}>취소</Button>
             </span>
           ) : (

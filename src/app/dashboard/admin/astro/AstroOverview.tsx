@@ -279,7 +279,13 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
 
       <StoreDetailPanel row={open} invoice={open ? invById.get(open.restaurant_id) ?? null : null} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onReload={() => load(true)} onGo={onGo}
         onMarkPaid={async (inv) => {
-          await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
+          // 0925: 성공 여부를 안 봤다. 403 이 나도 화면은 확인된 것처럼 다시 그려지고 돈이 기록되지 않는다.
+          const res = await fetch(`/api/astro/invoices/${inv.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark-paid", by: actor }) });
+          if (!res.ok) {
+            const d = (await res.json().catch(() => ({}))) as { detail?: string };
+            window.alert(d.detail ?? `입금 확인을 기록하지 못했습니다 (${res.status}). 다시 해 주세요.`);
+            return;
+          }
           load();
         }} />
       {adding && <NewStorePanel actor={actor} campus={campus === "all" ? (campuses[0] ?? "경북대") : campus} campusOptions={campuses} onClose={() => setAdding(false)} onCreated={() => load(true)} />}

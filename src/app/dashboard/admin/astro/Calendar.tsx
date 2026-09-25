@@ -203,9 +203,11 @@ export function buildEvents(
   for (const w of campaignWeeks) {
     const span = spanLabel(w);
     for (const day of daysInMonth(w, ym)) {
-      const n = Math.round((Date.parse(`T00:00:00`) - Date.parse(`T00:00:00`)) / 86_400_000) + 1;
-      const mark = day === w.start ? "시작" : day === w.end ? "종료" : `일차`;
-      out.push({ date: day, kind: w.kind, label: w.label, sub: ` · ` });
+      // 0925: 여기 템플릿 문자열의 ${} 가 통째로 날아가 있었다. `Date.parse("T00:00:00")` 은 NaN 이고,
+      // 계산한 n·mark·span 은 어디에도 안 쓰여서 캠페인 줄의 설명이 " · " 한 조각으로만 떴다.
+      const n = Math.round((Date.parse(`${day}T00:00:00`) - Date.parse(`${w.start}T00:00:00`)) / 86_400_000) + 1;
+      const mark = day === w.start ? "시작" : day === w.end ? "종료" : `${n}일차`;
+      out.push({ date: day, kind: w.kind, label: w.label, sub: `${span} · ${mark}` });
     }
   }
 

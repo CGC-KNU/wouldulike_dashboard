@@ -50,6 +50,7 @@ export default function AstroDocs({ actor }: { actor: string }) {
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<DocKind | "all">("all");
   const [editing, setEditing] = useState<SalesDoc | "new" | null>(null);
+  const [msg, setMsg] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -74,7 +75,13 @@ export default function AstroDocs({ actor }: { actor: string }) {
 
   async function remove(d: SalesDoc) {
     if (!confirm(`'${d.title}' 항목을 지웁니다. 파일 자체는 지워지지 않습니다.`)) return;
-    await fetch(`/api/astro/docs/${d.id}`, { method: "DELETE" });
+    // 0925: 성공 여부를 안 봤다. 실패하면 목록에 그대로 남아 "확인을 안 눌렀나" 로 읽힌다.
+    const res = await fetch(`/api/astro/docs/${d.id}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) {
+      const j = (await res.json().catch(() => ({}))) as { detail?: string };
+      setMsg(j.detail ?? `지우지 못했습니다 (${res.status}).`);
+      return;
+    }
     load();
   }
 
@@ -102,6 +109,9 @@ export default function AstroDocs({ actor }: { actor: string }) {
           바로 쓸 수 있는 것만
         </button>
       </PageHeader>
+
+      {/* 0925: 지우기가 실패해도 아무 말이 없었다. 목록에 그대로 남아 "확인을 안 눌렀나" 로 읽힌다. */}
+      {msg && <p role="alert" className="text-[13px] text-red-700 bg-red-50 rounded-[12px] px-3.5 py-2.5 mb-4">{msg}</p>}
 
       {missing > 0 && !loading && (
         <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
