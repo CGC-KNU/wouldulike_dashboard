@@ -1,4 +1,4 @@
-import { DEFAULT_SUMMARY, isLegacyChannelLine, josa, ownerHeadline, ownerLines, ownerProposalText } from "./report";
+import { DEFAULT_SUMMARY, isLegacyChannelLine, josa, ownerHeadline, ownerLines, ownerProposalText, stripMarker } from "./report";
 import { isEmbedded } from "./coverImage";
 import type { StoreReport } from "./types";
 
@@ -23,9 +23,6 @@ import type { StoreReport } from "./types";
  */
 
 type Json = Record<string, unknown>;
-
-/** 제목 끝 "(정든밤 포함)" 은 우리끼리의 표시라 점주에게 보이지 않는다 */
-const stripMarker = (t: string) => t.replace(/\s*[(（][^()（）]*포함\s*[)）]\s*/g, " ").trim();
 
 /** ISO → KST 날짜 "YYYY-MM-DD" */
 function kstDate(iso: string): string {

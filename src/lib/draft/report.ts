@@ -103,6 +103,9 @@ const OWNER_LINE: Record<string, (v: string) => string> = {
   shares: (v) => `${v}번 공유됐습니다.`,
 };
 
+/** 제목 끝 "(정든밤 포함)" 은 우리끼리의 표시라 점주에게 보이지 않는다 — 공개 양식·카톡 텍스트가 같이 쓴다 */
+export const stripMarker = (t: string) => t.replace(/\s*[(（][^()（）]*포함\s*[)）]\s*/g, " ").trim();
+
 /** 받침에 맞는 조사 — 한글로 끝나지 않으면 "이(가)" 꼴로 둔다 */
 export function josa(word: string, withBatchim: string, without: string): string {
   const c = word.trim().charCodeAt(word.trim().length - 1);
@@ -169,7 +172,7 @@ export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D1
   const lines: string[] = [
     "사장님, 안녕하세요. 우주라이크입니다.",
     "",
-    `지난 ${when} 저희 인스타그램 '${s.post.topic}' 게시물에 ${s.store.name}을(를) 소개해 드렸습니다.${co}${s.age_days !== null ? ` ${s.age_days}일이 지나 정리해 보내드립니다.` : ""}`,
+    `지난 ${when} 저희 인스타그램 '${stripMarker(s.post.topic)}' 게시물에 ${josa(s.store.name, "을", "를")} 소개해 드렸습니다.${co}${s.age_days !== null ? ` ${s.age_days}일이 지나 정리해 보내드립니다.` : ""}`,
     "",
   ];
   if (!s.metrics.length) {
