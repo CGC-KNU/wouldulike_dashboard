@@ -27,7 +27,7 @@ const NAV = [
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
-export default function SideNav() {
+export default function SideNav({ offsetTop = false }: { offsetTop?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const rid = searchParams.get("rid");
@@ -37,7 +37,7 @@ export default function SideNav() {
   const { toggle } = useViewMode();
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-56 p-3 z-40">
+    <aside className={`fixed left-0 w-56 p-3 z-30 ${offsetTop ? "top-14 h-[calc(100%-3.5rem)]" : "top-0 h-full"}`}>
       <div className="h-full flex flex-col bg-white/75 backdrop-blur-xl rounded-[18px] border border-white/60 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_16px_40px_-28px_rgba(5,0,114,0.35)] overflow-hidden">
         <div className="px-3 pt-3 pb-2.5 border-b border-black/[0.05] flex items-center gap-2">
           <img src="/satellite/satellite_app.svg" alt="" width={30} height={30} className="w-[30px] h-[30px] rounded-[9px] shrink-0 ring-1 ring-black/[0.06]" aria-hidden="true" />

@@ -55,7 +55,7 @@ export default function StorePicker({ stores }: { stores: PickStore[] }) {
                   <span className="block text-[14px] font-semibold text-gray-900 truncate">{s.name}</span>
                   <span className="block text-[11.5px] text-gray-400">ID {s.restaurant_id}</span>
                 </span>
-                <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${s.tier === "BOOST" ? "bg-navy/[0.08] text-navy" : s.tier === "CONTENT" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+                <span className={`shrink-0 text-[12px] font-bold px-2 py-0.5 rounded-full ${s.tier === "BOOST" ? "bg-navy/[0.08] text-navy" : s.tier === "CONTENT" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
                   {s.tier ?? "FREE"}
                 </span>
                 <IconChevronRight size={16} className="shrink-0 text-gray-300" aria-hidden="true" />

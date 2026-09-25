@@ -77,7 +77,7 @@ export default function CouponsPage() {
       <section className="mb-7">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-800">혜택 카탈로그</h2>
-          <span className="text-[10px] text-gray-400">일반 쿠폰 · 한정 쿠폰</span>
+          <span className="text-[11.5px] text-gray-400">일반 쿠폰 · 한정 쿠폰</span>
         </div>
         <BenefitCatalogSection rid={rid} />
       </section>
@@ -85,7 +85,7 @@ export default function CouponsPage() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-800">스탬프 규칙</h2>
-          <span className="text-[10px] text-gray-400">방문 적립 → 보상 쿠폰</span>
+          <span className="text-[11.5px] text-gray-400">방문 적립 → 보상 쿠폰</span>
         </div>
         <StampRuleSection rid={rid} />
       </section>

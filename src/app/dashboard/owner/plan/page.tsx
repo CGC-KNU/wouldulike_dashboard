@@ -204,12 +204,12 @@ export default async function PlanPage({
               {/* 뱃지 영역 */}
               <div className="absolute top-4 right-4 flex flex-col items-end gap-1.5">
                 {isCurrent && (
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${plan.currentBadgeCls}`}>
+                  <span className={`text-[11.5px] font-bold px-2.5 py-1 rounded-full ${plan.currentBadgeCls}`}>
                     현재 이용 중
                   </span>
                 )}
                 {plan.badge && (
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${plan.recommendBadgeCls}`}>
+                  <span className={`text-[11.5px] font-bold px-2.5 py-1 rounded-full ${plan.recommendBadgeCls}`}>
                     {plan.badge}
                   </span>
                 )}

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
@@ -29,8 +30,14 @@ export default async function OwnerLayout({
   return (
     <ViewModeProvider>
       <div className="min-h-screen bg-background">
-        {isAdmin && <AdminViewBanner currentMode="owner" />}
-        <OwnerNavWrapper>{children}</OwnerNavWrapper>
+        {/* 관리자일 때만. 진짜 사장님 화면에는 머리가 없다 — 폰에서 세로 한 줄이 아깝고,
+            자기 가게 이름은 첫 화면이 이미 크게 말해 준다. */}
+        {isAdmin && (
+          <Suspense fallback={<div className="h-14 bg-[#050072]" />}>
+            <AdminViewBanner />
+          </Suspense>
+        )}
+        <OwnerNavWrapper hasHeader={isAdmin}>{children}</OwnerNavWrapper>
       </div>
     </ViewModeProvider>
   );

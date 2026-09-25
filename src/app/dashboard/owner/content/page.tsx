@@ -44,8 +44,8 @@ export default async function OwnerContentPage({ searchParams }: { searchParams:
           {rows.map((f, i) => (
             <li key={i} className="flex items-center gap-3 px-4 py-3">
               <span className="w-[74px] shrink-0 text-[11.5px] font-bold text-gray-500 tabular-nums">{md(f.date)}{f.end ? `~${md(f.end)}` : ""}</span>
-              <span className="min-w-0 flex-1"><span className="block text-[13.5px] font-medium text-gray-900">{f.title}</span><span className="block text-[11px] text-gray-400">{f.kind === "campaign" ? "앱 캠페인 주간" : "인스타그램 콘텐츠"}</span></span>
-              <span className={`shrink-0 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full ${chip[f.state]}`}>{label[f.state]}</span>
+              <span className="min-w-0 flex-1"><span className="block text-[13.5px] font-medium text-gray-900">{f.title}</span><span className="block text-[12px] text-gray-400">{f.kind === "campaign" ? "앱 캠페인 주간" : "인스타그램 콘텐츠"}</span></span>
+              <span className={`shrink-0 text-[11.5px] font-semibold px-1.5 py-0.5 rounded-full ${chip[f.state]}`}>{label[f.state]}</span>
               {f.permalink && <a href={f.permalink} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center gap-1 h-8 px-2.5 rounded-full bg-navy text-white text-[12px] font-semibold"><IconBrandInstagram size={14} aria-hidden="true" />보기</a>}
             </li>
           ))}
