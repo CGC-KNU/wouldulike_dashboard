@@ -28,12 +28,27 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
   const [done, setDone] = useState<string[]>([]);
   const [showAll, setShowAll] = useState(false);
 
+  /**
+   * 0925: 못 읽은 것을 빈 배열로 채우고 있었다. 그래서 `/api/astro/stores` 가 502 를 주면
+   * 네 숫자가 모두 0 이 되고, 화면은 **"막힌 것이 없습니다 — 청구·계약서·비치물·후보 연락이
+   * 모두 제 자리에 있습니다"** 라고 말했다. 아무것도 못 읽은 그 순간에.
+   * 못 읽었으면 그렇게 말한다.
+   */
+  const [failed, setFailed] = useState<string[]>([]);
+
   useEffect(() => {
-    const j = (u: string) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    j("/api/astro/stores").then((d) => setStores(d?.stores ?? []));
-    j("/api/astro/leads").then((d) => setLeads(d?.leads ?? []));
-    j("/api/astro/activities").then((d) => setActs(d?.activities ?? []));
-    j("/api/astro/invoices").then((d) => setInvoices(d?.invoices ?? []));
+    const j = (u: string, label: string) =>
+      fetch(u)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .then((d) => {
+          if (d === null) setFailed((prev) => (prev.includes(label) ? prev : [...prev, label]));
+          return d;
+        });
+    j("/api/astro/stores", "매장").then((d) => setStores(d?.stores ?? []));
+    j("/api/astro/leads", "후보").then((d) => setLeads(d?.leads ?? []));
+    j("/api/astro/activities", "활동 기록").then((d) => setActs(d?.activities ?? []));
+    j("/api/astro/invoices", "세금계산서").then((d) => setInvoices(d?.invoices ?? []));
   }, []);
 
   const loading = !stores || !leads;
@@ -73,7 +88,9 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
     <>
       <PageHeader
         title="영업 홈"
-        description="매출을 앞으로 움직이는 일부터. 처리하면 목록에서 사라집니다."
+        description={failed.length
+          ? `${failed.join(" · ")} 을(를) 읽지 못했습니다. 아래 숫자는 그만큼 비어 있습니다 — 0 이 아니라 모름입니다.`
+          : "매출을 앞으로 움직이는 일부터. 처리하면 목록에서 사라집니다."}
         actions={
           <>
             <a href={slackUrl(astro)} target="_blank" rel="noreferrer">
@@ -113,7 +130,15 @@ export default function AstroHome({ onGo }: { onGo: (tab: string) => void }) {
           <Skeleton rows={4} cols={2} />
         ) : blockers.length === 0 ? (
           <div className="px-5 py-6">
-            <Empty title="막힌 것이 없습니다" detail="청구·계약서·비치물·후보 연락이 모두 제 자리에 있습니다." />
+            {/* 못 읽었으면 "없다" 고 말하지 않는다 (0925). */}
+            {failed.length ? (
+              <Empty
+                title="지금 읽지 못했습니다"
+                detail={`${failed.join(" · ")} 을(를) 읽지 못했습니다. 막힌 것이 없는 게 아니라 확인하지 못한 것입니다 — 새로고침해 주세요.`}
+              />
+            ) : (
+              <Empty title="막힌 것이 없습니다" detail="청구·계약서·비치물·후보 연락이 모두 제 자리에 있습니다." />
+            )}
           </div>
         ) : (
           <>

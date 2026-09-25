@@ -53,6 +53,12 @@ export async function GET() {
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>(
     "/api/dashboard/restaurants/"
   );
+  /**
+   * 0925: 매장 목록을 못 읽으면 `[]` 가 되어 모든 합계가 0 이 되고, 화면은
+   * "제휴 매장 0곳 · 지표 못 읽음 0곳" 을 띄웠다 — 아무것도 못 읽은 그 순간에
+   * "못 읽은 곳이 없다" 고 말한 셈이다. 못 읽었다는 사실을 같이 내려보낸다.
+   */
+  const storesUnreadable = backend?.restaurants === undefined && !isPreview();
   const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
 
   /** 매장 하나를 지표 줄로. `stats` 가 null 이면 '모름'이다 — 0 으로 세면 안 된다. */
@@ -108,6 +114,7 @@ export async function GET() {
     stores,
     totals,
     generated_at: new Date().toISOString(),
+    stores_unreadable: storesUnreadable,
     source: backend ? "backend" : isPreview() ? "preview-snapshot" : "unavailable",
     draft: false,
   };
