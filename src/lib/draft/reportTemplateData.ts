@@ -1,4 +1,4 @@
-import { DEFAULT_SUMMARY } from "./report";
+import { DEFAULT_SUMMARY, isLegacyChannelLine, josa, ownerHeadline, ownerLines, ownerProposalText } from "./report";
 import { isEmbedded } from "./coverImage";
 import type { StoreReport } from "./types";
 
@@ -14,6 +14,10 @@ import type { StoreReport } from "./types";
  * 우리 계정 비교값(직전 5건 평균 · 중앙값 · 순위 · 게시물 수)은 **넣지 않는다**. 점주가 궁금한 건 우리 채널 안에서의
  * 순위가 아니라 가게가 얼마나 알려졌는지고, 이 JSON 은 리포트 HTML 에 그대로 실려 화면에서 숨겨도 소스 보기로 보인다
  * (0925 마케팅 피드백). 비교는 Probe 내부 화면에서만 본다.
+ *
+ * 문장도 같다. 0925 이전에 만든 리포트에는 "우리 채널이 평소 올리는 게시물 N건의 가운데 값보다…" 가 박혀 있고,
+ * 링크는 열 때마다 여기서 새로 그리므로 **그릴 때** 갈아 끼운다 — 옛 자동 문장은 지금 규칙의 문장으로, 없앤 제안(P2·P4)은 빼고.
+ * 사람이 고친 문장은 그대로 둔다.
  *
  * 아직 못 채우는 것: 앱에서 가게 화면을 연 수(앱 카드) — 앱이 사용자 ID 를 안 보내 DB 와 이을 수 없다.
  */
@@ -73,7 +77,13 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
   const measured = rd?.measured_at ?? (d7 && posted ? addDays(posted, 7) : kstDate(s.as_of));
 
   const multi = s.post.co_stores > 1;
-  const proposals = r.proposals.filter((p) => p.approved).map((p) => `**${p.title}** ${p.text}`);
+  const proposals = r.proposals.filter((p) => p.approved)
+    .map((p) => { const t = ownerProposalText(p, s); return t ? `**${p.title}** ${t}` : null; })
+    .filter((t): t is string => t !== null);
+  // 옛 채널 비교 문장이 섞여 있으면 그 줄만 빼고 지금 규칙의 문장을 붙인다
+  const legacy = r.interpretation.some(isLegacyChannelLine);
+  const paragraphs = legacy ? [...r.interpretation.filter((t) => !isLegacyChannelLine(t)), ...ownerLines(s.metrics)] : r.interpretation;
+  const summary = r.summary && isLegacyChannelLine(r.summary) ? ownerHeadline(s) : r.summary;
 
   return {
     store: { name: s.store.name },
@@ -108,8 +118,13 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
     benchmarks: {},
     notes: {},
     insight: {
-      headline: r.summary && r.summary !== DEFAULT_SUMMARY ? r.summary : null,
-      paragraphs: [...r.interpretation, ...proposals],
+      headline: summary && summary !== DEFAULT_SUMMARY ? summary : null,
+      paragraphs: [...paragraphs, ...proposals],
+      // 여러 가게를 함께 실은 편이면 양식이 "이번 도달은 {store} 혼자 받은 숫자가 아닙니다" 를 붙인다.
+      // 큐레이션이라는 사실은 그대로 밝히되, 약점으로 말하지 않는다(0925).
+      limitation: multi
+        ? `이번 편은 「${stripMarker(s.post.topic)}」 주제로 ${s.post.co_stores}곳을 함께 소개한 큐레이션입니다. ${josa(s.store.name, "이", "가")} 추천 가게 중 한 곳으로 실렸습니다.`
+        : null,
     },
     upsell: { enabled: false },
     contact: { url: "" },

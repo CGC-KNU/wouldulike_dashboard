@@ -6,7 +6,7 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { fetchPapillonMonths } from "@/lib/draft/papillon";
 import { buildSnapshot } from "@/lib/draft/snapshot";
-import { cohortNote, interpret, propose, HEADLINE_ORDER, comparable, DEFAULT_SUMMARY } from "@/lib/draft/report";
+import { cohortNote, ownerHeadline, ownerLines, propose } from "@/lib/draft/report";
 import { seedStoreOps } from "@/lib/draft/seed";
 import type { BackendRestaurant, StoreOps, StoreReport } from "@/lib/draft/types";
 
@@ -56,7 +56,6 @@ export async function POST(req: NextRequest) {
   const ops = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).find((o) => o.id === store.restaurant_id);
   const snapshot = await buildSnapshot({ ...store, campus: ops?.campus ?? null }, plan, stores.filter((s) => s.is_affiliate !== false));
   snapshot.cohort_note = cohortNote(snapshot.metrics);
-  const head = HEADLINE_ORDER.map((k) => snapshot.metrics.find((m) => m.key === k)).find(Boolean);
   const usedRules = mine.filter((r) => r.status === "SENT").flatMap((r) => r.proposals.filter((p) => p.approved).map((p) => p.rule));
   const actor = (await actorName()) ?? "unknown";
   const now = new Date().toISOString();
@@ -66,8 +65,9 @@ export async function POST(req: NextRequest) {
     id: `rep-${Date.now()}`,
     token: null, restaurant_id: store.restaurant_id, plan_id: plan.id, kind: "post", status: "DRAFT",
     title: `${store.name} 인스타그램 홍보 성과`,
-    summary: head && comparable(head) ? interpret(head) : DEFAULT_SUMMARY,
-    interpretation: HEADLINE_ORDER.map((k) => snapshot.metrics.find((m) => m.key === k)).filter((m): m is NonNullable<typeof m> => Boolean(m)).slice(0, 2).map(interpret),
+    // 점주 문장 — 우리 채널과 견주지 않는다(0925). 채널 비교는 cohort_note · 제안 근거 줄(내부)에만.
+    summary: ownerHeadline(snapshot),
+    interpretation: ownerLines(snapshot.metrics),
     snapshot, proposals: propose(snapshot, usedRules),
     created_by: actor, created_at: now, approved_by: null, approved_at: null, linked_at: null, sent_at: null, revoked_at: null,
     views: { count: 0, first_at: null, last_at: null },

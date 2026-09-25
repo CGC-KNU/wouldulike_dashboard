@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { VERDICT_FRACTION, cohortNote, verdict } from "../src/lib/draft/report";
+import { VERDICT_FRACTION, buildReportText, cohortNote, interpret, ownerLines, propose, verdict } from "../src/lib/draft/report";
 import { downloadBar } from "../src/lib/draft/reportDownload";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
 
@@ -65,6 +65,69 @@ test("점주 리포트 HTML 에 우리 계정 평균·중앙값·순위가 실�
   const data = JSON.parse(json) as { benchmarks: Record<string, unknown> };
   assert.deepEqual(data.benchmarks, {});
   for (const v of ["17085", "27828", "prev5_avg", "total_posts"]) assert.ok(!json.includes(v), `${v} 가 JSON 에 남았다`);
+});
+
+// ── 점주 문장: 우리 채널과 견주지 않는다 (0925 마케팅 피드백) ─────────────
+
+const CHANNEL = /우리 채널|평소|가운데 값|번째|건 중|위\)|낮았|적었|적게/;
+
+test("해석 문장은 우리 채널과 견주지 않고, 작은 숫자는 문장에 쓰지 않는다", () => {
+  const ms = [metric("saved", 644, 244, 45), metric("reach", 18702, 9000, 45), metric("views", 32657, 17085, 45), metric("comments", 2, 3, 45)];
+  const lines = ownerLines(ms);
+  assert.equal(lines.length, 2, "저장 → 도달 두 줄");
+  assert.match(lines[0], /저장이 644번 모였습니다/);
+  assert.match(lines[1], /18,702명에게 닿았습니다/);
+  for (const l of lines) assert.doesNotMatch(l, CHANNEL);
+  assert.doesNotMatch(interpret(metric("saved", 30, 500, 45)), CHANNEL, "평소보다 낮아도 낮다고 말하지 않는다");
+  assert.deepEqual(ownerLines([metric("saved", 3, 50, 45), metric("reach", 9, 50, 45)]), [], "10 미만만 있으면 문장을 만들지 않는다");
+});
+
+test("약점을 말하던 제안(P2·P4)은 더 생기지 않고, P1 은 평소·부족을 말하지 않는다", () => {
+  const snap = (ms: ReturnType<typeof metric>[], app: StoreReport["snapshot"]["app"] = null) => ({ ...report().snapshot, metrics: ms, app });
+  // P4 가 걸리던 조건: 도달·저장 모두 가운데 값의 80% 아래 · P2: 도달은 이상인데 프로필 방문이 적음
+  const weak = propose(snap([metric("reach", 1000, 5000, 45), metric("saved", 20, 200, 45), metric("profile_visits", 5, 100, 45)]));
+  assert.ok(!weak.some((p) => p.rule === "P2" || p.rule === "P4"));
+  const strong = propose(snap([metric("saved", 600, 200, 45), metric("reach", 9000, 5000, 45), metric("profile_visits", 5, 100, 45)],
+    { month: "2026-09", coupon_redeemed: 0, stamp_earned: 0, revisit: 0, loyal_total: 0 }));
+  const p1 = strong.find((p) => p.rule === "P1");
+  assert.ok(p1, "저장이 많고 쿠폰 사용이 없으면 QR 안내물 제안");
+  assert.doesNotMatch(p1!.text, /평소|아직 없습니다/);
+  assert.ok(!strong.some((p) => p.rule === "P2"));
+});
+
+test("이미 만든 리포트의 옛 채널 비교 문장·약점 제안은 그릴 때 갈아 끼운다 — 사람이 고친 문장은 그대로", () => {
+  const legacy = report({
+    summary: "저장 644은(는) 우리 채널이 평소 올리는 게시물 45건의 가운데 값(약 240)보다 높습니다. 같은 형식으로 올린 45건 중 3번째입니다.",
+    interpretation: [
+      "저장 538은(는) 우리 채널이 평소 올리는 게시물 45건의 가운데 값(약 240)보다 높습니다.",
+      "도달은(는) 비교 기준(우리 채널 평소 게시물 5건 이상)이 아직 없어 수치만 드립니다.",
+      "사장님 메뉴 사진이 특히 반응이 좋았습니다.",
+    ],
+    proposals: [
+      { rule: "P4", title: "촬영 재진행", generated_text: "이번 편은 평소보다 적게 나갔습니다.", text: "이번 편은 평소보다 적게 나갔습니다.", approved: true, edited_by: null, edited_at: null },
+      { rule: "P1", title: "매장 안 QR 안내물", generated_text: "이번 게시물은 저장이 평소보다 많았습니다. 한편 이번 달 앱 쿠폰 사용은 아직 없습니다.", text: "이번 게시물은 저장이 평소보다 많았습니다. 한편 이번 달 앱 쿠폰 사용은 아직 없습니다.", approved: true, edited_by: null, edited_at: null },
+      { rule: "P3", title: "모임·단체 소구", generated_text: "공유는 기계 문장", text: "사람이 고친 공유 제안입니다.", approved: true, edited_by: "아윤", edited_at: "" },
+    ],
+  });
+  const d = toTemplateData(legacy) as { insight: { headline: string | null; paragraphs: string[]; limitation: string | null } };
+  const all = [d.insight.headline ?? "", ...d.insight.paragraphs].join("\n");
+  assert.doesNotMatch(all, /우리 채널|가운데 값|번째|평소|아직 없습니다/);
+  assert.match(d.insight.headline!, /15,503명에게 닿았습니다/);
+  assert.ok(d.insight.paragraphs.includes("사장님 메뉴 사진이 특히 반응이 좋았습니다."), "사람이 쓴 줄은 남는다");
+  assert.ok(d.insight.paragraphs.some((t) => t.includes("저장이 538번 모였습니다")), "옛 줄 자리에 지금 문장");
+  assert.ok(!d.insight.paragraphs.some((t) => t.includes("촬영 재진행")), "없앤 제안은 빠진다");
+  assert.ok(d.insight.paragraphs.some((t) => t.includes("사람이 고친 공유 제안입니다.")), "고친 제안은 그대로");
+  assert.match(d.insight.limitation!, /3곳을 함께 소개한 큐레이션입니다\. 라라더가 추천 가게 중 한 곳으로 실렸습니다/, "「혼자 받은 숫자 아님」 대신");
+});
+
+test("카톡용 텍스트에 채널 비교·순위·작은 숫자가 없다", () => {
+  const s = { ...report().snapshot, metrics: [withBaskets({ key: "saved", value: 538 }, { recent5: basket(2, 5), recent10: basket(3, 10), all: basket(12, 48) }), metric("reach", 15503), metric("comments", 2)],
+    app: { month: "2026-09", coupon_redeemed: 0, stamp_earned: 4, revisit: 0, loyal_total: 0 } };
+  const t = buildReportText(s, "D7");
+  assert.doesNotMatch(t, CHANNEL);
+  assert.doesNotMatch(t, /댓글 2/, "10 미만은 싣지 않는다");
+  assert.doesNotMatch(t, /쿠폰 0장/, "앱도 0 은 싣지 않는다");
+  assert.match(t, /스탬프 4개가 적립됐습니다\./);
 });
 
 test("양식 필수 값이 비면 승인 전에 잡는다", () => {
