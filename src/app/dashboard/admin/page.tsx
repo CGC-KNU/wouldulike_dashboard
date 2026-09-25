@@ -204,6 +204,8 @@ function RestaurantDrawer({
   const [qrUrl, setQrUrl] = useState("");
   const [promoLoading, setPromoLoading] = useState(true);
   const [promoSaving, setPromoSaving] = useState(false);
+  /** 지금 값을 제대로 읽었는가 — 못 읽었으면 저장이 지우개가 된다 (0925) */
+  const [promoReadOk, setPromoReadOk] = useState(false);
   const [promoSaved, setPromoSaved] = useState(false);
   const [photoUrls, setPhotoUrls] = useState<string[] | null>(null);
 
@@ -222,8 +224,12 @@ function RestaurantDrawer({
       .then((data: { poster_url?: string; qr_url?: string }) => {
         setPosterUrl(data.poster_url ?? "");
         setQrUrl(data.qr_url ?? "");
+        setPromoReadOk(true);
       })
-      .catch(() => {})
+      // 0925: 읽기가 실패하면 두 칸이 빈 문자열로 남고, 그 상태에서 저장을 누르면
+      // **그 매장의 포스터·QR 주소가 지워졌다.** 확인도 없고 알려 주지도 않았다.
+      // 못 읽었으면 저장을 막는다 — 덮어쓸 값이 우리 것이 아니다.
+      .catch(() => setPromoReadOk(false))
       .finally(() => setPromoLoading(false));
     fetch(`/api/dashboard/restaurant?rid=${r.restaurant_id}`)
       .then((res) => res.json())
@@ -232,15 +238,19 @@ function RestaurantDrawer({
   }, [r.restaurant_id]);
 
   async function savePromoFiles() {
+    if (!promoReadOk) { window.alert("지금 값을 읽지 못해서 저장할 수 없습니다. 화면을 새로고침해 주세요."); return; }
     setPromoSaving(true);
     setPromoSaved(false);
-    const res = await fetch(`/api/dashboard/admin/promo-files/${r.restaurant_id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ poster_url: posterUrl, qr_url: qrUrl }),
-    });
-    if (res.ok) setPromoSaved(true);
-    setPromoSaving(false);
+    try {
+      const res = await fetch(`/api/dashboard/admin/promo-files/${r.restaurant_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poster_url: posterUrl, qr_url: qrUrl }),
+      });
+      if (res.ok) { setPromoSaved(true); return; }
+      const d = (await res.json().catch(() => ({}))) as { detail?: string };
+      window.alert(d.detail ?? `저장하지 못했습니다 (${res.status}).`);
+    } finally { setPromoSaving(false); }
   }
 
   async function toggleAffiliate() {
@@ -2624,7 +2634,10 @@ const PRODUCTS: {
     name: "Aether",
     subtitle: "관리 및 운영",
     description: "배너 & 팝업 · 마케팅 발송 · 관리자 설정",
-    tabs: ["content", "notifications", "settings"],
+    // 0925: "restaurants" 가 TABS 에는 있는데 어느 제품의 tabs 에도 없어서 **닿을 수 없었다.**
+    // ?tab=restaurants 는 제품을 못 찾아 기본 화면으로 떨어지고, 명령 팔레트도 PRODUCTS 기준이라
+    // 검색이 안 됐다. 새 식당 등록과 두 단계 삭제에 입구가 아예 없었다. Aether 아래 둔다.
+    tabs: ["content", "notifications", "restaurants", "settings"],
     ready: true,
   },
   {

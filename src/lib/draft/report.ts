@@ -254,7 +254,21 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
   for (const m of s.metrics) { for (const v of [m.value, m.median, m.p10, m.p90]) if (v !== null) add(v); if (m.delta_pct !== null) add(Math.abs(m.delta_pct)); add(m.n); }
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
-  for (const num of masked.match(/\d{1,3}(?:,\d{3})+|\d{4,}/g) ?? []) if (!allowed.has(num) && !allowed.has(num.replace(/,/g, ""))) problems.push(`숫자 ${num} — 스냅샷에 없는 수치`);
+  /**
+   * 0925: 이 정규식이 **네 자리 이상이나 쉼표가 들어간 수**만 잡았다. 그런데 우리 실측은
+   * 대부분 두세 자리다(중앙값 참여 61 같은). "저장 320건" · "도달 87%" 를 적어도 그대로
+   * 통과했고, 화면은 "스냅샷에 없는 숫자는 승인이 막힙니다" 라고 말하고 있었다 —
+   * 정확히 중요한 구간을 놓치고 있었다.
+   *
+   * 한 자리부터 본다. 날짜·시각·연도는 위에서 이미 가렸고, 아래에서 흔한 서수·분모를
+   * 한 번 더 걸러 낸다 — 그것까지 막으면 "세 가지를 제안합니다" 도 못 쓴다.
+   */
+  const HARMLESS = new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "100"]);
+  for (const num of masked.match(/\d{1,3}(?:,\d{3})+|\d+/g) ?? []) {
+    const bare = num.replace(/,/g, "");
+    if (allowed.has(num) || allowed.has(bare) || HARMLESS.has(bare)) continue;
+    problems.push(`숫자 ${num} — 스냅샷에 없는 수치`);
+  }
   return { ok: problems.length === 0, problems };
 }
 

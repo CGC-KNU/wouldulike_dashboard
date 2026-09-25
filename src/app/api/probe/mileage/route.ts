@@ -36,13 +36,20 @@ const MILEAGE_SLACK = "ops-mileage";
 
 const KEY = "probe_mileage";
 
-/** 어느 달이든 수·금 회차를 만든다. 2026-09 은 1주차 없음 + 봇 게시 기준 결과가 박혀 있다. */
+/**
+ * 어느 달이든 수·금 회차 **자리**를 만든다. 결과는 사람이 확인해서 적는다.
+ *
+ * 0925: 여기에 9/2·9/4·9/9 의 결과가 "보류 · 응모 0" 으로 박혀 있었고, 백엔드에 그 값이
+ * 없으면 **POST 로 심기까지** 했다. 그런데 이 기능의 화면(MileageOps.tsx) 머리말은
+ * 0920 확인 결과로 **"9/2·9/4 는 회차가 아예 없었고, 9/9 는 오히려 응모 7건에 당첨 2명"**
+ * 이라고 적어 두었다. 우리가 틀린 줄 아는 값을 우리 손으로 DB 에 써 넣고 있었던 것이다.
+ * 그 값은 '보류된 회차' 개수에도 그대로 들어갔다.
+ *
+ * 지어낸 결과는 걷어낸다. 회차 자리만 만들고 결과는 비워 둔다 —
+ * 사람이 앱 DB 실측을 보고 채우는 것이 이 화면의 일이다.
+ */
 function roundsFor(y: number, m0: number): MileageRound[] {
-  const known: Record<string, Partial<MileageRound>> = {
-    "2026-09-02": { result: "held", pool_count: 0, note: "응모풀 비어 보류 (1주차 미운용 정책과 별개로 봇 알림)", seats: { fixed: 0, random: 0 } },
-    "2026-09-04": { result: "held", pool_count: 0, note: "응모풀 비어 보류", seats: { fixed: 1, random: 0 } },
-    "2026-09-09": { result: "held", pool_count: 0, note: "응모풀 비어 보류 — 민찬 '어디서 캡쳐하면 돼?' 미해결", seats: { fixed: 1, random: 0 } },
-  };
+  const known: Record<string, Partial<MileageRound>> = {};
   const out: MileageRound[] = [];
   const sep = y === 2026 && m0 === 8;
   const last = new Date(y, m0 + 1, 0).getDate();

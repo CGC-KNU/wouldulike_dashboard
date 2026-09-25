@@ -73,7 +73,22 @@ export const GROUPS: Group[] = [
   },
 ];
 
-export const HEADCOUNT = 14; // 민열님 정본 0919. Visual Engineer 는 충원 예정(위 open) — 14에 안 들어 있다
+/**
+ * 지금 몇 명인가. **아래 명단에서 센다** — 손으로 적어 두면 어긋난다 (0925).
+ *
+ * 0919 에 14 로 박아 뒀는데 명단에는 13명이 나왔다. 노재민이 FOUNDERS 와 GROUPS 양쪽에
+ * 들어 있어 화면에는 14줄이 그려지지만 실제 사람은 13명이다. 새로 온 사람이 조직도에서
+ * 머릿수를 세면 하나가 빈다. Visual Engineer 는 충원 예정이라 여기 안 들어간다.
+ */
+export const HEADCOUNT = countPeople();
+
+/** 이름으로 센다 — 노재민처럼 두 자리에 들어간 사람이 두 번 세어지지 않게. */
+function countPeople(): number {
+  const names = new Set<string>();
+  for (const p of FOUNDERS) names.add(p.name);
+  for (const g of GROUPS) for (const p of g.people) names.add(p.name);
+  return names.size;
+}
 
 /** 미션 — 팀모델 0807 정식 미션문. 랜딩·링크드인의 3단(발견·증명·확장)과 같은 논리. */
 export const MISSION = {
