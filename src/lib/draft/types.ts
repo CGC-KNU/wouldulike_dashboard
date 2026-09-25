@@ -504,6 +504,14 @@ export type ReportMetricKey = "views" | "reach" | "saved" | "likes" | "comments"
 /** 비교군 한 지표 — 없는 값은 양식이 그 줄을 숨긴다 */
 export interface ReportBenchmark { prev5_avg?: number; median?: number | null; p75?: number | null; rank?: number | null; rate_median?: number }
 
+/** 게시물 단위 연령 비중 · 캐러셀 슬라이드별 좋아요 비중 — 둘 다 API 로 못 받아 사람이 적는다(reportManual.ts) */
+export interface ReportManual {
+  /** 게시물 도달의 연령 비중. 예: { age_range: "18~34", pct: 83.6 } */
+  audience?: { age_range: string; pct: number } | null;
+  /** 썸네일을 뺀 좋아요 중 이 가게 슬라이드의 비중과 순위(여러 가게 편만). 예: { pct: 38.8, rank: 1 } */
+  slide_likes?: { pct: number; rank: number | null } | null;
+}
+
 export interface ReportData {
   available: boolean;
   reason?: string;
@@ -528,6 +536,8 @@ export interface ReportSnapshot {
   app: { month: string; coupon_redeemed: number; stamp_earned: number; revisit: number; loyal_total: number } | null;
   /** 양식이 쓰는 원본 한 벌 (0920) — 0919 이전 스냅샷엔 없다 */
   report_data?: ReportData | null;
+  /** 인스타 앱에서 손으로 옮긴 값 (0926) — API 에 없다. 편집 화면에서 적고, 「수치 다시 읽기」에도 남는다 */
+  manual?: ReportManual | null;
 }
 
 export interface StoreReport {

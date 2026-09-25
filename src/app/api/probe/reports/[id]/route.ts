@@ -10,6 +10,7 @@ import { fetchPapillonMonths } from "@/lib/draft/papillon";
 import { buildSnapshot } from "@/lib/draft/snapshot";
 import { seedStoreOps } from "@/lib/draft/seed";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
+import { parseManual, type ManualInput } from "@/lib/draft/reportManual";
 import type { Activity, BackendRestaurant, ReportProposal, StoreOps, StoreReport } from "@/lib/draft/types";
 
 const storeError = (e: unknown) => NextResponse.json({ detail: e instanceof ReportStoreError ? e.message : "리포트 저장소 오류" }, { status: e instanceof ReportStoreError && e.status < 500 ? e.status : 502 });
@@ -28,7 +29,7 @@ async function save(id: string, patch: Partial<StoreReport>): Promise<StoreRepor
   } catch (e) { return storeError(e); }
 }
 
-/** PATCH — 문구만 고친다. 스냅샷 숫자는 읽기 전용. */
+/** PATCH — 문구와 수기 값(인스타 앱에서 옮긴 연령·슬라이드 비중)을 고친다. 인스타 API 숫자는 읽기 전용. */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -36,13 +37,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const cur = await load(id);
   if (cur instanceof NextResponse) return cur;
   if (cur.status === "LINKED" || cur.status === "SENT" || cur.status === "REVOKED") return NextResponse.json({ detail: "링크가 나간 리포트는 고칠 수 없습니다. 갱신본을 만드세요." }, { status: 409 });
-  const b = (await req.json().catch(() => ({}))) as { title?: string; summary?: string; interpretation?: string[]; proposals?: Pick<ReportProposal, "rule" | "text" | "approved">[] };
+  const b = (await req.json().catch(() => ({}))) as { title?: string; summary?: string; interpretation?: string[]; proposals?: Pick<ReportProposal, "rule" | "text" | "approved">[]; manual?: ManualInput };
   const who = (await actorName()) ?? "unknown";
   const now = new Date().toISOString();
   const patch: Partial<StoreReport> = { status: "DRAFT", approved_by: null, approved_at: null }; // 문구가 바뀌면 승인은 무효
   if (typeof b.title === "string") patch.title = b.title.trim().slice(0, 80);
   if (typeof b.summary === "string") patch.summary = b.summary.trim().slice(0, 300);
   if (Array.isArray(b.interpretation)) patch.interpretation = b.interpretation.map((s) => String(s).trim().slice(0, 300)).filter(Boolean).slice(0, 4);
+  if (b.manual && typeof b.manual === "object") {
+    // 사장님이 보는 카드가 바뀌므로 문구와 같이 승인을 무효로 한다(위 patch.status)
+    const { manual, errors } = parseManual(b.manual, cur.snapshot.post.co_stores);
+    if (errors.length) return NextResponse.json({ detail: errors.join(" ") }, { status: 400 });
+    patch.snapshot = { ...cur.snapshot, manual };
+  }
   if (Array.isArray(b.proposals)) {
     patch.proposals = cur.proposals.map((p) => {
       const n = b.proposals!.find((x) => x.rule === p.rule);
@@ -104,7 +111,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const snapshot = await buildSnapshot({ ...store, campus: ops?.campus ?? null }, plan, stores.filter((s) => s.is_affiliate !== false));
     snapshot.cohort_note = cohortNote(snapshot.metrics);
     // 문구는 사람이 쓴 것이라 그대로 둔다. 스냅샷에 없는 숫자를 쓴 문장은 승인 단계에서 걸린다.
-    const updated = await save(id, { snapshot });
+    // 수기 값은 인스타 API 에서 다시 못 읽는다 — 새 스냅샷으로 옮겨 둔다
+    const updated = await save(id, { snapshot: { ...snapshot, manual: cur.snapshot.manual ?? null } });
     if (updated instanceof NextResponse) return updated;
     return NextResponse.json({ report: updated, draft: draft() });
   }
