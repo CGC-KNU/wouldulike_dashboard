@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconAlertTriangle, IconCertificate, IconCheck, IconExternalLink, IconFileInvoice, IconPlus, IconRefresh, IconSearch, IconSettings, IconX } from "@tabler/icons-react";
 import { TAX_STATUS_LABEL, type IssuerSettings, type TaxInvoice, type TaxInvoiceStatus } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notice, PageHeader, PanelSection, Select, Skeleton, SlideOver, StepTiles, Stepper, Table, Td, Textarea, Th, agoLabel, rowClickable, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notice, PageHeader, PanelSection, Select, Skeleton, SlideOver, StepTiles, Stepper, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
 
 /**
  * Astro · 세금계산서.
@@ -23,7 +23,10 @@ const TONE: Record<TaxInvoiceStatus, ChipTone> = {
 };
 const STEPS: TaxInvoiceStatus[] = ["PENDING", "APPROVED", "ISSUING", "ISSUED"];
 const won = (n: number) => `${n.toLocaleString()}원`;
-const thisPeriod = () => new Date().toISOString().slice(0, 7);
+// 0925: `toISOString()` 은 UTC 라 한국 시간 1일 오전 9시 전에는 **지난달**이 나왔다.
+// 10월 1일 아침에 이 화면은 "9월분 일괄 생성" 을 띄우고 입금 현황은 10월을 띄운다 —
+// 둘 중 하나가 틀린 달에 청구한다. 다른 Astro 화면과 같은 `periodLocal()` 을 쓴다.
+const thisPeriod = () => periodLocal();
 
 /**
  * 공동인증서 상태 — 볼타가 갖고 있는 진실.
