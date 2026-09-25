@@ -17,7 +17,9 @@ import type { StoreReport } from "@/lib/draft/types";
  * 승인된 리포트만. `?print=1` 이면 인쇄창을 바로 연다.
  */
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://wouldulike-dashboard.vercel.app";
+// 0925: 기본값이 vercel 주소였다. 주소를 app.wouldulike.kr 하나로 모았으니 여기도 그쪽이다 —
+// 환경변수가 비면 **사장님께 나가는 리포트 링크**가 이 값을 쓴다.
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.wouldulike.kr";
 
 /**
  * **요청이 들어온 그 출처.** 리포트 안 이미지는 이 출처의 `/api/img` 를 거쳐야 한다.
