@@ -237,7 +237,7 @@ function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: 
           </div>
         )}
         {p.cohort_note && <p className="text-[12px] text-gray-500 mt-2">근거: {p.cohort_note}</p>}
-        {p.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{p.co_stores}곳을 함께 소개한 게시물 — 수치는 게시물 전체 것입니다. 리포트가 그렇게 말합니다.</p>}
+        {p.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{p.co_stores}곳을 함께 소개한 게시물 — 수치는 게시물 전체 것입니다. 카톡 텍스트는 큐레이션이라고 밝힙니다.</p>}
       </PanelSection>
       <PanelSection title="카톡용 텍스트 (링크 대신 글로 보낼 때)">
         {p.report ? <pre className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800 bg-gray-50 rounded-lg p-3 font-[inherit]">{p.report}</pre> : <p className="text-[13px] text-gray-500">지표가 모이면 자동으로 문장이 만들어집니다.</p>}
@@ -330,7 +330,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
         </div>
         {s.app && <p className="text-[12px] text-gray-600 mt-2">앱 {s.app.month}: 쿠폰 {s.app.coupon_redeemed} · 스탬프 {s.app.stamp_earned} · 재방문 {s.app.revisit} · 단골 {s.app.loyal_total}{s.app.coupon_redeemed + s.app.stamp_earned + s.app.revisit + s.app.loyal_total === 0 ? " — 전부 0 이라 공개 페이지에서는 블록을 숨깁니다" : ""}</p>}
-        {s.post.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{s.post.co_stores}곳을 함께 소개한 게시물입니다. 수치는 게시물 전체 것이고, 공개 페이지가 그렇게 말합니다.</p>}
+        {s.post.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{s.post.co_stores}곳을 함께 소개한 게시물입니다. 수치는 게시물 전체 것이고, 공개 페이지는 「N곳을 함께 소개한 큐레이션」이라고 밝힙니다.</p>}
       </PanelSection>
 
       <PanelSection title="문구">

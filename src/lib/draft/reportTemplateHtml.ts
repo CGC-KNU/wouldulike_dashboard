@@ -1,5 +1,5 @@
 /**
- * 우주라이크 매장 성과 리포트 양식 v0.9 (마케팅_퍼포먼스/인스타그램_게시물_보고서_양식.html, 0919) — 원문 그대로.
+ * 우주라이크 매장 성과 리포트 양식 v0.9.1 (마케팅_퍼포먼스/인스타그램_게시물_보고서_양식.html, 0925) — 원문 그대로.
  *
  * 이 파일은 손으로 고치지 않는다. 양식이 바뀌면 원본 HTML 을 통째로 다시 붙여 넣는다.
  * 채우는 건 `fillReportTemplate()`(reportTemplate.ts) 가 `id="report-data"` JSON 블록만 갈아 끼워서 한다 —
@@ -14,7 +14,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
 <title>매장 성과 리포트</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <!--
-  ▣ 우주라이크 매장 성과 리포트 양식 v0.9 — 자동화용
+  ▣ 우주라이크 매장 성과 리포트 양식 v0.9.1 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제)
   ──────────────────────────────────────────────
   사용법: 자동화 툴은 아래 id="report-data" 인 JSON 스크립트 블록의 **내용(JSON)만** 교체한다.
           나머지(HTML·CSS·JS)는 건드리지 않는다. 결과물은 파일 하나 — 카톡 링크/첨부로 보내 폰에서 연다.
@@ -44,8 +44,9 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
      interactions             넣으면 「반응 합계」에 그대로 사용, 없으면 좋아요+댓글+저장+공유 합.
                               ※ API total_interactions 는 리포스트 등이 섞여 네 항목 합과 다를 수 있음 → 경고로 기록
   app.store_views        우리 앱 로그: 인스타그램 링크로 들어와 이 가게 화면을 연 횟수. 없으면 앱 카드 자체를 숨김(추정 금지)
-  previous               지난 보고 값(14일차 보고에만). 없으면 「지난 보고 이후」 카드를 숨김.
+  previous               지난 보고 값(14일차 보고에만). 앱 카드의 "지난 보고에서 N회 더" 문장에만 쓴다.
      day measured_at + metrics와 같은 키 + app_store_views
+                         (0925: 「지난 보고 이후」 표는 뺐다 — 마케팅 결정)
   benchmarks             같은 형식끼리만 비교(피드는 피드, 릴스는 릴스)
      total_posts         비교군 게시물 수(이 게시물 제외)
      prev_dates          직전 5건 날짜 ["8/20", …]
@@ -53,7 +54,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
      views  {median, p75, rank(이 게시물 포함 순위)}
      shares / reach / likes / comments / follows / avg_watch_sec  {prev5_avg}
                          → 직전 5건 평균 대비 가장 낮은 지표가 95% 미만이면 「솔직하게 말씀드리는 부분」으로 자동 표시
-  notes.change / notes.saved / notes.views / notes.honest
+  notes.saved / notes.views / notes.honest   (notes.change 는 표와 함께 없어졌다)
                          사람이 쓴 문장. 있으면 자동 문장 **대신** 쓴다(honest 는 자동 문장 **뒤에** 붙는다).
   insight.headline / insight.paragraphs[] / insight.limitation
                          「이번 편이 알려준 것」. limitation 이 있으면 자동 「혼자 받은 숫자 아님」 문단 대신 사용.
@@ -371,9 +372,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   else if (!isReels && has(M.follows)) rows += kv("팔로우", n(M.follows));
   if (isReels && has(M.avg_watch_sec)) rows += kv("평균 시청 시간", (Math.round(M.avg_watch_sec * 10) / 10) + "<small>초</small>");
   put("r-metrics", '<div class="card"><div class="pad"><h2>게시물 성과</h2>' + rows +
-    '<div class="note">' + d(R.measured_at) + " 기준 인스타그램 수치예요." +
-    (multi ? " " + (P.store_count > 1 ? "가게 " + P.store_count + "곳을" : "여러 가게를") + " 함께 소개한 게시물 전체의 숫자입니다." : "") +
-    "</div></div></div>");
+    '<div class="note">' + d(R.measured_at) + " 기준 인스타그램 수치예요.</div></div></div>");
 
   // ── 앱 카드 (값이 있을 때만) ──
   if (has(appViews)) {
@@ -385,28 +384,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
       "인스타그램 링크로 앱에 들어와 <b>" + esc(STORE) + " 화면을 직접 연 경우만</b> 셌습니다.</div></div></div>");
   }
 
-  // ── 지난 보고 이후 (previous 가 있을 때만) ──
-  if (PV) {
-    var prevInter = has(PV.interactions) ? PV.interactions
-      : [PV.likes, PV.comments, PV.saved, PV.shares].every(has) ? PV.likes + PV.comments + PV.saved + PV.shares : null;
-    var defs = [
-      ["저장", M.saved, PV.saved, "개"], ["공유", M.shares, PV.shares, "회"], ["도달", M.reach, PV.reach, "명"],
-      ["반응 합계", interactions, prevInter, "회"], ["팔로우", M.follows, PV.follows, "명"],
-      ["댓글", M.comments, PV.comments, "개"], ["가게 화면 열람", appViews, PV.app_store_views, "회"]
-    ];
-    var trs = defs.filter(function (r) { return has(r[1]) && has(r[2]); }).map(function (r) {
-      var cur = r[1], prv = r[2], diff = cur - prv, cell, cls;
-      if (diff === 0) { cell = "—"; cls = "flat"; }
-      else if (prv < 100) { cell = (diff > 0 ? "▲ " : "▼ ") + n(Math.abs(diff)) + r[3]; cls = diff > 0 ? "up" : "dn"; }
-      else { var p = pct(cur, prv); cell = p === 0 ? "—" : (p > 0 ? "▲ " : "▼ ") + Math.abs(p) + "%"; cls = p === 0 ? "flat" : p > 0 ? "up" : "dn"; }
-      return "<tr><td>" + r[0] + "</td><td>" + n(prv) + "</td><td>" + n(cur) + '</td><td class="' + cls + '">' + cell + "</td></tr>";
-    }).join("");
-    var rd = M.reach - PV.reach;
-    var auto = R.day + "일차 재측정입니다. " + (rd > 0 ? "지난 보고 이후 도달이 **" + n(rd) + "명** 더 늘었습니다." : "지난 보고 이후 도달은 거의 늘지 않았습니다.");
-    put("r-change", '<div class="card"><div class="pad"><h2>지난 보고(' + (PV.measured_at ? md2(PV.measured_at) + " · " : "") + PV.day + "일차) 이후</h2>" +
-      "<table><tr><th>지표</th><th>" + PV.day + "일차</th><th>" + R.day + "일차</th><th>변화</th></tr>" + trs + "</table>" +
-      '<div class="read">' + md(get("notes.change") || auto) + "</div></div></div>");
-  }
+  // ── 지난 보고 이후: 0925 에 뺐다(마케팅 결정). r-change 자리는 PNG 나누기가 참조해서 비워 둔다 ──
 
   // ── 다른 게시물과 비교 ──
   function bars(list) {

@@ -156,7 +156,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
 
   // 카톡에서 읽기 좋게 **세 장**으로 나눈다. 한 장이면 1:4.2 라 말풍선에서 가느다란 띠가 된다(0923 실측).
   // 픽셀로 자르면 글자가 잘린다 — 양식이 이미 구획(id)으로 나뉘어 있으므로 **그 경계로** 자른다.
-  // 빈 구획(앱 카드·지난 보고·업셀은 없을 때가 있다)은 그냥 아무것도 안 그린다.
+  // 빈 구획(앱 카드·업셀은 없을 때가 있고, 지난 보고·비교는 0925 부터 늘 비어 있다)은 그냥 아무것도 안 그린다.
   var PAGES = [
     { no: 1, ids: ["r-head", "r-post"] },
     { no: 2, ids: ["r-metrics", "r-app", "r-change", "r-compare"] },

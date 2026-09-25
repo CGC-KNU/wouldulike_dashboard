@@ -109,7 +109,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       interactions: val("total_interactions"),
     },
     app: { store_views: null },
-    // 지난 보고(7일차) 대비 표 — 14일차 보고일 때만 온다
+    // 지난 보고(7일차) 값 — 14일차 보고일 때만 온다. 양식은 앱 카드의 "지난 보고에서 N회 더" 문장에만 쓴다(표는 0925 에 뺐다)
     previous: rd?.previous ?? null,
     // 비워 두면 양식이 「다른 게시물과 비교」·「솔직하게」 카드를 통째로 숨긴다 — 위 머리말 참고
     benchmarks: {},
