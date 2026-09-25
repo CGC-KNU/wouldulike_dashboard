@@ -74,6 +74,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
     progress: { consent: stepStampOk(p.n, "consent", jar.get(`ob_consent_${p.rid}`)?.value) },
     expires_at: new Date(p.exp * 1000).toISOString(),
     sms_enabled: Boolean(process.env.ONBOARD_SMS_PROVIDER),
+    // 0925: 이 링크에 미팅 때 받아 둔 번호가 실려 있는가. 실려 있으면 **세션을 만들기 전에**
+    // 그 번호를 맞혀야 한다 — 전에는 세션을 먼저 만들고 [0]에서야 물어봐서, 링크를 전달받은
+    // 사람이 아무 카카오 계정으로나 그 매장 점주가 될 수 있었다.
+    phone_required: Boolean(p.ph),
     // [4] 입금 안내 — 세금계산서 발행 설정과 같은 값(ASTRO_BANK_*). 없으면 화면이 "담당자가 안내" 로 대체한다.
     bank: process.env.ASTRO_BANK_ACCOUNT ? { name: process.env.ASTRO_BANK_NAME ?? "", account: process.env.ASTRO_BANK_ACCOUNT, holder: process.env.ASTRO_BANK_HOLDER ?? "" } : null,
     done: stepStampOk(p.n, "done", jar.get(`ob_done_${p.rid}`)?.value),

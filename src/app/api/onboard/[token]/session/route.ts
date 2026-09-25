@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
+import { phoneMatches, tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
 
 /**
  * 카카오 로그인 뒤 — 토큰 안의 임시 PIN 으로 백엔드 `verify-owner` 를 통과시켜 점주 세션을 만든다.
@@ -10,11 +10,33 @@ import { tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
  * 임시 PIN 을 여기서 대신 넣어 주면, 백엔드 코드를 건드리지 않고 새 매장 첫 로그인이 된다.
  * 점주는 [0]단계에서 바로 자기 PIN 으로 바꾼다 → 이 토큰은 더 이상 세션을 못 만든다 (1회성).
  */
-export async function POST(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
   const v = verifyOnboardToken(token);
   if (!v.ok) return NextResponse.json({ success: false, message: `링크가 유효하지 않습니다 (${v.reason}).` }, { status: 400 });
   const p = v.payload;
+
+  /**
+   * **신원 확인이 세션보다 먼저다** (0925 전수 점검).
+   *
+   * 전에는 카카오 로그인만 하면 여기서 바로 점주 세션이 만들어지고, 번호 대조는 [0]단계에서야
+   * 걸렸다. 그런데 그때는 이미 `OwnerProfile` 이 생긴 뒤다 — 카톡으로 링크를 전달받은 사람이
+   * 아무 카카오 계정으로나 그 매장의 점주가 되고, 나중에 [0]에서 막혀도 **그 프로필은 남는다.**
+   * 대시보드·손님 데이터·혜택·PIN 변경이 그 사람에게 열린 채로.
+   *
+   * 카카오 로그인은 "카카오 계정을 가진 누군가" 만 증명한다. 그 사람이 사장님인지는 우리가
+   * 미팅에서 받아 둔 번호로만 안다. 그러니 그 대조를 **프로필이 생기기 전에** 한다.
+   *
+   * 번호를 못 받아 둔 링크(`ph` 없음)는 대조할 근거가 없어 그대로 통과한다 — 그런 링크는
+   * 애초에 발급 화면에서 번호를 넣어 만드는 게 맞다.
+   */
+  const body = (await req.json().catch(() => ({}))) as { phone?: string };
+  if (p.ph && !phoneMatches(p, body.phone ?? "")) {
+    return NextResponse.json({
+      success: false, phone_mismatch: true,
+      message: "미팅 때 알려주신 번호와 다릅니다. 그 번호로 적어 주시거나, 번호가 바뀌셨으면 담당자에게 말씀해 주세요.",
+    }, { status: 409 });
+  }
 
   const jar = await cookies();
   // 신규 카카오 사용자는 pending_token, 이미 다른 매장 점주면 access_token 을 들고 온다. 둘 다 시도한다.

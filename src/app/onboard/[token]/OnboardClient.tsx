@@ -24,6 +24,8 @@ interface Meta {
   progress: { consent: boolean };
   bank: { name: string; account: string; holder: string } | null;
   sms_enabled: boolean;
+  /** 미팅 때 받아 둔 번호가 링크에 실려 있는가 — 실려 있으면 세션 전에 맞혀야 한다 (0925) */
+  phone_required?: boolean;
   /** 백엔드 상태로 본 "이미 등록을 마친 매장" — done(쿠키)과 달리 기기가 바뀌어도 남는다 */
   already?: boolean; done: boolean; expires_at: string;
 }
@@ -85,6 +87,10 @@ export default function OnboardClient({ token }: { token: string }) {
 
   // 화면 확인용(개발 전용) — `?preview=1&step=4` 로 뒷단계를 바로 연다. 서버도 같은 플래그를 본다.
   const previewUi = sp.get("preview") === "1";
+  /** 카카오는 마쳤지만 아직 번호로 본인 확인을 안 한 상태 (0925) */
+  const [needPhone, setNeedPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [checking, setChecking] = useState(false);
   const load = useCallback(async () => {
     const r = await fetch(`/api/onboard/${token}${sp.get("preview") === "1" ? "?preview=1" : ""}`, { cache: "no-store" });
     if (!r.ok) { setFatal(r.status === 410 ? "이 링크는 기한이 지났습니다." : "유효하지 않은 링크입니다."); return null; }
@@ -98,10 +104,10 @@ export default function OnboardClient({ token }: { token: string }) {
       if (previewUi) { const n = Number(sp.get("step")); if (n >= 0 && n <= 6) { patch({ step: n }); return; } }
       if (m.done || m.already) { patch({ step: 6 }); return; }
       if (!m.session.ok && sp.get("resume") === "1") {
-        const s = await fetch(`/api/onboard/${token}/session`, { method: "POST" });
-        const j = (await s.json().catch(() => ({}))) as { success?: boolean; message?: string; need_kakao?: boolean };
-        if (j.success) { await load(); history.replaceState(null, "", location.pathname); }
-        else if (!j.need_kakao) setErr(j.message ?? "로그인에 실패했습니다.");
+        // 번호를 받아 둔 링크는 **세션을 만들기 전에** 본인 확인을 한다 (0925). 화면에서 번호를
+        // 받아 아래 `exchange()` 로 넘긴다. 번호가 없는 링크는 대조할 근거가 없어 바로 넘어간다.
+        if (m.phone_required) { setNeedPhone(true); return; }
+        await exchange("");
       }
     })();
   }, [load, patch, sp, token, previewUi]);
@@ -127,6 +133,31 @@ export default function OnboardClient({ token }: { token: string }) {
       if (Array.isArray(l) && l.length) patch({ special: { benefit: String(l[0].title ?? ""), cond: String(l[0].subtitle ?? "") } });
     }).catch(() => null);
   }, [meta?.already, meta?.store.rid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * 카카오에서 돌아온 뒤 점주 세션으로 바꾼다.
+   *
+   * 0925: 번호 대조를 여기서 한다. 전에는 세션을 먼저 만들고 [0]단계에서야 물어봤는데,
+   * 그때는 이미 점주 프로필이 생긴 뒤였다 — 링크를 전달받은 사람이 아무 카카오 계정으로나
+   * 그 매장 점주가 되고, 나중에 막혀도 그 프로필은 남았다.
+   */
+  const exchange = async (phone: string) => {
+    setErr(null); setChecking(true);
+    try {
+      const s = await fetch(`/api/onboard/${token}/session`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }),
+      });
+      const j = (await s.json().catch(() => ({}))) as { success?: boolean; message?: string; need_kakao?: boolean; phone_mismatch?: boolean };
+      if (j.success) {
+        setNeedPhone(false);
+        patch({ phone });          // [0]단계에서 다시 적지 않게 그대로 물려준다
+        await load();
+        history.replaceState(null, "", location.pathname);
+        return;
+      }
+      if (!j.need_kakao) setErr(j.message ?? "로그인에 실패했습니다.");
+    } finally { setChecking(false); }
+  };
 
   const startKakao = () => {
     const id = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID;
@@ -154,6 +185,35 @@ export default function OnboardClient({ token }: { token: string }) {
 
   const s = meta.store, paid = s.plan !== "FREE";
   const rq = `?rid=${s.rid}`;
+
+  /* ── 카카오는 마쳤고, 본인 확인만 남은 상태 (0925) ── */
+  if (needPhone) {
+    const ok11 = phoneInput.replace(/\D/g, "").length >= 10;
+    return (
+      <Shell>
+        <p className="text-[12px] text-gray-500 mb-1">우주라이크 파트너 등록</p>
+        <h1 className="text-[22px] font-bold text-gray-900 leading-tight mb-1">본인 확인</h1>
+        <p className="text-[14px] text-gray-600 mb-5">
+          미팅 때 알려주신 휴대폰 번호를 적어 주세요. 이 링크가 <b>{s.name}</b> 사장님께 온 것이 맞는지 확인합니다.
+        </p>
+        {err && <Notice tone="red" title="확인하지 못했습니다">{err}</Notice>}
+        <Field label="휴대폰 번호">
+          <Input
+            type="tel" inputMode="numeric" autoComplete="tel" value={phoneInput}
+            onChange={(e) => { setPhoneInput(e.target.value); setErr(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && ok11 && !checking) exchange(phoneInput); }}
+            placeholder="010-0000-0000"
+          />
+        </Field>
+        <Button variant="primary" size="md" className="w-full mt-4" disabled={!ok11 || checking} onClick={() => exchange(phoneInput)}>
+          {checking ? "확인 중…" : "확인"}
+        </Button>
+        <p className="text-[11.5px] text-gray-400 mt-3">
+          번호가 바뀌셨으면 담당자에게 말씀해 주세요 · 문의 hello@wouldulike.kr
+        </p>
+      </Shell>
+    );
+  }
 
   /* ── 로그인 전 — 매장·플랜 요약 + 카카오 시작 ── */
   if (!meta.session.ok) {

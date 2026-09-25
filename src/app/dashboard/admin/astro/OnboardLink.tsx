@@ -105,8 +105,11 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
               <p className="text-[12px] text-gray-600 mb-2">사장님께 카톡으로 보낼 링크입니다. 계약(약관 동의)·PIN·혜택·입금·키트까지 이 링크 안에서 끝납니다.</p>
               <p className="text-[12px] mb-2">
                 {ownerPhone
-                  ? <span className="text-gray-700">본인 확인 · <b>대표자 연락처 {ownerPhone}</b> 와 같은 번호를 적어야 넘어갑니다.</span>
-                  : <span className="text-amber-800">이 매장에는 <b>대표자 연락처가 없습니다.</b> 본인 확인 없이 링크가 열립니다 — 아래 운영 항목에 번호를 먼저 넣으시면 그 번호로만 진행됩니다.</span>}
+                  ? <span className="text-gray-700">본인 확인 · 카카오 로그인 직후 <b>{ownerPhone}</b> 를 적어야 점주 계정이 만들어집니다.</span>
+                  : <span className="text-amber-800">
+                      이 매장에는 <b>대표자 연락처가 없습니다.</b> 그러면 <b>링크를 받은 누구나</b> 아무 카카오 계정으로 그 매장 점주가 됩니다 —
+                      카톡으로 전달된 링크도 그대로 열립니다. 아래 운영 항목에 번호를 먼저 넣어 주세요.
+                    </span>}
               </p>
               {hasPin === true && (
                 <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
