@@ -1,4 +1,4 @@
-import { DEFAULT_SUMMARY, comparable } from "./report";
+import { DEFAULT_SUMMARY } from "./report";
 import { isEmbedded } from "./coverImage";
 import type { StoreReport } from "./types";
 
@@ -8,8 +8,12 @@ import type { StoreReport } from "./types";
  * 양식이 계산·문장·숨김을 다 한다. 여기서는 **스냅샷에 실제로 있는 원본 숫자만** 옮긴다 — 없는 칸은 비워서
  * 양식이 그 줄·카드를 숨기게 둔다(양식 규칙: 추정 금지).
  *
- * 수치·비교·지난 보고는 백엔드 report-data(스냅샷의 `report_data`)를 그대로 옮긴다 — 같은 시점(D+7/D+14)끼리만 비교한다.
- * 그게 없는 스냅샷(0919 이전 · 성과 권한 없음)은 예전처럼 코호트 중앙값만 쓰고 나머지 칸은 비운다.
+ * 수치·지난 보고는 백엔드 report-data(스냅샷의 `report_data`)를 그대로 옮긴다 — 같은 시점(D+7/D+14)끼리만 비교한다.
+ * 그게 없는 스냅샷(0919 이전 · 성과 권한 없음)은 스냅샷 수치만 쓰고 나머지 칸은 비운다.
+ *
+ * 우리 계정 비교값(직전 5건 평균 · 중앙값 · 순위 · 게시물 수)은 **넣지 않는다**. 점주가 궁금한 건 우리 채널 안에서의
+ * 순위가 아니라 가게가 얼마나 알려졌는지고, 이 JSON 은 리포트 HTML 에 그대로 실려 화면에서 숨겨도 소스 보기로 보인다
+ * (0925 마케팅 피드백). 비교는 Probe 내부 화면에서만 본다.
  *
  * 아직 못 채우는 것: 앱에서 가게 화면을 연 수(앱 카드) — 앱이 사용자 ID 를 안 보내 DB 와 이을 수 없다.
  */
@@ -68,7 +72,6 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
   const day = rd?.day ?? (d7 ? 7 : s.age_days);
   const measured = rd?.measured_at ?? (d7 && posted ? addDays(posted, 7) : kstDate(s.as_of));
 
-  const views = s.metrics.find((m) => m.key === "views");
   const multi = s.post.co_stores > 1;
   const proposals = r.proposals.filter((p) => p.approved).map((p) => `**${p.title}** ${p.text}`);
 
@@ -101,10 +104,8 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
     app: { store_views: null },
     // 지난 보고(7일차) 대비 표 — 14일차 보고일 때만 온다
     previous: rd?.previous ?? null,
-    // 직전 5건 평균 · 중앙값 · 상위 25% · 순위. report-data 가 없으면 예전처럼 코호트 중앙값만.
-    benchmarks: rd?.benchmarks && Object.keys(rd.benchmarks).length
-      ? rd.benchmarks
-      : views && comparable(views) ? { total_posts: views.n, views: { median: views.median } } : {},
+    // 비워 두면 양식이 「다른 게시물과 비교」·「솔직하게」 카드를 통째로 숨긴다 — 위 머리말 참고
+    benchmarks: {},
     notes: {},
     insight: {
       headline: r.summary && r.summary !== DEFAULT_SUMMARY ? r.summary : null,

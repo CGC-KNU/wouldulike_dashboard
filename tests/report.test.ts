@@ -48,15 +48,23 @@ test("report-data 가 있으면 그 수치와 며칠차를 쓴다", () => {
   assert.equal(d.metrics.saved, 644);           // 스냅샷의 D+7(538) 이 아니라 D+14
   assert.equal(d.post.image, "https://t/x.jpg"); // 메타 썸네일 우선
   assert.ok(d.previous, "지난 보고 표가 들어간다");
-  assert.equal((d.benchmarks as { total_posts?: number }).total_posts, 45);
+  assert.deepEqual(d.benchmarks, {}, "우리 계정 비교값은 점주 리포트에 넣지 않는다");
 });
 
-test("report-data 가 없으면 예전 규칙 — D+7 · 코호트 중앙값만", () => {
-  const d = toTemplateData(report()) as { report: { day: number }; metrics: Record<string, number>; previous: unknown; benchmarks: { views?: { median: number | null } } };
+test("report-data 가 없으면 예전 규칙 — D+7 · 코호트 중앙값도 넣지 않는다", () => {
+  const d = toTemplateData(report()) as { report: { day: number }; metrics: Record<string, number>; previous: unknown; benchmarks: Record<string, unknown> };
   assert.equal(d.report.day, 7);
   assert.equal(d.metrics.saved, 538);
   assert.equal(d.previous, null);
-  assert.equal(d.benchmarks.views?.median, 17085);
+  assert.deepEqual(d.benchmarks, {});
+});
+
+test("점주 리포트 HTML 에 우리 계정 평균·중앙값·순위가 실리지 않는다 — 소스 보기로도", () => {
+  const html = fillReportTemplate(report({}, { report_data: rd }));
+  const json = /<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+  const data = JSON.parse(json) as { benchmarks: Record<string, unknown> };
+  assert.deepEqual(data.benchmarks, {});
+  for (const v of ["17085", "27828", "prev5_avg", "total_posts"]) assert.ok(!json.includes(v), `${v} 가 JSON 에 남았다`);
 });
 
 test("양식 필수 값이 비면 승인 전에 잡는다", () => {
