@@ -74,12 +74,12 @@ const CHANNEL = /우리 채널|평소|가운데 값|번째|건 중|위\)|낮았|
 test("해석 문장은 우리 채널과 견주지 않고, 작은 숫자는 문장에 쓰지 않는다", () => {
   const ms = [metric("saved", 644, 244, 45), metric("reach", 18702, 9000, 45), metric("views", 32657, 17085, 45), metric("comments", 2, 3, 45)];
   const lines = ownerLines(ms);
-  assert.equal(lines.length, 2, "저장 → 도달 두 줄");
+  assert.equal(lines.length, 2, "저장 → 조회 두 줄 (도달은 제목 줄이 말한다)");
   assert.match(lines[0], /저장이 644번 모였습니다/);
-  assert.match(lines[1], /18,702명에게 닿았습니다/);
+  assert.match(lines[1], /32,657회 조회됐습니다/);
   for (const l of lines) assert.doesNotMatch(l, CHANNEL);
   assert.doesNotMatch(interpret(metric("saved", 30, 500, 45)), CHANNEL, "평소보다 낮아도 낮다고 말하지 않는다");
-  assert.deepEqual(ownerLines([metric("saved", 3, 50, 45), metric("reach", 9, 50, 45)]), [], "10 미만만 있으면 문장을 만들지 않는다");
+  assert.deepEqual(ownerLines([metric("saved", 3, 50, 45), metric("views", 9, 50, 45)]), [], "10 미만만 있으면 문장을 만들지 않는다");
 });
 
 test("약점을 말하던 제안(P2·P4)은 더 생기지 않고, P1 은 평소·부족을 말하지 않는다", () => {

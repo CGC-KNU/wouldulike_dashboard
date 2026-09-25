@@ -7,7 +7,7 @@ import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, 
  *  - 비교군은 **우리 채널 평소 게시물**(Papillon cohort) 하나. "업계 평균"은 없다. 표본 n<5 또는 hidden 이면 비교하지 않는다.
  *  - 계산은 중앙값이고 문장도 "중앙값"이라고 말한다. 표본 수·기간을 근거 줄에 밝힌다.
  *  - 근거가 없으면 그 자리를 다른 주장으로 메우지 않는다 ("상위권" 금지).
- *  - 헤드라인은 고정 순서(저장 → 도달 → 조회). 잘 나온 지표를 고르지 않는다.
+ *  - (0925 에 바뀜 — 아래) 헤드라인은 고정 순서(저장 → 도달 → 조회). 잘 나온 지표를 고르지 않는다.
  *  - 자기 수치는 정확하게, 비교군만 "약". 여러 매장이 함께 나온 게시물이면 그 사실을 문장이 말한다.
  *  - 앱 지표는 병렬 서술, 인과 주장 금지.
  *
@@ -19,7 +19,6 @@ import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, 
 
 export const METRIC_LABEL: Record<string, string> = { saved: "저장", reach: "도달", views: "조회", shares: "공유", likes: "좋아요", comments: "댓글", profile_visits: "프로필 방문", follows: "팔로우" };
 export const TILE_KEYS = ["views", "reach", "likes", "comments", "saved", "shares"] as const;
-export const HEADLINE_ORDER = ["saved", "reach", "views"] as const;
 export const MIN_COHORT = 5;
 /** 비교할 근거가 없을 때의 한 줄 요약 — 공개 양식에서는 제목으로 쓰지 않는다(뜻이 없는 문장이라). */
 export const DEFAULT_SUMMARY = "인스타그램 수치와 같은 기간 앱에서 일어난 일을 정리했습니다.";
@@ -121,9 +120,12 @@ export function interpret(m: ReportMetric): string {
   return [head, WHY[m.key]].filter(Boolean).join(" ");
 }
 
-/** 점주 해석 문단 — 헤드라인 순서(저장 → 도달 → 조회)에서 문장에 올릴 만한 크기인 것 두 개. 없으면 빈 배열 */
+/** 점주 해석 문단의 순서 — 도달은 제목 줄(ownerHeadline)이 말하므로 여기서 또 말하지 않는다 */
+const OWNER_ORDER = ["saved", "views", "shares"] as const;
+
+/** 점주 해석 문단 — 저장 → 조회 → 공유 중 문장에 올릴 만한 크기인 것 두 개. 없으면 빈 배열 */
 export function ownerLines(metrics: ReportMetric[]): string[] {
-  return HEADLINE_ORDER.map((k) => metrics.find((m) => m.key === k))
+  return OWNER_ORDER.map((k) => metrics.find((m) => m.key === k))
     .filter((m): m is ReportMetric => Boolean(m) && (m as ReportMetric).value >= MIN_OWNER_VALUE)
     .slice(0, 2).map(interpret);
 }
@@ -157,7 +159,7 @@ export function cohortNote(metrics: ReportMetric[]): string | null {
 
 /**
  * 사장님 보고글(카톡 본문). 구조는 라라더 건 그대로 — 인사 · 어떤 게시물 · 해석 · 나머지 · 앱 · 맺음.
- * 해석은 ownerLines(저장 → 도달 → 조회 중 문장에 올릴 크기). 채널 비교·순위 근거 줄은 싣지 않는다(0925).
+ * 제목 줄(도달) 다음에 ownerLines(저장 → 조회 → 공유 중 문장에 올릴 크기). 채널 비교·순위 근거 줄은 싣지 않는다(0925).
  * 체크포인트마다 맺음이 다르다.
  */
 export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D14" | "done" | "waiting"): string {
@@ -173,9 +175,10 @@ export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D1
   if (!s.metrics.length) {
     lines.push("아직 인스타그램 수치가 모이지 않았습니다. 모이는 대로 다시 보내드리겠습니다.");
   } else {
-    const said = ownerLines(s.metrics);
+    const headline = ownerHeadline(s);
+    const said = [...(headline !== DEFAULT_SUMMARY ? [headline] : []), ...ownerLines(s.metrics)];
     if (said.length) lines.push(...said, "");
-    const saidKeys = HEADLINE_ORDER.filter((k) => s.metrics.some((m) => m.key === k && m.value >= MIN_OWNER_VALUE)).slice(0, 2) as string[];
+    const saidKeys = ["reach", ...OWNER_ORDER.filter((k) => s.metrics.some((m) => m.key === k && m.value >= MIN_OWNER_VALUE)).slice(0, 2)] as string[];
     const rest = TILE_KEYS.filter((k) => !saidKeys.includes(k)).map((k) => s.metrics.find((m) => m.key === k))
       .filter((m): m is ReportMetric => Boolean(m) && (m as ReportMetric).value >= MIN_OWNER_VALUE);
     if (rest.length) lines.push(rest.map((m) => `${METRIC_LABEL[m.key] ?? m.key} ${m.value.toLocaleString()}`).join(" · "), "");
