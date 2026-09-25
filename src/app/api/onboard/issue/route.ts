@@ -28,14 +28,17 @@ export async function POST(req: NextRequest) {
   // 1) 임시 PIN — 백엔드 `ChangePinView` (dashboard/views.py) 확인 결과:
   //    · 관리자는 ?restaurant_id= 로 남의 매장 PIN 을 만든다/바꾼다.
   //    · PIN 이 **없는** 매장은 new_pin 만으로 생성. PIN 이 **있는** 매장은 관리자여도 current_pin 이 필요하다.
-  //    · 현재 PIN 은 관리자가 GET /api/dashboard/restaurant/?restaurant_id= 로 읽을 수 있다 (응답 "pin").
+  //    · 0925 부터 현재 PIN 은 **읽을 수 없다**(해시 저장). 관리자는 current_pin 없이 바꾼다.
   //    (AdminRestaurantView PATCH 는 is_affiliate·tier 만 받는다 — pin 을 보내면 400. 0921 소스 확인.)
   const admin = await getAccessToken();
   const infoRes = await fetch(backendUrl("/api/dashboard/restaurant/", `restaurant_id=${b.rid}`), { headers: { Authorization: `Bearer ${admin}` }, cache: "no-store" }).catch(() => null);
   if (!infoRes || !infoRes.ok) {
     return NextResponse.json({ detail: `매장 정보를 읽지 못했습니다 (${infoRes?.status ?? "연결 실패"}). 매장 id ${b.rid} 가 대시보드에 있는지 확인해 주세요.` }, { status: 502 });
   }
-  const info = (await infoRes.json().catch(() => ({}))) as { pin?: string | null; name?: string };
+  // 0925: 예전에는 응답의 `pin` **값**을 읽었다. PIN 을 해시로 저장하면서 되읽는 길을 없앴다 —
+  // 이제 있는지 없는지만 온다. 값이 필요했던 게 아니라 "우리가 심은 임시 PIN 인가" 가 필요했으므로,
+  // 그건 check-pin 에 물어본다 (맞는지만 알려 주고 값은 안 준다).
+  const info = (await infoRes.json().catch(() => ({}))) as { has_pin?: boolean; name?: string };
 
   // ⚠️ 기존 PIN 이 있는 매장에는 발급하지 않는다 (0921 사고).
   // `MerchantPin.secret` 하나가 **점주 로그인 + 손님 쿠폰 사용(redeem_coupon) + 손님 스탬프 적립(add_stamp)** 셋에 다 쓰인다
@@ -43,11 +46,14 @@ export async function POST(req: NextRequest) {
   // 운영 중인 매장은 온보딩 대상이 아니다(0921 결정 4: 기존 매장 재온보딩 안 함). 신규 매장은 PIN 이 없어 그대로 통과한다.
   // 이미 우리가 심어 둔 임시 PIN 이면 "온보딩을 시작했지만 안 끝낸 매장" 이다 — 다시 발급해 준다.
   // (링크 만료·사장님 미확인은 늘 생긴다. 이 경우 손님 적립은 어차피 이미 이 값으로 돌고 있으므로 새로 망가뜨리는 게 없다.)
-  const isOurTemp = Boolean(info.pin) && String(info.pin) === tp;
+  const isOurTemp = info.has_pin === true && await fetch(backendUrl("/api/dashboard/auth/check-pin/", `restaurant_id=${b.rid}`), {
+    method: "POST", headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: tp }), cache: "no-store",
+  }).then(async (r) => (r.ok ? Boolean(((await r.json()) as { matches?: boolean }).matches) : false)).catch(() => false);
   // 테스트 매장(StoreOps.is_test)은 손님이 없다 — 막을 이유가 없고, 막으면 온보딩을 시험해 볼 방법이 사라진다.
   const isTest = await remoteGet<{ ops: { is_test?: boolean } | null }>(`/api/astro/stores/${b.rid}/`)
     .then((r) => Boolean(r.handled && r.ok && r.data?.ops?.is_test)).catch(() => false);
-  if (info.pin && !isOurTemp && !isTest) {
+  if (info.has_pin && !isOurTemp && !isTest) {
     return NextResponse.json({
       detail: "이 매장에는 이미 매장 PIN 이 있어 온보딩 링크를 발급하지 않습니다. 그 PIN 은 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 바꾸면 매장 운영이 멈춥니다. 이미 운영 중인 매장이면 사장님께 현재 매장 번호를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.",
       has_pin: true,
@@ -59,7 +65,9 @@ export async function POST(req: NextRequest) {
     // PIN 이 이미 있으면 관리자여도 `current_pin` 을 같이 보내야 한다 (위 주석, ChangePinView).
     // 위에서 읽어 둔 현재 값을 그대로 동봉한다 — 안 보내면 400 "current_pin이 필요합니다".
     // 여기까지 온 매장은 PIN 이 없거나 테스트 매장뿐이다(위 가드).
-    const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, info.pin ? { new_pin: tp, current_pin: String(info.pin) } : { new_pin: tp });
+    // 관리자는 current_pin 없이 바꿀 수 있다 (0925, ChangePinView). 예전에는 우리가 읽은 값을
+    // 그대로 동봉했는데, 그건 우리끼리 읽었다 다시 넣는 헛수고였다.
+    const pinRes = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${b.rid}`, { new_pin: tp });
     if (!pinRes.ok) {
       const d = (await pinRes.json().catch(() => ({}))) as { detail?: string };
       return NextResponse.json({ detail: `임시 PIN 을 설정하지 못했습니다 (${pinRes.status}${d.detail ? ` · ${d.detail}` : ""}).` }, { status: 502 });

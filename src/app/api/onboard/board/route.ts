@@ -58,14 +58,28 @@ export async function GET() {
   // 매장 PIN 은 매장마다 한 번씩 물어야 한다 — 원장·운영행에 걸린 매장만 본다(전수 조회는 느리다).
   const need = new Set<number>([...folded.keys()]);
   for (const [rid, o] of ops) if (o.is_test !== true && (o.contract_started_on || o.monthly_fee || o.contract_signed_on)) need.add(rid);
+  /**
+   * 0925: 예전에는 매장마다 PIN **값**을 읽어 와 우리가 심은 임시값과 비교했다.
+   * PIN 을 해시로 저장하면서 값을 못 읽게 됐으므로, **비교를 서버에 맡긴다** —
+   * 묶음으로 한 번에 물어본다(낱개 경로는 틀릴 때마다 무차별 시도로 세어서, 현황판을 열
+   * 때마다 우리 계정이 잠긴다).
+   *
+   * 결과는 세 가지다: true = 우리 임시 PIN, false = 다른 PIN 이 걸려 있음, null = PIN 없음.
+   */
   const admin = await getAccessToken();
-  const pins = new Map<number, string | null>();
-  await Promise.all([...need].map(async (rid) => {
-    const r = await fetch(backendUrl("/api/dashboard/restaurant/", `restaurant_id=${rid}`), { headers: { Authorization: `Bearer ${admin}` }, cache: "no-store" }).catch(() => null);
-    if (!r?.ok) return;
-    const j = (await r.json().catch(() => ({}))) as { pin?: string | null };
-    pins.set(rid, j.pin ?? null);
-  }));
+  const isTemp = new Map<number, boolean | null>();
+  if (need.size) {
+    const r = await fetch(backendUrl("/api/dashboard/auth/check-pin-bulk/"), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [...need].map((rid) => ({ restaurant_id: rid, pin: tempPinFor(rid) })) }),
+      cache: "no-store",
+    }).catch(() => null);
+    if (r?.ok) {
+      const j = (await r.json().catch(() => ({}))) as { results?: Record<string, boolean | null> };
+      for (const [k, v] of Object.entries(j.results ?? {})) isTemp.set(Number(k), v);
+    }
+  }
 
   const rows: BoardRow[] = [];
   for (const r of backend?.restaurants ?? []) {
@@ -88,9 +102,9 @@ export async function GET() {
       todo = pending ? describe(d!) : null;
     } else if (f?.consent) {
       stage = "동의"; at = f.consent.at;
-    } else if (pins.get(rid) && pins.get(rid) === tempPinFor(rid)) {
+    } else if (isTemp.get(rid) === true) {
       stage = "대기";
-    } else if (pins.get(rid)) {
+    } else if (isTemp.get(rid) === false) {
       stage = "종이계약"; // PIN 이 이미 있다 = 온보딩 이전에 운영을 시작한 매장
     } else {
       stage = "미발급";

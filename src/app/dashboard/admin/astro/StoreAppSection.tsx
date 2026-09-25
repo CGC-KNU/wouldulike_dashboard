@@ -25,15 +25,20 @@ import { Button, Chip, Field, Input, Notice, Skeleton, Textarea } from "../_shar
 
 interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null; promotion_text?: string | null }
 
-export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onAppPin }: { id: number; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void>; /** 앱이 쓰는 실제 PIN 을 부모에 알린다 — 메모 칸과 대조해 불일치를 띄운다 */ onAppPin?: (pin: string | null) => void }) {
+export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onPinState }: { id: number; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void>; /** PIN 이 걸려 있는지만 부모에 알린다 — 값은 더 이상 읽을 수 없다 (0925) */ onPinState?: (s: { has_pin: boolean }) => void }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [promo, setPromo] = useState<{ poster_url: string; qr_url: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [reachable, setReachable] = useState(true);
   const [msg, setMsg] = useState<{ tone: "blue" | "red"; text: string } | null>(null);
   const [pin, setPin] = useState("");
-  /** 서버에 저장돼 있는 값 — change-pin 이 current_pin 을 요구한다 */
-  const [loadedPin, setLoadedPin] = useState<string | null>(null);
+  /**
+   * 0925: 예전에는 저장된 PIN **값**을 받아 이 칸에 채워 넣었다. 이제 PIN 은 해시로 저장돼
+   * 되읽을 수 없다 — 있는지 없는지와 마지막으로 바꾼 때만 온다. 이 칸은 '보기' 가 아니라
+   * '새로 정하기' 가 됐다.
+   */
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [pinUpdatedAt, setPinUpdatedAt] = useState<string | null>(null);
   const [promotionText, setPromotionText] = useState("");
   const [promotionTextSaved, setPromotionTextSaved] = useState("");
   const [promoTextSaving, setPromoTextSaving] = useState(false);
@@ -49,9 +54,10 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onA
     ]).then(([d, p]) => {
       setReachable(Boolean(d));
       setDetail((d as Detail) ?? {});
-      setPin(d?.pin != null ? String(d.pin) : "");
-      setLoadedPin(d?.pin != null ? String(d.pin) : null);
-      onAppPin?.(d?.pin != null ? String(d.pin) : null);
+      setPin("");
+      setHasPin(d ? Boolean(d.has_pin) : null);
+      setPinUpdatedAt((d?.pin_updated_at as string | null) ?? null);
+      onPinState?.({ has_pin: Boolean(d?.has_pin) });
       setPromotionText(d?.promotion_text ?? "");
       setPromotionTextSaved(d?.promotion_text ?? "");
       setPromo({ poster_url: p?.poster_url ?? "", qr_url: p?.qr_url ?? "" });
@@ -70,17 +76,17 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onA
   async function savePin() {
     const next = pin.trim();
     if (!/^\d{4,6}$/.test(next)) { setMsg({ tone: "red", text: "PIN 은 숫자 4~6자리입니다." }); return; }
-    if (next === (loadedPin ?? "")) { setMsg({ tone: "blue", text: "이미 그 번호입니다." }); return; }
+
     if (!window.confirm(`매장 PIN 을 ${next} 로 바꿉니다.\n\n이 번호는 손님이 스탬프를 찍고 쿠폰을 쓸 때도 부르는 번호입니다. 매장에 안내된 번호와 달라지면 적립이 막힙니다.\n\n계속할까요?`)) return;
     setBusy(true); setMsg(null);
     try {
+      // 관리자는 current_pin 없이 바꾼다 (0925, 백엔드 ChangePinView).
       const body: Record<string, string> = { new_pin: next };
-      if (loadedPin) body.current_pin = loadedPin;
       const res = await fetch(`/api/dashboard/auth/change-pin?rid=${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = (await res.json().catch(() => ({}))) as { detail?: string; success?: boolean };
       if (!res.ok || d.success === false) { setMsg({ tone: "red", text: d.detail ?? `저장하지 못했습니다 (${res.status}).` }); return; }
-      setLoadedPin(next); onAppPin?.(next);
-      setMsg({ tone: "blue", text: "매장 PIN 을 저장했습니다. 손님 적립·쿠폰 사용에도 이 번호가 쓰입니다." });
+      setPin(""); setHasPin(true); onPinState?.({ has_pin: true });
+      setMsg({ tone: "blue", text: "매장 PIN 을 바꿨습니다. 손님 적립·쿠폰 사용에도 이 번호가 쓰입니다 — 매장에 안내된 번호도 같이 바꿔 주세요." });
       onChanged?.();
     } finally { setBusy(false); }
   }
@@ -192,10 +198,17 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onA
       {/* 플랜은 위 '계약' 블록 한 곳에서만 바꾼다 — 월 이용료·계약 시작일과 같이 보이는 자리라야
           플랜을 올렸을 때 청구가 어떻게 되는지가 같이 보인다. 같은 값을 두 칸에 두지 않는다. */}
       <div className="grid grid-cols-1 gap-2.5">
-        <Field label="매장 PIN" hint="손님이 부르는 번호 — 점주 로그인·쿠폰 사용·스탬프 적립에 모두 쓰입니다. 바꾸면 매장에 안내된 번호도 함께 바꿔야 합니다">
+        <Field
+          label="매장 PIN"
+          hint={hasPin === null
+            ? "손님이 부르는 번호 — 점주 로그인·쿠폰 사용·스탬프 적립에 모두 씁니다."
+            : hasPin
+              ? `지금 번호가 걸려 있습니다${pinUpdatedAt ? ` (마지막 변경 ${pinUpdatedAt.slice(0, 10)})` : ""}. 번호 자체는 우리도 볼 수 없습니다 — 새로 정하는 것만 됩니다.`
+              : "아직 번호가 없습니다. 여기서 정하면 그 번호로 손님 적립·쿠폰 사용이 됩니다."}
+        >
           <div className="flex gap-1.5">
-            <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="1234" inputMode="numeric" />
-            <Button size="sm" onClick={savePin} disabled={busy || !pin}>저장</Button>
+            <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={hasPin ? "새 번호" : "1234"} inputMode="numeric" />
+            <Button size="sm" onClick={savePin} disabled={busy || !pin}>{hasPin ? "바꾸기" : "정하기"}</Button>
           </div>
         </Field>
       </div>

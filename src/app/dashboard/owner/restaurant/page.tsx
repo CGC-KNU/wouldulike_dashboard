@@ -18,7 +18,8 @@ interface RestaurantInfo {
   address: string;
   category: string;
   s3_image_urls: string[];
-  pin: string | null;
+  has_pin: boolean;
+  pin_updated_at: string | null;
   promotion_text: string;
 }
 
@@ -123,8 +124,15 @@ function benefitLabel(bj: Record<string, unknown>): string {
 /* ═══════════════════════════════════════════════
    PIN 변경 섹션
 ═══════════════════════════════════════════════ */
-function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null }) {
-  const hasPin = !!pin;
+/**
+ * 매장 PIN 바꾸기 (0925 고침).
+ *
+ * 예전에는 이 화면이 **현재 PIN 을 그대로 띄웠다.** 서버가 값을 내려 줬기 때문이다.
+ * 이제 PIN 은 해시로 저장돼 우리도 못 읽는다 — 사장님이 직접 지금 번호를 넣어야 바꾼다.
+ * 잊으셨으면 담당자가 새로 정해 드린다. 알려 드릴 방법은 이제 없다.
+ */
+function PinChangeSection({ hasPin, updatedAt, rid }: { hasPin: boolean; updatedAt: string | null; rid: string | null }) {
+  const [currentPin, setCurrentPin] = useState("");
   const [open, setOpen]             = useState(false);
   const [newPin, setNewPin]         = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -134,6 +142,7 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
 
   const handleChange = async () => {
     setErr("");
+    if (hasPin && !currentPin)     { setErr("지금 쓰시는 PIN 을 넣어 주세요."); return; }
     if (!newPin || !confirmPin)    { setErr("모든 항목을 입력해주세요."); return; }
     if (newPin !== confirmPin)     { setErr("새 PIN이 일치하지 않습니다."); return; }
     if (!/^\d{4,}$/.test(newPin)) { setErr("PIN은 4자리 이상 숫자여야 합니다."); return; }
@@ -142,12 +151,12 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
       const res = await fetch(`/api/dashboard/auth/change-pin${ridQ(rid)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(hasPin ? { current_pin: pin, new_pin: newPin } : { new_pin: newPin }),
+        body: JSON.stringify(hasPin ? { current_pin: currentPin, new_pin: newPin } : { new_pin: newPin }),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.detail ?? "저장에 실패했습니다."); return; }
       setSuccess(true);
-      setNewPin(""); setConfirmPin("");
+      setNewPin(""); setConfirmPin(""); setCurrentPin("");
       setTimeout(() => { setSuccess(false); setOpen(false); }, 2000);
     } catch { setErr("오류가 발생했습니다."); }
     finally   { setLoading(false); }
@@ -177,15 +186,23 @@ function PinChangeSection({ pin, rid }: { pin: string | null; rid: string | null
         <div className="mt-2 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
           <p className="text-xs text-gray-400">
             {hasPin
-              ? "로그인 PIN을 변경합니다. 4자리 이상 숫자만 사용 가능합니다."
-              : "아직 등록된 PIN이 없는 매장입니다. 새 PIN을 등록합니다. 4자리 이상 숫자만 사용 가능합니다."}
+              ? `지금 쓰시는 번호를 넣으셔야 바꿀 수 있습니다. 4자리 이상 숫자입니다${updatedAt ? ` · 마지막 변경 ${updatedAt.slice(0, 10)}` : ""}.`
+              : "아직 등록된 PIN 이 없는 매장입니다. 새 PIN 을 등록합니다. 4자리 이상 숫자입니다."}
           </p>
           {hasPin && (
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">현재 PIN</label>
-              <div className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm tracking-widest text-gray-700 font-semibold">
-                {pin}
-              </div>
+              <label htmlFor="cur-pin" className="text-xs text-gray-500 mb-1 block">지금 쓰시는 PIN</label>
+              <input
+                id="cur-pin" type="password" inputMode="numeric" maxLength={8}
+                value={currentPin}
+                onChange={(e) => { setCurrentPin(e.target.value); setErr(""); }}
+                placeholder="••••"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-periwinkle tracking-widest"
+              />
+              {/* 예전에는 이 자리에 현재 번호가 그대로 떠 있었다. 이제 우리도 못 읽는다. */}
+              <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                번호는 우주라이크도 볼 수 없습니다. 잊으셨으면 담당자에게 말씀해 주세요 — 새로 정해 드립니다.
+              </p>
             </div>
           )}
           {fields.map(({ label, value, setter }) => (
@@ -572,7 +589,7 @@ export default function RestaurantPage() {
             </div>
           )}
 
-          <PinChangeSection pin={info?.pin ?? null} rid={rid ?? null} />
+          <PinChangeSection hasPin={Boolean(info?.has_pin)} updatedAt={info?.pin_updated_at ?? null} rid={rid ?? null} />
         </>
       )}
 

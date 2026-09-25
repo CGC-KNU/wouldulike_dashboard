@@ -10,8 +10,8 @@ import { notifyAstro } from "@/lib/slack";
  * 사장님이 쓰던 PIN 으로 로그인이 안 된다. 그때 **원래 PIN 을 알고 있으면** 여기로 되돌린다.
  * (발급 화면에 경고를 넣었지만, 이미 누른 뒤에는 되돌릴 길이 있어야 한다.)
  *
- * 현재 PIN(임시값)은 관리자가 GET restaurant/?restaurant_id= 로 읽을 수 있으므로,
- * 호출자는 복구할 PIN 만 주면 된다. 발급 토큰은 필요 없다.
+ * 0925 부터 현재 PIN 은 읽을 수 없다(해시 저장). 호출자가 복구할 PIN 을 준다 — 그 값은
+ * 담당자가 알고 있어야 한다. 모르면 복구가 아니라 **새로 정해 드리는 것**이 맞다.
  *
  * POST { rid, pin }
  */
@@ -26,15 +26,21 @@ export async function POST(req: NextRequest) {
   const admin = await getAccessToken();
   const infoRes = await fetch(backendUrl("/api/dashboard/restaurant/", `restaurant_id=${rid}`), { headers: { Authorization: `Bearer ${admin}` }, cache: "no-store" }).catch(() => null);
   if (!infoRes || !infoRes.ok) return NextResponse.json({ detail: `매장 정보를 읽지 못했습니다 (${infoRes?.status ?? "연결 실패"}).` }, { status: 502 });
-  const info = (await infoRes.json().catch(() => ({}))) as { pin?: string | null; name?: string };
+  const info = (await infoRes.json().catch(() => ({}))) as { has_pin?: boolean; name?: string };
 
-  if (String(info.pin ?? "") === String(pin)) {
-    return NextResponse.json({ ok: true, already: true, name: info.name ?? null, detail: "이미 그 PIN 입니다. 바꾼 것 없습니다." });
+  // 0925: 예전에는 현재 PIN 값을 읽어 비교했다. 이제 값은 안 온다 — 맞는지만 물어본다.
+  if (info.has_pin) {
+    const same = await fetch(backendUrl("/api/dashboard/auth/check-pin/", `restaurant_id=${rid}`), {
+      method: "POST", headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: String(pin) }), cache: "no-store",
+    }).then(async (r) => (r.ok ? Boolean(((await r.json()) as { matches?: boolean }).matches) : false)).catch(() => false);
+    if (same) {
+      return NextResponse.json({ ok: true, already: true, name: info.name ?? null, detail: "이미 그 PIN 입니다. 바꾼 것 없습니다." });
+    }
   }
 
-  const body: Record<string, string> = { new_pin: String(pin) };
-  if (info.pin) body.current_pin = String(info.pin);
-  const res = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${rid}`, body);
+  // 관리자는 current_pin 없이 바꾼다 (0925).
+  const res = await proxyBody("POST", `/api/dashboard/auth/change-pin/?restaurant_id=${rid}`, { new_pin: String(pin) });
   if (!res.ok) {
     const d = (await res.json().catch(() => ({}))) as { detail?: string };
     return NextResponse.json({ detail: `PIN 을 복구하지 못했습니다 (${res.status}${d.detail ? ` · ${d.detail}` : ""}).` }, { status: 502 });

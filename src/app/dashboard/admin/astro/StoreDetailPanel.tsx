@@ -25,7 +25,7 @@ import StoreAppSection from "./StoreAppSection";
 import DocQuickLinks, { DOC_SETS } from "./DocQuickLinks";
 import MessageComposer from "./MessageComposer";
 import OnboardLink from "./OnboardLink";
-import SourceBadge, { L, Mismatch } from "./SourceBadge";
+import SourceBadge, { L, Mismatch, PinMemoCheck } from "./SourceBadge";
 
 /**
  * 매장 한 장 — 오른쪽 슬라이드 패널.
@@ -106,9 +106,6 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
     onClose();
   }
   const [onboarding, setOnboarding] = useState(false);
-  /** 앱이 실제로 쓰는 PIN — 메모 칸(o.pin)과 달라지면 화면이 말해 준다 */
-  const [appPin, setAppPin] = useState<string | null>(null);
-  useEffect(() => setAppPin(null), [id]);
   // 계약 완료 문안에 들어갈 입금 계좌 — 세금계산서 설정에 적힌 값만 쓴다(코드에 박지 않는다)
   const [bank, setBank] = useState<{ line: string | null; holder: string | null }>({ line: null, holder: null });
   useEffect(() => {
@@ -237,7 +234,6 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
 
       <PanelSection title="앱에 실제로 나가는 것">
         <StoreAppSection
-          onAppPin={setAppPin}
           id={id}
           isAffiliate={row.is_affiliate !== false}
           onChanged={() => (onReload ? onReload() : onPatch(id, {}))}
@@ -333,7 +329,8 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
         </div>
         <div className="mt-3">
           <Cell label={<L src="sheet">PIN 번호</L>} hint="예전 시트에서 옮겨 온 번호입니다. 실제로 동작하는 값은 위 '앱에 실제로 나가는 것 → 매장 PIN' 입니다" value={o.pin} onCommit={set("pin")} placeholder="1234" />
-          <Mismatch memo={o.pin} real={appPin} realLabel="매장 PIN" onUseReal={() => stage("pin")(appPin)} />
+          {/* 0925: 실제 PIN 을 읽어와 나란히 비교하던 줄이었다. 이제 값을 못 읽으므로 서버에 물어본다. */}
+          <PinMemoCheck rid={id} memo={o.pin} />
         </div>
       </PanelSection>
 
