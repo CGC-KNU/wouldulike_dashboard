@@ -101,7 +101,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
     try {
       const res = await fetch(`/api/astro/stores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, updated_by: actor }) });
       if (!res.ok) return setRows(snapshot);
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       setRows((prev) => prev.map((r) => (r.restaurant_id === id ? { ...r, ops: d.ops } : r)));
     } catch { setRows(snapshot); }
   }, [actor]);

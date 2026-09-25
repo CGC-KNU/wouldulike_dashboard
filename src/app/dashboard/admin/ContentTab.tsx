@@ -116,7 +116,7 @@ function ImagePickerField({
         body: JSON.stringify({ filename: file.name, content_type: "image/jpeg", upload_type: uploadType }),
       });
       if (!presRes.ok) throw new Error("presign 실패");
-      const { upload_url, public_url } = await presRes.json();
+      const { upload_url, public_url } = await presRes.json().catch(() => ({}));
       // S3 PUT
       const putRes = await fetch(upload_url, { method: "PUT", body: compressed, headers: { "Content-Type": "image/jpeg" } });
       if (!putRes.ok) throw new Error("업로드 실패");
@@ -348,7 +348,7 @@ function FeaturedCampaignSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.detail ?? "저장 실패");
     replaceCampaign(d);
     return d as FeaturedCampaign;
@@ -441,7 +441,7 @@ function FeaturedCampaignSection() {
         }],
       }),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (!res.ok) { setErr(d.detail ?? "생성 실패"); return; }
     setCampaigns((prev) => [...prev, d]);
     setSavedOrderIds((prev) => [...prev, d.id]);
@@ -805,7 +805,7 @@ function BannerSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, display_order: items.length }),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.detail ?? "생성 실패");
     setItems((prev) => [...prev, d]);
     setSavedIds((prev) => [...prev, d.id]);
@@ -818,7 +818,7 @@ function BannerSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.detail ?? "수정 실패");
     setItems((prev) => prev.map((t) => (t.id === id ? d : t)));
     setEditId(null);
@@ -838,7 +838,7 @@ function BannerSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ is_active: !t.is_active }),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (res.ok) setItems((prev) => prev.map((x) => (x.id === t.id ? d : x)));
   }
 
@@ -1112,7 +1112,7 @@ function PopupSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, display_order: items.length }),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.detail ?? "생성 실패");
     setItems((prev) => [...prev, d]);
     setSavedIds((prev) => [...prev, d.id]);
@@ -1125,7 +1125,7 @@ function PopupSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.detail ?? "수정 실패");
     setItems((prev) => prev.map((p) => (p.id === id ? d : p)));
     setEditId(null);
@@ -1145,7 +1145,7 @@ function PopupSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ is_active: !p.is_active }),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (res.ok) setItems((prev) => prev.map((x) => (x.id === p.id ? d : x)));
   }
 

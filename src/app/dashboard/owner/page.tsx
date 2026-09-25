@@ -14,7 +14,8 @@ async function fetchHome(token: string, rid?: string): Promise<PartnerHomeData |
     if (rid) url.searchParams.set("restaurant_id", rid);
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     if (!res.ok) return null;
-    return (await res.json()) as PartnerHomeData;
+    // 0925: 파싱이 실패하면 null 이어야 한다. `{}` 는 참이라 화면이 '읽었다'고 믿고 터진다.
+    return (await res.json().catch(() => null)) as PartnerHomeData | null;
   } catch { return null; }
 }
 
@@ -24,7 +25,7 @@ async function fetchPromoFiles(token: string, rid?: string): Promise<{ poster_ur
     if (rid) url.searchParams.set("restaurant_id", rid);
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     if (!res.ok) return { poster_url: "", qr_url: "" };
-    return await res.json();
+    return await res.json().catch(() => null);
   } catch { return { poster_url: "", qr_url: "" }; }
 }
 
@@ -35,7 +36,7 @@ async function fetchStores(token: string): Promise<PickStore[]> {
       headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
     });
     if (!res.ok) return [];
-    const j = (await res.json()) as { restaurants?: PickStore[] };
+    const j = (await res.json().catch(() => ({}))) as { restaurants?: PickStore[] };
     return j.restaurants ?? [];
   } catch { return []; }
 }

@@ -140,7 +140,8 @@ export default async function PlanPage({
     const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/astro/partner/home/`);
     if (rid) url.searchParams.set("restaurant_id", rid);
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-    if (res.ok) home = await res.json();
+    // 0925: 파싱이 실패하면 **null 이어야 한다.** `{}` 는 참이라 화면이 '읽었다'고 믿고 store.name 에서 터진다.
+    if (res.ok) home = await res.json().catch(() => null);
   } catch { home = null; }
 
   const tier = home?.store.tier ?? null;

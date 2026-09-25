@@ -59,7 +59,7 @@ export default function MyDashboardScreen() {
         fetch("/api/satellite/my-week"),
       ]);
       if (dashRes.ok) {
-        const d: MyDashboardResponse = await dashRes.json();
+        const d: MyDashboardResponse = await dashRes.json().catch(() => ({}));
         setData(d);
         if (!mediaType && d.media_type) setMediaType(d.media_type);
         // soft 재조회 때는 회고 입력 중일 수 있어 서버값으로 덮지 않는다.
@@ -68,7 +68,7 @@ export default function MyDashboardScreen() {
           setImprove(d.retro?.improve_note ?? "");
         }
       }
-      if (myWeekRes.ok) setMyWeek(await myWeekRes.json());
+      if (myWeekRes.ok) setMyWeek(await myWeekRes.json().catch(() => ({})));
     } finally {
       if (!opts?.soft) setLoading(false);
     }

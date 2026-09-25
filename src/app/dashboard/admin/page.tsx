@@ -274,7 +274,7 @@ function RestaurantDrawer({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ secondary_password: secondaryPw }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (res.ok) { onDeleted(r.restaurant_id); onClose(); }
     else setDeleteError(data.detail ?? "삭제에 실패했습니다.");
     setActionPending(false);
@@ -733,7 +733,7 @@ function CampaignCalendarPanel() {
     setLoading(true);
     try {
       const res = await fetch(`/api/dashboard/admin/campaigns?year=${year}&month=${month}`);
-      if (res.ok) setWeeks(await res.json());
+      if (res.ok) setWeeks(await res.json().catch(() => ({})));
     } finally {
       setLoading(false);
     }
@@ -762,11 +762,11 @@ function CampaignCalendarPanel() {
       body: JSON.stringify({ action, admin_notes: adminNotes }),
     });
     if (!res.ok) {
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       alert(d?.detail ?? "처리 실패");
       return;
     }
-    const updated: CampaignApp = await res.json();
+    const updated: CampaignApp = await res.json().catch(() => ({}));
     setWeeks((prev) =>
       prev.map((w) => ({
         ...w,
@@ -789,7 +789,7 @@ function CampaignCalendarPanel() {
     });
     setSavingSlots(false);
     if (res.ok) { setDefaultSlots(Number(editSlots)); alert("저장되었습니다."); }
-    else { const d = await res.json(); alert(d?.detail ?? "저장 실패"); }
+    else { const d = await res.json().catch(() => ({})); alert(d?.detail ?? "저장 실패"); }
   }
 
   async function saveLimits() {
@@ -801,7 +801,7 @@ function CampaignCalendarPanel() {
     });
     setSavingLimits(false);
     if (res.ok) { setPlanLimits(editLimits); alert("저장되었습니다."); }
-    else { const d = await res.json(); alert(d?.detail ?? "저장 실패"); }
+    else { const d = await res.json().catch(() => ({})); alert(d?.detail ?? "저장 실패"); }
   }
 
   function prevMonth() { if (month === 1) { setYear((y) => y - 1); setMonth(12); } else setMonth((m) => m - 1); }
@@ -1031,7 +1031,7 @@ function RestaurantCalendarPanel() {
     setLoading(true);
     try {
       const res = await fetch(`/api/dashboard/admin/restaurant-notifications?year=${year}&month=${month}`);
-      if (res.ok) setSchedules(await res.json());
+      if (res.ok) setSchedules(await res.json().catch(() => ({})));
     } finally {
       setLoading(false);
     }
@@ -1048,7 +1048,7 @@ function RestaurantCalendarPanel() {
     if (res.ok || res.status === 204) {
       setSchedules(prev => prev.filter(s => s.id !== id));
     } else {
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       alert(d?.detail ?? "삭제 실패");
     }
   }
@@ -1201,7 +1201,7 @@ function MarketingTab() {
     setErr("");
     try {
       const res = await fetch("/api/dashboard/admin/notifications");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail ?? "불러오기 실패");
       setNotifications(Array.isArray(data) ? data : []);
     } catch (e: unknown) {
@@ -1222,7 +1222,7 @@ function MarketingTab() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password: pushSecPw }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setPushVerifying(false);
     if (data.valid) {
       setPushUnlocked(true);
@@ -1266,7 +1266,7 @@ function MarketingTab() {
           test_only: testOnly,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail ?? "생성 실패");
       setNotifications((prev) => [data, ...prev]);
       setTitle("");
@@ -1286,7 +1286,7 @@ function MarketingTab() {
     if (res.ok || res.status === 204) {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     } else {
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       alert(d?.detail ?? "삭제 실패");
     }
   }
@@ -1298,7 +1298,7 @@ function MarketingTab() {
       const res = await fetch(`/api/dashboard/admin/notifications/${id}/send-now`, {
         method: "POST",
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail ?? "발송 실패");
       setNotifications((prev) =>
         prev.map((n) =>
@@ -1532,7 +1532,7 @@ function SettingsTab() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "main", current_password: form.current, new_password: form.next }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setMsg({ ok: true, text: "변경되었습니다." });
       setForm({ current: "", next: "", next2: "" });
@@ -1823,7 +1823,7 @@ function AdminAccountsSection() {
     try {
       const res = await fetch("/api/dashboard/admin/accounts");
       if (res.ok) {
-        const d = await res.json();
+        const d = await res.json().catch(() => ({}));
         setAccounts(d.accounts ?? []);
         setDepartments(d.departments ?? []);
       }
@@ -1874,7 +1874,7 @@ function AdminAccountsSection() {
         satellite_role: newSatRole,
       }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setCreating(false);
     if (res.ok) {
       setNewId(""); setNewName(""); setNewKakao("");

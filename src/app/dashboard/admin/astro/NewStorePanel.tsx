@@ -26,7 +26,7 @@ export default function NewStorePanel({ actor, campus, campusOptions, onClose, o
     setLookup({ busy: true, msg: null });
     try {
       const res = await fetch(`/api/astro/place?url=${encodeURIComponent(form.map_url.trim())}`);
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (!res.ok || !d.name) { setLookup({ busy: false, msg: d.detail ?? "지도에서 이름을 못 읽었습니다. 직접 적어 주세요." }); return; }
       setForm((f) => ({ ...f, name: d.name, map_name: d.name, address: f.address || d.address || "" }));
       setLookup({ busy: false, msg: `${d.provider} 표기 "${d.name}" 를 매장명으로 넣었습니다.` });

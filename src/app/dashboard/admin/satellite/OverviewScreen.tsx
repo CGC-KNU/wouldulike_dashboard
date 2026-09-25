@@ -47,10 +47,10 @@ export default function OverviewScreen() {
         fetch("/api/satellite/publish-status"),
         fetch("/api/satellite/overview/performance"),
       ]);
-      if (plansRes.ok) setData(await plansRes.json());
-      if (membersRes.ok) setMembers(await membersRes.json());
-      if (pubRes.ok) setPubStatus(await pubRes.json());
-      if (perfRes.ok) setPerf(await perfRes.json());
+      if (plansRes.ok) setData(await plansRes.json().catch(() => ({})));
+      if (membersRes.ok) setMembers(await membersRes.json().catch(() => ({})));
+      if (pubRes.ok) setPubStatus(await pubRes.json().catch(() => ({})));
+      if (perfRes.ok) setPerf(await perfRes.json().catch(() => ({})));
     } finally {
       setLoading(false);
     }

@@ -12,7 +12,7 @@ async function fetchRestaurantName(token: string, id: string): Promise<string | 
       { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
     );
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     return data.name ?? null;
   } catch {
     return null;

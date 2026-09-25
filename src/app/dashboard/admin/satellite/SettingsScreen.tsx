@@ -31,8 +31,8 @@ export default function SettingsScreen() {
         fetch("/api/satellite/members"),
         fetch("/api/satellite/publish-status"),
       ]);
-      if (membersRes.ok) setMembers(await membersRes.json());
-      if (pubRes.ok) setPubStatus(await pubRes.json());
+      if (membersRes.ok) setMembers(await membersRes.json().catch(() => ({})));
+      if (pubRes.ok) setPubStatus(await pubRes.json().catch(() => ({})));
     } finally {
       setLoading(false);
     }

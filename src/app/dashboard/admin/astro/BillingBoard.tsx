@@ -90,7 +90,7 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
     if (busy) return; setBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/astro/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, requested_by: actor }) });
-      const d = await res.json(); if (!res.ok) { setMsg(d.detail); return; }
+      const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg(d.detail); return; }
       setMsg(`${label(period)} 청구 ${d.created}건 생성${d.skipped?.length ? ` · 건너뜀 ${d.skipped.join(", ")}` : ""}`); load();
     } finally { setBusy(false); }
   }
