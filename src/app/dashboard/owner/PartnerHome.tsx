@@ -32,6 +32,15 @@ const TIER_CLS: Record<string, string> = { FREE: "bg-gray-100 text-gray-600", BO
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 const won = (n: number) => `${n.toLocaleString()}원`;
 
+/**
+ * 사장님에게 **청구서를 보여 줘도 되는 단계인가** (0924).
+ *
+ * 전에는 상태를 안 보고 입금일 유무만 봤다. 그래서 아직 우리 내부 품의 단계인 초안 금액이
+ * 사장님 화면에 "대기" 칩과 함께 떴다 — 승인도 발행도 안 된 숫자다.
+ * 국세청에 실제로 나간 뒤(발행 중·발행 완료)부터만 보여 준다. 그 전에는 금액을 말하지 않는다.
+ */
+const BILLED = new Set(["ISSUING", "ISSUED"]);
+
 function Delta({ now, prev }: { now: number; prev: number }) {
   const diff = now - prev;
   if (prev === 0 && now === 0) return <span className="text-[12px] text-gray-400">—</span>;
@@ -158,7 +167,7 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
             <div className="flex items-baseline justify-between mb-2"><h2 className="text-[14px] font-bold text-gray-900">플랜 · 정산</h2><Link href={`/dashboard/owner/plan${ridParam}`} className="text-[12px] font-semibold text-navy hover:underline inline-flex items-center gap-0.5">자세히 <IconChevronRight size={13} aria-hidden="true" /></Link></div>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12.5px]">
               <dt className="text-gray-500">플랜</dt><dd className="font-semibold text-gray-900">{TIER_NAME[tier] ?? tier}{billing.monthly_fee ? ` · 월 ${won(billing.monthly_fee)}` : ""}</dd>
-              <dt className="text-gray-500">{month}월 청구</dt><dd className="font-semibold text-gray-900">{billing.invoice ? <>{won(billing.invoice.total)} <span className={`ml-1 text-[10.5px] px-1.5 py-0.5 rounded-full ${billing.invoice.paid_at ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{billing.invoice.paid_at ? "입금 확인" : "대기"}</span></> : <span className="text-gray-400 font-normal">청구 없음</span>}</dd>
+              <dt className="text-gray-500">{month}월 청구</dt><dd className="font-semibold text-gray-900">{billing.invoice && (BILLED.has(billing.invoice.status) || billing.invoice.paid_at) ? <>{won(billing.invoice.total)} <span className={`ml-1 text-[10.5px] px-1.5 py-0.5 rounded-full ${billing.invoice.paid_at ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{billing.invoice.paid_at ? "입금 확인" : "입금 대기"}</span></> : <span className="text-gray-400 font-normal">아직 계산서가 발행되지 않았습니다</span>}</dd>
               {billing.pay_cycle && <><dt className="text-gray-500">납부</dt><dd className="font-semibold text-gray-900">{billing.pay_cycle === "LUMP" ? "일시납" : "월납 · 매월 1일"}</dd></>}
             </dl>
           </section>

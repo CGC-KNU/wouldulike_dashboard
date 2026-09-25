@@ -124,21 +124,29 @@ export default async function PlanPage({
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value ?? "";
 
-  let tier = "FREE";
-  let restaurantName = "";
+  /**
+   * **못 읽었으면 못 읽었다고 한다** (0924).
+   *
+   * 전에는 `tier` 를 "FREE" 로 초기화하고 성공했을 때만 덮어썼다. 예외는 삼켰다.
+   * 그래서 토큰이 만료됐거나 서버가 한 번 느린 것뿐인데, 월 5만 원 내는 사장님이
+   * Free 카드에 **"현재 이용 중"** 배지가 붙은 화면을 봤다. 모르면 아무 카드도 켜지 않는다.
+   *
+   * 원본도 홈과 같은 한 벌로 바꿨다. 전에는 `/api/dashboard/stats/` 를 따로 읽어서
+   * 같은 매장의 등급이 홈과 여기서 다르게 나올 수 있었다.
+   */
+  let home: { store: { name: string; tier: string | null; contract_ends_on: string | null };
+              billing: { monthly_fee: number | null; pay_cycle: string | null } } | null = null;
   try {
-    const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/stats/`);
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/astro/partner/home/`);
     if (rid) url.searchParams.set("restaurant_id", rid);
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = await res.json();
-      tier = data.tier ?? "FREE";
-      restaurantName = data.restaurant_name ?? "";
-    }
-  } catch { /* 무시 */ }
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    if (res.ok) home = await res.json();
+  } catch { home = null; }
+
+  const tier = home?.store.tier ?? null;
+  const restaurantName = home?.store.name ?? "";
+  const myFee = home?.billing.monthly_fee ?? null;
+  const endsOn = home?.store.contract_ends_on ?? null;
 
   return (
     <div className="px-4 pt-6 max-w-lg mx-auto pb-10">
@@ -148,10 +156,36 @@ export default async function PlanPage({
           <p className="text-xs text-gray-400 mb-0.5">{restaurantName}</p>
         )}
         <h1 className="text-xl font-bold text-navy">이용 플랜</h1>
-        <p className="text-xs text-gray-400 mt-1">
-          플랜은 계약 기간(한 학기) 동안 유지됩니다
-        </p>
+        {/* 0924: 전에는 모든 매장에 "한 학기 동안 유지됩니다" 라고 단정했다. 계약 종료일이
+            응답에 들어 있으므로 아는 매장에는 그 날짜를, 모르는 매장에는 아무 말도 하지 않는다. */}
+        {endsOn && (
+          <p className="text-xs text-gray-400 mt-1">
+            지금 계약은 {endsOn.slice(0, 4)}년 {+endsOn.slice(5, 7)}월 {+endsOn.slice(8, 10)}일까지입니다
+          </p>
+        )}
       </div>
+
+      {home === null ? (
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 text-center mb-4">
+          <p className="text-sm font-semibold text-gray-800">지금 플랜을 확인하지 못했습니다</p>
+          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+            아래는 플랜별 기준 안내입니다. 사장님 매장이 어느 플랜인지는 잠시 뒤 다시 열어 주세요.
+          </p>
+        </div>
+      ) : myFee !== null ? (
+        <div className="rounded-2xl border border-navy/20 bg-navy/[0.04] p-4 mb-4">
+          <p className="text-[12px] text-gray-500">지금 내고 계신 금액</p>
+          <p className="text-[19px] font-bold text-gray-900 mt-0.5 tabular-nums">
+            월 {myFee.toLocaleString()}원
+            <span className="text-[11.5px] font-medium text-gray-400 ml-1.5">부가세 별도</span>
+          </p>
+          {home.billing.pay_cycle && (
+            <p className="text-[11.5px] text-gray-500 mt-1">
+              {home.billing.pay_cycle === "LUMP" ? "일시납" : "월납 · 매월 1일"}
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {/* 플랜 카드 */}
       <div className="flex flex-col gap-4">
@@ -192,7 +226,9 @@ export default async function PlanPage({
               {/* 가격 */}
               <div className="flex items-baseline gap-1 mb-4">
                 <span className={`text-3xl font-extrabold ${plan.priceCls}`}>{plan.price}</span>
-                <span className="text-xs text-gray-400 font-normal">{plan.priceSub}</span>
+                {/* 0924: 이 숫자는 화면에 박아 둔 **기준** 가격이다. 상권·계약에 따라 달라지므로
+                    사장님이 실제로 내는 금액은 위 '지금 내고 계신 금액' 에 따로 적는다. */}
+                <span className="text-xs text-gray-400 font-normal">{plan.priceSub} · 기준</span>
               </div>
 
               {/* 구분선 */}
@@ -222,8 +258,8 @@ export default async function PlanPage({
       {/* 하단 안내 */}
       <div className="mt-6 bg-white/85 backdrop-blur rounded-[18px] border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04)] px-5 py-4">
         <p className="text-xs text-gray-500 leading-relaxed text-center">
-          플랜 변경이 필요하시면{" "}
-          <span className="font-semibold text-gray-700">우주라이크 팀</span>에 직접 문의해주세요.
+          플랜을 바꾸고 싶으시면 담당자에게 말씀해 주세요. 급하시면{" "}
+          <a href="mailto:hello@wouldulike.kr" className="font-semibold text-navy">hello@wouldulike.kr</a>
         </p>
       </div>
     </div>
