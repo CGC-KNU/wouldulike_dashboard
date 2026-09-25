@@ -19,6 +19,8 @@ export interface PartnerHomeData {
     restaurant_id: number; name: string; category: string | null; address: string | null; main_menu: string | null;
     tier: string | null; campus: string | null; contract_started_on: string | null; contract_ends_on: string | null; contract_days: number | null;
     coupon_basic: string | null; coupon_limited: string | null; stamp_count: string | null; stamp_reward: string | null;
+    /** 스탬프를 계약에서 뺀 매장이 있다. 그 매장의 0 은 "아무도 안 왔다"가 아니라 "안 쓰는 기능"이다. */
+    stamp_enabled?: boolean;
   };
   month: string;
   stats: { this: { coupon_used: number; stamp: number; revisit: number }; prev: { coupon_used: number; stamp: number; revisit: number }; loyal_total: number };
@@ -41,9 +43,17 @@ const won = (n: number) => `${n.toLocaleString()}원`;
  */
 const BILLED = new Set(["ISSUING", "ISSUED"]);
 
+/**
+ * 전월 같은 기간과의 차이. 백엔드가 **지난달에서 똑같이 흐른 만큼**만 잘라서 준다 —
+ * 이달 1일~오늘을 지난달 한 달 전체와 빼던 때는 매달 초에 모든 매장이 빨간 ▼ 를 봤다.
+ *
+ * 0924: "—" 가 거꾸로 걸려 있었다. 둘 다 0 인 경우(유일하게 확실한 경우)에 숨기고,
+ * 지난달 0 → 이번 달 5 처럼 **댈 기준이 없는 경우**에 자신 있게 "▲ +5" 를 보여 줬다.
+ */
 function Delta({ now, prev }: { now: number; prev: number }) {
   const diff = now - prev;
-  if (prev === 0 && now === 0) return <span className="text-[12px] text-gray-400">—</span>;
+  if (prev === 0 && now === 0) return <span className="text-[12px] text-gray-400">지난달에도 없었습니다</span>;
+  if (prev === 0) return <span className="text-[12px] text-gray-400">지난달 같은 기간에는 없었습니다</span>;
   if (diff === 0) return <span className="text-[12px] text-gray-400">전월과 같음</span>;
   return <span className={`text-[12px] font-bold tabular-nums ${diff > 0 ? "text-emerald-600" : "text-red-600"}`}>{diff > 0 ? "▲" : "▼"} 전월 {diff > 0 ? "+" : ""}{diff}</span>;
 }
@@ -61,6 +71,8 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
   const tier = store.tier ?? "FREE";
   const card = "bg-white rounded-[18px] border border-gray-200 shadow-[0_1px_2px_rgba(16,24,40,0.04)]";
   const daysToReport = store.contract_days === null ? null : Math.max(0, 30 - store.contract_days);
+  // 스탬프를 계약에서 뺀 매장은 적립 자체가 막혀 있다. 그 0 은 장사와 무관하다.
+  const stampOn = store.stamp_enabled !== false;
 
   return (
     <div className="max-w-3xl mx-auto px-4 pt-5 pb-8 space-y-3">
@@ -78,28 +90,51 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
       {/* 이번 달 숫자 — 관리자 화면과 같은 원본 */}
       <section aria-label={`${month}월 지표`} className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         {([
-          ["쿠폰 사용", stats.this.coupon_used, stats.prev.coupon_used, "장"],
-          ["스탬프 적립", stats.this.stamp, stats.prev.stamp, "개"],
-          ["재방문", stats.this.revisit, stats.prev.revisit, "명"],
-        ] as const).map(([label, now, prev, unit]) => (
+          ["쿠폰 사용", stats.this.coupon_used, stats.prev.coupon_used, "장", true],
+          ["스탬프 적립", stats.this.stamp, stats.prev.stamp, "개", stampOn],
+          ["재방문", stats.this.revisit, stats.prev.revisit, "명", stampOn],
+        ] as const).map(([label, now, prev, unit, on]) => (
           <div key={label} className={`${card} p-3.5`}>
             <p className="text-[12px] text-gray-500">{label}</p>
-            <p className="text-[24px] font-bold text-gray-900 tabular-nums tracking-[-0.02em] leading-none mt-1.5">{now}<span className="text-[12px] font-medium text-gray-400 ml-0.5">{unit}</span></p>
-            <div className="mt-2"><Delta now={now} prev={prev} /></div>
+            {on ? (
+              <>
+                <p className="text-[24px] font-bold text-gray-900 tabular-nums tracking-[-0.02em] leading-none mt-1.5">{now}<span className="text-[12px] font-medium text-gray-400 ml-0.5">{unit}</span></p>
+                <div className="mt-2"><Delta now={now} prev={prev} /></div>
+              </>
+            ) : (
+              /* 스탬프를 계약에서 뺀 매장. 0 을 띄우면 "아무도 안 왔다" 로 읽힌다. */
+              <>
+                <p className="text-[19px] font-bold text-gray-300 leading-none mt-2">—</p>
+                <p className="text-[12px] text-gray-400 mt-2.5">스탬프를 쓰지 않는 매장입니다</p>
+              </>
+            )}
           </div>
         ))}
         <div className={`${card} p-3.5`}>
           <p className="text-[12px] text-gray-500">단골 누적</p>
-          <p className="text-[24px] font-bold text-gray-900 tabular-nums tracking-[-0.02em] leading-none mt-1.5">{stats.loyal_total}<span className="text-[12px] font-medium text-gray-400 ml-0.5">명</span></p>
-          <p className="text-[12px] text-gray-400 mt-2">스탬프 3번 이상</p>
+          {stampOn ? (
+            <>
+              <p className="text-[24px] font-bold text-gray-900 tabular-nums tracking-[-0.02em] leading-none mt-1.5">{stats.loyal_total}<span className="text-[12px] font-medium text-gray-400 ml-0.5">명</span></p>
+              {/* 이 칸만 기간이 다르다. 아래 한 줄짜리 설명은 나머지 셋만 덮으므로 여기서 따로 말한다. */}
+              <p className="text-[12px] text-gray-400 mt-2">지금까지 3일 이상 오신 분</p>
+            </>
+          ) : (
+            <>
+              <p className="text-[19px] font-bold text-gray-300 leading-none mt-2">—</p>
+              <p className="text-[12px] text-gray-400 mt-2.5">스탬프를 쓰지 않는 매장입니다</p>
+            </>
+          )}
         </div>
       </section>
-      <p className="text-[11.5px] text-gray-400 -mt-1">{month}월 1일부터 오늘까지. 우주라이크 앱에서 실제로 찍힌 것만 셉니다.</p>
+      <p className="text-[11.5px] text-gray-400 -mt-1">
+        앞의 셋은 {month}월 1일부터 오늘까지입니다. 전월 비교도 지난달 같은 기간끼리 뺍니다.
+        우주라이크 앱에서 실제로 찍힌 것만 셉니다.
+      </p>
 
       {/* 우주라이크가 한 일 — 애딧 '비즈니스 팀' 블록 */}
       <section className={`${card} p-4 bg-navy/[0.03] border-transparent`} aria-label="우주라이크가 한 일">
         <div className="flex items-baseline justify-between mb-2">
-          <h2 className="text-[14px] font-bold text-gray-900">우주라이크가 {store.name}을 위해 한 일</h2>
+          <h2 className="text-[14px] font-bold text-gray-900">최근에 있었던 일</h2>
           <Link href={`/dashboard/owner/content${ridParam}`} className="text-[12px] font-semibold text-navy hover:underline">전체 보기 →</Link>
         </div>
         {feed.length === 0 ? (
