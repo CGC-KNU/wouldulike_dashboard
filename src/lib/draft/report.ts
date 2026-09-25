@@ -7,14 +7,18 @@ import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, 
  *  - 비교군은 **우리 채널 평소 게시물**(Papillon cohort) 하나. "업계 평균"은 없다. 표본 n<5 또는 hidden 이면 비교하지 않는다.
  *  - 계산은 중앙값이고 문장도 "중앙값"이라고 말한다. 표본 수·기간을 근거 줄에 밝힌다.
  *  - 근거가 없으면 그 자리를 다른 주장으로 메우지 않는다 ("상위권" 금지).
- *  - 헤드라인은 고정 순서(저장 → 도달 → 조회). 잘 나온 지표를 고르지 않는다.
+ *  - (0925 에 바뀜 — 아래) 헤드라인은 고정 순서(저장 → 도달 → 조회). 잘 나온 지표를 고르지 않는다.
  *  - 자기 수치는 정확하게, 비교군만 "약". 여러 매장이 함께 나온 게시물이면 그 사실을 문장이 말한다.
  *  - 앱 지표는 병렬 서술, 인과 주장 금지.
+ *
+ * 0925 마케팅 피드백으로 **점주에게 나가는 문장**의 규칙이 바뀌었다:
+ *  - 우리 채널 평소 게시물과 견주지 않는다. 사장님이 궁금한 건 채널 안 순위가 아니라 가게가 얼마나 알려졌는지다.
+ *    채널 비교(verdict · cohortNote · 제안 근거 줄)는 Probe 내부 화면에만 남는다.
+ *  - 약점을 말하지 않고, 문장에 올릴 만한 크기(MIN_OWNER_VALUE)의 숫자만 쓴다. 없는 숫자를 만들지는 않는다.
  */
 
 export const METRIC_LABEL: Record<string, string> = { saved: "저장", reach: "도달", views: "조회", shares: "공유", likes: "좋아요", comments: "댓글", profile_visits: "프로필 방문", follows: "팔로우" };
 export const TILE_KEYS = ["views", "reach", "likes", "comments", "saved", "shares"] as const;
-export const HEADLINE_ORDER = ["saved", "reach", "views"] as const;
 export const MIN_COHORT = 5;
 /** 비교할 근거가 없을 때의 한 줄 요약 — 공개 양식에서는 제목으로 쓰지 않는다(뜻이 없는 문장이라). */
 export const DEFAULT_SUMMARY = "인스타그램 수치와 같은 기간 앱에서 일어난 일을 정리했습니다.";
@@ -83,23 +87,63 @@ export const VERDICT_CLASS: Record<VerdictTone, string> = { good: "text-emerald-
 /** 출처 배지 — 앱 지표 화면의 DB 배지와 같은 색·이름 */
 export const METRIC_SOURCE: Record<ReportMetricSource, { label: string; tone: "blue" | "navy" | "gray" }> = { graph: { label: "인스타", tone: "blue" }, app: { label: "DB", tone: "navy" }, sheet: { label: "시트", tone: "gray" } };
 
-/** 해석 문장 — 애딧 "지면 비교" 아래 한 줄. 근거 없으면 그렇다고 말한다. */
-export function interpret(m: ReportMetric): string {
-  const label = METRIC_LABEL[m.key] ?? m.key;
-  if (!comparable(m)) return `${label}은(는) 비교 기준(우리 채널 평소 게시물 ${MIN_COHORT}건 이상)이 아직 없어 수치만 드립니다.`;
-  // 점주 문장에는 통계 용어를 안 쓴다("평균"도 "중앙값"도). 정확한 정의는 근거 줄·라벨이 맡는다.
-  const med = m.median as number;
-  const base = `우리 채널이 평소 올리는 게시물 ${m.n}건의 가운데 값(${approx(med)})`;
-  // 「평소 범위 A~B」는 이 계정에서 너무 넓어 아무 말도 안 했다 — 대신 순위를 적는다.
-  // 순위는 분모가 같이 보여서 점주가 "몇 건 중 몇 위"로 바로 읽는다.
-  const b = m.baskets?.all;
-  const rng = b && b.rank !== null && b.n >= 2
-    ? ` 같은 형식으로 올린 ${b.n}건 중 ${b.rank}번째입니다.`
-    : m.p10 !== null && m.p90 !== null ? ` 평소 범위는 ${approx(m.p10)}~${approx(m.p90)}입니다.` : "";
-  if (m.value >= med * 1.2) return `${label} ${m.value.toLocaleString()}은(는) ${base}보다 높습니다.${rng}`;
-  if (m.value <= med * 0.8) return `${label} ${m.value.toLocaleString()}은(는) ${base}보다 낮았습니다.${rng}`;
-  return `${label} ${m.value.toLocaleString()}은(는) ${base} 근처입니다.${rng}`;
+/** 점주 문장에 올릴 만한 크기 — 이보다 작은 수는 문장에 쓰지 않는다(댓글 2개를 크게 말하지 않는다). */
+export const MIN_OWNER_VALUE = 10;
+
+const WHY: Record<string, string> = {
+  saved: "저장은 '나중에 가봐야지' 하고 담아두는 행동이라, 맛집 콘텐츠에서는 방문 의향에 가장 가까운 신호로 봅니다.",
+  reach: "도달은 게시물을 한 번이라도 본 계정 수입니다.",
+  views: "조회는 게시물이 화면에 펼쳐진 횟수입니다.",
+  shares: "공유는 '여기 같이 가자'고 친구에게 보낸 수입니다.",
+};
+const OWNER_LINE: Record<string, (v: string) => string> = {
+  saved: (v) => `저장이 ${v}번 모였습니다.`,
+  reach: (v) => `${v}명에게 닿았습니다.`,
+  views: (v) => `${v}회 조회됐습니다.`,
+  shares: (v) => `${v}번 공유됐습니다.`,
+};
+
+/** 제목 끝 "(정든밤 포함)" 은 우리끼리의 표시라 점주에게 보이지 않는다 — 공개 양식·카톡 텍스트가 같이 쓴다 */
+export const stripMarker = (t: string) => t.replace(/\s*[(（][^()（）]*포함\s*[)）]\s*/g, " ").trim();
+
+/** 받침에 맞는 조사 — 한글로 끝나지 않으면 "이(가)" 꼴로 둔다 */
+export function josa(word: string, withBatchim: string, without: string): string {
+  const c = word.trim().charCodeAt(word.trim().length - 1);
+  if (c < 0xac00 || c > 0xd7a3) return `${word}${withBatchim}(${without})`;
+  return word + ((c - 0xac00) % 28 ? withBatchim : without);
 }
+
+/**
+ * 점주 문장 한 줄 — 수치는 정확하게, 뜻은 WHY 로. **우리 채널 평소 게시물과 견주지 않는다**(0925, 머리말).
+ * 0925 이전에는 "우리 채널이 평소 올리는 게시물 N건의 가운데 값보다 낮았습니다 · N건 중 M번째" 를 썼다.
+ */
+export function interpret(m: ReportMetric): string {
+  const v = m.value.toLocaleString();
+  const head = OWNER_LINE[m.key]?.(v) ?? `${METRIC_LABEL[m.key] ?? m.key} ${v}.`;
+  return [head, WHY[m.key]].filter(Boolean).join(" ");
+}
+
+/** 점주 해석 문단의 순서 — 도달은 제목 줄(ownerHeadline)이 말하므로 여기서 또 말하지 않는다 */
+const OWNER_ORDER = ["saved", "views", "shares"] as const;
+
+/** 점주 해석 문단 — 저장 → 조회 → 공유 중 문장에 올릴 만한 크기인 것 두 개. 없으면 빈 배열 */
+export function ownerLines(metrics: ReportMetric[]): string[] {
+  return OWNER_ORDER.map((k) => metrics.find((m) => m.key === k))
+    .filter((m): m is ReportMetric => Boolean(m) && (m as ReportMetric).value >= MIN_OWNER_VALUE)
+    .slice(0, 2).map(interpret);
+}
+
+/** 점주 리포트 제목 줄 — 이 콘텐츠가 몇 명에게 닿았나. 문장에 올릴 크기가 아니면 DEFAULT_SUMMARY(공개 양식은 제목을 숨긴다) */
+export function ownerHeadline(s: ReportSnapshot): string {
+  const r = s.metrics.find((m) => m.key === "reach");
+  if (!r || r.value < MIN_OWNER_VALUE) return DEFAULT_SUMMARY;
+  const who = s.post.co_stores > 1 ? `${s.store.name} 등 ${s.post.co_stores}곳을 소개한 이번 콘텐츠가` : `이번 ${s.store.name} 콘텐츠가`;
+  return `${who} ${r.value.toLocaleString()}명에게 닿았습니다.`;
+}
+
+/** 0925 이전 interpret() 가 쓴 채널 비교 문장 — 이미 만든 리포트에 박혀 있어 공개 양식에서 알아보고 갈아 끼운다 */
+const LEGACY_CHANNEL_LINE = /우리 채널(이 평소 올리는 게시물| 평소 게시물)/;
+export const isLegacyChannelLine = (t: string) => LEGACY_CHANNEL_LINE.test(t);
 
 export function cohortNote(metrics: ReportMetric[]): string | null {
   // 순위가 있으면 분모를 셋 다 보여 준다 — "몇 건과 견줬는지"가 곧 이 숫자를 얼마나 믿을지다
@@ -116,38 +160,37 @@ export function cohortNote(metrics: ReportMetric[]): string | null {
   return `우리 채널이 최근 ${m.window_days ?? "-"}일 동안 올린 게시물 ${m.n}건의 중앙값(가운데 값) 기준`;
 }
 
-const WHY: Record<string, string> = {
-  saved: "저장은 '나중에 가봐야지' 하고 담아두는 행동이라, 맛집 콘텐츠에서는 방문 의향에 가장 가까운 신호로 봅니다.",
-  reach: "도달은 게시물을 한 번이라도 본 계정 수입니다.",
-  views: "조회는 게시물이 화면에 펼쳐진 횟수입니다.",
-};
-
 /**
- * 사장님 보고글(카톡 본문). 구조는 라라더 건 그대로 — 인사 · 어떤 게시물 · 헤드라인 지표 · 해석 · 나머지 · 앱 · 맺음.
- * 헤드라인은 저장 → 도달 → 조회 고정. 체크포인트마다 맺음이 다르다.
+ * 사장님 보고글(카톡 본문). 구조는 라라더 건 그대로 — 인사 · 어떤 게시물 · 해석 · 나머지 · 앱 · 맺음.
+ * 제목 줄(도달) 다음에 ownerLines(저장 → 조회 → 공유 중 문장에 올릴 크기). 채널 비교·순위 근거 줄은 싣지 않는다(0925).
+ * 체크포인트마다 맺음이 다르다.
  */
 export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D14" | "done" | "waiting"): string {
   const date = s.post.posted_at ? new Date(s.post.posted_at) : null;
   const when = date ? `${date.getMonth() + 1}/${date.getDate()}` : "최근";
-  const head = HEADLINE_ORDER.map((k) => s.metrics.find((m) => m.key === k)).find(Boolean) ?? s.metrics[0];
-  const co = s.post.co_stores > 1 ? ` 이 게시물은 ${s.post.co_stores}곳을 함께 소개한 편이라, 아래는 게시물 전체 수치입니다.` : "";
+  const co = s.post.co_stores > 1 ? ` ${s.post.co_stores}곳을 함께 소개한 큐레이션입니다.` : "";
   const lines: string[] = [
     "사장님, 안녕하세요. 우주라이크입니다.",
     "",
-    `지난 ${when} 저희 인스타그램 '${s.post.topic}' 게시물에 ${s.store.name}을(를) 소개해 드렸습니다.${co}${s.age_days !== null ? ` ${s.age_days}일이 지나 정리해 보내드립니다.` : ""}`,
+    `지난 ${when} 저희 인스타그램 '${stripMarker(s.post.topic)}' 게시물에 ${josa(s.store.name, "을", "를")} 소개해 드렸습니다.${co}${s.age_days !== null ? ` ${s.age_days}일이 지나 정리해 보내드립니다.` : ""}`,
     "",
   ];
-  if (!head) {
+  if (!s.metrics.length) {
     lines.push("아직 인스타그램 수치가 모이지 않았습니다. 모이는 대로 다시 보내드리겠습니다.");
   } else {
-    lines.push(`가장 먼저 보실 것은 ${METRIC_LABEL[head.key] ?? head.key}입니다.`, interpret(head), WHY[head.key] ?? "", "");
-    const rest = TILE_KEYS.filter((k) => k !== head.key).map((k) => s.metrics.find((m) => m.key === k)).filter((m): m is ReportMetric => Boolean(m));
+    const headline = ownerHeadline(s);
+    const said = [...(headline !== DEFAULT_SUMMARY ? [headline] : []), ...ownerLines(s.metrics)];
+    if (said.length) lines.push(...said, "");
+    const saidKeys = ["reach", ...OWNER_ORDER.filter((k) => s.metrics.some((m) => m.key === k && m.value >= MIN_OWNER_VALUE)).slice(0, 2)] as string[];
+    const rest = TILE_KEYS.filter((k) => !saidKeys.includes(k)).map((k) => s.metrics.find((m) => m.key === k))
+      .filter((m): m is ReportMetric => Boolean(m) && (m as ReportMetric).value >= MIN_OWNER_VALUE);
     if (rest.length) lines.push(rest.map((m) => `${METRIC_LABEL[m.key] ?? m.key} ${m.value.toLocaleString()}`).join(" · "), "");
-    const note = cohortNote(s.metrics);
-    lines.push(`(${new Date(s.as_of).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 기준${note ? ` · ${note}` : " · 비교 기준 없음"})`, "");
+    lines.push(`(${new Date(s.as_of).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 기준 인스타그램 수치)`, "");
   }
-  if (s.app) {
-    lines.push(`같은 달 앱에서는 쿠폰 ${s.app.coupon_redeemed}장이 사용되고 스탬프 ${s.app.stamp_earned}개가 적립됐습니다. 게시물과 직접 연결된 수치는 아니고, 같은 기간에 일어난 일입니다.`, "");
+  // 앱은 0 이 아닌 것만 — "쿠폰 0장" 을 보내지 않는다
+  const appBits = s.app ? [s.app.coupon_redeemed > 0 ? `쿠폰 ${s.app.coupon_redeemed}장이 사용됐고` : "", s.app.stamp_earned > 0 ? `스탬프 ${s.app.stamp_earned}개가 적립됐습니다` : ""].filter(Boolean) : [];
+  if (appBits.length) {
+    lines.push(`같은 달 앱에서는 ${appBits.join(" ").replace(/됐고$/, "됐습니다")}. 게시물과 직접 연결된 수치는 아니고, 같은 기간에 일어난 일입니다.`, "");
   }
   const close: Record<typeof checkpoint, string> = {
     D2: "이틀 치 초기 반응입니다. 다음 주에 저장·공유가 계속 도는지 한 번 더 보고 드리겠습니다.",
@@ -178,14 +221,9 @@ const RULES: { rule: string; title: string; when: (s: ReportSnapshot) => boolean
     rule: "P1", title: "매장 안 QR 안내물",
     when: (s) => { const m = s.metrics.find((x) => x.key === "saved"); return Boolean(m && comparable(m) && m.value >= (m.median as number) * 1.2 && s.app && s.app.coupon_redeemed === 0); },
     // 인스타 지표와 앱 지표를 한 문장에서 잇지 않는다(인과 금지). 문장을 끊는다.
-    text: () => "이번 게시물은 저장이 평소보다 많았습니다. 한편 이번 달 앱 쿠폰 사용은 아직 없습니다. 계산대 QR 안내물 위치를 한 번 보시면 좋겠습니다.",
+    // 0925: "평소보다 많았습니다" · "쿠폰 사용은 아직 없습니다" 를 뺐다 — 채널 비교도, 약점도 점주 문장에 쓰지 않는다.
+    text: (s) => `이번 게시물은 저장이 ${(s.metrics.find((x) => x.key === "saved")?.value ?? 0).toLocaleString()}번 모였습니다. 가게에 오신 분들이 앱 쿠폰을 바로 쓰실 수 있게, 계산대 QR 안내물 위치를 한 번 봐 주시면 좋겠습니다.`,
     basis: (s) => ({ signal: `${sig(s, "saved")} / 이번 달 쿠폰 사용 ${s.app?.coupon_redeemed ?? 0}`, reading: `${above(s, "saved", 1.2)} · 앱 쿠폰 사용 없음 (병렬 서술, 인과 아님)`, tone: "good" }),
-  },
-  {
-    rule: "P2", title: "캡션 첫 줄에 매장명·위치",
-    when: (s) => { const r = s.metrics.find((x) => x.key === "reach"); const p = s.metrics.find((x) => x.key === "profile_visits"); return Boolean(r && p && comparable(r) && comparable(p) && r.value >= (r.median as number) && p.value < (p.median as number) * 0.8); },
-    text: () => "많이 보긴 했는데 저희 계정까지 들어온 분이 적었습니다. 다음 편은 첫 줄에 매장명과 위치를 넣어 보겠습니다.",
-    basis: (s) => ({ signal: `${sig(s, "reach")} / ${sig(s, "profile_visits")}`, reading: "도달은 가운데 값 이상, 프로필 방문은 가운데 값의 80% 아래", tone: "warn" }),
   },
   {
     rule: "P3", title: "모임·단체 소구",
@@ -194,26 +232,33 @@ const RULES: { rule: string; title: string; when: (s: ReportSnapshot) => boolean
     basis: (s) => ({ signal: sig(s, "shares"), reading: above(s, "shares", 1.3), tone: "good" }),
   },
   {
-    rule: "P4", title: "촬영 재진행",
-    when: (s) => { const r = s.metrics.find((x) => x.key === "reach"); const v = s.metrics.find((x) => x.key === "saved"); return Boolean(r && v && comparable(r) && comparable(v) && r.value < (r.median as number) * 0.8 && v.value < (v.median as number) * 0.8); },
-    // 효과 암시·지출 권유를 분리한다 — 나쁜 달에 "찍으면 좋아진다"는 근거 없는 약속을 하지 않는다.
-    text: () => "이번 편은 평소보다 적게 나갔습니다. 사진을 새로 찍는 것도 방법인데, 원하시면 촬영 일정과 견적을 따로 드리겠습니다.",
-    basis: (s) => ({ signal: `${sig(s, "reach")} / ${sig(s, "saved")}`, reading: "도달·저장 모두 가운데 값의 80% 아래", tone: "warn" }),
-  },
-  {
     rule: "P6", title: "스탬프 목표 개수 조정",
     when: (s) => Boolean(s.app && s.app.stamp_earned > 0 && s.app.revisit === 0),
-    text: () => "스탬프는 모이고 있는데 아직 재방문으로 이어진 분이 없습니다. 목표 개수를 낮추면 첫 보상이 나옵니다.",
+    text: (s) => `스탬프가 ${s.app?.stamp_earned ?? 0}개 모였습니다. 목표 개수를 조금 낮추면 첫 보상을 받는 분이 더 빨리 나옵니다.`,
     basis: (s) => ({ signal: `이번 달 스탬프 적립 ${s.app?.stamp_earned ?? 0} / 재방문 ${s.app?.revisit ?? 0}`, reading: "스탬프는 쌓이는데 재방문 0", tone: "gray" }),
   },
 ];
 
 /**
  * 최대 2개, 표 순서. 지난 리포트에서 쓴 rule 은 건너뛴다(2개월 연속 금지). 하나도 안 걸리면 빈 배열 — 억지로 채우지 않는다.
- * 중앙값 기반 규칙(P1~P4)은 벤치마크와 **같은 표본 게이트**를 탄다 — `comparable()` 이 false 인 지표로는 제안이 생기지 않는다(when 안에서 검사).
+ * 중앙값 기반 규칙(P1·P3)은 벤치마크와 **같은 표본 게이트**를 탄다 — `comparable()` 이 false 인 지표로는 제안이 생기지 않는다(when 안에서 검사).
+ * 비교는 **언제 제안할지**를 고르는 데만 쓰고, 점주 문장에는 쓰지 않는다(0925).
+ * P2(프로필 방문이 적었다)·P4(평소보다 적게 나갔다)는 약점을 말하는 제안이라 0925 에 없앴다 — RETIRED_RULES.
  */
 export function propose(s: ReportSnapshot, usedRules: string[] = []): ReportProposal[] {
   return RULES.filter((r) => !usedRules.includes(r.rule) && r.when(s)).slice(0, 2).map((r) => ({ rule: r.rule, title: r.title, generated_text: r.text(s), text: r.text(s), approved: false, edited_by: null, edited_at: null, ...r.basis(s) }));
+}
+
+export const RETIRED_RULES = ["P2", "P4"];
+
+/**
+ * 이미 만든 리포트의 제안을 공개 양식에 실을 문장으로. 없앤 규칙은 빼고, 사람이 손대지 않은 기계 문장은 **지금 규칙의 문장**으로 바꾼다.
+ * 사람이 고친 문장은 그대로 둔다 — 그 사람이 승인 가드를 통과시킨 문장이다.
+ */
+export function ownerProposalText(p: ReportProposal, s: ReportSnapshot): string | null {
+  if (RETIRED_RULES.includes(p.rule)) return null;
+  const rule = RULES.find((r) => r.rule === p.rule);
+  return rule && p.text === p.generated_text ? rule.text(s) : p.text;
 }
 
 /* ═══════════ 금지 표현 — 승인 시점 서버 검사, 걸리면 발행 차단 ═══════════ */
@@ -253,6 +298,7 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
   const add = (v: number) => { allowed.add(String(v)); allowed.add(v.toLocaleString()); allowed.add(approx(v).replace("약 ", "")); };
   for (const m of s.metrics) { for (const v of [m.value, m.median, m.p10, m.p90]) if (v !== null) add(v); if (m.delta_pct !== null) add(Math.abs(m.delta_pct)); add(m.n); }
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
+  add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
   /**
    * 0925: 이 정규식이 **네 자리 이상이나 쉼표가 들어간 수**만 잡았다. 그런데 우리 실측은
