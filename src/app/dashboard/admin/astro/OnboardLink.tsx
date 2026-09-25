@@ -50,7 +50,7 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
     // 기존 PIN 이 있으면 발급이 막힌다. 다만 우리가 심은 임시 PIN 이면 재발급이므로 서버가 허용한다 —
     // 화면은 그 구분을 모르니 발급을 시도해 보고 409 일 때만 막힌 것으로 본다.
     fetch(`/api/dashboard/restaurant?rid=${rid}`).then((r) => (r.ok ? r.json() : null))
-      .then((j: { pin?: string | null } | null) => setHasPin(Boolean(j?.pin))).catch(() => setHasPin(null));
+      .then((j: { has_pin?: boolean } | null) => setHasPin(Boolean(j?.has_pin))).catch(() => setHasPin(null));
   }, [open, hasPin, rid]);
 
   const issue = async () => {
