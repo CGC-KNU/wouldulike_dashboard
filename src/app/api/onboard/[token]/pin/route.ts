@@ -40,6 +40,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     body: JSON.stringify({ current_pin: tempPinFor(v.payload.rid), new_pin }), cache: "no-store",
   });
   const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
-  if (!res.ok || data.success === false) return NextResponse.json({ success: false, message: data.message ?? "PIN 을 바꾸지 못했습니다." }, { status: res.status || 400 });
+  if (!res.ok || data.success === false) {
+    /**
+     * 0925: 백엔드가 401(로그인 안 됨)을 줘도 화면에는 "PIN 을 바꾸지 못했습니다" 만 떴다.
+     * 사장님은 자기가 고른 번호가 문제인 줄 알고 다른 번호로 계속 다시 넣는다.
+     * 무엇이 막혔는지에 따라 할 수 있는 일이 다르다 — 그걸 말해 준다.
+     */
+    const fallback = res.status === 401 || res.status === 403
+      ? "로그인이 풀렸습니다. 이 링크를 다시 열어 카카오로 시작해 주세요."
+      : res.status === 404
+        ? "이 매장을 찾지 못했습니다. 링크가 오래됐을 수 있습니다 — 담당자에게 말씀해 주세요."
+        : "PIN 을 바꾸지 못했습니다. 잠시 뒤 다시 해 주세요.";
+    return NextResponse.json({ success: false, message: data.message ?? fallback }, { status: res.status || 400 });
+  }
   return NextResponse.json({ success: true });
 }
