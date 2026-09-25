@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { uploadFailureMessage } from "@/lib/uploadError";
 
 import { PreviewableImg } from "@/components/ImagePreview";
 import { safeDownloadHref } from "@/lib/downloadProxy";
@@ -115,7 +116,7 @@ export default function FreeformBlockEditor({
       }
       return r as ContentBlockItem;
     } catch (e) {
-      alert(`${file.name}: ${(e as Error).message}`);
+      alert(uploadFailureMessage(e, file.name));
       return null;
     }
   }

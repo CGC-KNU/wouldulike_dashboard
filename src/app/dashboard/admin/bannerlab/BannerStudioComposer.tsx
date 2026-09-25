@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { uploadFailureMessage } from "@/lib/uploadError";
 
 import { PaidRestaurant } from "./typesWeekly";
 
@@ -861,7 +862,7 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
       if (!reg.ok) throw new Error(r.detail ?? "슬랙 발송에 실패했습니다.");
       alert("팝업 시안을 슬랙으로 보냈습니다.");
     } catch (e) {
-      alert((e as Error).message);
+      alert(uploadFailureMessage(e));
     } finally {
       setSendingPopup(false);
     }
@@ -961,7 +962,7 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
         const blob = await renderVariant(bgImg, variantLayers);
         await uploadAndSend(weekId, r.restaurant_id, r.name, blob, clickUrl);
       } catch (e) {
-        errors.push(`${r.name}: ${(e as Error).message}`);
+        errors.push(uploadFailureMessage(e, r.name));
       }
       setBatchProgress({ done: i + 1, total: restaurants.length });
     }

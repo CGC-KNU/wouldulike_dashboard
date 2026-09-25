@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { uploadFailureMessage } from "@/lib/uploadError";
 
 import { PreviewableImg } from "@/components/ImagePreview";
 import BannerStudioComposer from "./bannerlab/BannerStudioComposer";
@@ -122,7 +123,7 @@ function ImagePickerField({
       if (!putRes.ok) throw new Error("업로드 실패");
       onChange(public_url);
     } catch (e) {
-      setErr(String(e));
+      setErr(uploadFailureMessage(e, file.name));
     } finally {
       setUploading(false);
     }
