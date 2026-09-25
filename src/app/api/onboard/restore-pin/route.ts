@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
+import { tempPinFor } from "@/lib/onboard/token";
 import { backendUrl, getAccessToken, proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
 
@@ -28,14 +29,34 @@ export async function POST(req: NextRequest) {
   if (!infoRes || !infoRes.ok) return NextResponse.json({ detail: `매장 정보를 읽지 못했습니다 (${infoRes?.status ?? "연결 실패"}).` }, { status: 502 });
   const info = (await infoRes.json().catch(() => ({}))) as { has_pin?: boolean; name?: string };
 
-  // 0925: 예전에는 현재 PIN 값을 읽어 비교했다. 이제 값은 안 온다 — 맞는지만 물어본다.
-  if (info.has_pin) {
-    const same = await fetch(backendUrl("/api/dashboard/auth/check-pin/", `restaurant_id=${rid}`), {
+  const ask = (candidate: string) =>
+    fetch(backendUrl("/api/dashboard/auth/check-pin/", `restaurant_id=${rid}`), {
       method: "POST", headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ pin: String(pin) }), cache: "no-store",
+      body: JSON.stringify({ pin: candidate }), cache: "no-store",
     }).then(async (r) => (r.ok ? Boolean(((await r.json()) as { matches?: boolean }).matches) : false)).catch(() => false);
-    if (same) {
+
+  if (info.has_pin) {
+    // 이미 그 값이면 헛일이다.
+    if (await ask(String(pin))) {
       return NextResponse.json({ ok: true, already: true, name: info.name ?? null, detail: "이미 그 PIN 입니다. 바꾼 것 없습니다." });
+    }
+
+    /**
+     * **운영 중인 매장에는 되돌리지 않는다** (0925 전수 점검).
+     *
+     * 발급(`issue`)에는 이 가드가 있는데 여기에는 없었다. 그래서 rid 를 잘못 치면 엉뚱한
+     * 매장의 PIN 이 조용히 바뀌고, 그 번호는 **손님 스탬프 적립과 쿠폰 사용에도 쓰이므로**
+     * 그 가게 운영이 그 자리에서 멈춘다. 게다가 이제 PIN 은 되읽을 수 없어 되돌릴 수도 없다.
+     *
+     * 되돌리기는 "우리가 임시 PIN 을 심어 놓은 매장" 을 원래대로 하는 일이다.
+     * 지금 걸린 게 우리 임시 PIN 이 아니면, 그건 되돌릴 대상이 아니라 남의 가게다.
+     */
+    if (!(await ask(tempPinFor(rid)))) {
+      return NextResponse.json({
+        detail: "이 매장에는 우리가 심은 임시 PIN 이 걸려 있지 않습니다. 되돌릴 대상이 아닙니다 — 매장 id 를 다시 확인해 주세요. " +
+          "그 번호는 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 여기서 바꾸면 그 가게 운영이 멈춥니다.",
+        not_our_temp: true,
+      }, { status: 409 });
     }
   }
 
