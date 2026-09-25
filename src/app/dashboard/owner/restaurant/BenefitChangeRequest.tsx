@@ -139,15 +139,15 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
             <div key={r.id} className="bg-white border border-amber-200 rounded-2xl p-4 shadow-sm">
               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span className="text-xs font-semibold text-gray-800">{r.benefit_label || r.action_label}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS.PENDING.cls}`}>{STATUS.PENDING.label}</span>
-                <span className="text-[10px] text-gray-400 ml-auto">{when(r.created_at)} 신청</span>
+                <span className={`text-[11.5px] px-2 py-0.5 rounded-full ${STATUS.PENDING.cls}`}>{STATUS.PENDING.label}</span>
+                <span className="text-[11.5px] text-gray-400 ml-auto">{when(r.created_at)} 신청</span>
               </div>
               <p className="text-xs text-gray-600 leading-relaxed">
                 <span className="text-gray-400 line-through">{r.before || "없음"}</span>
                 <span className="mx-1.5 text-gray-300">▸</span>
                 <span className="font-semibold text-navy">{r.after}</span>
               </p>
-              {r.note && <p className="text-[11px] text-gray-400 mt-1.5 bg-gray-50 rounded-lg px-2 py-1">{r.note}</p>}
+              {r.note && <p className="text-[12px] text-gray-400 mt-1.5 bg-gray-50 rounded-lg px-2 py-1">{r.note}</p>}
             </div>
           ))}
 
@@ -156,11 +156,11 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
               {done.map((r) => (
                 <li key={r.id} className="py-2.5">
                   <div className="flex items-center gap-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
+                    <span className={`text-[11.5px] px-2 py-0.5 rounded-full shrink-0 ${STATUS[r.status].cls}`}>{STATUS[r.status].label}</span>
                     <span className="text-[11.5px] text-gray-600 truncate">{r.benefit_label || r.action_label} · {r.after}</span>
-                    <span className="text-[10px] text-gray-300 ml-auto shrink-0">{when(r.decided_at)}</span>
+                    <span className="text-[11.5px] text-gray-300 ml-auto shrink-0">{when(r.decided_at)}</span>
                   </div>
-                  {r.decision_note && <p className="text-[11px] text-gray-500 mt-1">{r.decision_note}</p>}
+                  {r.decision_note && <p className="text-[12px] text-gray-500 mt-1">{r.decision_note}</p>}
                 </li>
               ))}
             </ul>
@@ -174,7 +174,7 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
       {open ? (
         <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
           <div>
-            <label htmlFor="bcr-pick" className="block text-[11px] font-semibold text-gray-500 mb-1.5">어느 혜택을 바꿀까요</label>
+            <label htmlFor="bcr-pick" className="block text-[12px] font-semibold text-gray-500 mb-1.5">어느 혜택을 바꿀까요</label>
             <select
               id="bcr-pick"
               value={action === "OTHER" ? "OTHER" : (pickedId ?? "")}
@@ -191,12 +191,12 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
               <option value="OTHER">그 밖의 요청 (스탬프 개수, 새 쿠폰 등)</option>
             </select>
             {benefits === null ? (
-              <p className="text-[11px] text-gray-400 mt-1.5">
+              <p className="text-[12px] text-gray-400 mt-1.5">
                 지금 혜택 목록을 읽지 못했습니다. 없는 것이 아니라 못 읽은 것입니다 —
                 아래 &lsquo;그 밖의 요청&rsquo;으로 적어 주셔도 됩니다.
               </p>
             ) : benefits.length === 0 ? (
-              <p className="text-[11px] text-gray-400 mt-1.5">아직 등록된 혜택이 없습니다. 아래에 원하시는 내용을 적어 주세요.</p>
+              <p className="text-[12px] text-gray-400 mt-1.5">아직 등록된 혜택이 없습니다. 아래에 원하시는 내용을 적어 주세요.</p>
             ) : null}
           </div>
 
@@ -208,7 +208,7 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
                   .map(([k, label]) => (
                     <button
                       key={k} type="button" onClick={() => setAction(k)} aria-pressed={action === k}
-                      className={`flex-1 h-9 rounded-xl text-[12.5px] font-semibold border transition-colors ${
+                      className={`flex-1 h-11 rounded-xl text-[13px] font-semibold border transition-colors active:scale-[0.98] ${
                         action === k ? "bg-navy text-white border-navy" : "bg-white text-gray-600 border-gray-200"
                       }`}
                     >{label}</button>
@@ -218,7 +218,7 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
               {action === "EDIT" && (
                 <>
                   <div>
-                    <label htmlFor="bcr-title" className="block text-[11px] font-semibold text-gray-500 mb-1.5">혜택 내용</label>
+                    <label htmlFor="bcr-title" className="block text-[12px] font-semibold text-gray-500 mb-1.5">혜택 내용</label>
                     <input
                       id="bcr-title" value={title} onChange={(e) => setTitle(e.target.value)}
                       placeholder="예: 음료 1캔 무료"
@@ -226,7 +226,7 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
                     />
                   </div>
                   <div>
-                    <label htmlFor="bcr-sub" className="block text-[11px] font-semibold text-gray-500 mb-1.5">조건 (선택)</label>
+                    <label htmlFor="bcr-sub" className="block text-[12px] font-semibold text-gray-500 mb-1.5">조건 (선택)</label>
                     <input
                       id="bcr-sub" value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
                       placeholder="예: 10,000원 이상 주문 시 · 포장 제외"
@@ -239,7 +239,7 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
           )}
 
           <div>
-            <label htmlFor="bcr-note" className="block text-[11px] font-semibold text-gray-500 mb-1.5">
+            <label htmlFor="bcr-note" className="block text-[12px] font-semibold text-gray-500 mb-1.5">
               {action === "OTHER" ? "무엇을 바꾸고 싶으신가요" : "덧붙일 말 (선택)"}
             </label>
             <textarea
@@ -254,20 +254,20 @@ export default function BenefitChangeRequest({ rid }: { rid: string | null }) {
           <div className="flex gap-2">
             <button
               type="button" onClick={submit} disabled={busy || !canSend}
-              className="flex-1 py-2.5 rounded-xl bg-navy text-white text-sm font-semibold disabled:opacity-50 active:scale-[0.98] transition-transform"
+              className="flex-1 h-12 rounded-xl bg-navy text-white text-[15px] font-bold disabled:opacity-50 active:scale-[0.98] transition-transform"
             >
               {busy ? "보내는 중…" : "신청하기"}
             </button>
             <button
               type="button" onClick={() => { setOpen(false); setErr(""); }}
-              className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-500"
+              className="h-12 px-5 rounded-xl border border-gray-200 text-[15px] font-semibold text-gray-500"
             >취소</button>
           </div>
         </div>
       ) : (
         <button
           type="button" onClick={() => { setOpen(true); setSent(""); }}
-          className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-2xl text-xs font-semibold text-gray-400 hover:border-periwinkle hover:text-periwinkle transition-colors"
+          className="w-full h-12 border-2 border-dashed border-gray-200 rounded-2xl text-[13.5px] font-semibold text-gray-500 hover:border-periwinkle hover:text-periwinkle active:scale-[0.99] transition-[color,border-color,transform]"
         >
           + 혜택 변경 신청
         </button>

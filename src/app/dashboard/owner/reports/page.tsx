@@ -83,7 +83,7 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
                 <a href={`/r/${r.token}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13.5px] font-medium text-gray-900 truncate">{r.title}</span>
-                    <span className="block text-[11px] text-gray-400">{ymd(r.sent_at ?? r.linked_at ?? r.created_at)} · {r.summary}</span>
+                    <span className="block text-[12px] text-gray-400">{ymd(r.sent_at ?? r.linked_at ?? r.created_at)} · {r.summary}</span>
                   </span>
                   <IconExternalLink size={16} className="shrink-0 text-gray-400" aria-hidden="true" />
                 </a>
@@ -98,7 +98,7 @@ export default async function OwnerReportsPage({ searchParams }: { searchParams:
           <p className="text-[13px] font-bold text-gray-900 mb-2">이번 달 지금까지</p>
           <dl className="grid grid-cols-3 gap-2 text-center">
             {([["쿠폰 사용", s.this.coupon_used, "장"], ["스탬프", s.this.stamp, "개"], ["재방문", s.this.revisit, "명"]] as const).map(([k, v, u]) => (
-              <div key={k} className="rounded-xl bg-navy/[0.04] py-2.5"><dt className="text-[11px] text-gray-500">{k}</dt><dd className="text-[20px] font-bold text-gray-900 tabular-nums">{v}<span className="text-[11px] font-medium text-gray-400 ml-0.5">{u}</span></dd></div>
+              <div key={k} className="rounded-xl bg-navy/[0.04] py-2.5"><dt className="text-[12px] text-gray-500">{k}</dt><dd className="text-[20px] font-bold text-gray-900 tabular-nums">{v}<span className="text-[12px] font-medium text-gray-400 ml-0.5">{u}</span></dd></div>
             ))}
           </dl>
           <p className="text-[11.5px] text-gray-400 mt-2">리포트에는 이 숫자에 콘텐츠 도달·저장과 담당자 코멘트가 붙습니다.</p>

@@ -234,3 +234,22 @@ body {
 .satty[data-mood="sleep"] .satty-svg { animation-duration: 5.5s; }
 .satty[data-mood="sleep"] .satty-mouth { d: path("M78 100q2 2 4 0"); }
 @media (prefers-reduced-motion: reduce) { .satty-svg, .satty-beacon, .satty-sparks, .satty-zz, .satty-pupil { animation: none !important; } }
+
+/* ── 폰에서 보는 파트너 화면 (0925) ─────────────────────────────────────────
+   사장님은 대부분 폰으로 보신다. iOS 는 **입력칸 글자가 16px 보다 작으면 누를 때 화면을
+   제멋대로 확대한다.** 그러면 가로가 밀려서 손으로 다시 줄여야 한다. 확대를 막는 대신
+   (그건 글자를 키워 보는 길까지 막는다) 입력칸을 16px 로 올린다.
+   폰에서만 건다 — PC 관리자 화면의 촘촘한 표는 그대로 둔다. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* 홈 인디케이터가 있는 폰에서 하단 바가 눌리지 않게. 기본 뷰포트에서는 사파리가 알아서
+   피해 주므로 0 이고, 홈 화면에 추가해 전체화면으로 열 때만 값이 생긴다. */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

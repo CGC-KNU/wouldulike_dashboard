@@ -80,7 +80,7 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
       <div className="flex items-center gap-3">
         <span className="w-11 h-11 rounded-full bg-navy/[0.07] text-navy grid place-items-center text-[16px] font-bold shrink-0" aria-hidden="true">{store.name.slice(0, 1)}</span>
         <div className="min-w-0 flex-1">
-          <p className="text-[17px] font-bold text-gray-900 leading-tight truncate">{store.name} <span className={`ml-1 align-middle text-[10.5px] font-bold px-1.5 py-0.5 rounded-full ${TIER_CLS[tier] ?? TIER_CLS.FREE}`}>{TIER_NAME[tier] ?? tier}</span></p>
+          <p className="text-[17px] font-bold text-gray-900 leading-tight truncate">{store.name} <span className={`ml-1 align-middle text-[11.5px] font-bold px-1.5 py-0.5 rounded-full ${TIER_CLS[tier] ?? TIER_CLS.FREE}`}>{TIER_NAME[tier] ?? tier}</span></p>
           <p className="text-[12px] text-gray-500 truncate">
             {[store.campus, store.contract_started_on && store.contract_ends_on ? `이용기간 ${md(store.contract_started_on)}~${md(store.contract_ends_on)}` : null, manager ? `담당 ${manager.name}` : null].filter(Boolean).join(" · ") || "계약 정보를 아직 안 적었습니다"}
           </p>
@@ -143,13 +143,13 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
           <ul className="divide-y divide-gray-100">
             {feed.slice(0, 6).map((f, i) => (
               <li key={i} className="flex items-center gap-2.5 py-2">
-                <span className="w-[74px] shrink-0 text-[11px] font-bold text-gray-500 tabular-nums">{md(f.date)}{f.end ? `~${md(f.end)}` : ""}</span>
+                <span className="w-[74px] shrink-0 text-[12px] font-bold text-gray-500 tabular-nums">{md(f.date)}{f.end ? `~${md(f.end)}` : ""}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13px] font-medium text-gray-900 truncate">{f.title}</span>
-                  <span className="block text-[11px] text-gray-400">{KIND_LABEL[f.kind]}{f.by ? ` · ${f.by}` : ""}</span>
+                  <span className="block text-[12px] text-gray-400">{KIND_LABEL[f.kind]}{f.by ? ` · ${f.by}` : ""}</span>
                 </span>
-                <span className={`shrink-0 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full ${FEED_CHIP[f.state]}`}>{FEED_LABEL[f.state]}</span>
-                {f.permalink && <a href={f.permalink} target="_blank" rel="noreferrer" aria-label="인스타그램에서 보기" className="shrink-0 w-8 h-8 rounded-lg grid place-items-center text-navy hover:bg-navy/[0.06]"><IconBrandInstagram size={17} aria-hidden="true" /></a>}
+                <span className={`shrink-0 text-[11.5px] font-semibold px-1.5 py-0.5 rounded-full ${FEED_CHIP[f.state]}`}>{FEED_LABEL[f.state]}</span>
+                {f.permalink && <a href={f.permalink} target="_blank" rel="noreferrer" aria-label="인스타그램에서 보기" className="shrink-0 w-11 h-11 rounded-lg grid place-items-center text-navy hover:bg-navy/[0.06] active:scale-[0.96] transition-transform"><IconBrandInstagram size={17} aria-hidden="true" /></a>}
               </li>
             ))}
           </ul>
@@ -171,13 +171,15 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
           <ul className="mt-3 space-y-1 text-[12.5px] text-gray-700">
             {store.coupon_basic && <li>· 기본 쿠폰: {store.coupon_basic}</li>}
             {store.coupon_limited && <li>· 한정 쿠폰: {store.coupon_limited}</li>}
-            {store.stamp_count && <li>· 스탬프 {store.stamp_count}개{store.stamp_reward ? ` → ${store.stamp_reward}` : ""}</li>}
+            {store.stamp_count && <li>· 스탬프 {store.stamp_count}개 카드</li>}
+            {/* 보상은 여러 칸일 수 있다. 한 줄에 이어 붙이면 "스탬프 3개 → 1개 → …" 처럼 화살표가 겹친다. */}
+            {store.stamp_reward && <li className="pl-2.5 text-gray-500">{store.stamp_reward}</li>}
             {!store.coupon_basic && !store.coupon_limited && !store.stamp_count && <li className="text-gray-400">혜택이 아직 안 적혔습니다 — <Link href={`/dashboard/owner/restaurant?tab=coupon${ridParam ? `&${ridParam.slice(1)}` : ""}`} className="text-navy font-semibold">혜택 탭</Link>에서 등록</li>}
           </ul>
           {(promo.poster_url || promo.qr_url) && (
             <div className="mt-3 flex gap-1.5">
-              {promo.poster_url && <a href={promo.poster_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 h-8 px-2.5 rounded-full border border-gray-200 text-[12px] font-semibold text-navy"><IconDownload size={13} aria-hidden="true" />포스터</a>}
-              {promo.qr_url && <a href={promo.qr_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 h-8 px-2.5 rounded-full border border-gray-200 text-[12px] font-semibold text-navy"><IconQrcode size={13} aria-hidden="true" />QR</a>}
+              {promo.poster_url && <a href={promo.poster_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 h-11 px-4 rounded-full border border-gray-200 text-[13px] font-semibold text-navy active:scale-[0.98] transition-transform"><IconDownload size={13} aria-hidden="true" />포스터</a>}
+              {promo.qr_url && <a href={promo.qr_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 h-11 px-4 rounded-full border border-gray-200 text-[13px] font-semibold text-navy active:scale-[0.98] transition-transform"><IconQrcode size={13} aria-hidden="true" />QR</a>}
             </div>
           )}
         </section>
@@ -190,7 +192,7 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
               <div className="flex items-center gap-2.5">
                 <span className="w-9 h-9 rounded-full bg-navy text-white grid place-items-center text-[13px] font-bold shrink-0" aria-hidden="true">{manager.name.slice(0, 1)}</span>
                 <span className="min-w-0 flex-1"><span className="block text-[13px] font-semibold text-gray-900">{manager.name}</span><span className="block text-[11.5px] text-gray-500">{manager.title || "우주라이크 영업"}</span></span>
-                <a href="mailto:hello@wouldulike.kr" className="shrink-0 inline-flex items-center gap-1 h-8 px-2.5 rounded-full bg-navy text-white text-[12px] font-semibold"><IconMessage2 size={13} aria-hidden="true" />문의</a>
+                <a href="mailto:hello@wouldulike.kr" className="shrink-0 inline-flex items-center gap-1.5 h-11 px-4 rounded-full bg-navy text-white text-[13px] font-semibold active:scale-[0.98] transition-transform"><IconMessage2 size={13} aria-hidden="true" />문의</a>
               </div>
             ) : (
               <p className="text-[12.5px] text-gray-500">담당자가 곧 배정됩니다. 급하면 <a href="mailto:hello@wouldulike.kr" className="text-navy font-semibold">hello@wouldulike.kr</a></p>
@@ -202,7 +204,7 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
             <div className="flex items-baseline justify-between mb-2"><h2 className="text-[14px] font-bold text-gray-900">플랜 · 정산</h2><Link href={`/dashboard/owner/plan${ridParam}`} className="text-[12px] font-semibold text-navy hover:underline inline-flex items-center gap-0.5">자세히 <IconChevronRight size={13} aria-hidden="true" /></Link></div>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12.5px]">
               <dt className="text-gray-500">플랜</dt><dd className="font-semibold text-gray-900">{TIER_NAME[tier] ?? tier}{billing.monthly_fee ? ` · 월 ${won(billing.monthly_fee)}` : ""}</dd>
-              <dt className="text-gray-500">{month}월 청구</dt><dd className="font-semibold text-gray-900">{billing.invoice && (BILLED.has(billing.invoice.status) || billing.invoice.paid_at) ? <>{won(billing.invoice.total)} <span className={`ml-1 text-[10.5px] px-1.5 py-0.5 rounded-full ${billing.invoice.paid_at ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{billing.invoice.paid_at ? "입금 확인" : "입금 대기"}</span></> : <span className="text-gray-400 font-normal">아직 계산서가 발행되지 않았습니다</span>}</dd>
+              <dt className="text-gray-500">{month}월 청구</dt><dd className="font-semibold text-gray-900">{billing.invoice && (BILLED.has(billing.invoice.status) || billing.invoice.paid_at) ? <>{won(billing.invoice.total)} <span className={`ml-1 text-[11.5px] px-1.5 py-0.5 rounded-full ${billing.invoice.paid_at ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{billing.invoice.paid_at ? "입금 확인" : "입금 대기"}</span></> : <span className="text-gray-400 font-normal">아직 계산서가 발행되지 않았습니다</span>}</dd>
               {billing.pay_cycle && <><dt className="text-gray-500">납부</dt><dd className="font-semibold text-gray-900">{billing.pay_cycle === "LUMP" ? "일시납" : "월납 · 매월 1일"}</dd></>}
             </dl>
           </section>

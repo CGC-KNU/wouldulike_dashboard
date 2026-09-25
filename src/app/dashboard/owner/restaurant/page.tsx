@@ -200,7 +200,7 @@ function PinChangeSection({ hasPin, updatedAt, rid }: { hasPin: boolean; updated
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-periwinkle tracking-widest"
               />
               {/* 예전에는 이 자리에 현재 번호가 그대로 떠 있었다. 이제 우리도 못 읽는다. */}
-              <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+              <p className="text-[12px] text-gray-400 mt-1.5 leading-relaxed">
                 번호는 우주라이크도 볼 수 없습니다. 잊으셨으면 담당자에게 말씀해 주세요 — 새로 정해 드립니다.
               </p>
             </div>
@@ -277,15 +277,15 @@ function CouponBenefitsViewOnly({ rid }: { rid: string | null }) {
       {benefits.map((b) => (
         <div key={b.id} className={`bg-white border rounded-2xl p-4 shadow-sm ${b.active ? "border-gray-100" : "border-gray-100 opacity-60"}`}>
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-[10px] font-mono bg-periwinkle/10 text-periwinkle px-2 py-0.5 rounded-full">{b.coupon_type_code}</span>
+            <span className="text-[11.5px] font-mono bg-periwinkle/10 text-periwinkle px-2 py-0.5 rounded-full">{b.coupon_type_code}</span>
             {b.active
-              ? <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
-              : <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>}
+              ? <span className="text-[11.5px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
+              : <span className="text-[11.5px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>}
           </div>
           <p className="text-sm font-semibold text-gray-800">{b.title}</p>
           {b.subtitle && <p className="text-xs text-gray-500 mt-0.5">{b.subtitle}</p>}
-          {b.notes && <p className="text-[10px] text-gray-400 mt-1 bg-gray-50 rounded-lg px-2 py-1">{b.notes}</p>}
-          <p className="text-[10px] text-periwinkle mt-1">{benefitLabel(b.benefit_json)}</p>
+          {b.notes && <p className="text-[11.5px] text-gray-400 mt-1 bg-gray-50 rounded-lg px-2 py-1">{b.notes}</p>}
+          <p className="text-[11.5px] text-periwinkle mt-1">{benefitLabel(b.benefit_json)}</p>
         </div>
       ))}
     </div>
@@ -342,14 +342,14 @@ function StampRuleViewOnly({ rid }: { rid: string | null }) {
         <div className="flex items-center gap-2 mb-3">
           <span className="text-sm font-semibold text-gray-800">스탬프 {target}개 만땅</span>
           {rule.active
-            ? <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
-            : <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>}
+            ? <span className="text-[11.5px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">활성</span>
+            : <span className="text-[11.5px] bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">비활성</span>}
         </div>
         <div className="flex flex-wrap gap-1.5 mb-3">
           {Array.from({ length: target }).map((_, i) => {
             const isReward = thresholds.some((t) => t.stamps === i + 1);
             return (
-              <div key={i} className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-bold ${isReward ? "border-amber-400 bg-amber-400 text-white" : "border-periwinkle/30 text-periwinkle/50"}`}>
+              <div key={i} className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[11.5px] font-bold ${isReward ? "border-amber-400 bg-amber-400 text-white" : "border-periwinkle/30 text-periwinkle/50"}`}>
                 {isReward ? "★" : i + 1}
               </div>
             );
@@ -362,15 +362,15 @@ function StampRuleViewOnly({ rid }: { rid: string | null }) {
               const benefit = benefits.find((b) => b.coupon_type_code === t.coupon_type_code);
               return (
                 <div key={i} className="flex items-center gap-2 text-xs text-gray-600 py-1.5 border-b border-gray-50 last:border-0">
-                  <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold shrink-0 text-[10px]">{t.stamps}</span>
+                  <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold shrink-0 text-[11.5px]">{t.stamps}</span>
                   <span className="font-medium">{benefit?.title ?? ct?.title ?? t.coupon_type_code}</span>
-                  {benefit && <span className="text-[10px] text-periwinkle ml-auto">{benefitLabel(benefit.benefit_json)}</span>}
+                  {benefit && <span className="text-[11.5px] text-periwinkle ml-auto">{benefitLabel(benefit.benefit_json)}</span>}
                 </div>
               );
             })}
           </div>
         )}
-        {cfg.notes && <p className="text-[10px] text-gray-400 bg-gray-50 rounded-lg px-2 py-1 mt-2">{cfg.notes}</p>}
+        {cfg.notes && <p className="text-[11.5px] text-gray-400 bg-gray-50 rounded-lg px-2 py-1 mt-2">{cfg.notes}</p>}
       </div>
 
       {/* 수정 불가 안내 */}
@@ -505,7 +505,7 @@ export default function RestaurantPage() {
                   <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
                     {label}
                     {readOnly && (
-                      <span className="ml-2 text-[10px] font-normal text-gray-300 normal-case tracking-normal">
+                      <span className="ml-2 text-[11.5px] font-normal text-gray-300 normal-case tracking-normal">
                         수정 불가 (관리자 문의)
                       </span>
                     )}
@@ -599,7 +599,7 @@ export default function RestaurantPage() {
           <section>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800">쿠폰 혜택</h2>
-              <span className="text-[10px] text-gray-400">앱에서 손님에게 발급되는 혜택</span>
+              <span className="text-[11.5px] text-gray-400">앱에서 손님에게 발급되는 혜택</span>
             </div>
             <CouponBenefitsViewOnly rid={rid ?? null} />
           </section>
@@ -607,7 +607,7 @@ export default function RestaurantPage() {
           <section>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800">혜택 변경 신청</h2>
-              <span className="text-[10px] text-gray-400">우주라이크 확인 후 반영</span>
+              <span className="text-[11.5px] text-gray-400">우주라이크 확인 후 반영</span>
             </div>
             <p className="text-[11.5px] text-gray-500 leading-relaxed mb-3">
               혜택은 손님에게 나가는 약속이라 바로 바뀌지 않습니다. 바꾸고 싶은 내용을 남겨 주시면
@@ -619,7 +619,7 @@ export default function RestaurantPage() {
           <section>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800">스탬프 규칙</h2>
-              <span className="text-[10px] text-amber-500">확인만 가능</span>
+              <span className="text-[11.5px] text-amber-500">확인만 가능</span>
             </div>
             <StampRuleViewOnly rid={rid ?? null} />
           </section>
