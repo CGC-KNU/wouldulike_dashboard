@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { takePostLoginPath } from "@/lib/postLogin";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 
 interface Restaurant {
@@ -17,6 +16,7 @@ export default function VerifyPinPage() {
   const [suggestions, setSuggestions] = useState<Restaurant[]>([]);
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [searching, setSearching] = useState(false);
+  const [hint, setHint] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,10 +25,14 @@ export default function VerifyPinPage() {
   // 검색어 변경 시 debounce 300ms 후 API 호출
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 1) {
+    // 0924: 백엔드가 **두 글자 이상**부터 찾아 준다. 전에는 한 글자로도 PIN 이 걸린 매장
+    // 목록이 통째로 나와서, 카카오 계정만 있으면 공격 대상 목록을 받아 갈 수 있었다.
+    if (query.trim().length < 2) {
       setSuggestions([]);
+      setHint(query.trim().length === 1 ? "매장 이름을 두 글자 이상 입력해 주세요." : "");
       return;
     }
+    setHint("");
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
@@ -68,7 +72,11 @@ export default function VerifyPinPage() {
       if (data.success) {
         router.replace(takePostLoginPath());
       } else {
-        setError(data.message || "PIN이 올바르지 않습니다.");
+        // 429 는 "여러 번 틀려서 잠겼다" 다. 그냥 "PIN 이 틀렸다" 로 뭉뚱그리면 사장님이
+        // 맞는 번호를 넣고도 계속 틀렸다는 말을 듣고 영문을 모른다 (0924).
+        setError(data.message || (res.status === 429
+          ? "여러 번 잘못 입력해서 잠시 잠겼습니다. 조금 뒤에 다시 해 주세요."
+          : "PIN이 올바르지 않습니다."));
         setPin("");
       }
     } catch {
@@ -115,10 +123,11 @@ export default function VerifyPinPage() {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="매장명 검색..."
+                  placeholder="매장 이름 두 글자 이상"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-periwinkle"
                   autoComplete="off"
                 />
+                {hint && <p className="mt-1.5 text-xs text-gray-400">{hint}</p>}
                 {searching && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
                     <Spinner size={16} />
@@ -177,17 +186,13 @@ export default function VerifyPinPage() {
           </button>
         </div>
 
-        <p className="mt-4 text-center text-xs text-gray-400">
-          PIN 번호를 모르면 우주라이크 팀에 문의해주세요.
-        </p>
-
-        <p className="mt-6 text-center">
-          <Link
-            href="/auth/admin-login"
-            className="text-xs text-gray-300 hover:text-gray-500 transition-colors"
-          >
-            관리자 접속
-          </Link>
+        {/* 0924: "팀에 문의해주세요" 만 있고 연락할 방법이 없었다. 막다른 길이다.
+            점주 인증 화면 바닥에 있던 '관리자 접속' 링크도 뺀다 — 사장님에게 보일 이유가 없다.
+            (관리자는 /auth/admin-login 으로 바로 들어온다.) */}
+        <p className="mt-4 text-center text-xs text-gray-400 leading-relaxed">
+          PIN 을 모르시면 담당자에게 말씀해 주세요.
+          <br />
+          <a href="mailto:hello@wouldulike.kr" className="text-navy font-semibold">hello@wouldulike.kr</a>
         </p>
       </div>
     </main>
