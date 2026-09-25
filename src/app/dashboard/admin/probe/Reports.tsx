@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, reportAllText, verdict } from "@/lib/draft/report";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
+import { manualShows, manualToInput, parseManual } from "@/lib/draft/reportManual";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import InsightsSummary from "./InsightsSummary";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
@@ -252,13 +253,19 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const [summary, setSummary] = useState(r.summary);
   const [interp, setInterp] = useState(r.interpretation.join("\n"));
   const [props, setProps] = useState(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved })));
+  const [man, setMan] = useState(manualToInput(r.snapshot.manual));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "blue" | "red" | "green"; text: string; problems?: string[] } | null>(null);
   const [copied, setCopied] = useState(false);
-  useEffect(() => { setTitle(r.title); setSummary(r.summary); setInterp(r.interpretation.join("\n")); setProps(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved }))); setMsg(null); }, [r]);
+  useEffect(() => { setTitle(r.title); setSummary(r.summary); setInterp(r.interpretation.join("\n")); setProps(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved }))); setMan(manualToInput(r.snapshot.manual)); setMsg(null); }, [r]);
 
   const editable = r.status === "DRAFT" || r.status === "APPROVED";
-  const dirty = title !== r.title || summary !== r.summary || interp !== r.interpretation.join("\n") || JSON.stringify(props) !== JSON.stringify(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved })));
+  const manDirty = JSON.stringify(man) !== JSON.stringify(manualToInput(r.snapshot.manual));
+  const dirty = manDirty || title !== r.title || summary !== r.summary || interp !== r.interpretation.join("\n") || JSON.stringify(props) !== JSON.stringify(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved })));
+  // 수기 값 — 서버와 같은 검사로 미리 보여 주고, 양식 v1.0 에서 카드가 뜰지까지 알려 준다
+  const co = r.snapshot.post.co_stores;
+  const manParsed = useMemo(() => parseManual(man, co), [man, co]);
+  const manShow = manualShows(manParsed.manual, co);
   // 저장 전에도 클라이언트에서 같은 검사를 돌려 미리 보여준다 (최종 판정은 서버)
   const precheck = useMemo(() => {
     const t = checkText(reportAllText({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props.map((p) => ({ ...p, generated_text: "", edited_by: null, edited_at: null })) }), r.snapshot);
@@ -271,7 +278,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   async function save() {
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch(`/api/probe/reports/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props }) });
+      const res = await fetch(`/api/probe/reports/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props, ...(manDirty ? { manual: man } : {}) }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail }); return; }
       setMsg({ tone: "blue", text: "저장했습니다. 승인은 다시 받아야 합니다." }); onChanged();
     } finally { setBusy(false); }
@@ -304,7 +311,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     <SlideOver open onClose={onClose} title={s.store.name} subtitle={`'${s.post.topic}' · ${new Date(s.as_of).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 기준 스냅샷`} badge={<Chip tone={S_TONE[r.status]}>{S_LABEL[r.status]}</Chip>} width="lg"
       footer={
         <>
-          {editable && dirty && <Button variant="primary" onClick={save} disabled={busy}>문구 저장</Button>}
+          {editable && dirty && <Button variant="primary" onClick={save} disabled={busy || manParsed.errors.length > 0}>저장</Button>}
           {/* 스냅샷은 만든 순간으로 굳는다. 초안일 때만 지금 수치로 다시 읽는다 — 보낸 리포트는 갱신본을 만든다. */}
           {r.status === "DRAFT" && !dirty && <Button icon={<IconRefresh />} onClick={() => act("refresh")} disabled={busy}>수치 다시 읽기</Button>}
           {r.status === "DRAFT" && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("approve")} disabled={busy || !precheck.ok}>승인</Button>}
@@ -331,6 +338,26 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         </div>
         {s.app && <p className="text-[12px] text-gray-600 mt-2">앱 {s.app.month}: 쿠폰 {s.app.coupon_redeemed} · 스탬프 {s.app.stamp_earned} · 재방문 {s.app.revisit} · 단골 {s.app.loyal_total}{s.app.coupon_redeemed + s.app.stamp_earned + s.app.revisit + s.app.loyal_total === 0 ? " — 전부 0 이라 공개 페이지에서는 블록을 숨깁니다" : ""}</p>}
         {s.post.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{s.post.co_stores}곳을 함께 소개한 게시물입니다. 수치는 게시물 전체 것이고, 공개 페이지는 「N곳을 함께 소개한 큐레이션」이라고 밝힙니다.</p>}
+      </PanelSection>
+
+      <PanelSection title="인스타 앱에서 옮기는 값 (수기)">
+        <p className="text-[12px] text-gray-500 mb-2">API로 받을 수 없는 값이라 인스타 앱의 이 게시물 인사이트를 보고 적습니다. 비워 두면 리포트에 그 카드가 나오지 않습니다. 리포트 양식 v1.0부터 보입니다.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="가장 큰 연령대" hint="예: 18~34"><Input value={man.age_range} placeholder="18~34" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, age_range: e.target.value }))} /></Field>
+          <Field label="그 연령대 비중 (%)" hint="50% 이상일 때만 리포트에 나갑니다"><Input value={man.age_pct} inputMode="decimal" placeholder="83.6" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, age_pct: e.target.value }))} /></Field>
+          {co > 1 && <>
+            <Field label="이 가게 슬라이드 좋아요 비중 (%)" hint={`썸네일을 뺀 좋아요 중. ${co}곳이 똑같이 나눈 ${manShow.even !== null ? Math.round(manShow.even * 10) / 10 : "-"}%보다 클 때만 나갑니다`}><Input value={man.slide_pct} inputMode="decimal" placeholder="38.8" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, slide_pct: e.target.value }))} /></Field>
+            <Field label={`${co}곳 중 순위`} hint="1이면 “가장 많이 모였다”로 씁니다"><Input value={man.slide_rank} inputMode="numeric" placeholder="1" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, slide_rank: e.target.value }))} /></Field>
+          </>}
+        </div>
+        {manParsed.errors.length > 0
+          ? <Notice tone="red" title="이대로는 저장되지 않습니다"><ul className="list-disc pl-4">{manParsed.errors.map((p) => <li key={p}>{p}</li>)}</ul></Notice>
+          : (manParsed.manual.audience || manParsed.manual.slide_likes) && (
+            <p className="text-[12px] text-gray-600 mt-1">
+              리포트에서 — 연령 카드 {manParsed.manual.audience ? (manShow.audience ? "뜸" : "안 뜸(50% 미만)") : "없음"}
+              {co > 1 && <> · 슬라이드 카드 {manParsed.manual.slide_likes ? (manShow.slide ? "뜸" : "안 뜸(똑같이 나눈 몫 이하)") : "없음"}</>}
+            </p>
+          )}
       </PanelSection>
 
       <PanelSection title="문구">

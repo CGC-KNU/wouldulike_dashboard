@@ -137,6 +137,12 @@ test("양식이 「지난 보고 이후」 표와 「게시물 전체의 숫자�
   assert.ok(!REPORT_TEMPLATE_HTML.includes("게시물 전체의 숫자입니다"));
 });
 
+test("수기 값(연령·슬라이드 비중)을 양식 데이터로 넘긴다 — 없으면 null", () => {
+  const manual = { audience: { age_range: "18~34", pct: 83.6 }, slide_likes: { pct: 38.8, rank: 1 } };
+  assert.deepEqual((toTemplateData(report({}, { manual })) as { manual: unknown }).manual, manual);
+  assert.equal((toTemplateData(report()) as { manual: unknown }).manual, null);
+});
+
 test("양식 필수 값이 비면 승인 전에 잡는다", () => {
   assert.deepEqual(templateMissing(report()), []);
   const broken = report({}, { post: { ...report().snapshot.post, permalink: null, posted_at: null }, metrics: [] });

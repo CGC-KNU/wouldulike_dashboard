@@ -123,6 +123,8 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
         ? `이번 편은 「${stripMarker(s.post.topic)}」 주제로 ${s.post.co_stores}곳을 함께 소개한 큐레이션입니다. ${josa(s.store.name, "이", "가")} 추천 가게 중 한 곳으로 실렸습니다.`
         : null,
     },
+    // 인스타 앱에서 손으로 옮긴 값 — 양식 v1.0 이 보여 줄 만할 때만 카드를 띄운다(v0.9.x 는 읽지 않는다)
+    manual: s.manual ?? null,
     upsell: { enabled: false },
     contact: { url: "" },
   };
