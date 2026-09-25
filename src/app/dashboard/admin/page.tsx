@@ -1239,9 +1239,22 @@ function MarketingTab() {
     setSubmitting(true);
     setFormErr("");
     try {
-      // datetime-local 값은 KST 기준이므로 UTC로 변환
-      const kstDate = new Date(scheduledTime + ":00");
-      const utcIso = new Date(kstDate.getTime() - 9 * 60 * 60 * 1000).toISOString();
+      /**
+       * 0925: **9시간이 두 번 빠지고 있었다.**
+       *
+       * `new Date("2026-09-25T14:00:00")` 은 시간대 표기가 없으면 **브라우저 현지 시각**으로
+       * 읽는다. 우리 브라우저는 KST 라 이미 14:00 KST(=05:00 UTC)가 된 뒤, 여기서 또 9시간을
+       * 뺐다. 결국 저장된 값은 전날 20:00 UTC — 푸시가 **의도한 시각보다 9시간 일찍**,
+       * 새벽 5시에 손님 폰으로 나갔다. 저장하고 목록을 보면 14:00 이 05:00 으로 바뀌어 있었다.
+       *
+       * 입력칸 값은 **한국 시간 벽시계**다. 그러니 그 숫자를 그대로 한국 시간으로 읽어서
+       * UTC 로 옮긴다 — 브라우저가 어느 시간대에 있든 같은 결과가 나온다.
+       * (ContentTab 의 `kstInputToApi` 가 원래 이 방식이다.)
+       */
+      const [datePart, timePart = "00:00"] = scheduledTime.split("T");
+      const [yy, mo, dd] = datePart.split("-").map(Number);
+      const [hh, mi] = timePart.split(":").map(Number);
+      const utcIso = new Date(Date.UTC(yy, mo - 1, dd, hh, mi) - 9 * 60 * 60 * 1000).toISOString();
       const res = await fetch("/api/dashboard/admin/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
