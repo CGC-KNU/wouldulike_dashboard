@@ -23,18 +23,20 @@ const CANONICAL = "https://app.wouldulike.kr";
 const LEGACY_HOST = "wouldulike-dashboard.vercel.app";
 
 /**
- * 2026-09-25 일시 중단.
+ * 구 주소 리다이렉트 스위치.
  *
- * 파일 업로드는 우리 서버가 아니라 S3 로 직접 나간다(presigned PUT). 그 버킷의 허용
- * 주소 목록에는 구 주소만 들어 있고 app.wouldulike.kr 이 없다. 그래서 리다이렉트를 켠
- * 순간, 슬랙 알림의 구 주소 링크로 들어온 사람이 전부 새 주소로 넘어가면서 업로드하는
- * 화면 여섯 곳이 한꺼번에 막혔다 (카드뉴스·자유 블록·배너랩 2곳·콘텐츠 탭·공용 업로더).
+ * 2026-09-25 밤에 한 번 껐다. 파일 업로드는 우리 서버가 아니라 S3 로 직접 나가는데
+ * (presigned PUT), 그 버킷의 허용 주소 목록에 구 주소만 있고 app.wouldulike.kr 이 없어서
+ * 리다이렉트를 켠 순간 업로드하는 화면 여섯 곳이 한꺼번에 막혔다. 9/26 재민 님이 버킷
+ * CORS 에 새 주소와 localhost 를 넣었고, 세 주소 모두 preflight 200 을 확인한 뒤 다시 켰다.
  *
- * 버킷 CORS 에 app.wouldulike.kr 을 넣는 것이 근본 해결이고 재민 님께 요청해 둔 상태다.
- * 반영되면 이 값을 true 로 되돌린다 — 지우지 말 것. 주소를 하나로 모으는 이유(호스트별
- * 쿠키 분리로 세션이 따로 논다)는 그대로 유효하다.
+ * 교훈: 주소를 옮길 때는 그 주소가 등록된 외부 설정을 전부 같이 옮긴다 — 카카오
+ * Redirect URI, S3 CORS, Koyeb 의 DASHBOARD_PUBLIC_BASE_URL. 브라우저가 우리 서버 말고
+ * 직접 말을 거는 곳이 어디인지부터 센다.
+ *
+ * 또 막히면 이 값을 false 로 두고 배포한다. 플래그는 지우지 않는다.
  */
-const REDIRECT_LEGACY_HOST = false;
+const REDIRECT_LEGACY_HOST = true;
 
 const nextConfig: NextConfig = {
   images: {
