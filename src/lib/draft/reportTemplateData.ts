@@ -109,6 +109,22 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       interactions: val("total_interactions"),
     },
     app: { store_views: null },
+    /**
+     * 「시간이 지나며 쌓인 숫자」 — 1일 · 7일 · 14일 중 **찍혀 있는 것만**.
+     *
+     * 남의 게시물과 비교하지 않고 성장을 말하는 유일한 칸이다(0925 방향). 없는 점은
+     * 백엔드가 아예 안 보내고, 여기서도 채우지 않는다 — 0 을 넣으면 「줄었다」로 읽힌다.
+     * 양식은 **두 점 이상일 때만** 그린다(점 하나는 추이가 아니다).
+     *
+     * 옛 게시물은 D+1 이 비어 있을 수 있다. 정밀 추적은 「N일이 막 지난 게시물」만 잡아
+     * 소급이 안 된다 — 그런 편은 7일·14일 두 점으로 그려진다.
+     */
+    series: (rd?.series ?? []).map((p) => ({
+      day: p.day,
+      measured_at: p.measured_at,
+      reach: p.reach ?? null,
+      views: p.views ?? null,
+    })),
     // 지난 보고(7일차) 값 — 14일차 보고일 때만 온다. 양식은 앱 카드의 "지난 보고에서 N회 더" 문장에만 쓴다(표는 0925 에 뺐다)
     previous: rd?.previous ?? null,
     // 비워 두면 양식이 「다른 게시물과 비교」·「솔직하게」 카드를 통째로 숨긴다 — 위 머리말 참고

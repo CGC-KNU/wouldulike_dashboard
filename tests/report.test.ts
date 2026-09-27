@@ -132,8 +132,15 @@ test("카톡용 텍스트에 채널 비교·순위·작은 숫자가 없다", ()
 });
 
 test("양식이 「지난 보고 이후」 표와 「게시물 전체의 숫자」 문장을 그리지 않는다 (0925 마케팅 결정)", () => {
-  assert.ok(!REPORT_TEMPLATE_HTML.includes('put("r-change"'), "r-change 는 PNG 나누기용 빈 자리로만 남는다");
-  assert.ok(REPORT_TEMPLATE_HTML.includes('<div id="r-change"></div>'));
+  // 0925 에 뺀 것은 **지난 보고와 견주는 표**다. 그 자리(r-change)는 0927 부터
+  // 「시간이 지나며 쌓인 숫자」(1일·7일·14일)가 쓴다 — 그건 남과 견주는 게 아니라
+  // 자기 게시물이 쌓인 과정이라 방향에 어긋나지 않는다.
+  // 그래서 자리가 비었는지가 아니라 **그 표가 없는지**를 본다.
+  // 주석이 아니라 **그려지는 문자열**로 본다. 양식 머리말 주석에는 "지난 보고 이후" 라는
+  // 말이 원래부터 (뺐다는 기록으로) 들어 있어서, 그 말의 유무로는 판정할 수 없다.
+  assert.ok(!REPORT_TEMPLATE_HTML.includes("<th>지표"), "지표 대비 표는 되살아나면 안 된다");
+  assert.ok(!REPORT_TEMPLATE_HTML.includes("지난 보고 이후 도달"), "그 카드의 해석 문장도 되살아나면 안 된다");
+  assert.ok(REPORT_TEMPLATE_HTML.includes('<div id="r-change"></div>'), "PNG 나누기가 참조하는 자리는 그대로");
   assert.ok(!REPORT_TEMPLATE_HTML.includes("게시물 전체의 숫자입니다"));
 });
 
@@ -414,4 +421,102 @@ test("사진을 다시 압축해서 넘긴다 — PNG·HTML·스냅샷이 같이
   assert.match(bar, /shrunkDataUrl\(i\.src, 1400\)/, "HTML 저장할 때");
   // 작은 png 을 jpeg 로 바꾸면 되레 커질 수 있다 — 그때는 원본을 쓴다
   assert.match(bar, /out\.length < u\.length \? out : u/);
+});
+
+// ── 시간이 지나며 쌓인 숫자 (1일 · 7일 · 14일) ────────────────────────
+import * as vm2 from "node:vm";
+
+/** 양식의 렌더러를 최소 DOM 에서 돌려 r-change 자리에 무엇이 들어갔는지 읽는다. */
+function renderChange(html: string): string {
+  const json = /<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/.exec(html);
+  assert.ok(json, "report-data 블록을 못 찾았습니다");
+  const scripts = [...html.matchAll(/<script>\n([\s\S]*?)\n<\/script>/g)];
+  assert.ok(scripts.length, "렌더러 스크립트를 못 찾았습니다");
+  const nodes: Record<string, { textContent?: string; innerHTML: string }> = {};
+  for (const id of ["report-data", "r-head", "r-post", "r-metrics", "r-app", "r-change", "r-compare", "r-insight", "r-upsell", "r-foot", "r-errors"]) {
+    nodes[id] = { innerHTML: "" };
+  }
+  nodes["report-data"].textContent = json[1];
+  // 양식은 body.setAttribute("data-report-status", ...) 만 쓴다 — 그것만 흉내 낸다.
+  const attrs: Record<string, string> = {};
+  const body = { setAttribute: (k: string, v: string) => { attrs[k] = v; } };
+  const ctx: Record<string, unknown> = {
+    document: { getElementById: (id: string) => nodes[id] ?? null, body },
+    console,
+  };
+  vm2.createContext(ctx);
+  new vm2.Script(scripts[scripts.length - 1][1]).runInContext(ctx);
+  return nodes["r-change"].innerHTML;
+}
+
+const withSeries = (series: { day: number; measured_at: string; reach?: number; views?: number }[]) =>
+  fillReportTemplate(report({}, { report_data: { ...rd, series } }));
+
+test("시계열이 두 점 이상이면 막대를 그리고, 마지막 점을 진하게 한다", () => {
+  const html = withSeries([
+    { day: 1, measured_at: "2026-09-05", reach: 1200, views: 1800 },
+    { day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000 },
+  ]);
+  const out = renderChange(html);
+  assert.match(out, /시간이 지나며 쌓인 숫자/);
+  assert.match(out, /조회한 사람 \(명\)/);
+  assert.match(out, /조회 \(회\)/);
+  // 진한 막대(.me)는 마지막 점 하나뿐이어야 한다 — 기준일이 둘이면 어느 게 지금인지 모른다
+  assert.equal((out.match(/class="row me"/g) ?? []).length, 2, "두 지표 각각의 마지막 줄만");
+  // 마지막 줄이 14일인가
+  const rows = [...out.matchAll(/class="row( me)?"><div class="lb">(\d+)일/g)].map((m) => [m[2], !!m[1]]);
+  assert.deepEqual(rows, [["1", false], ["7", false], ["14", true], ["1", false], ["7", false], ["14", true]]);
+  assert.match(out, /게시 후 1일 <b>1,200명<\/b>에서 14일 <b>3,800명<\/b>이 되었습니다/);
+  assert.match(out, /진한 막대가 14일 기준값입니다/);
+});
+
+test("점이 하나면 그리지 않는다 — 한 점은 추이가 아니다", () => {
+  const out = renderChange(withSeries([{ day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500 }]));
+  assert.equal(out, "", "위 카드가 이미 말하는 값을 두 번 쓰지 않는다");
+});
+
+test("series 가 없으면 그 자리는 빈다 — 0 으로 채우지 않는다", () => {
+  const out = renderChange(fillReportTemplate(report({}, { report_data: rd })));
+  assert.equal(out, "");
+});
+
+test("빠진 점은 건너뛰고 있는 점만 그린다", () => {
+  // D+1 을 놓친 옛 게시물 — 7일·14일 두 점으로 그린다
+  const out = renderChange(withSeries([
+    { day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000 },
+  ]));
+  assert.match(out, /시간이 지나며 쌓인 숫자/);
+  const days = [...out.matchAll(/class="lb">(\d+)일/g)].map((m) => m[1]);
+  assert.deepEqual(days, ["7", "14", "7", "14"], "1일 칸을 0 으로 만들지 않는다");
+  assert.match(out, /게시 후 7일 <b>3,000명<\/b>에서 14일 <b>3,800명<\/b>/);
+});
+
+test("한 점에서 한 지표만 빠지면 그 칸은 0 이 아니라 「–」", () => {
+  // 7일엔 reach 가 없고 views 만 있는 경우. 0 으로 채우면 "1,200 → 0 → 3,800" 으로
+  // 중간에 폭락한 것처럼 읽힌다. 모르는 값은 모른다고 적는다.
+  const out = renderChange(withSeries([
+    { day: 1, measured_at: "2026-09-05", reach: 1200, views: 1800 },
+    { day: 7, measured_at: "2026-09-11", views: 4500 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000 },
+  ]));
+  const reachBlock = out.slice(out.indexOf("조회한 사람"), out.indexOf("조회 (회)"));
+  assert.match(reachBlock, /<div class="nm">\u2013<\/div>/, "빠진 값은 – 로");
+  assert.doesNotMatch(reachBlock, /<div class="nm">0<\/div>/, "0 으로 채우면 폭락으로 읽힌다");
+  assert.match(reachBlock, /width:0%/, "막대도 그리지 않는다");
+});
+
+test("한 지표만 있으면 그 지표만 그린다", () => {
+  const out = renderChange(withSeries([
+    { day: 7, measured_at: "2026-09-11", reach: 3000 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800 },
+  ]));
+  assert.match(out, /조회한 사람 \(명\)/);
+  assert.doesNotMatch(out, /조회 \(회\)/, "값이 없는 지표 칸은 만들지 않는다");
+});
+
+test("시계열은 PNG 2쪽에 들어간다 — 자리가 빠지면 사장님이 못 본다", () => {
+  const bar = downloadBar({ filename: "r", canDownload: true, statusLabel: "승인됨" });
+  assert.match(bar, /"r-metrics", "r-app", "r-change"/, "r-change 가 PNG 쪽 목록에 있어야 한다");
 });

@@ -520,6 +520,12 @@ export interface ReportData {
   measured_at?: string;
   post?: { posted_at: string | null; permalink: string; format: string; thumb_url: string; caption: string; card_count: number };
   metrics?: Partial<Record<ReportMetricKey, number>>;
+  /**
+   * 1일 · 7일 · 14일 중 **찍혀 있는 것만** (백엔드 `_series`). 없는 점은 오지 않는다 —
+   * 0 으로 채우면 「1일 1,800 → 7일 0」처럼 줄어든 것으로 읽힌다.
+   * 두 점 미만이면 양식이 그 섹션을 숨긴다(점 하나로는 추이가 아니다).
+   */
+  series?: ({ day: number; measured_at: string } & Partial<Record<ReportMetricKey, number>>)[];
   previous?: ({ day: number; measured_at: string } & Partial<Record<ReportMetricKey, number>>) | null;
   benchmarks?: { window?: string; total_posts?: number; prev_dates?: string[] } & Partial<Record<ReportMetricKey, ReportBenchmark>>;
 }
