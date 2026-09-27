@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { isPreview } from "./previewStores";
@@ -79,6 +80,19 @@ export async function requireTool(need: Need): Promise<NextResponse | null> {
 export function hasIngestToken(req: Request): boolean {
   const expected = process.env.CASTOR_INGEST_TOKEN;
   return Boolean(expected) && req.headers.get("x-castor-token") === expected;
+}
+
+/**
+ * 크론(GitHub Actions)이 보고서를 받아 갈 때 쓰는 시크릿 — 백엔드 `CRON_SECRET_TOKEN` 과 **같은 값**이다.
+ * 대시보드는 이 값으로 백엔드도 읽는다(app-stats·period·metric-snapshots). 비어 있으면 늘 거짓 —
+ * 빈 헤더와 빈 환경변수가 같아져서 열리면 안 된다.
+ */
+export function hasCronToken(req: Request): boolean {
+  const expected = process.env.CRON_SECRET_TOKEN ?? "";
+  const given = req.headers.get("x-cron-token") ?? "";
+  if (!expected || !given) return false;
+  const a = Buffer.from(given), b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /**
