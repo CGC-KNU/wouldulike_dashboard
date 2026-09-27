@@ -1,6 +1,6 @@
 import { readGa4AppMetrics, readLastEventDate, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { readCouponFunnel, readStoreToCoupon, type CouponFunnel, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
-import { buildAppReportData, appReportFilename, lastCompleteWeekEnd, shiftDay, weekLabel, type AppStats, type Json } from "./appReportData";
+import { buildAppReportData, appReportFilename, dash, lastCompleteWeekEnd, shiftDay, weekLabel, type AppStats, type Json, type PeriodStats } from "./appReportData";
 import { buildMonthlyAppReportData, previousPeriod, type SnapshotPayload } from "./appReportMonthly";
 import { fetchBackendJson } from "./toolProxy";
 
@@ -13,7 +13,7 @@ import { fetchBackendJson } from "./toolProxy";
  * 매장 리포트(reportTemplate.ts)와 다른 점:
  *  - 내부 보고라 점주 링크·토큰·열람 비콘·금지 표현 검사가 없다. 로그인한 담당자만 본다.
  *  - 스냅샷을 저장하지 않는다. 부를 때마다 다시 읽는다 — GA4 칸은 확정 테이블이라 값이 안 변하고,
- *    DB 칸은 애초에 "이번 달 누계"라 굳혀 둘 시점이 없다.
+ *    DB 칸은 부를 때마다 백엔드(app-stats/period)가 그 주를 다시 센다.
  *    (월간 「전월 대비」는 백엔드에 월별 스냅샷 표가 생겨야 한다 — 그게 없으면 지난달을 되살릴 수 없다.)
  */
 
@@ -40,10 +40,16 @@ export async function buildWeeklyAppReport(opts: { end?: string } = {}): Promise
   // 지난주·그 전주를 같은 함수로 뽑는다 — 정의가 갈라지면 전주 대비가 뜻이 없다.
   const start = shiftDay(end, -6);
   const prevEnd = shiftDay(end, -7);
-  const [curR, prevR, stats, cpR, cpPrevR, s2cR] = await Promise.all([
+  const weekOf = (from: string, to: string) =>
+    fetchBackendJson<PeriodStats>("/api/dashboard/admin/app-stats/period/", `start=${dash(from)}&end=${dash(to)}`, true);
+  const [curR, prevR, stats, week, weekPrev, cpR, cpPrevR, s2cR] = await Promise.all([
     readGa4AppMetrics(process.env, { end }),
     readGa4AppMetrics(process.env, { end: prevEnd }),
+    // 「7일 안에 만료」·「발급 → 사용」은 여기(이번 달 기준)에서만 온다
     fetchBackendJson<AppStats>("/api/dashboard/admin/app-stats/", undefined, true),
+    // 나머지 DB 칸은 그 주 · 전주만 센다 — GA4 칸과 같은 창
+    weekOf(start, end),
+    weekOf(shiftDay(prevEnd, -6), prevEnd),
     // 쿠폰 발급→사용은 GA4 라 주간에서도 기간이 정확하다 — DB 칸처럼 월 누계로 새지 않는다
     readCouponFunnel(process.env, { start, end }),
     readCouponFunnel(process.env, { start: shiftDay(prevEnd, -6), end: prevEnd }),
@@ -60,10 +66,16 @@ export async function buildWeeklyAppReport(opts: { end?: string } = {}): Promise
   const prev: Ga4AppMetrics | null = prevR.ok ? prevR.data : null;
   if (!curR.ok) warnings.push(`GA4 를 읽지 못했습니다 — ${curR.reason === "no_key" ? "GCP_SA_KEY 미설정" : curR.detail ?? "조회 실패"}`);
   else if (!prevR.ok) warnings.push("전주 GA4 를 읽지 못해 전주 대비를 붙이지 못했습니다.");
-  if (!stats?.stats) warnings.push("백엔드 app-stats 를 읽지 못했습니다 — DB·푸시 칸이 비었습니다.");
+  if (!week?.stats) {
+    warnings.push(stats?.stats
+      ? "주간 DB 칸(app-stats/period)을 읽지 못해 이번 달 누계로 냈습니다."
+      : "백엔드 app-stats 를 읽지 못했습니다 — DB·푸시 칸이 비었습니다.");
+  } else if (!stats?.stats) {
+    warnings.push("백엔드 app-stats 를 읽지 못했습니다 — 「7일 안에 만료」·「발급 → 사용」이 비었습니다.");
+  }
 
   return {
-    data: buildAppReportData({ end, cur, prev, stats: stats ?? null, coupons, couponsPrev, storeToCoupon }),
+    data: buildAppReportData({ end, cur, prev, stats: stats ?? null, week: week ?? null, weekPrev: weekPrev ?? null, coupons, couponsPrev, storeToCoupon }),
     filename: appReportFilename(end),
     week: { start: shiftDay(end, -6), end, label: weekLabel(end) },
     warnings,
