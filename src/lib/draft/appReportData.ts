@@ -11,9 +11,11 @@ import APP_REPORT_TEMPLATE_HTML from "./appReportTemplateHtml";
  *
  * ── 주간으로 쪼갤 수 있는 칸과 아닌 칸 ──
  * GA4·Firebase 칸은 기간 쿼리라 그 주만 셀 수 있다 — 지난주와 그 전주를 **같은 정의로** 뽑아 전주 대비를 낸다.
- * 백엔드 `/api/dashboard/admin/app-stats/` 는 기간 파라미터가 없어 **KST 이번 달 누계**만 준다. 그 칸들은
- * `scope: "month_to_date"` 를 달아 내보낸다 — 양식이 「이번 달 누계」 배지를 붙이고 증감칩을 아예 안 그린다.
- * 이걸 빠뜨리면 월 누계가 주간 수치처럼 읽힌다(양식 머리말이 "가장 큰 사고"라고 적어 둔 것).
+ * DB·푸시 칸은 백엔드 `/api/dashboard/admin/app-stats/period/` 로 **그 주만** 센다(0927 — PROBE 주간 보고).
+ * 두 칸만 예외다: 「7일 안에 만료」는 읽는 시점 기준 앞으로 7일, 「발급 → 사용」은 이번 달 발급분 누계라
+ * 여전히 `app-stats/` 에서 온다(주간으로 자르면 막 끝난 주가 쓸 시간이 짧아 늘 낮게 나온다).
+ * 주간 값을 못 읽으면 예전처럼 이번 달 누계에 `scope: "month_to_date"` 를 단다 — 양식이 「이번 달 누계」 배지를
+ * 붙이고 증감칩을 안 그린다. 이걸 빠뜨리면 월 누계가 주간 수치처럼 읽힌다(양식 머리말이 "가장 큰 사고"라고 적어 둔 것).
  */
 
 /** 양식의 진짜 <body>. 머리말 주석 안에도 비슷한 글자가 있어 태그 전체로 찾는다. embed 스크립트가 같은 값을 검사한다. */
@@ -29,6 +31,16 @@ export interface AppStats {
   stats?: Record<string, number | null> | null;
   since?: string;
   coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null;
+}
+
+/** `/api/dashboard/admin/app-stats/period/` — 정한 날짜 구간만 센 값. 칸 이름은 월별 스냅샷과 같다(`_this_month` 없음). */
+export interface PeriodStats {
+  start?: string;
+  end?: string;
+  /** false 면 구간이 아직 안 끝났다 — 전주 대비의 분모로 쓰면 안 된다 */
+  complete?: boolean;
+  stats?: Record<string, number | null> | null;
+  failed?: string[];
 }
 
 export interface Metric {
@@ -49,7 +61,8 @@ export interface Metric {
 const utc = (s: string) => new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)));
 const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
 const bare = (s: string) => s.replace(/-/g, "");
-const dash = (s: string) => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+/** "20260920" → "2026-09-20" */
+export const dash = (s: string) => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 const md = (s: string) => `${+s.slice(4, 6)}/${+s.slice(6, 8)}`;
 export function shiftDay(s: string, days: number): string {
   const d = utc(s);
@@ -120,6 +133,12 @@ export interface AppReportInput {
   cur: Ga4AppMetrics | null;
   prev: Ga4AppMetrics | null;
   stats: AppStats | null;
+  /**
+   * 그 주 · 전주만 센 DB 칸(`app-stats/period`). 있으면 DB·푸시 칸이 그 주 값이 되고 전주 대비가 붙는다.
+   * 없으면 `stats` 의 이번 달 누계로 돌아간다(「이번 달 누계」 배지).
+   */
+  week?: PeriodStats | null;
+  weekPrev?: PeriodStats | null;
   /** 작성일(KST, YYYY-MM-DD). 안 주면 오늘. */
   today?: string;
   /** 쿠폰 발급→사용 (GA4). DB 칸과 달리 주간에서도 기간이 정확하다. 없으면 그 네 칸이 「연결 전」이 된다. */
@@ -133,13 +152,21 @@ export interface AppReportInput {
 }
 
 // ── 본체 ──────────────────────────────────────────────────────────
-export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons, couponsPrev, storeToCoupon: s2c }: AppReportInput): Json {
+export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev, today, coupons, couponsPrev, storeToCoupon: s2c }: AppReportInput): Json {
   const start = shiftDay(end, -6);
   const prevEnd = shiftDay(end, -7);
 
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   const sum = (...ks: string[]) => (ks.every((k) => n(k) === null) ? null : ks.reduce((a, k) => a + (n(k) ?? 0), 0));
+
+  // 그 주만 센 DB 칸. 전주 대비는 **두 주 모두 끝났을 때만** 붙인다 — 반쪽 주와 온전한 주를 비교하면 늘 줄어 보인다.
+  const w = week?.stats ?? null;
+  const weekly = w !== null;
+  const weekOpen = weekly && week?.complete === false;
+  const wp = weekly && !weekOpen && weekPrev?.complete ? weekPrev.stats ?? null : null;
+  const total = (src: Record<string, number | null> | null, ks: string[]): Num =>
+    !src || ks.every((k) => typeof src[k] !== "number") ? null : ks.reduce((a, k) => a + (typeof src[k] === "number" ? (src[k] as number) : 0), 0);
 
   const monthLabel = stats?.since ? `${+stats.since.slice(5, 7)}월` : "이번 달";
   const win = `${md(start)}~${md(end)}`;
@@ -157,6 +184,29 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
     ...(value === null ? { status: "pending" as const } : {}),
     ...(note ? { note } : {}),
   });
+
+  /**
+   * 그 주만 센 DB·푸시 칸. `ks` 는 app-stats/period 의 칸 이름(여럿이면 합한다).
+   * 주간 값이 없으면 예전처럼 이번 달 누계(`<칸>_this_month`)로 돌아간다 — dbMetric 이 배지를 단다.
+   */
+  const countMetric = (key: string, label: string, ks: string[], note?: { week?: string; month?: string }): Metric => {
+    if (!weekly) return dbMetric(key, label, sum(...ks.map((k) => `${k}_this_month`)), note?.month);
+    const value = total(w, ks);
+    const before = wp ? total(wp, ks) : null;
+    const failed = ks.some((k) => (week?.failed ?? []).includes(k));
+    const text = failed && value === null ? "이 주를 셀 때 이 칸을 세지 못했습니다" : note?.week;
+    return {
+      key,
+      label,
+      value,
+      ...(value !== null && before !== null ? { prev: before } : {}),
+      unit: UNIT[key],
+      source: key === "push_sent" ? "push" : "backend",
+      scope: "period",
+      ...(value === null ? { status: "pending" as const } : {}),
+      ...(text ? { note: text } : {}),
+    };
+  };
 
   const newDev = g?.new_devices ?? null;
   const wauNote = g
@@ -190,7 +240,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
           note: g ? `${md(bare(g.cohort.from))}~${md(bare(g.cohort.to))} 첫 실행 ${g.cohort.users.toLocaleString()}대 중 7~13일째 다시 켠 비율` : "first_open 코호트의 7일 뒤 재방문",
           ...(g ? {} : { status: "pending" as const }),
         },
-        dbMetric("signups_month", "가입", n("signups_this_month"), `${monthLabel} 새로 만든 계정`),
+        countMetric("signups_month", "가입", ["signups"], { week: `${win} 새로 만든 계정`, month: `${monthLabel} 새로 만든 계정` }),
       ] as Metric[],
     },
     {
@@ -212,8 +262,8 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
             ? `${md(bare(s2c.window.from))}~${md(bare(s2c.window.to))} 매장 상세를 연 ${s2c.views.toLocaleString()}자리(기기·세션·매장) 중 그 자리에서 쿠폰을 받은 ${s2c.claimed.toLocaleString()}자리. 캠페인 자동 지급까지 세면 ${s2c.claimed_including_campaign.toLocaleString()}자리입니다`
             : "매장 상세를 연 자리에서 캠페인이 아닌 쿠폰을 받은 비율",
         },
-        dbMetric("coupon_issued", "쿠폰 발급", n("coupon_issued_this_month")),
-        dbMetric("coupon_used", "쿠폰 사용", n("coupon_redeemed_this_month")),
+        countMetric("coupon_issued", "쿠폰 발급", ["coupon_issued"]),
+        countMetric("coupon_used", "쿠폰 사용", ["coupon_redeemed"], { week: "매장에서 사용 처리된 날 기준 — 그 전에 받은 쿠폰도 셉니다" }),
         // 이 칸만은 누계가 아니라 읽는 시점 기준 앞으로 7일이다 — 월 경계와 상관이 없어 scope 를 period 로 되돌린다.
         { ...dbMetric("coupon_expiring", "7일 안에 만료", n("coupon_expiring_7d"), "아직 안 쓴 쿠폰. 이 칸만은 누계가 아니라 읽는 시점 기준 앞으로 7일입니다"), scope: "period" as const },
         dbMetric("coupon_rate", "발급 → 사용", n("coupon_redeem_rate"), `${monthLabel} 발급분 중 이미 쓴 비율. 달 초엔 낮게 나옵니다${dom.extra}`),
@@ -225,10 +275,14 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
       title: "스탬프 · 마일리지",
       description: "재방문 장치가 실제로 도는가.",
       metrics: [
-        dbMetric("stamp_earned", "스탬프 적립", n("stamp_earned_this_month")),
-        dbMetric("stamp_reward", "스탬프 보상 수령", n("stamp_reward_this_month"), "스탬프를 채워 발급된 보상 쿠폰"),
-        dbMetric("mileage_entries", "마일리지 응모", n("mileage_entries_this_month")),
-        dbMetric("mileage_winners", "당첨 · 교환", sum("mileage_winners_this_month", "mileage_exchanges_this_month"), `당첨 ${n("mileage_winners_this_month") ?? "-"} · 마일리지로 쿠폰 교환 ${n("mileage_exchanges_this_month") ?? "-"}. 월 발급 한도(재무 캡) 대비`),
+        // 적립 「횟수」다 — 한 번에 여러 개를 찍어도 1건(민찬 0927). 일일 운영 리포트는 개수를 세서 합이 안 맞는다.
+        countMetric("stamp_earned", "스탬프 적립", ["stamp_earned"], { week: "스탬프를 찍은 횟수 — 한 번에 여러 개를 찍어도 1건입니다" }),
+        countMetric("stamp_reward", "스탬프 보상 수령", ["stamp_reward"], { week: "스탬프를 채워 발급된 보상 쿠폰", month: "스탬프를 채워 발급된 보상 쿠폰" }),
+        countMetric("mileage_entries", "마일리지 응모", ["mileage_entries"]),
+        countMetric("mileage_winners", "당첨 · 교환", ["mileage_winners", "mileage_exchanges"], {
+          week: `당첨 ${w?.mileage_winners ?? "-"} · 마일리지로 쿠폰 교환 ${w?.mileage_exchanges ?? "-"}`,
+          month: `당첨 ${n("mileage_winners_this_month") ?? "-"} · 마일리지로 쿠폰 교환 ${n("mileage_exchanges_this_month") ?? "-"}. 월 발급 한도(재무 캡) 대비`,
+        }),
       ] as Metric[],
     },
     {
@@ -249,7 +303,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
           ...(g ? {} : { status: "pending" as const }),
         },
         { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix", note: "home_banner_impression 이 상수만 있고 호출하는 곳이 없습니다(0건). 노출 이벤트 배포가 먼저" },
-        dbMetric("push_sent", "푸시 발송", n("push_sent_this_month"), "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺍니다"),
+        countMetric("push_sent", "푸시 발송", ["push_sent"], { week: "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺍니다", month: "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺍니다" }),
       ] as Metric[],
     },
   ];
@@ -270,13 +324,18 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
   ];
 
   const caveats = [
-    "**DB·푸시 칸은 이번 달 누계입니다.** 백엔드 app-stats 에 기간 파라미터가 없어 주간으로 쪼갤 수 없습니다. 「이번 달 누계」 배지가 붙은 칸은 전주 대비 계산에서 뺐습니다.",
+    weekly
+      ? "**DB·푸시 칸도 그 주만 셉니다.** 예외는 둘입니다 — 「7일 안에 만료」는 읽는 시점 기준 앞으로 7일, 「발급 → 사용」은 이번 달 발급분 누계(「이번 달 누계」 배지)입니다."
+      : "**DB·푸시 칸은 이번 달 누계입니다.** 주간 값을 읽지 못해 이번 달 누계로 냈습니다. 「이번 달 누계」 배지가 붙은 칸은 전주 대비 계산에서 뺐습니다.",
     "**기기 단위입니다.** 출시된 앱이 setUserId 를 안 불러 사람이 아니라 기기를 셉니다. 재설치하면 새 기기로 셉니다.",
     "**푸시 → 앱 열기는 안드로이드만 분모입니다.** iOS 는 백그라운드 수신을 못 세서 열기 건수가 어디에도 들어가지 못합니다.",
     "**빈 칸은 0 이 아닙니다.** 연결 전 · 앱 수정 대기 · 정의 보류 중 어느 쪽인지 칸마다 적었습니다.",
   ];
   if (banSample !== undefined && banSample < SMALL_SAMPLE) caveats.push(`**배너 클릭 → 쿠폰 사용은 ${banSample}대 표본입니다.** 전주 대비를 붙이지 않았습니다.`);
   if (retSample !== undefined && retSample < SMALL_SAMPLE) caveats.push(`**가입 1주 후 복귀는 ${retSample}대 코호트입니다.** 판정 근거로 쓰기엔 모자랍니다.`);
+  if (weekOpen) caveats.push("**이 주는 아직 끝나지 않았습니다.** DB 칸은 지금까지 센 값이라 전주 대비를 붙이지 않았습니다.");
+  if (weekly && !weekOpen && !wp) caveats.push("**전주 DB 칸을 읽지 못했습니다.** DB 칸의 전주 대비가 없습니다.");
+  if (week?.failed?.length) caveats.push(`**이 주를 셀 때 못 센 칸이 있습니다** — ${week.failed.join(" · ")}.`);
   if (newDev !== null && g?.wau) caveats.push(`**이번 주 활성 ${g.wau.toLocaleString()}대 중 ${newDev.toLocaleString()}대가 이번 주 첫 실행입니다.** 전주 대비를 "같은 사람들이 더 왔다"로 읽으면 안 됩니다.`);
 
   return {
@@ -290,11 +349,21 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, today, coupons
       author: "Probe",
       note:
         `GA4·Firebase 칸은 ${md(start)}~${md(end)} **그 주만** 센 값이라 전주(${md(shiftDay(prevEnd, -6))}~${md(prevEnd)})와 비교할 수 있습니다.\n` +
-        "DB·푸시 칸은 백엔드 app-stats 에 기간 파라미터가 없어 **이번 달 누계**뿐입니다 — 「이번 달 누계」 배지를 달고 전주 대비 계산에서 뺐습니다. 주간 수치로 읽으면 안 됩니다.",
+        (weekly
+          ? "DB·푸시 칸도 같은 주만 센 값입니다(백엔드 app-stats/period) — 「7일 안에 만료」와 「발급 → 사용」만 예외입니다."
+          : "DB·푸시 칸은 주간 값을 읽지 못해 **이번 달 누계**로 냈습니다 — 「이번 달 누계」 배지를 달고 전주 대비 계산에서 뺐습니다. 주간 수치로 읽으면 안 됩니다."),
     },
     sources: [
-      { key: "backend", label: "백엔드 DB", status: s ? "connected" : "pending", hint: "가입·쿠폰·스탬프·마일리지 — app-stats 집계. 기간 파라미터가 없어 이번 달 누계만 나옵니다" },
-      { key: "push", label: "푸시 발송 기록", status: n("push_sent_this_month") !== null ? "connected" : "pending", hint: "발송 건수도 같은 app-stats 의 이번 달 누계입니다. 열기 비율은 Firebase 칸" },
+      {
+        key: "backend", label: "백엔드 DB", status: s || weekly ? "connected" : "pending",
+        hint: weekly
+          ? "가입·쿠폰·스탬프·마일리지 — 그 주만 센 값(app-stats/period). 「발급 → 사용」·「7일 안에 만료」만 app-stats"
+          : "가입·쿠폰·스탬프·마일리지 — app-stats 의 이번 달 누계(주간 값을 읽지 못했습니다)",
+      },
+      {
+        key: "push", label: "푸시 발송 기록", status: (weekly ? total(w, ["push_sent"]) : n("push_sent_this_month")) !== null ? "connected" : "pending",
+        hint: weekly ? "발송 건수도 그 주만 센 값입니다. 열기 비율은 Firebase 칸" : "발송 건수는 app-stats 의 이번 달 누계입니다. 열기 비율은 Firebase 칸",
+      },
       { key: "ga4", label: "GA4", status: g ? "connected" : "pending", hint: g ? `BigQuery 확정 테이블 ${g.through} 까지. 배너 노출 1칸만 앱 이벤트가 없어 비어 있습니다` : "BigQuery 를 읽지 못했습니다" },
       { key: "firebase", label: "Firebase", status: g ? "connected" : "pending", hint: "자동 이벤트 — 푸시 수신·열기, first_open 코호트" },
     ],

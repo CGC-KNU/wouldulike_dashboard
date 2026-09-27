@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildAppReportData, fillAppReportTemplate, lastCompleteWeekEnd, normalizeWeekEnd,
-  weekLabel, weekRangeLabel, appReportFilename, type AppStats,
+  weekLabel, weekRangeLabel, appReportFilename, type AppStats, type PeriodStats,
 } from "../src/lib/draft/appReportData";
 import { buildMonthlyAppReportData, previousPeriod } from "../src/lib/draft/appReportMonthly";
 import { lastCompleteMonth } from "../src/lib/draft/appReport";
@@ -118,7 +118,7 @@ test("주차·기간 표시", () => {
   assert.ok(appReportFilename("20260920").startsWith("앱지표_주간보고서_9월3주차_"));
 });
 
-test("DB·푸시 칸에는 반드시 「이번 달 누계」가 붙는다 — 월 누계가 주간으로 읽히는 사고를 막는다", () => {
+test("주간 값을 못 읽으면 DB·푸시 칸에 「이번 달 누계」가 붙는다 — 월 누계가 주간으로 읽히는 사고를 막는다", () => {
   const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" });
   for (const m of metrics(d)) {
     const src = (m as unknown as { source: string }).source;
@@ -183,6 +183,91 @@ test("백엔드를 못 읽어도 렌더되고, DB 칸이 「연결 전」이 된
   const r = render(fillAppReportTemplate(d));
   assert.equal(r.status, "ok");
   assert.equal(r.warnings, "");
+});
+
+// ── 주간 DB 칸 (app-stats/period) ────────────────────────────────────
+const week = (over: Record<string, number | null> = {}, complete = true, failed: string[] = []): PeriodStats => ({
+  start: "2026-09-14", end: "2026-09-20", complete, failed,
+  stats: {
+    signups: 41, coupon_issued: 180, coupon_redeemed: 12, coupon_redeem_rate: 6.7, stamp_earned: 305,
+    stamp_reward: 22, mileage_entries: 96, mileage_winners: 5, mileage_exchanges: 2, push_sent: 4, ...over,
+  },
+});
+const weekPrev: PeriodStats = {
+  start: "2026-09-07", end: "2026-09-13", complete: true, failed: [],
+  stats: {
+    signups: 30, coupon_issued: 150, coupon_redeemed: 8, coupon_redeem_rate: 9.1, stamp_earned: 250,
+    stamp_reward: 18, mileage_entries: 70, mileage_winners: 3, mileage_exchanges: 1, push_sent: 5,
+  },
+};
+const weekly = (over: Partial<Parameters<typeof buildAppReportData>[0]> = {}) =>
+  buildAppReportData({ end: "20260920", cur, prev, stats, week: week(), weekPrev, today: "2026-09-22", ...over });
+
+test("주간 값이 있으면 DB 칸은 그 주 값이고 전주 대비가 붙는다", () => {
+  const d = weekly();
+  for (const [key, value, before] of [
+    ["signups_month", 41, 30], ["coupon_issued", 180, 150], ["coupon_used", 12, 8], ["stamp_earned", 305, 250],
+    ["stamp_reward", 22, 18], ["mileage_entries", 96, 70], ["mileage_winners", 7, 4], ["push_sent", 4, 5],
+  ] as const) {
+    const m = find(d, key);
+    assert.equal(m.value, value, `${key} 값`);
+    assert.equal(m.prev, before, `${key} 전주`);
+    assert.equal(m.scope, "period", `${key} scope`);
+  }
+  // 스탬프는 적립 「횟수」라고 칸에 적는다 — 일일 운영 리포트(개수)와 헷갈리지 않게
+  assert.match(find(d, "stamp_earned").note ?? "", /횟수/);
+  assert.match(find(d, "mileage_winners").note ?? "", /당첨 5 · 마일리지로 쿠폰 교환 2/);
+  const report = (d as { report: { note: string } }).report;
+  assert.match(report.note, /app-stats\/period/);
+  assert.doesNotMatch(report.note, /이번 달 누계\*\*/);
+});
+
+test("주간 보고서에서 「이번 달 누계」로 남는 DB 칸은 「발급 → 사용」 하나뿐이다", () => {
+  const d = weekly();
+  const mtd = metrics(d).filter((m) => m.scope === "month_to_date").map((m) => m.key);
+  assert.deepEqual(mtd, ["coupon_rate"]);
+  assert.equal(find(d, "coupon_rate").value, 3.3); // app-stats 의 이번 달 값 — 주간 값(6.7)이 아니다
+  // 7일 안에 만료는 읽는 시점 기준이라 전주 대비가 없다
+  assert.equal(find(d, "coupon_expiring").value, 513);
+  assert.equal(find(d, "coupon_expiring").prev, undefined);
+});
+
+test("아직 안 끝난 주는 전주 대비를 붙이지 않는다", () => {
+  const d = weekly({ week: week({}, false) });
+  assert.equal(find(d, "coupon_used").value, 12);
+  assert.equal(find(d, "coupon_used").prev, undefined);
+  assert.ok((d as { caveats: string[] }).caveats.some((c) => c.includes("아직 끝나지 않았습니다")));
+});
+
+test("전주를 못 읽으면 값은 있고 증감만 빠진다", () => {
+  const d = weekly({ weekPrev: null });
+  assert.equal(find(d, "stamp_earned").value, 305);
+  assert.equal(find(d, "stamp_earned").prev, undefined);
+  assert.ok((d as { caveats: string[] }).caveats.some((c) => c.includes("전주 DB 칸을 읽지 못했습니다")));
+});
+
+test("주간 값에서 못 센 칸은 0 이 아니라 비우고 이유를 적는다", () => {
+  const d = weekly({ week: week({ stamp_earned: null }, true, ["stamp_earned"]) });
+  const m = find(d, "stamp_earned");
+  assert.equal(m.value, null);
+  assert.equal(m.status, "pending");
+  assert.match(m.note ?? "", /세지 못했습니다/);
+  assert.ok((d as { caveats: string[] }).caveats.some((c) => c.includes("못 센 칸이 있습니다")));
+});
+
+test("app-stats 없이 주간 값만 있어도 DB 칸은 채워지고, 이번 달 칸만 비는다", () => {
+  const d = weekly({ stats: null });
+  assert.equal(find(d, "coupon_used").value, 12);
+  assert.equal(find(d, "coupon_rate").value, null);
+  assert.equal(find(d, "coupon_expiring").value, null);
+});
+
+test("주간 값으로 양식에 끼워도 보낼 수 있는 상태로 렌더된다", () => {
+  const d = weekly({ coupons: funnel(), couponsPrev: funnel() });
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok", `빠진 값이 있습니다`);
+  assert.equal(r.warnings, "", `양식 경고: ${r.warnings}`);
+  assert.match(r.text, /채워진 지표 20\/22/);
 });
 
 // ── 월간 ────────────────────────────────────────────────────────────
