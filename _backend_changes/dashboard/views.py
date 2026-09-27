@@ -227,16 +227,42 @@ class DashboardStatsView(APIView):
     """
     홈 핵심 지표 (P0)
     GET /api/dashboard/stats/
+    GET /api/dashboard/stats/?restaurant_id=<id>  (관리자/영업 계정 전용 — 다른 매장 조회)
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            owner = request.user.owner_profile
-        except OwnerProfile.DoesNotExist:
-            return Response({"detail": "점주 계정이 아닙니다."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.is_staff or request.user.is_superuser:
+            # 관리자/영업 계정: owner_profile이 없으므로 쿼리파라미터로 매장을 지정해야 함
+            raw_restaurant_id = request.query_params.get("restaurant_id")
+            if not raw_restaurant_id:
+                return Response(
+                    {"detail": "restaurant_id 쿼리파라미터가 필요합니다."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                restaurant_id = int(raw_restaurant_id)
+            except (TypeError, ValueError):
+                return Response({"detail": "restaurant_id가 올바르지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        restaurant_id = owner.restaurant_id
+            try:
+                restaurant = AffiliateRestaurant.objects.get(restaurant_id=restaurant_id)
+            except AffiliateRestaurant.DoesNotExist:
+                return Response({"detail": "매장을 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+            restaurant_name = restaurant.name
+            owner_profile = OwnerProfile.objects.filter(restaurant_id=restaurant_id).first()
+            tier = owner_profile.tier if owner_profile else None
+        else:
+            try:
+                owner = request.user.owner_profile
+            except OwnerProfile.DoesNotExist:
+                return Response({"detail": "점주 계정이 아닙니다."}, status=status.HTTP_403_FORBIDDEN)
+
+            restaurant_id = owner.restaurant_id
+            restaurant_name = owner.restaurant.name
+            tier = owner.tier
+
         now = timezone.now()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -281,8 +307,8 @@ class DashboardStatsView(APIView):
 
         return Response({
             "restaurant_id": restaurant_id,
-            "restaurant_name": owner.restaurant.name,
-            "tier": owner.tier,
+            "restaurant_name": restaurant_name,
+            "tier": tier,
             "month": now.strftime("%Y-%m"),
             "stats": {
                 "revisit_this_month": revisit_count,
