@@ -845,8 +845,29 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
       return;
     }
     const spec = buildSpec();
-    if (!spec.textLayers.some((l) => l.text.includes("{{카피}}"))) {
-      alert("텍스트 레이어 하나에 {{카피}}를 넣어야 AI 문구가 들어갈 자리가 생깁니다.");
+    // 자리표시자를 안 넣었으면 기본 레이어에서 자동으로 정한다 — 가장 큰 글씨 레이어가 {{카피}}
+    // ("AI 추천 멘트 작성"), 남은 것 중 가장 작은 글씨 레이어가 {{태그}}("오늘의 추천").
+    // 스튜디오 기본 프리셋(2개 레이어)은 손대지 않고 저장만 눌러도 그대로 양식이 된다.
+    const hasToken = (tok: string) => spec.textLayers.some((l) => l.text.includes(tok));
+    const mapped: string[] = [];
+    if (!hasToken("{{카피}}") && spec.textLayers.length > 0) {
+      const copyIdx = spec.textLayers.reduce((best, l, i, arr) => (l.fontSizePx > arr[best].fontSizePx ? i : best), 0);
+      mapped.push(`"${spec.textLayers[copyIdx].text.split("\n")[0]}" → {{카피}}`);
+      spec.textLayers[copyIdx].text = "{{카피}}";
+      if (!hasToken("{{태그}}")) {
+        const rest = spec.textLayers.map((l, i) => ({ l, i })).filter(({ i }) => i !== copyIdx && !/\{\{.+?\}\}/.test(spec.textLayers[i].text));
+        if (rest.length) {
+          const tag = rest.reduce((a, b) => (b.l.fontSizePx < a.l.fontSizePx ? b : a));
+          mapped.push(`"${tag.l.text.split("\n")[0]}" → {{태그}}`);
+          spec.textLayers[tag.i].text = "{{태그}}";
+        }
+      }
+    }
+    if (!hasToken("{{카피}}")) {
+      alert("텍스트 레이어가 없어 AI 문구를 넣을 자리가 없습니다. 텍스트 레이어를 추가해 주세요.");
+      return;
+    }
+    if (mapped.length && !confirm(`자리표시자가 없어 이렇게 정해서 저장합니다:\n${mapped.join("\n")}\n(나머지 레이어 문구는 모든 배너에 그대로 들어갑니다)`)) {
       return;
     }
     setSavingTpl(true);
@@ -1364,7 +1385,8 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
             <p className="text-[10px] text-gray-400 leading-relaxed">
               1주차 AI 큐레이션이 이 배치를 그대로 쓰고 문구만 바꿔 끼웁니다. 텍스트 레이어에 자리표시자를 넣어 주세요 —{" "}
               <b>{"{{카피}}"}</b>(AI 메인 문구, 필수) · {"{{태그}}"}(AI 주제 라벨) · {"{{가게명}}"} · {"{{혜택}}"}(쿠폰 혜택, 없으면 레이어가 빠짐).
-              배경 사진은 식당 사진으로 바뀌고 줌·위치만 저장됩니다.
+              배경 사진은 식당 사진으로 바뀌고 줌·위치만 저장됩니다. 기본 레이어 그대로 저장하면
+              &quot;오늘의 추천&quot; 자리는 {"{{태그}}"}, &quot;AI 추천 멘트&quot; 자리는 {"{{카피}}"}로 자동 지정됩니다.
             </p>
             {selectedLayer && (
               <div className="flex flex-wrap gap-1">
