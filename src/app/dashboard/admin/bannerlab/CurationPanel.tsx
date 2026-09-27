@@ -507,8 +507,8 @@ function TemplateSettings({
           유행어
           <select value={trendMode} onChange={(e) => setTrendMode(e.target.value as CurationTemplate["trend_mode"])} className="text-[11px] border border-gray-200 rounded px-1 py-1 bg-white">
             <option value="off">쓰지 않음</option>
-            <option value="some">가끔 (어울릴 때만)</option>
-            <option value="more">적극적으로</option>
+            <option value="some">가끔 — 딱 맞을 때만, 주 20% 이내 (기본)</option>
+            <option value="more">조금 더 — 주 35% 이내</option>
           </select>
         </label>
         <button onClick={save} disabled={busy || !dirty} className="font-semibold text-white bg-navy rounded px-2 py-1 disabled:opacity-30">저장</button>
@@ -606,9 +606,9 @@ function SpecialDaysEditor() {
 }
 
 /**
- * 유행어 관리 — AI 는 학습 시점 이후 유행을 모르고, 지난 유행어는 오히려 촌스럽다. 그래서 요즘
- * 인스타·SNS 에서 도는 말투·밈은 마케팅팀이 여기 뜻·예시와 함께 넣고, AI 는 이 목록 안에서만
- * 어울릴 때 하나씩 섞는다(같은 표현은 한 주에 두 배너까지). 유행이 식으면 끄거나 만료일을 둔다.
+ * 유행어 관리 — 매주 목요일 18시에 AI 가 웹을 검색해 요즘 인스타·SNS 표현을 근거 URL 과 함께
+ * 자동으로 채운다(3주 뒤 만료, 다시 찾히면 연장). 사람은 이상한 걸 끄기만 하면 되고, 끈 건 다시
+ * 켜지지 않는다. 직접 넣을 수도 있다. 문구에는 딱 맞을 때만, 한 주 20% 이내로 섞인다.
  */
 function TrendPhrasesEditor() {
   const [rows, setRows] = useState<TrendPhrase[]>([]);
@@ -647,13 +647,34 @@ function TrendPhrasesEditor() {
     load();
   }
 
+  const [scouting, setScouting] = useState(false);
+
+  async function scoutNow() {
+    setScouting(true);
+    try {
+      await api(`/api/bannerlab/curation/trend-phrases/refresh`, { method: "POST", body: "{}" });
+      alert("AI가 웹에서 요즘 유행어를 찾고 있어요. 1분쯤 뒤 목록이 채워지고 슬랙에도 올라옵니다.");
+      setTimeout(load, 60_000);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setScouting(false);
+    }
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   return (
     <div className="bg-white rounded-lg border border-gray-100 p-2.5 flex flex-col gap-2 text-[10px]">
-      <p className="text-gray-400 leading-relaxed">
-        요즘 인스타·SNS에서 도는 말투·단어·밈을 뜻과 예시와 함께 넣어 주세요. AI는 <b>이 목록 안에서만</b>, 식당·주제와 어울릴 때 하나씩
-        섞어 씁니다(같은 표현은 한 주에 두 배너까지). 섞는 정도는 양식 설정의 &quot;유행어&quot;에서 고릅니다. 유행이 지나면 끄거나 만료일을 두세요.
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-gray-400 leading-relaxed">
+          <b>매주 목요일 18시</b>에 AI가 웹을 검색해 요즘 인스타·SNS 표현을 근거와 함께 자동으로 채웁니다(3주 뒤 만료). 이상한 표현은
+          체크를 꺼 주세요 — 끈 표현은 다시 찾혀도 켜지지 않습니다. 문구에는 <b>딱 맞을 때만</b> 섞이고, 한 주 배너의 20% 이내 ·
+          같은 표현은 한 번만 쓰입니다.
+        </p>
+        <button onClick={scoutNow} disabled={scouting} className="shrink-0 font-semibold text-periwinkle border border-periwinkle/30 rounded px-2 py-1 disabled:opacity-30">
+          {scouting ? "요청 중…" : "AI로 지금 찾기"}
+        </button>
+      </div>
       <div className="flex flex-wrap gap-1 items-end">
         <input value={draft.phrase} onChange={(e) => setDraft({ ...draft, phrase: e.target.value })} placeholder="유행어 (예: ~하는 사람 손)" maxLength={40} className="border border-gray-200 rounded px-1.5 py-1 w-36" />
         <input value={draft.meaning} onChange={(e) => setDraft({ ...draft, meaning: e.target.value })} placeholder="뜻·쓰는 상황" maxLength={200} className="border border-gray-200 rounded px-1.5 py-1 flex-1 min-w-[120px]" />
@@ -671,15 +692,21 @@ function TrendPhrasesEditor() {
           추가
         </button>
       </div>
-      {rows.length === 0 && <p className="text-gray-300">아직 등록된 유행어가 없어요 — 없으면 AI는 유행어 없이 씁니다.</p>}
+      {rows.length === 0 && <p className="text-gray-300">아직 유행어가 없어요 — 목요일에 자동으로 찾거나, &quot;AI로 지금 찾기&quot;를 눌러 보세요.</p>}
       <div className="flex flex-col divide-y divide-gray-50 max-h-64 overflow-y-auto">
         {rows.map((t) => {
           const expired = !!t.expires_on && t.expires_on < today;
           return (
             <div key={t.id} className={`flex items-center gap-2 py-1 ${!t.active || expired ? "opacity-40" : ""}`}>
               <input type="checkbox" checked={t.active} disabled={busy} onChange={(e) => save(t.id, { active: e.target.checked })} title="켜진 것만 AI가 씀" />
-              <span className="font-semibold text-gray-700 w-32 shrink-0 truncate">{t.phrase}</span>
+              <span className={`shrink-0 px-1 rounded ${t.source === "ai" ? "bg-fuchsia-50 text-fuchsia-600" : "bg-gray-100 text-gray-500"}`}>
+                {t.source === "ai" ? "AI" : "직접"}
+              </span>
+              <span className="font-semibold text-gray-700 w-28 shrink-0 truncate">{t.phrase}</span>
               <span className="text-gray-500 truncate flex-1">{t.meaning}{t.example ? ` · "${t.example}"` : ""}</span>
+              {t.source_urls?.[0] && (
+                <a href={t.source_urls[0]} target="_blank" rel="noreferrer" className="text-periwinkle underline shrink-0">근거</a>
+              )}
               <span className="text-gray-400 shrink-0">{t.expires_on ? `~${t.expires_on.slice(5)}${expired ? " 만료" : ""}` : ""}</span>
               <button onClick={() => remove(t)} className="text-gray-300 hover:text-rose-500 shrink-0">삭제</button>
             </div>

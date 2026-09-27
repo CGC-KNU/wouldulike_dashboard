@@ -136,4 +136,8 @@ export interface TrendPhrase {
   example: string;
   active: boolean;
   expires_on: string | null;
+  source: "manual" | "ai";
+  source_urls: string[];
+  confidence: number | null;
+  found_at: string | null;
 }
