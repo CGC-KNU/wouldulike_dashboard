@@ -1,4 +1,4 @@
-import { clientFromEnv } from "./appMetrics";
+import { clientFromEnv, ISSUE_KEY_SOURCES, isCampaignSource } from "./appMetrics";
 
 /**
  * 쿠폰 **발급 → 사용** 을 GA4 원본에서 제대로 센다.
@@ -26,16 +26,10 @@ import { clientFromEnv } from "./appMetrics";
 
 const MAX_BYTES = String(1024 ** 3);
 
-/**
- * `issue_key` 에서 나온 값들 — 이 목록에 **없으면** 캠페인 코드다.
- * frontend `resolveCouponIssueSource()` 의 반환값 전부와 같아야 한다.
- */
-export const ISSUE_KEY_SOURCES = new Set([
-  "SIGNUP_WELCOME", "BULK_EVENT", "REFERRAL", "EVENT_REWARD_SIGNUP", "STAMP_REWARD",
-  "FLASH_8PM", "FINAL_EXAM_EVENT", "LIMITED_BONUS", "LIMITED_CAMPAIGN", "unknown", "other",
-]);
-
-export const isCampaignSource = (src: string) => !ISSUE_KEY_SOURCES.has(src);
+// 목록 자체는 appMetrics.ts 에 있다 — 그 파일의 퍼널 SQL 도 같은 목록을 써야 하는데,
+// 이 파일이 appMetrics 를 가져오므로 거꾸로 가져오면 순환 참조가 된다.
+// 기존 import 경로(`from "./couponFunnel"`)가 깨지지 않게 여기서 다시 내보낸다.
+export { ISSUE_KEY_SOURCES, isCampaignSource } from "./appMetrics";
 
 /**
  * 이벤트가 앱에 **처음 찍힌 날**(YYYYMMDD). 창이 이보다 앞서면 그 칸은 값이 아니라 **없던 것**이다.

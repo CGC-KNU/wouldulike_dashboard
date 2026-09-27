@@ -1,6 +1,6 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { SMALL_SAMPLE, couponMetrics, dominantNote, type Json, type Metric } from "./appReportData";
-import type { CouponFunnel } from "@/lib/bigquery/couponFunnel";
+import type { CouponFunnel, StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 
 /**
  * Probe · 앱 지표 **월간 보고서**의 데이터 변환 — 순수 함수만(가져오기는 appReport.ts).
@@ -44,6 +44,8 @@ export interface MonthlyReportInput {
   snapshot: SnapshotPayload | null;
   /** 작성일(KST, YYYY-MM-DD). 안 주면 오늘. */
   today?: string;
+  /** 매장 상세 → 쿠폰 발급 (GA4). 주간 보고서·Probe 화면과 같은 함수를 쓴다. */
+  storeToCoupon?: StoreToCoupon | null;
   /** 쿠폰 발급→사용 (GA4). 스냅샷의 DB 칸과 달리 기간이 정확하다. */
   coupons?: CouponFunnel | null;
   couponsPrev?: CouponFunnel | null;
@@ -77,7 +79,7 @@ const UNIT: Record<string, string> = {
   mileage_exchanges: "건", push_sent: "건",
 };
 
-export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today, coupons, couponsPrev }: MonthlyReportInput): Json {
+export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today, coupons, couponsPrev, storeToCoupon: s2c }: MonthlyReportInput): Json {
   const snap = snapshot?.current ?? null;
   const snapPrev = snapshot?.previous ?? null;
   const s = snap?.stats ?? null;
@@ -163,7 +165,14 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
           note: g ? `${win} 세션 ${g.sessions.toLocaleString()}개 중 매장 상세를 연 비율` : "같은 세션 안 매장 상세 이벤트 유무",
           ...(g ? {} : { status: "pending" as const }),
         },
-        { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: null, unit: "%", source: "backend", status: "undefined", note: "앱의 coupon_issued 는 자동 지급 쿠폰이 화면에 보일 때도 남아 매장을 보고 받은 쿠폰과 섞입니다 — 정의 보류" },
+        {
+          key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: s2c?.rate ?? null, unit: "%", source: "ga4",
+          ...(s2c ? { sample: s2c.views } : { status: "pending" as const }),
+          // 「정의 보류」였던 칸이다. 캠페인 자동 지급을 분자에서 뺀다 — 주간 보고서와 같은 함수·같은 기준.
+          note: s2c
+            ? `매장 상세를 연 ${s2c.views.toLocaleString()}자리(기기·세션·매장) 중 그 자리에서 쿠폰을 받은 ${s2c.claimed.toLocaleString()}자리. 캠페인 자동 지급까지 세면 ${s2c.claimed_including_campaign.toLocaleString()}자리입니다`
+            : "매장 상세를 연 자리에서 캠페인이 아닌 쿠폰을 받은 비율",
+        },
         dbMetric("coupon_issued", "쿠폰 발급"),
         dbMetric("coupon_redeemed", "쿠폰 사용"),
         dbMetric("coupon_redeem_rate", "발급 → 사용", `그 달 발급분 중 쓴 비율. 달이 끝난 뒤 센 값이라 달 중간에 보던 수치보다 높습니다${dom.extra}`),
@@ -204,13 +213,18 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
     },
   ];
 
-  // 퍼널 — 「매장 상세 → 쿠폰 발급」의 정의가 아직 없어서 뒤 두 단계는 월간에서도 끊긴 채로 둔다.
-  // 기간은 이제 맞지만(스냅샷이 그 달만 준다) 세션(기기)과 쿠폰(건)은 단위가 다르고, 무엇이 분자인지가 안 정해졌다.
+  // 퍼널 — 네 단계를 모두 세션 단위로 센다(주간과 같은 정의). 예전에는 뒤 두 단계를
+  // 스냅샷 DB 에서 가져올 수밖에 없어 단위가 달라 끊어 뒀다.
+  // 발급은 캠페인 자동 지급을 뺀 수다.
   const funnel = [
     { label: "앱 열기", value: g?.sessions ?? null, unit: "세션" },
     { label: "매장 상세", value: g && g.open_to_store !== null ? Math.round((g.sessions * g.open_to_store) / 100) : null, unit: "세션" },
-    { label: "쿠폰 발급", value: null, unit: "건", note: "매장을 보고 받은 쿠폰만 세는 정의가 없습니다 — 앱 이벤트는 자동 지급 쿠폰까지 셉니다" },
-    { label: "쿠폰 사용", value: null, unit: "건", note: "앞 단계가 끊겨 있어 여기서 이어 붙이면 건너뛴 값이 됩니다. 위 「쿠폰 사용」 칸을 그대로 보십시오" },
+    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "상세를 보고 그 자리에서 받은 세션. 캠페인 자동 지급은 뺍니다" },
+    // 여기는 일부러 비운다. 쿠폰은 받은 세션이 아니라 **나중 방문에서** 쓰이므로 같은 세션으로
+    // 포개면 0~3 이 되어(7월 0 · 8월 1 · 9/14~20 3) 「아무도 안 쓴다」로 읽힌다. 포개지 않으면
+    // 앞 단계와 무관한 수를 퍼널로 그리는 것이 된다. 그 전환은 위 「발급 → 사용」 칸이
+    // coupon_code 로 발급↔사용을 이어 정확히 센다.
+    { label: "쿠폰 사용", value: null, unit: "세션", note: "쿠폰은 받은 세션이 아니라 나중 방문에서 쓰입니다 — 같은 세션으로 세면 뜻이 없습니다. 위 「발급 → 사용」 칸을 보십시오" },
   ];
 
   const caveats = [

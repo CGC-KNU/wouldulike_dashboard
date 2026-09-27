@@ -19,6 +19,7 @@ import { eventCoverage, isCampaignSource, type CouponFunnel } from "../src/lib/b
 const cur: Ga4AppMetrics = {
   through: "2026-09-20", week: { from: "2026-09-14", to: "2026-09-20" },
   wau: 253, new_devices: 164, dau_wau: 20.5, open_to_store: 24.9, sessions: 429,
+  sessions_detail_to_coupon: 10,
   retention_w1: 2.5, cohort: { from: "2026-08-31", to: "2026-09-06", users: 40 },
   push_open: 5.4, push: { from: "2026-09-07", to: "2026-09-20", received: 349, opened_android: 19, opened_ios: 35 },
   banner_to_coupon: 10.5, banner: { from: "2026-08-17", to: "2026-09-13", clicked: 19, redeemed: 2 },
@@ -26,6 +27,7 @@ const cur: Ga4AppMetrics = {
 const prev: Ga4AppMetrics = {
   ...cur, through: "2026-09-13", week: { from: "2026-09-07", to: "2026-09-13" },
   wau: 69, new_devices: 27, dau_wau: 21.3, open_to_store: 34.1, sessions: 132,
+  sessions_detail_to_coupon: 9,
   retention_w1: 27.3, cohort: { from: "2026-08-24", to: "2026-08-30", users: 11 },
   push_open: 7.6, push: { from: "2026-08-31", to: "2026-09-13", received: 66, opened_android: 5, opened_ios: 12 },
   banner_to_coupon: 5.3, banner: { from: "2026-08-10", to: "2026-09-06", clicked: 19, redeemed: 1 },
@@ -59,7 +61,7 @@ const funnel = (over: Partial<CouponFunnel> = {}): CouponFunnel => ({
   ...over,
 });
 
-type Metric = { key: string; value: number | null; prev?: number | null; scope?: string; status?: string; sample?: number; verdict?: string };
+type Metric = { key: string; value: number | null; prev?: number | null; scope?: string; status?: string; sample?: number; verdict?: string; note?: string };
 const metrics = (d: unknown): Metric[] =>
   ((d as { groups: { metrics: Metric[] }[] }).groups).flatMap((g) => g.metrics);
 const find = (d: unknown, key: string): Metric => {
@@ -187,6 +189,7 @@ test("백엔드를 못 읽어도 렌더되고, DB 칸이 「연결 전」이 된
 const augGa4: Ga4AppMetrics = {
   through: "2026-08-31", week: { from: "2026-08-01", to: "2026-08-31" },
   wau: 128, new_devices: 61, dau_wau: 5.5, open_to_store: 26.2, sessions: 275,
+  sessions_detail_to_coupon: 18,
   retention_w1: 27.8, cohort: { from: "2026-08-01", to: "2026-08-18", users: 18 },
   push_open: 1.4, push: { from: "2026-08-01", to: "2026-08-31", received: 70, opened_android: 1, opened_ios: 3 },
   banner_to_coupon: 0, banner: { from: "2026-08-01", to: "2026-08-24", clicked: 11, redeemed: 0 },
@@ -441,4 +444,96 @@ test("캠페인 쿠폰을 분자에서 빼는 기준이 코드 한 곳에 있다
   for (const s of ["KNUSCSEPT_EVENT", "LIMITED_SELECT_TEMP_EVENT", "무엇이든_새_캠페인"]) {
     assert.ok(!ISSUE_KEY_SOURCES.has(s), `${s} 는 캠페인이어야 한다`);
   }
+});
+
+// ── 보고서에서 「정의 보류」였던 칸을 연결한 뒤 ────────────────────────
+import { knownSourcesSql } from "../src/lib/bigquery/appMetrics";
+import type { StoreToCoupon } from "../src/lib/bigquery/couponFunnel";
+import { readFile } from "node:fs/promises";
+
+/** readStoreToCoupon 이 주는 모양. 9/14~20 실측에 맞춘 값. */
+const s2c = (over: Partial<StoreToCoupon> = {}): StoreToCoupon => ({
+  window: { from: "2026-09-14", to: "2026-09-20" },
+  views: 174, claimed: 2, claimed_including_campaign: 10, rate: 1.1,
+  ...over,
+});
+
+test("매장 상세 → 쿠폰 발급 칸이 값과 분모를 같이 말한다", () => {
+  const d = buildAppReportData({
+    end: "20260920", cur, prev, stats, today: "2026-09-22",
+    coupons: funnel(), couponsPrev: funnel(), storeToCoupon: s2c(),
+  });
+  const m = find(d, "store_to_coupon");
+  assert.equal(m.value, 1.1);
+  assert.equal(m.status, undefined, "「정의 보류」가 남아 있으면 안 된다");
+  assert.equal(m.sample, 174, "분모를 화면이 알아야 표본이 얕은 걸 말할 수 있다");
+  // 정의를 바꾸면 숫자가 5배 달라지는 칸이다 — 둘 다 적어야 읽는 사람이 속지 않는다
+  assert.match(String(m.note), /2/);
+  assert.match(String(m.note), /10/, "캠페인까지 세면 몇인지도 적는다");
+});
+
+test("매장 상세 → 쿠폰 발급을 못 읽으면 0 이 아니라 「연결 전」", () => {
+  const d = buildAppReportData({
+    end: "20260920", cur, prev, stats, today: "2026-09-22", storeToCoupon: null,
+  });
+  const m = find(d, "store_to_coupon");
+  assert.equal(m.value, null);
+  assert.equal(m.status, "pending");
+});
+
+test("퍼널은 단계를 포개 세므로 역전될 수 없다", () => {
+  // 포개지 않고 각자 세면 상세를 안 열고 쿠폰을 받은 세션이 섞여 3단이 2단보다 커진다.
+  // 9/14~20 실측: 포개면 10, 안 포개면 39 — 상세 107 보다 작아 이 주엔 티가 안 나지만,
+  // 캠페인이 크게 돌면 언제든 넘어선다. 여기서는 정의 자체를 지킨다.
+  const d = buildAppReportData({
+    end: "20260920", cur, prev, stats, today: "2026-09-22", storeToCoupon: s2c(),
+  });
+  const steps = d.funnel as { label: string; value: number | null; unit: string }[];
+  assert.equal(steps[0].value, 429, "앱 열기 = 세션");
+  assert.equal(steps[1].value, 107, "상세 = 429 × 24.9%");
+  assert.equal(steps[2].value, 10, "상세를 보고 그 자리에서 받은 세션");
+  const filled = steps.filter((x) => x.value !== null).map((x) => x.value as number);
+  for (let i = 1; i < filled.length; i++) {
+    assert.ok(filled[i] <= filled[i - 1], `${i}단이 앞 단계보다 크다 — 퍼널 역전`);
+  }
+  assert.ok(steps.every((x) => x.unit === "세션"), "단위가 섞이면 한 줄에 세울 수 없다");
+});
+
+test("퍼널 4단은 비운 채로, 왜 비웠는지를 적는다", () => {
+  // 쿠폰은 받은 세션이 아니라 나중 방문에서 쓰인다. 같은 세션으로 포개면 0~3 이 되어
+  // 「아무도 안 쓴다」로 읽힌다 — 0 으로 채우는 것보다 비우고 이유를 적는 쪽이 맞다.
+  const d = buildAppReportData({
+    end: "20260920", cur, prev, stats, today: "2026-09-22", storeToCoupon: s2c(),
+  });
+  const steps = d.funnel as { label: string; value: number | null; note?: string }[];
+  assert.equal(steps[3].value, null);
+  assert.match(String(steps[3].note), /나중 방문/);
+});
+
+test("캠페인을 가르는 목록이 SQL 과 판정 함수에서 같다", () => {
+  // 목록을 두 곳에 적어 두면 한쪽만 고쳐져 같은 보고서 안에서 숫자가 어긋난다.
+  // appMetrics 의 퍼널 SQL 과 couponFunnel 의 isCampaignSource 가 이 한 곳을 같이 쓴다.
+  const sql = knownSourcesSql();
+  for (const s of ISSUE_KEY_SOURCES) {
+    assert.ok(sql.includes(`'${s}'`), `${s} 가 SQL 목록에 빠졌다`);
+  }
+  assert.equal(sql.split(",").length, ISSUE_KEY_SOURCES.size, "SQL 목록에 군더더기가 없다");
+});
+
+/**
+ * 퍼널이 역전되지 않게 막는 것은 **SQL 한 줄**(`COUNTIF(detail AND coupon)`)이다.
+ * 그런데 테스트는 BigQuery 를 돌리지 않으므로, 그 줄을 `COUNTIF(coupon)` 으로 되돌려도
+ * 위 검사들이 전부 통과한다(실제로 확인했다). 그래서 쿼리 글자를 직접 본다.
+ *
+ * 값을 재는 테스트가 아니라 **정의가 조용히 느슨해지는 것**을 막는 테스트다.
+ */
+test("퍼널 SQL 이 앞 단계를 포개서 센다", async () => {
+  const src = await readFile("src/lib/bigquery/appMetrics.ts", "utf8")  // npm test 는 저장소 루트에서 돈다;
+  assert.match(src, /COUNTIF\(detail AND coupon\)/,
+    "포개지 않으면 상세를 안 열고 쿠폰을 받은 세션이 섞여 3단이 2단보다 커진다");
+  assert.doesNotMatch(src, /COUNTIF\(coupon\)/,
+    "포개지 않은 셈이 남아 있다");
+  // 캠페인 자동 지급을 빼는 조건도 같은 자리에 있어야 한다
+  assert.match(src, /coupon_issued' AND src IN \(\$\{knownSources\}\)/,
+    "캠페인을 빼지 않으면 이 칸이 몇 배로 부푼다");
 });
