@@ -384,7 +384,50 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
       "인스타그램 링크로 앱에 들어와 <b>" + esc(STORE) + " 화면을 직접 연 경우만</b> 셌습니다.</div></div></div>");
   }
 
-  // ── 지난 보고 이후: 0925 에 뺐다(마케팅 결정). r-change 자리는 PNG 나누기가 참조해서 비워 둔다 ──
+  // ── 시간이 지나며 쌓인 숫자 (1일 · 7일 · 14일) ──
+  // 0925 에 뺀 「지난 보고 이후」 표가 있던 자리다(r-change — PNG 나누기가 이 id 를 참조한다).
+  // 남의 게시물과 비교하지 않고 "늘어났다"를 말하는 유일한 칸이다.
+  //
+  // 없는 점은 백엔드가 아예 안 보낸다. 여기서도 0 으로 채우지 않는다 — 채우면
+  // "1일 1,200 → 7일 0" 처럼 줄어든 것으로 읽힌다.
+  // **점이 하나면 그리지 않는다.** 한 점은 추이가 아니라 그냥 지금 값이고, 위 카드가 이미 말한다.
+  var SER = (D.series || []).filter(function (x) { return x && (has(x.reach) || has(x.views)); });
+  if (SER.length >= 2) {
+    // 진한 막대(.me)는 **마지막 점** = 이 보고의 기준일이다. "지금 얼마인지"를 먼저 찾게 한다.
+    function serRows(key) {
+      var vals = SER.map(function (x) { return has(x[key]) ? x[key] : 0; });
+      var mx = Math.max.apply(null, vals);
+      if (!mx) return "";
+      return SER.map(function (x, i) {
+        var v = has(x[key]) ? x[key] : null;
+        var w = v === null ? 0 : Math.max(2, Math.round(v / mx * 100));
+        return '<div class="row' + (i === SER.length - 1 ? " me" : "") + '">' +
+          '<div class="lb">' + x.day + '일</div>' +
+          '<div class="bg"><i style="width:' + w + '%"></i></div>' +
+          '<div class="nm">' + (v === null ? "–" : n(v)) + '</div></div>';
+      }).join("");
+    }
+    var sBlocks = [];
+    var reachRows = serRows("reach");
+    var viewRows = serRows("views");
+    if (reachRows) sBlocks.push('<div class="cmp"><div class="hd"><span>조회한 사람 (명)</span></div>' + reachRows + '</div>');
+    if (viewRows) sBlocks.push('<div class="cmp"><div class="hd"><span>조회 (회)</span></div>' + viewRows + '</div>');
+    if (sBlocks.length) {
+      var sFirst = SER[0], sLast = SER[SER.length - 1];
+      var sLine = "";
+      if (has(sFirst.reach) && has(sLast.reach)) {
+        sLine = "조회한 사람은 게시 후 " + sFirst.day + "일 <b>" + n(sFirst.reach) + "명</b>에서 " +
+          sLast.day + "일 <b>" + n(sLast.reach) + "명</b>이 되었습니다.";
+      }
+      put("r-change",
+        '<div class="card"><div class="pad"><h2>시간이 지나며 쌓인 숫자</h2>' +
+        '<div class="d" style="margin-bottom:12px">게시 후 날짜별로 인스타그램에서 받은 누적 값입니다. 진한 막대가 ' +
+        sLast.day + '일 기준값입니다.</div>' +
+        sBlocks.join("") +
+        (sLine ? '<div class="d">' + sLine + '</div>' : "") +
+        '</div></div>');
+    }
+  }
 
   // ── 다른 게시물과 비교 ──
   function bars(list) {
