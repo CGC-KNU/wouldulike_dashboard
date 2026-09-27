@@ -12,6 +12,7 @@ import {
   SLOT_LABEL,
   SpecialDay,
   STATUS_STYLE,
+  TrendPhrase,
   WEATHER_LABEL,
   WeekCuration,
 } from "./typesCuration";
@@ -74,6 +75,7 @@ export default function CurationPanel({
   const [err, setErr] = useState("");
   const [preview, setPreview] = useState<{ image: string; overflow: string[] } | null>(null);
   const [showDays, setShowDays] = useState(false);
+  const [showTrends, setShowTrends] = useState(false);
   const [polling, setPolling] = useState(false);
 
   const load = useCallback(async () => {
@@ -316,6 +318,11 @@ export default function CurationPanel({
             {showDays ? "특정일 관리 닫기" : "특정일 관리 (명절·기념일·학사일정)"}
           </button>
           {showDays && <SpecialDaysEditor />}
+
+          <button onClick={() => setShowTrends((v) => !v)} className="self-start text-[10px] text-navy font-semibold underline underline-offset-2">
+            {showTrends ? "유행어 관리 닫기" : "유행어 관리 (인스타·SNS 말투·밈)"}
+          </button>
+          {showTrends && <TrendPhrasesEditor />}
         </>
       )}
     </div>
@@ -371,6 +378,7 @@ function BannerCard({ banner: b, onChanged }: { banner: CurationBanner; onChange
         {b.topic && <span>노출: {describeConditions(b)}</span>}
         {b.reason && <span className="text-gray-400">{b.reason}</span>}
         {b.ai_meta?.fallback_used && <span className="text-amber-600">⚠️ AI 문구가 검수를 통과 못 해 기본 문구 사용</span>}
+        {b.ai_meta?.trend_used && <span className="text-fuchsia-600">✨ 유행어 · {b.ai_meta.trend_used}</span>}
         {(b.ai_meta?.photo_count ?? 3) < 3 && <span className="text-amber-600">⚠️ 등록 사진 {b.ai_meta?.photo_count ?? 0}장 (3장 이상 권장)</span>}
         {b.generation_error && <span className="text-rose-500">{b.generation_error}</span>}
         {b.approved_by && <span className="text-emerald-600">✅ {b.approved_by} 통과</span>}
@@ -451,15 +459,18 @@ function TemplateSettings({
   const [tagMax, setTagMax] = useState(t.tag_max_chars);
   const [lineMax, setLineMax] = useState(t.copy_max_chars_per_line);
   const [lines, setLines] = useState(t.copy_max_lines);
+  const [trendMode, setTrendMode] = useState(t.trend_mode ?? "some");
   const [busy, setBusy] = useState(false);
-  const dirty = guide !== t.copy_guide || tagMax !== t.tag_max_chars || lineMax !== t.copy_max_chars_per_line || lines !== t.copy_max_lines;
+  const dirty =
+    guide !== t.copy_guide || tagMax !== t.tag_max_chars || lineMax !== t.copy_max_chars_per_line || lines !== t.copy_max_lines ||
+    trendMode !== (t.trend_mode ?? "some");
 
   async function save() {
     setBusy(true);
     try {
       await api(`/api/bannerlab/curation/templates/${t.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ copy_guide: guide, tag_max_chars: tagMax, copy_max_chars_per_line: lineMax, copy_max_lines: lines }),
+        body: JSON.stringify({ copy_guide: guide, tag_max_chars: tagMax, copy_max_chars_per_line: lineMax, copy_max_lines: lines, trend_mode: trendMode }),
       });
       onSaved();
     } catch (e) {
@@ -492,6 +503,14 @@ function TemplateSettings({
         <label className="flex items-center gap-1">태그 최대 <input type="number" min={4} max={30} value={tagMax} onChange={(e) => setTagMax(Number(e.target.value))} className={num} />자</label>
         <label className="flex items-center gap-1">카피 <input type="number" min={1} max={3} value={lines} onChange={(e) => setLines(Number(e.target.value))} className={num} />줄</label>
         <label className="flex items-center gap-1">한 줄 최대 <input type="number" min={4} max={30} value={lineMax} onChange={(e) => setLineMax(Number(e.target.value))} className={num} />자</label>
+        <label className="flex items-center gap-1">
+          유행어
+          <select value={trendMode} onChange={(e) => setTrendMode(e.target.value as CurationTemplate["trend_mode"])} className="text-[11px] border border-gray-200 rounded px-1 py-1 bg-white">
+            <option value="off">쓰지 않음</option>
+            <option value="some">가끔 (어울릴 때만)</option>
+            <option value="more">적극적으로</option>
+          </select>
+        </label>
         <button onClick={save} disabled={busy || !dirty} className="font-semibold text-white bg-navy rounded px-2 py-1 disabled:opacity-30">저장</button>
         <button onClick={remove} className="text-gray-300 hover:text-rose-500 ml-auto">양식 삭제</button>
       </div>
@@ -581,6 +600,91 @@ function SpecialDaysEditor() {
             <button onClick={() => remove(d)} className="text-gray-300 hover:text-rose-500 shrink-0">삭제</button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 유행어 관리 — AI 는 학습 시점 이후 유행을 모르고, 지난 유행어는 오히려 촌스럽다. 그래서 요즘
+ * 인스타·SNS 에서 도는 말투·밈은 마케팅팀이 여기 뜻·예시와 함께 넣고, AI 는 이 목록 안에서만
+ * 어울릴 때 하나씩 섞는다(같은 표현은 한 주에 두 배너까지). 유행이 식으면 끄거나 만료일을 둔다.
+ */
+function TrendPhrasesEditor() {
+  const [rows, setRows] = useState<TrendPhrase[]>([]);
+  const [draft, setDraft] = useState({ phrase: "", meaning: "", example: "", expires_on: "" });
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setRows((await api<{ trend_phrases: TrendPhrase[] }>(`/api/bannerlab/curation/trend-phrases`)).trend_phrases);
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function save(id: number | null, body: Record<string, unknown>) {
+    setBusy(true);
+    try {
+      await api(`/api/bannerlab/curation/trend-phrases${id ? `/${id}` : ""}`, { method: id ? "PATCH" : "POST", body: JSON.stringify(body) });
+      await load();
+      return true;
+    } catch (e) {
+      alert((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(t: TrendPhrase) {
+    if (!confirm(`'${t.phrase}'을(를) 지울까요?`)) return;
+    await fetch(`/api/bannerlab/curation/trend-phrases/${t.id}`, { method: "DELETE" });
+    load();
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <div className="bg-white rounded-lg border border-gray-100 p-2.5 flex flex-col gap-2 text-[10px]">
+      <p className="text-gray-400 leading-relaxed">
+        요즘 인스타·SNS에서 도는 말투·단어·밈을 뜻과 예시와 함께 넣어 주세요. AI는 <b>이 목록 안에서만</b>, 식당·주제와 어울릴 때 하나씩
+        섞어 씁니다(같은 표현은 한 주에 두 배너까지). 섞는 정도는 양식 설정의 &quot;유행어&quot;에서 고릅니다. 유행이 지나면 끄거나 만료일을 두세요.
+      </p>
+      <div className="flex flex-wrap gap-1 items-end">
+        <input value={draft.phrase} onChange={(e) => setDraft({ ...draft, phrase: e.target.value })} placeholder="유행어 (예: ~하는 사람 손)" maxLength={40} className="border border-gray-200 rounded px-1.5 py-1 w-36" />
+        <input value={draft.meaning} onChange={(e) => setDraft({ ...draft, meaning: e.target.value })} placeholder="뜻·쓰는 상황" maxLength={200} className="border border-gray-200 rounded px-1.5 py-1 flex-1 min-w-[120px]" />
+        <input value={draft.example} onChange={(e) => setDraft({ ...draft, example: e.target.value })} placeholder="예시 문장" maxLength={120} className="border border-gray-200 rounded px-1.5 py-1 flex-1 min-w-[120px]" />
+        <input type="date" value={draft.expires_on} onChange={(e) => setDraft({ ...draft, expires_on: e.target.value })} title="만료일 (선택)" className="border border-gray-200 rounded px-1 py-1" />
+        <button
+          disabled={busy || !draft.phrase.trim()}
+          onClick={async () => {
+            if (await save(null, { ...draft, expires_on: draft.expires_on || null, active: true })) {
+              setDraft({ phrase: "", meaning: "", example: "", expires_on: "" });
+            }
+          }}
+          className="font-semibold text-white bg-navy rounded px-2 py-1 disabled:opacity-30"
+        >
+          추가
+        </button>
+      </div>
+      {rows.length === 0 && <p className="text-gray-300">아직 등록된 유행어가 없어요 — 없으면 AI는 유행어 없이 씁니다.</p>}
+      <div className="flex flex-col divide-y divide-gray-50 max-h-64 overflow-y-auto">
+        {rows.map((t) => {
+          const expired = !!t.expires_on && t.expires_on < today;
+          return (
+            <div key={t.id} className={`flex items-center gap-2 py-1 ${!t.active || expired ? "opacity-40" : ""}`}>
+              <input type="checkbox" checked={t.active} disabled={busy} onChange={(e) => save(t.id, { active: e.target.checked })} title="켜진 것만 AI가 씀" />
+              <span className="font-semibold text-gray-700 w-32 shrink-0 truncate">{t.phrase}</span>
+              <span className="text-gray-500 truncate flex-1">{t.meaning}{t.example ? ` · "${t.example}"` : ""}</span>
+              <span className="text-gray-400 shrink-0">{t.expires_on ? `~${t.expires_on.slice(5)}${expired ? " 만료" : ""}` : ""}</span>
+              <button onClick={() => remove(t)} className="text-gray-300 hover:text-rose-500 shrink-0">삭제</button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

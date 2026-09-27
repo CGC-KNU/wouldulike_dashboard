@@ -27,7 +27,7 @@ export interface CurationBanner {
   image_url: string;
   fallback: { tag: string; copy: string; image_url: string } | null;
   photo_url: string;
-  ai_meta: { attempts?: number; rejections?: string[]; fallback_used?: boolean; photo_count?: number; model?: string };
+  ai_meta: { attempts?: number; rejections?: string[]; fallback_used?: boolean; photo_count?: number; model?: string; trend_used?: string };
   feedback_text: string;
   generation_error: string;
   approved_by: string;
@@ -80,6 +80,7 @@ export interface CurationTemplate {
   tag_max_chars: number;
   copy_max_chars_per_line: number;
   copy_max_lines: number;
+  trend_mode: "off" | "some" | "more";
   is_active: boolean;
   tokens: string[];
   updated_at: string | null;
@@ -127,3 +128,12 @@ export const WEATHER_LABEL: Record<string, string> = {
   cold: "추운 날",
   hot: "더운 날",
 };
+
+export interface TrendPhrase {
+  id: number;
+  phrase: string;
+  meaning: string;
+  example: string;
+  active: boolean;
+  expires_on: string | null;
+}
