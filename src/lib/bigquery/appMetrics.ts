@@ -1,6 +1,33 @@
 import { BigQuery } from "@google-cloud/bigquery";
 
 /**
+ * 쿠폰 발급 경로를 **캠페인 자동 지급 / 그 밖** 으로 가르는 한 곳.
+ *
+ * ── 왜 여기에 있는가 ──
+ * `couponFunnel.ts` 와 이 파일이 **둘 다** 이 목록으로 SQL 을 만든다. 복사해 두면 한쪽만
+ * 고쳐져 **같은 보고서 안에서 숫자가 어긋난다.** 그런데 `couponFunnel` 이 이 파일의
+ * `clientFromEnv` 를 가져다 쓰므로, 거꾸로 가져오면 순환 참조가 된다 — 그래서 의존 방향이
+ * 이미 향하는 이쪽에 둔다. (별도 파일로 뺐다가 `scripts/probe-bq-check.mts` 가 깨졌다:
+ * 생 Node 로 도는 스크립트라 확장자 없는 상대 import 를 못 찾는다.)
+ *
+ * ── 어떻게 가르는가 (판단이 아니라 규칙) ──
+ * 앱이 붙이는 `coupon_issue_source` 는 `campaignCode ?? issue_key 매핑` 이다
+ * (frontend `coupon_service.dart` 의 `couponIssueSource`, backend `_issue_source` 가 같은 규칙).
+ * 그래서 **값이 아래 목록에 없으면 캠페인 코드** 다 — 기획해서 뿌린 것.
+ * 담당자의 취향이 아니라 코드가 이미 그어 둔 경계라, 새 캠페인이 생겨도 저절로 맞는 쪽에 들어간다.
+ */
+export const ISSUE_KEY_SOURCES = new Set([
+  "SIGNUP_WELCOME", "BULK_EVENT", "REFERRAL", "EVENT_REWARD_SIGNUP", "STAMP_REWARD",
+  "FLASH_8PM", "FINAL_EXAM_EVENT", "LIMITED_BONUS", "LIMITED_CAMPAIGN", "unknown", "other",
+]);
+
+export const isCampaignSource = (src: string) => !ISSUE_KEY_SOURCES.has(src);
+
+/** SQL 의 `IN (...)` 에 그대로 넣을 문자열. 두 곳이 같은 목록을 쓰게 하는 지름길. */
+export const knownSourcesSql = (): string =>
+  [...ISSUE_KEY_SOURCES].map((v) => `'${v}'`).join(",");
+
+/**
  * Probe · 앱 지표 — GA4 원본(BigQuery export)에서 읽는 4칸.
  *
  * 앱은 3월부터 GA4 로 이벤트를 보내고 `wouldulike-efe19.analytics_494806625` 에 쌓인다(Event/P0 계측 보고).
@@ -38,6 +65,21 @@ export interface Ga4AppMetrics {
   /** SDK 세션 중 매장 상세를 연 세션 비율, % */
   open_to_store: number | null;
   sessions: number;
+  /**
+   * 퍼널 3단 — **상세를 열고 그 세션에서 쿠폰까지 받은** 세션 수.
+   *
+   * 앞 단계를 **포개서** 센다(`detail AND coupon`). 포개지 않고 「그 세션에 발급이 있었나」로
+   * 세면 상세를 안 열고 받은 세션이 섞여 **앞 단계보다 커질 수 있다** — 퍼널이 역전된다.
+   * 실측으로도 크게 벌어진다(9/14~20: 포개면 10, 안 포개면 39).
+   *
+   * 캠페인 자동 지급은 뺀다. `coupon_issued` 는 지갑에 새로 보인 쿠폰에 찍혀 사용자의 행동이
+   * 아니고, 빼지 않으면 이 칸이 몇 배로 부푼다.
+   *
+   * 4단(쿠폰 사용)은 여기 없다 — 쿠폰은 받은 세션이 아니라 **나중 방문에서** 쓰인다.
+   * 같은 세션으로 포개면 0~3 이 되어(실측) 「아무도 안 쓴다」로 읽힌다. 그 전환은
+   * `couponFunnel` 이 `coupon_code` 로 발급↔사용을 이어 정확히 센다.
+   */
+  sessions_detail_to_coupon: number | null;
   /** 첫 실행 코호트 중 7~13일째 다시 활성인 비율, % */
   retention_w1: number | null;
   cohort: { from: string; to: string; users: number };
@@ -155,20 +197,35 @@ export async function readGa4AppMetrics(
     { start, end }
   );
 
-  // ② 앱 열기 → 매장 상세 — 앱을 연(session_start 가 있는) SDK 세션 중 restaurant_detail_open 이 있는 비율
-  const [ses] = await run<{ sessions: number; with_detail: number }>(
+  // ② 퍼널 세 단계 — 앱을 연(session_start 가 있는) SDK 세션을 하나씩 훑어, 그 세션이
+  //    어디까지 갔는지를 센다. 세 단계가 모두 같은 단위(세션)라 한 줄에 세울 수 있다.
+  //
+  //    **단계를 포갠다**(detail AND coupon). 포개지 않고 각자 세면 상세를 안 열고 쿠폰을 받은
+  //    세션이 섞여 3단이 2단보다 커질 수 있다 — 퍼널이 역전된다.
+  //
+  //    발급은 캠페인 자동 지급을 뺀다. 가르는 기준은 couponSources.ts 하나를 같이 쓴다 —
+  //    두 곳에 적어 두면 한쪽만 고쳐져 같은 보고서 안에서 숫자가 어긋난다.
+  const knownSources = knownSourcesSql();
+  const [ses] = await run<{
+    sessions: number; with_detail: number; detail_to_coupon: number;
+  }>(
     `WITH ev AS (
        SELECT user_pseudo_id, event_name,
-              (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS sid
+              (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS sid,
+              (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'coupon_issue_source') AS src
        FROM ${events}
-       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name IN ('session_start', 'restaurant_detail_open')
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end
+         AND event_name IN ('session_start', 'restaurant_detail_open', 'coupon_issued')
      ), s AS (
        SELECT user_pseudo_id, sid,
               LOGICAL_OR(event_name = 'session_start') AS opened,
-              LOGICAL_OR(event_name = 'restaurant_detail_open') AS detail
+              LOGICAL_OR(event_name = 'restaurant_detail_open') AS detail,
+              LOGICAL_OR(event_name = 'coupon_issued' AND src IN (${knownSources})) AS coupon
        FROM ev WHERE sid IS NOT NULL GROUP BY user_pseudo_id, sid
      )
-     SELECT COUNT(*) AS sessions, COUNTIF(detail) AS with_detail FROM s WHERE opened`,
+     SELECT COUNT(*) AS sessions, COUNTIF(detail) AS with_detail,
+            COUNTIF(detail AND coupon) AS detail_to_coupon
+     FROM s WHERE opened`,
     { start, end }
   );
 
@@ -257,6 +314,7 @@ export async function readGa4AppMetrics(
       dau_wau: pct(Number(act?.dau_sum ?? 0) / days, wau),
       open_to_store: pct(Number(ses?.with_detail ?? 0), sessions),
       sessions,
+      sessions_detail_to_coupon: ses ? Number(ses.detail_to_coupon ?? 0) : null,
       retention_w1: pct(Number(ret?.returned ?? 0), cohort),
       cohort: { from: dash(cStart), to: dash(cEnd), users: cohort },
       push_open: pct(Number(push?.opened_android ?? 0), Number(push?.received ?? 0)),
