@@ -809,6 +809,72 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
     };
   }
 
+  /* ─── 큐레이션 양식으로 저장 (2026-09-27) ─────────────────────────────
+   * 지금 일반 배너 편집 상태(buildSpec)를 서버에 "큐레이션 양식"으로 저장한다. 금요일 크론이
+   * 사람 없이 이 양식을 서버(Pillow, bannerlab/services/studio_render.py)에서 같은 규칙으로
+   * 그리고, 텍스트 레이어의 {{태그}} {{카피}} {{가게명}} {{혜택}} 만 식당·주제마다 바꿔 끼운다.
+   * 배경 사진은 저장하지 않는다(식당 사진이 들어간다) — 줌·위치 값만 쓴다. 로고 같은 이미지
+   * 레이어는 원본을 S3 에 올려 함께 저장한다. 같은 이름이 있으면 덮어쓴다. */
+  const [tplName, setTplName] = useState("");
+  const [savingTpl, setSavingTpl] = useState(false);
+
+  async function uploadAssetPng(asset: ImageAssetLayer, fileName: string): Promise<string> {
+    const c = document.createElement("canvas");
+    c.width = asset.el.naturalWidth;
+    c.height = asset.el.naturalHeight;
+    c.getContext("2d")?.drawImage(asset.el, 0, 0);
+    const blob: Blob = await new Promise((resolve, reject) =>
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("로고 이미지를 만들지 못했습니다."))), "image/png")
+    );
+    const pre = await fetch("/api/bannerlab/curation/templates/assets/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: fileName, content_type: "image/png" }),
+    });
+    const p = await pre.json().catch(() => ({}));
+    if (!pre.ok) throw new Error(p.detail ?? "업로드 URL 발급에 실패했습니다.");
+    const put = await fetch(p.upload_url, { method: "PUT", headers: { "Content-Type": "image/png" }, body: blob });
+    if (!put.ok) throw new Error(`S3 업로드 실패 (${put.status})`);
+    return p.key as string;
+  }
+
+  async function saveCurationTemplate() {
+    const name = tplName.trim();
+    if (!name) {
+      alert("양식 이름을 적어 주세요.");
+      return;
+    }
+    const spec = buildSpec();
+    if (!spec.textLayers.some((l) => l.text.includes("{{카피}}"))) {
+      alert("텍스트 레이어 하나에 {{카피}}를 넣어야 AI 문구가 들어갈 자리가 생깁니다.");
+      return;
+    }
+    setSavingTpl(true);
+    try {
+      const assetKeys: Record<string, string> = {};
+      for (let i = 0; i < assets.length; i++) {
+        const fileName = assets[i].name || `asset-${i + 1}.png`;
+        spec.imageAssets[i].file = fileName;
+        assetKeys[fileName] = await uploadAssetPng(assets[i], fileName);
+      }
+      const list = await fetch("/api/bannerlab/curation/templates").then((r) => r.json()).catch(() => ({}));
+      const existing = (list.templates ?? []).find((t: { id: number; name: string }) => t.name === name);
+      const body = JSON.stringify({ name, spec, asset_keys: assetKeys });
+      const res = await fetch(`/api/bannerlab/curation/templates${existing ? `/${existing.id}` : ""}`, {
+        method: existing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(r.detail ?? "양식 저장에 실패했습니다.");
+      alert(existing ? `'${name}' 양식을 덮어썼습니다.` : `'${name}' 양식을 저장했습니다. 1주차 큐레이션에서 고를 수 있어요.`);
+    } catch (e) {
+      alert(uploadFailureMessage(e));
+    } finally {
+      setSavingTpl(false);
+    }
+  }
+
   function toggleSpec() {
     if (specOpen) {
       setSpecOpen(false);
@@ -1291,6 +1357,45 @@ export default function BannerStudioComposer({ weeklyBatch }: { weeklyBatch?: We
             </div>
           )}
         </div>
+
+        {mode === "general" && (
+          <div className="border border-periwinkle/30 rounded-xl p-3 flex flex-col gap-2 bg-periwinkle/[0.03]">
+            <p className="text-xs font-semibold text-navy">큐레이션 양식으로 저장</p>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              1주차 AI 큐레이션이 이 배치를 그대로 쓰고 문구만 바꿔 끼웁니다. 텍스트 레이어에 자리표시자를 넣어 주세요 —{" "}
+              <b>{"{{카피}}"}</b>(AI 메인 문구, 필수) · {"{{태그}}"}(AI 주제 라벨) · {"{{가게명}}"} · {"{{혜택}}"}(쿠폰 혜택, 없으면 레이어가 빠짐).
+              배경 사진은 식당 사진으로 바뀌고 줌·위치만 저장됩니다.
+            </p>
+            {selectedLayer && (
+              <div className="flex flex-wrap gap-1">
+                {["{{태그}}", "{{카피}}", "{{가게명}}", "{{혜택}}"].map((tok) => (
+                  <button
+                    key={tok}
+                    onClick={() => updateLayer(selectedLayer.id, { text: tok })}
+                    className="text-[10px] border border-gray-200 bg-white rounded-md px-1.5 py-0.5 hover:border-periwinkle"
+                  >
+                    선택 레이어 → {tok}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <input
+                value={tplName}
+                onChange={(e) => setTplName(e.target.value)}
+                placeholder="양식 이름 (같은 이름이면 덮어씀)"
+                className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-periwinkle"
+              />
+              <button
+                onClick={saveCurationTemplate}
+                disabled={savingTpl}
+                className="text-[11px] font-semibold text-white bg-navy rounded-lg px-3 disabled:opacity-40"
+              >
+                {savingTpl ? "저장 중..." : "저장"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 팝업(표지) — 배너 일괄 생성과는 완전히 별개의 구역·동작이다(마케팅팀 피드백
             2026-08-28: "배너와 통합된 느낌이라 구분이 어렵다"). 이 버튼을 누르면 지금

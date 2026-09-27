@@ -6,6 +6,7 @@ import { uploadFailureMessage } from "@/lib/uploadError";
 import { PreviewableImg } from "@/components/ImagePreview";
 import { safeDownloadHref } from "@/lib/downloadProxy";
 import BannerStudioComposer from "./BannerStudioComposer";
+import CurationPanel from "./CurationPanel";
 import { BannerRatio } from "./types";
 import {
   AiDiagnostics,
@@ -762,6 +763,15 @@ function WeekFolderCard({
 
           {isStudioFlow && (
             <>
+              {/* 1주차 — AI 큐레이션 자동화(2026-09-27). 켜면 아래 스튜디오 일괄 생성 대신 이 흐름이
+                  금요일 20시에 슬랙으로 보낸다. 스튜디오는 큐레이션 양식을 만드는 곳으로 계속 쓴다. */}
+              {week.week_number === 1 && type === "general" && (
+                <CurationPanel
+                  weekId={week.id}
+                  weekStart={week.week_start}
+                  restaurants={paidRestaurants.filter((r) => isChecked(r))}
+                />
+              )}
               <input
                 value={clickUrl}
                 onChange={(e) => setClickUrl(e.target.value)}
