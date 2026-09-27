@@ -73,6 +73,11 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // PROBE 보고서 크론(GitHub Actions)도 쿠키가 없다. 이 한 경로만 라우트 안에서 X-CRON-TOKEN 으로 판정한다.
+  if (!token && pathname === "/api/probe/app-report/cron" && req.method === "GET" && req.headers.has("x-cron-token")) {
+    return NextResponse.next();
+  }
+
   if (!token) {
     // 앱 → 웹 자동로그인: ?token= 파라미터 있으면 처리 페이지로
     const appToken = req.nextUrl.searchParams.get("token");

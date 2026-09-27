@@ -26,11 +26,19 @@ export interface AppReportBuild {
 }
 
 /**
+ * 백엔드를 읽는 방법. 화면에서는 로그인한 사람의 쿠키 토큰(fetchBackendJson),
+ * PROBE 크론에서는 X-CRON-TOKEN(api/probe/app-report/cron) — 사람이 없어서다.
+ */
+export type BackendFetch = <T>(path: string, search?: string) => Promise<T | null>;
+const withCookie: BackendFetch = (path, search) => fetchBackendJson(path, search, true);
+
+/**
  * 주간 보고서 한 벌. `end` 를 주면 그 주(YYYYMMDD, 그 주 일요일), 안 주면 마지막으로 다 끝난 주.
  * GA4 를 못 읽으면 그 칸들은 비운 채로 낸다 — 양식이 "연결 전"으로 그린다. 0 으로 채우지 않는다.
  */
-export async function buildWeeklyAppReport(opts: { end?: string } = {}): Promise<AppReportBuild> {
+export async function buildWeeklyAppReport(opts: { end?: string; fetchJson?: BackendFetch } = {}): Promise<AppReportBuild> {
   const warnings: string[] = [];
+  const fetchJson = opts.fetchJson ?? withCookie;
 
   const last = await readLastEventDate();
   const end = opts.end ?? (last ? lastCompleteWeekEnd(last) : null);
@@ -41,12 +49,12 @@ export async function buildWeeklyAppReport(opts: { end?: string } = {}): Promise
   const start = shiftDay(end, -6);
   const prevEnd = shiftDay(end, -7);
   const weekOf = (from: string, to: string) =>
-    fetchBackendJson<PeriodStats>("/api/dashboard/admin/app-stats/period/", `start=${dash(from)}&end=${dash(to)}`, true);
+    fetchJson<PeriodStats>("/api/dashboard/admin/app-stats/period/", `start=${dash(from)}&end=${dash(to)}`);
   const [curR, prevR, stats, week, weekPrev, cpR, cpPrevR, s2cR] = await Promise.all([
     readGa4AppMetrics(process.env, { end }),
     readGa4AppMetrics(process.env, { end: prevEnd }),
     // 「7일 안에 만료」·「발급 → 사용」은 여기(이번 달 기준)에서만 온다
-    fetchBackendJson<AppStats>("/api/dashboard/admin/app-stats/", undefined, true),
+    fetchJson<AppStats>("/api/dashboard/admin/app-stats/"),
     // 나머지 DB 칸은 그 주 · 전주만 센다 — GA4 칸과 같은 창
     weekOf(start, end),
     weekOf(shiftDay(prevEnd, -6), prevEnd),
@@ -105,8 +113,9 @@ export function lastCompleteMonth(nowMs: number = Date.now()): string {
  * GA4 는 그 달과 전월을 **같은 정의로**(`subWindows: "in-period"`) 뽑는다.
  * DB 칸은 백엔드 월별 스냅샷에서 온다 — 없으면 비운 채로 낸다(0 으로 채우지 않는다).
  */
-export async function buildMonthlyAppReport(opts: { period?: string } = {}): Promise<AppReportBuild> {
+export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?: BackendFetch } = {}): Promise<AppReportBuild> {
   const warnings: string[] = [];
+  const fetchJson = opts.fetchJson ?? withCookie;
   const period = opts.period ?? lastCompleteMonth();
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error(`period 는 "YYYY-MM" 이어야 합니다 — 받은 값: ${period}`);
 
@@ -121,7 +130,7 @@ export async function buildMonthlyAppReport(opts: { period?: string } = {}): Pro
   const [curR, prevR, snapshot, cpR, cpPrevR, s2cR] = await Promise.all([
     readGa4AppMetrics(process.env, { ...win, subWindows: "in-period" }),
     readGa4AppMetrics(process.env, { ...prevWin, subWindows: "in-period" }),
-    fetchBackendJson<SnapshotPayload>("/api/dashboard/admin/metric-snapshots/", `period=${period}`, true),
+    fetchJson<SnapshotPayload>("/api/dashboard/admin/metric-snapshots/", `period=${period}`),
     readCouponFunnel(process.env, win),
     readCouponFunnel(process.env, prevWin),
     readStoreToCoupon(process.env, win),

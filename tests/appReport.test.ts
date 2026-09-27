@@ -6,6 +6,7 @@ import {
 } from "../src/lib/draft/appReportData";
 import { buildMonthlyAppReportData, previousPeriod } from "../src/lib/draft/appReportMonthly";
 import { lastCompleteMonth } from "../src/lib/draft/appReport";
+import { appReportSummary, renderAppReportStatic } from "../src/lib/draft/appReportStatic";
 import type { Ga4AppMetrics } from "../src/lib/bigquery/appMetrics";
 import { eventCoverage, isCampaignSource, type CouponFunnel } from "../src/lib/bigquery/couponFunnel";
 
@@ -621,4 +622,57 @@ test("퍼널 SQL 이 앞 단계를 포개서 센다", async () => {
   // 캠페인 자동 지급을 빼는 조건도 같은 자리에 있어야 한다
   assert.match(src, /coupon_issued' AND src IN \(\$\{knownSources\}\)/,
     "캠페인을 빼지 않으면 이 칸이 몇 배로 부푼다");
+});
+
+// ── PROBE 크론 — 스크립트 없는 HTML · 메시지 세 줄 ─────────────────────
+test("정적 HTML 에는 스크립트가 없고 다 그려진 화면이 들어 있다", () => {
+  const filled = fillAppReportTemplate(weekly({ coupons: funnel(), couponsPrev: funnel() }));
+  const r = renderAppReportStatic(filled);
+  assert.equal(r.status, "ok");
+  assert.deepEqual(r.warnings, []);
+  assert.doesNotMatch(r.html, /<script/i, "슬랙·카톡 뷰어는 스크립트를 안 돌린다 — 남아 있으면 빈 화면이 된다");
+  assert.match(r.html, /<body data-report-status="ok">/);
+  // 테스트의 render() 와 같은 글이 파일에 들어간다
+  const text = r.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.ok(text.includes(render(filled).text.slice(0, 200)), "렌더러가 그린 글이 파일에 없습니다");
+  assert.match(text, /9월 3주차/);
+});
+
+test("정적 HTML — 빠진 값이 있으면 error 로 알린다", () => {
+  const d = weekly();
+  const r = renderAppReportStatic(fillAppReportTemplate({ ...d, report: { ...(d.report as object), label: "" } }));
+  assert.equal(r.status, "error");
+  assert.match(r.html, /<body data-report-status="error">/);
+});
+
+test("정적 HTML — 글에 $& 가 섞여도 그대로 들어간다", () => {
+  const d = weekly();
+  (d.groups as { metrics: { key: string; note?: string }[] }[])[0].metrics[0].note = "달러 $& 그대로 $1";
+  const r = renderAppReportStatic(fillAppReportTemplate(d));
+  assert.ok(r.html.includes("달러 $&amp; 그대로 $1"));
+});
+
+test("메시지 세 줄 — 주간 사용자 · 쿠폰 사용 · 스탬프 적립을 보고서에서 그대로 꺼낸다", () => {
+  const s = appReportSummary(weekly());
+  assert.deepEqual(s.map((x) => [x.label, x.value, x.prev]), [
+    ["주간 사용자", 253, 69], ["쿠폰 사용", 12, 8], ["스탬프 적립", 305, 250],
+  ]);
+  assert.equal(s[1].unit, "건");
+});
+
+test("메시지 세 줄 — 이번 달 누계로 떨어진 칸에는 전주 대비를 싣지 않는다", () => {
+  const s = appReportSummary(buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" }));
+  assert.deepEqual(s.map((x) => [x.value, x.prev]), [[253, 69], [24, null], [1284, null]]);
+});
+
+test("메시지 세 줄 — 월간은 월간 사용자와 coupon_redeemed 칸을 쓴다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07", { coupon_redeemed: 20, stamp_earned: 900 }) },
+    today: "2026-09-22",
+  });
+  const s = appReportSummary(d);
+  assert.deepEqual(s.map((x) => [x.label, x.key, x.value, x.prev]), [
+    ["월간 사용자", "wau", 128, 116], ["쿠폰 사용", "coupon_redeemed", 31, 20], ["스탬프 적립", "stamp_earned", 1102, 900],
+  ]);
 });
