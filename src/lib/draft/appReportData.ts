@@ -123,6 +123,40 @@ function verdictForRatio(curBase: Num, prevBase: Num): "flat" | undefined {
   return Math.abs(curBase - prevBase) / prevBase >= 0.5 ? "flat" : undefined;
 }
 
+/**
+ * 활성 기기를 **처음 온 기기와 돌아온 기기로 갈라** 전기와 견준다.
+ *
+ * 왜 필요한가 — 2026-09 에 실제로 있었던 일이다.
+ *   9/14~20  WAU 253 (첫 실행 164 · 65%)   ← 설치가 몰린 주
+ *   9/21~27  WAU  93 (첫 실행   9 · 10%)
+ * 그대로 보면 「▼63.2%」다. 그런데 **처음 온 기기를 빼면 89 → 84 로 거의 그대로**다.
+ * 앱을 쓰던 사람이 떠난 게 아니라, 전주에 설치가 몰렸다가 그 사람들이 안 남은 것이다.
+ * 두 문장은 뜻이 완전히 다른데 숫자 하나로는 구분되지 않는다.
+ *
+ * 색은 중립으로 둔다(verdict "flat" = 판정 유보) — 「▼63.2%」를 빨갛게 칠하면
+ * "쓰던 사람이 떠났다"로 읽힌다. 숫자는 그대로 두고 옆에 갈라서 적는다.
+ *
+ * 기준은 **첫 실행 비중이 두 주 사이에 25%p 넘게 달라졌을 때**다. 그만큼 벌어지면
+ * 두 주의 WAU 는 서로 다른 것을 센 값이라 그대로 견줄 수 없다.
+ */
+export function returningBase(
+  cur: { wau: Num; new_devices: Num } | null,
+  prev: { wau: Num; new_devices: Num } | null
+): { cur: number; prev: number; delta: number | null; mixShifted: boolean } | null {
+  if (!cur?.wau || !prev?.wau) return null;
+  if (cur.new_devices === null || prev.new_devices === null) return null;
+  const c = cur.wau - cur.new_devices;
+  const q = prev.wau - prev.new_devices;
+  if (c < 0 || q < 0) return null; // 코호트 창이 어긋나면 음수가 날 수 있다 — 그러면 말하지 않는다
+  const share = (w: number, n: number) => n / w;
+  return {
+    cur: c,
+    prev: q,
+    delta: q > 0 ? Math.round((c / q - 1) * 1000) / 10 : null,
+    mixShifted: Math.abs(share(cur.wau, cur.new_devices) - share(prev.wau, prev.new_devices)) >= 0.25,
+  };
+}
+
 /** dbMetric 이 비워 두는 단위를 한 번에 채운다 */
 const UNIT: Record<string, string> = {
   signups_month: "명", coupon_issued: "건", coupon_used: "건", coupon_expiring: "장", coupon_rate: "%",
@@ -211,9 +245,14 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
   };
 
   const newDev = g?.new_devices ?? null;
+  const ret = returningBase(g ?? null, p ?? null);
+  // 첫 실행 비중이 크게 달라진 주끼리는 WAU 를 그대로 견줄 수 없다 — 갈라서 같이 적는다.
+  const retLine = ret && ret.mixShifted && ret.delta !== null
+    ? ` 전주는 ${p!.wau!.toLocaleString()}대 중 ${p!.new_devices!.toLocaleString()}대가 첫 실행이라 같은 조건이 아닙니다 — 두 주 모두 **처음 온 기기를 빼면 ${ret.prev.toLocaleString()} → ${ret.cur.toLocaleString()}대(${ret.delta > 0 ? "+" : ""}${ret.delta}%)** 입니다`
+    : "";
   const wauNote = g
     ? newDev !== null && g.wau
-      ? `${win} 앱을 켠 기기 ${g.wau.toLocaleString()}대 중 ${newDev.toLocaleString()}대가 이번 주에 처음 연 기기입니다. 재설치하면 새로 셉니다`
+      ? `${win} 앱을 켠 기기 ${g.wau.toLocaleString()}대 중 ${newDev.toLocaleString()}대가 이번 주에 처음 연 기기입니다. 재설치하면 새로 셉니다.${retLine}`
       : `${win} 앱을 켠 기기 수. 재설치하면 새로 셉니다`
     : "최근 7일 고유 사용자 — BigQuery 를 읽지 못했습니다";
 
@@ -229,7 +268,13 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
       title: "앱 이용",
       description: "얼마나 많은 학생이 앱을 켜고, 돌아오는가.",
       metrics: [
-        { key: "wau", label: "주간 활성(WAU)", value: g?.wau ?? null, prev: prevIf(p?.wau ?? null), unit: "명", source: "ga4", note: wauNote, ...(g ? {} : { status: "pending" as const }) },
+        {
+          key: "wau", label: "주간 활성(WAU)", value: g?.wau ?? null, prev: prevIf(p?.wau ?? null), unit: "명", source: "ga4",
+          // 구성이 크게 달라진 주끼리는 색을 칠하지 않는다 — 빨간 ▼ 는 "쓰던 사람이 떠났다"로 읽힌다
+          ...(ret?.mixShifted ? { verdict: "flat" as const } : {}),
+          note: wauNote,
+          ...(g ? {} : { status: "pending" as const }),
+        },
         {
           key: "dau_wau", label: "DAU/WAU", value: g?.dau_wau ?? null, prev: prevIf(p?.dau_wau ?? null), unit: "%", source: "ga4",
           ...(ratioVerdict ? { verdict: ratioVerdict } : {}),

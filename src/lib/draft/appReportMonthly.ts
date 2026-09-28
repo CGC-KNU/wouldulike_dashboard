@@ -1,5 +1,5 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
-import { SMALL_SAMPLE, couponMetrics, dominantNote, type Json, type Metric } from "./appReportData";
+import { SMALL_SAMPLE, couponMetrics, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
 import type { CouponFunnel, StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 
 /**
@@ -114,6 +114,16 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
   };
 
   const newDev = g?.new_devices ?? null;
+
+  const ret = returningBase(g ?? null, p ?? null);
+
+  // 첫 실행 비중이 크게 달라진 달끼리는 MAU 를 그대로 견줄 수 없다 — 갈라서 같이 적는다.
+
+  const retLine = ret && ret.mixShifted && ret.delta !== null
+
+    ? ` 전달은 ${p!.wau!.toLocaleString()}대 중 ${p!.new_devices!.toLocaleString()}대가 첫 실행이라 같은 조건이 아닙니다 — 두 달 모두 **처음 온 기기를 빼면 ${ret.prev.toLocaleString()} → ${ret.cur.toLocaleString()}대(${ret.delta > 0 ? "+" : ""}${ret.delta}%)** 입니다`
+
+    : "";
   const retSample = g?.cohort.users;
   const pushSample = g?.push.received;
   const banSample = g?.banner.clicked;
@@ -130,9 +140,11 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
       metrics: [
         {
           key: "wau", label: "월간 활성(MAU)", value: g?.wau ?? null, prev: prevIf(p?.wau ?? null), unit: "명", source: "ga4",
+          // 주간과 같은 규칙 — 첫 실행 비중이 크게 달라진 달끼리는 그대로 견줄 수 없다
+          ...(ret?.mixShifted ? { verdict: "flat" as const } : {}),
           note: g
             ? (newDev !== null && g.wau
-                ? `${win} 앱을 켠 기기 ${g.wau.toLocaleString()}대 중 ${newDev.toLocaleString()}대가 그 달에 처음 연 기기입니다. 재설치하면 새로 셉니다`
+                ? `${win} 앱을 켠 기기 ${g.wau.toLocaleString()}대 중 ${newDev.toLocaleString()}대가 그 달에 처음 연 기기입니다. 재설치하면 새로 셉니다.${retLine}`
                 : `${win} 앱을 켠 기기 수. 재설치하면 새로 셉니다`)
             : "그 달 고유 사용자 — BigQuery 를 읽지 못했습니다",
           ...(g ? {} : { status: "pending" as const }),
