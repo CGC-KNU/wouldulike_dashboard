@@ -92,7 +92,9 @@ export async function GET(req: Request) {
       through: built.through,
       warnings,
       summary,
-      message: appReportMessage({ type, label: built.week.label, range, summary, ready, through: built.through, warnings, link }),
+      // 슬랙 본문에는 **데이터를 못 읽은 경고만** 싣는다. 양식 경고(빈 칸에 status 가 없다 등)는 만드는 쪽이 고칠
+      // 일이라 읽는 사람에게는 소음이다 — 응답의 warnings 에는 남아 워크플로 로그에 찍힌다 (0928 첫 dry_run).
+      message: appReportMessage({ type, label: built.week.label, range, summary, ready, through: built.through, warnings: built.warnings, link }),
       html: rendered.html,
     },
     { headers: { "Cache-Control": "no-store" } }
