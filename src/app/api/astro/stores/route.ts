@@ -50,6 +50,7 @@ export async function GET(req: Request) {
     name: r.name,
     tier: r.tier,
     is_affiliate: r.is_affiliate !== false,
+    hidden_from_app: r.hidden_from_app === true,
     ops: opsById.get(r.restaurant_id) ?? null,
   }));
 

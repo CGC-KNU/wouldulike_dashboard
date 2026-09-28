@@ -23,7 +23,7 @@ import { Button, Chip, Field, Input, Notice, Skeleton, Textarea } from "../_shar
  * 바로 고칠 방법이 없어서(관리자 CLI 명령뿐) 여기 추가한다.
  */
 
-interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null; promotion_text?: string | null }
+interface Detail { s3_image_urls?: string[]; pin?: string | number | null; phone_number?: string | null; address?: string | null; promotion_text?: string | null; hidden_from_app?: boolean }
 
 export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onPinState }: { id: number; isAffiliate: boolean; onChanged?: () => void; onEnd?: () => void | Promise<void>; /** PIN 이 걸려 있는지만 부모에 알린다 — 값은 더 이상 읽을 수 없다 (0925) */ onPinState?: (s: { has_pin: boolean }) => void }) {
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -45,6 +45,9 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
   const [busy, setBusy] = useState(false);
   /** 계약 종료는 앱에 바로 보이는 변화라 화면 안에서 한 번 더 확인받는다. */
   const [ending, setEnding] = useState(false);
+  /** 앱 목록에서 빼 둔 상태. 제휴를 끄는 것과 다르다 — 일반 식당 탭에도 안 나온다. */
+  const [hiddenFromApp, setHiddenFromApp] = useState(false);
+  const [hiding, setHiding] = useState(false);
 
   const load = () => {
     setLoading(true); setMsg(null);
@@ -60,6 +63,8 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
       onPinState?.({ has_pin: Boolean(d?.has_pin) });
       setPromotionText(d?.promotion_text ?? "");
       setPromotionTextSaved(d?.promotion_text ?? "");
+      setHiddenFromApp(Boolean(d?.hidden_from_app));
+      setHiding(false);
       setPromo({ poster_url: p?.poster_url ?? "", qr_url: p?.qr_url ?? "" });
     }).finally(() => setLoading(false));
   };
@@ -125,6 +130,36 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
       onChanged?.();
     } catch {
       setMsg({ tone: "red", text: "서버에 연결하지 못했습니다. 옮기지 못했습니다." });
+    } finally { setBusy(false); }
+  }
+
+  /**
+   * 앱에서 감추기 — 제휴는 그대로 두고 식당 탭·검색·상세에서만 뺀다.
+   * 계약 종료(is_affiliate=false)는 일반 식당으로 남기므로 이 버튼과 다른 동작이다.
+   */
+  async function setAppHidden(next: boolean) {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`/api/dashboard/admin/restaurants/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hidden_from_app: next }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { detail?: string; hidden_from_app?: boolean };
+      if (!res.ok) {
+        setMsg({ tone: "red", text: d.detail ?? `저장하지 못했습니다 (${res.status}).` });
+        return;
+      }
+      setHiddenFromApp(Boolean(d.hidden_from_app ?? next));
+      setHiding(false);
+      setMsg({
+        tone: "blue",
+        text: next
+          ? "앱에서 감췄습니다. 식당 목록·검색·상세에 나오지 않습니다. 계약과 입금 기록은 그대로입니다."
+          : "앱에 다시 보입니다. 제휴 중이면 제휴 탭에, 아니면 일반 식당 탭에 나옵니다.",
+      });
+      onChanged?.();
+    } catch {
+      setMsg({ tone: "red", text: "서버에 연결하지 못했습니다." });
     } finally { setBusy(false); }
   }
 
@@ -229,6 +264,43 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
             <Button size="sm" variant="primary" disabled={busy} onClick={() => patchStore({ is_affiliate: true }, "다시 제휴 매장으로 옮겼습니다. 계약 시작일과 월 이용료를 확인하세요.")}>
               재계약 — 제휴 켜기
             </Button>
+          )}
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="flex items-start justify-between gap-3">
+            <span className="text-[13px] text-gray-700 min-w-0">
+              앱 노출 {hiddenFromApp ? <Chip tone="amber">숨김</Chip> : <Chip tone="green">노출 중</Chip>}
+              <span className="block text-[11.5px] text-gray-400 mt-1">
+                {hiddenFromApp
+                  ? "식당 앱 목록·검색·상세에 나오지 않습니다. 제휴 상태는 바뀌지 않았습니다."
+                  : "끄면 제휴 탭과 일반 식당 탭 모두에서 빠집니다. 계약 종료와는 다릅니다."}
+              </span>
+            </span>
+            {hiddenFromApp ? (
+              <Button size="sm" variant="primary" className="shrink-0" disabled={busy || !reachable} onClick={() => setAppHidden(false)}>
+                앱에 다시 보이기
+              </Button>
+            ) : (
+              <Button size="sm" variant="danger" className="shrink-0" disabled={busy || !reachable} onClick={() => setHiding((v) => !v)} aria-expanded={hiding}>
+                앱에서 감추기
+              </Button>
+            )}
+          </div>
+          {hiding && !hiddenFromApp && (
+            <div className="mt-2 rounded-[12px] border border-amber-200 bg-amber-50/80 p-3">
+              <p className="text-[13px] font-semibold text-amber-900">식당 앱에서 이 식당을 감출까요?</p>
+              <ul className="mt-1.5 text-[12px] text-amber-950/80 leading-relaxed list-disc pl-4 space-y-0.5">
+                <li>제휴 탭, 일반 식당 탭, 검색, 캐러셀, 식당 상세에서 <b>바로 사라집니다</b>.</li>
+                <li>제휴·플랜·입금·계약 기록은 여기 그대로 남습니다.</li>
+                <li>이미 받은 쿠폰 이름은 남을 수 있지만, 그 쿠폰으로 식당 화면은 열리지 않습니다.</li>
+                <li>다시 보이게 할 수 있습니다.</li>
+              </ul>
+              <div className="flex gap-2 mt-2.5">
+                <Button size="sm" variant="danger" disabled={busy} onClick={() => setAppHidden(true)}>{busy ? "감추는 중…" : "네, 앱에서 감춥니다"}</Button>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setHiding(false)}>취소</Button>
+              </div>
+            </div>
           )}
         </div>
 

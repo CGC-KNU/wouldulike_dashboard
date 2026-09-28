@@ -239,6 +239,7 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                       <span className="font-semibold text-gray-900 inline-flex items-center gap-1.5">
                         {campus === "all" && <CampusMark campus={campusOf(r)} size={15} />}
                         <span className={r.is_affiliate ? "" : "text-gray-500"}>{r.name}</span>
+                        {r.hidden_from_app && <Chip tone="amber">앱에서 숨김</Chip>}
                       </span>
                       <span className="block text-[11px] text-gray-400">{[!r.is_affiliate && o?.contract_ends_on ? `종료 ${o.contract_ends_on}` : null, o?.map_name && o.map_name !== r.name ? `지도: ${o.map_name}` : null, `ID ${r.restaurant_id}`].filter(Boolean).join(" · ")}</span>
                     </Td>

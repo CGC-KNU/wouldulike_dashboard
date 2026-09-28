@@ -21,6 +21,8 @@ export interface BackendRestaurant {
   name: string;
   tier: string | null;
   is_affiliate?: boolean;
+  /** 식당 앱 목록·검색·상세에서 빼 둔 상태. 제휴 여부와 별개다. */
+  hidden_from_app?: boolean;
 }
 
 /** Astro 화면 한 행 = 백엔드 매장 + 운영 필드. */
@@ -29,6 +31,8 @@ export interface StoreRow {
   name: string;
   tier: string | null;
   is_affiliate: boolean;
+  /** 식당 앱에서 감춘 매장. 영업 목록에는 남는다. */
+  hidden_from_app?: boolean;
   ops: StoreOps | null;
 }
 

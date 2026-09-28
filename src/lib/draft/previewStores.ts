@@ -16,6 +16,7 @@ export interface PreviewRestaurant {
   name: string;
   tier: string | null;
   is_affiliate: boolean;
+  hidden_from_app?: boolean;
 }
 
 export const PREVIEW_SNAPSHOT_DATE = "2026-09-10";
