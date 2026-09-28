@@ -82,3 +82,63 @@ export function appReportSummary(data: Json): SummaryLine[] {
     pick("스탬프 적립", "stamp_earned"),
   ];
 }
+
+// ── 슬랙 메시지 본문 ──────────────────────────────────────────────────
+export interface MessageInput {
+  type: "weekly" | "monthly";
+  /** "9월 4주차" · "2026년 8월" */
+  label: string;
+  /** YYYY-MM-DD */
+  range: { start: string; end: string };
+  summary: SummaryLine[];
+  /** GA4 확정 테이블이 창 끝까지 들어왔나. 아니면 사용자 줄을 「집계 중」으로 쓴다 */
+  ready: boolean;
+  /** GA4 확정 테이블이 어디까지 있나(YYYYMMDD) */
+  through: string | null;
+  warnings: string[];
+  /** 대시보드에서 같은 보고서를 여는 주소(로그인 필요) */
+  link: string;
+}
+
+const mdDay = (s: string) => {
+  const t = s.replace(/-/g, "");
+  return `${+t.slice(4, 6)}/${+t.slice(6, 8)}`;
+};
+
+/** 전기 대비 — 분모가 없거나 0 이면 싣지 않는다. 음수는 하이픈이 아니라 마이너스 기호 */
+function change(value: number, prev: number | null): string | null {
+  if (prev === null || prev === 0) return null;
+  const pct = Math.round(((value - prev) / prev) * 100);
+  return pct === 0 ? "±0%" : pct > 0 ? `+${pct}%` : `−${Math.abs(pct)}%`;
+}
+
+/**
+ * PROBE 가 #sat-probe 에 쓰는 본문(슬랙 mrkdwn). 숫자는 summary(= 첨부 보고서의 값) 그대로다.
+ * GA4 가 창 끝까지 안 들어왔으면 사용자 줄만 「집계 중」 — 6일치 WAU 를 한 주 값처럼 올리지 않는다.
+ */
+export function appReportMessage(m: MessageInput): string {
+  const weekly = m.type === "weekly";
+  const cmp = weekly ? "전주" : "전월";
+  const lines = [
+    weekly
+      ? `:bar_chart: *앱 지표 주간 보고서 · ${m.label}* (${mdDay(m.range.start)}~${mdDay(m.range.end)})`
+      : `:bar_chart: *앱 지표 월간 보고서 · ${m.label}*`,
+  ];
+  for (const s of m.summary) {
+    if (s.key === "wau" && !m.ready) {
+      lines.push(`• ${s.label} — 집계 중 (GA4 가 ${mdDay(m.range.end)} 데이터를 아직 안 보냈습니다)`);
+    } else if (s.value === null) {
+      lines.push(`• ${s.label} — 읽지 못함`);
+    } else {
+      const c = change(s.value, s.prev);
+      lines.push(`• ${s.label} *${s.value.toLocaleString("ko-KR")}${s.unit}*${c ? ` · ${cmp} ${c}` : ""}`);
+    }
+  }
+  if (!m.ready && m.through) lines.push(`_첨부 파일의 GA4 칸은 ${mdDay(m.through)}까지 센 값입니다._`);
+  // GA4 가 덜 들어왔다는 경고는 위 「집계 중」이 이미 말한다
+  const warn = m.ready ? m.warnings : m.warnings.filter((w) => !w.includes("확정 테이블"));
+  for (const w of warn.slice(0, 3)) lines.push(`:warning: ${w}`);
+  if (warn.length > 3) lines.push(`:warning: 외 ${warn.length - 3}건`);
+  lines.push(`첨부 HTML · <${m.link}|대시보드에서 열기>`);
+  return lines.join("\n");
+}

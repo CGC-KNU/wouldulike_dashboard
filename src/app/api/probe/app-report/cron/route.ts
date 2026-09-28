@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { buildMonthlyAppReport, buildWeeklyAppReport } from "@/lib/draft/appReport";
+import { readLastEventDate } from "@/lib/bigquery/appMetrics";
+import { buildMonthlyAppReport, buildWeeklyAppReport, monthWindow } from "@/lib/draft/appReport";
 import { dash, fillAppReportTemplate, normalizeWeekEnd } from "@/lib/draft/appReportData";
-import { appReportSummary, renderAppReportStatic } from "@/lib/draft/appReportStatic";
+import { appReportMessage, appReportSummary, renderAppReportStatic } from "@/lib/draft/appReportStatic";
 import { backendWithCronToken, checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 
 /**
@@ -15,6 +16,10 @@ import { backendWithCronToken, checkCronToken, plausibleCronToken } from "@/lib/
  * GET /api/probe/app-report/cron?week=2026-09-20      그 날이 속한 주
  * GET /api/probe/app-report/cron?type=monthly         마지막으로 다 끝난 달
  * GET /api/probe/app-report/cron?type=monthly&month=2026-08
+ * GET /api/probe/app-report/cron?check=1&week=2026-09-27   GA4 가 그 주 끝까지 들어왔나만 — { ready, through, end }
+ *
+ * `check=1` 은 보고서를 만들지 않고 GA4 확정 테이블 목록만 본다(쿼리 한 번). 월요일 정오 워크플로가 일요일
+ * 데이터가 올 때까지 15분마다 부른다 — 보고서를 매번 만들면 BigQuery 쿼리 스무 개씩이다.
  *
  * 응답의 `status` 가 "error" 면 양식의 발송 전 검사에서 빠진 값이 나왔다는 뜻이다 — 워크플로는 보내지 않는다.
  *
@@ -52,6 +57,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ detail: `month 값을 읽지 못했습니다 — "${month}". YYYY-MM 으로 주세요.` }, { status: 400 });
   }
 
+  if (q.get("check") === "1") {
+    if (monthly ? !month : !end) return NextResponse.json({ detail: "check=1 은 week(주간) 또는 month(월간)를 같이 주세요." }, { status: 400 });
+    const until = monthly ? monthWindow(month!).end : end!;
+    const through = await readLastEventDate().catch(() => null);
+    return NextResponse.json({ ready: through !== null && through >= until, through, end: dash(until) }, { headers: { "Cache-Control": "no-store" } });
+  }
+
   let built;
   try {
     built = monthly ? await buildMonthlyAppReport({ period: month, fetchJson: withCron }) : await buildWeeklyAppReport({ end, fetchJson: withCron });
@@ -61,16 +73,26 @@ export async function GET(req: Request) {
   }
 
   const rendered = renderAppReportStatic(fillAppReportTemplate(built.data));
+  const type = monthly ? "monthly" : "weekly";
+  const range = { start: dash(built.week.start), end: dash(built.week.end) };
+  // 사람이 읽을 사유 — 앞은 데이터를 못 읽은 것, 뒤는 양식이 남긴 경고
+  const warnings = [...built.warnings, ...rendered.warnings];
+  const summary = appReportSummary(built.data);
+  const ready = built.through !== null && built.through >= built.week.end;
+  const origin = new URL(req.url).origin;
+  const link = monthly ? `${origin}/r/app?type=monthly&month=${range.start.slice(0, 7)}` : `${origin}/r/app?week=${range.end}`;
   return NextResponse.json(
     {
-      type: monthly ? "monthly" : "weekly",
+      type,
       label: built.week.label,
-      range: { start: dash(built.week.start), end: dash(built.week.end) },
+      range,
       filename: `${built.filename}.html`,
       status: rendered.status,
-      // 사람이 읽을 사유 — 앞은 데이터를 못 읽은 것, 뒤는 양식이 남긴 경고
-      warnings: [...built.warnings, ...rendered.warnings],
-      summary: appReportSummary(built.data),
+      ready,
+      through: built.through,
+      warnings,
+      summary,
+      message: appReportMessage({ type, label: built.week.label, range, summary, ready, through: built.through, warnings, link }),
       html: rendered.html,
     },
     { headers: { "Cache-Control": "no-store" } }
