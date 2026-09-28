@@ -13,7 +13,8 @@
 #   CRON_SECRET_TOKEN      백엔드 Koyeb 의 CRON_SECRET_TOKEN 과 같은 값
 #   SLACK_PROBE_BOT_TOKEN  PROBE 앱 봇 토큰(xoxb-, chat:write · files:write). #sat-probe 에 초대돼 있어야 한다
 #
-# 손으로 돌릴 때는 dry_run 이 기본이다 — 본문과 파일 크기만 로그에 찍고 슬랙에는 안 올린다.
+# 손으로 돌릴 때는 dry_run 이 기본이다 — 만들기까지만 하고 슬랙에는 안 올린다.
+# 이 저장소는 공개라 로그를 누구나 본다 — 숫자·본문은 찍지 않고 줄 수·크기만 남긴다(0928).
 name: PROBE 앱 지표 보고서
 
 on:
@@ -38,7 +39,7 @@ on:
         type: boolean
         default: false
       dry_run:
-        description: "슬랙에 올리지 않고 본문만 로그에 찍는다"
+        description: "슬랙에 올리지 않는다(로그에는 줄 수·크기만 — 저장소가 공개)"
         type: boolean
         default: true
 
@@ -115,6 +116,7 @@ jobs:
           done
           [ "$CODE" = "200" ] || { echo "::error::보고서를 받지 못했습니다"; exit 1; }
 
+          # 이 저장소는 공개라 Actions 로그를 누구나 본다 — 숫자·본문은 찍지 않는다(0928). 경고는 무엇을 못 읽었는지뿐이다.
           jq -r '.warnings[]' report.json | sed 's/^/경고: /' || true
           STATUS=$(jq -r .status report.json)
           [ "$STATUS" = "ok" ] || { echo "::error::양식 검사에서 빠진 값이 나왔습니다(status=$STATUS) — 보내지 않습니다"; exit 1; }
@@ -125,8 +127,7 @@ jobs:
           FILE=$(jq -r .filename report.json)
           jq -r .html report.json > "$FILE"
           MESSAGE=$(jq -r .message report.json)
-          echo "----- 본문 -----"; echo "$MESSAGE"; echo "----------------"
-          echo "파일: $FILE ($(wc -c < "$FILE") bytes)"
+          echo "본문 $(printf '%s\n' "$MESSAGE" | wc -l)줄 · 파일 $(wc -c < "$FILE") bytes · GA4 준비=$(jq -r .ready report.json)"
 
           if [ "$DRY" = "true" ]; then echo "dry_run — 슬랙에 올리지 않고 끝냅니다"; exit 0; fi
           [ -n "$SLACK_TOKEN" ] || { echo "::error::SLACK_PROBE_BOT_TOKEN 이 없습니다"; exit 1; }
