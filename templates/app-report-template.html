@@ -289,7 +289,7 @@
       "metrics": [
         { "key": "push_sent", "label": "푸시 발송", "value": 14, "prev": 9, "unit": "건", "source": "push", "note": "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺐다" },
         { "key": "push_open", "label": "푸시 → 앱 열기", "value": 7.2, "prev": null, "unit": "%", "source": "firebase", "sample": 264, "note": "9/5~9/18 안드로이드 수신 264건 중 19건 열림 (iOS 는 수신을 못 세 열기 3건만)" },
-        { "key": "banner_ctr", "label": "배너 노출 → 클릭", "value": null, "unit": "%", "source": "ga4", "status": "app_fix", "note": "home_banner_impression 이 상수만 있고 호출하는 곳이 없다(0건). 노출 이벤트 배포가 먼저" },
+        { "key": "banner_ctr", "label": "배너 노출 → 클릭", "value": null, "unit": "%", "source": "ga4", "status": "app_fix", "note": "앱에 노출 이벤트를 심었고(0927 머지) 스토어 릴리스를 기다리는 중. 사용자 기기에 깔려야 들어온다 — 지금은 0건" },
         { "key": "banner_to_coupon", "label": "배너 클릭 → 쿠폰 사용", "value": 9.1, "prev": null, "unit": "%", "source": "ga4", "sample": 22, "note": "배너를 누른 기기 22대 중 7일 안에 쿠폰을 쓴 2대" }
       ]
     }
@@ -342,6 +342,14 @@
 
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const has = v => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0);
+  /**
+   * 「채워진 지표」에 세는 칸만 남긴다.
+   *
+   * status "none" 은 **그 기간에 셀 대상이 없었다**는 뜻이다 — 캠페인 발급이 0건이면
+   * 사용률을 낼 분모가 없다. 아직 못 채운 칸(pending · app_fix · undefined)과 같이 세면
+   * 「20/22」가 우리가 뭔가 놓친 것처럼 읽힌다. 셋은 할 일이 있고, none 은 할 일이 없다.
+   */
+  const countable = list => (list || []).filter(m => m && m.status !== "none");
   const n = v => has(v) && isFinite(v) ? (Math.abs(v) < 100 && !Number.isInteger(v) ? v.toFixed(1) : Math.round(v).toLocaleString("ko-KR")) : "—";
   const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/==(.+?)==/g, "<mark>$1</mark>").replace(/\n/g, "<br>");
   const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
@@ -388,12 +396,16 @@
     need(r.range && r.range.start, "report.range.start"); need(r.generated_at, "report.generated_at");
     if (has(r.type) && r.type !== "weekly" && r.type !== "monthly") MISSING.push('report.type 은 "weekly" 또는 "monthly"');
     const ms = allMetrics();
-    const filled = ms.filter(m => has(m.value)).length;
+    // status "none" 은 **그 기간에 셀 대상이 없었다**는 뜻이다(예: 캠페인 발급 0건).
+    // 아직 못 채운 칸과 같이 세면 "20/22" 가 결함처럼 읽힌다 — 분모에서 뺀다.
+    const cnt = countable(ms);
+    const filled = cnt.filter(m => has(m.value)).length;
+    const na = ms.length - cnt.length;
     const bits = [];
     if (has(r.range && r.range.start) && has(r.range.end)) bits.push(`${esc(r.range.start)} ~ ${esc(r.range.end)}`);
     if (has(r.data_asof)) bits.push(`데이터 ${esc(r.data_asof)}`);
     if (has(r.generated_at)) bits.push(`${esc(r.generated_at)} 작성`);
-    if (ms.length) bits.push(`채워진 지표 ${filled}/${ms.length}`);
+    if (cnt.length) bits.push(`채워진 지표 ${filled}/${cnt.length}` + (na ? ` · 해당 없음 ${na}` : ""));
     return `<div class="head">
       <span class="chip">앱 지표 ${isWeekly() ? "주간" : "월간"} 보고서</span>
       <h1>${esc(r.label || "—")} 앱 지표</h1>
@@ -509,8 +521,10 @@
           <div class="mright">${right}</div>
         </div>`;
       }).join("");
-      const filled = (g.metrics || []).filter(m => has(m.value)).length;
-      return card(g.title || "", `${filled}/${(g.metrics || []).length}칸${has(g.description) ? " · " + g.description : ""}`,
+      const gc = countable(g.metrics || []);
+      const gFilled = gc.filter(m => has(m.value)).length;
+      const gNa = (g.metrics || []).length - gc.length;
+      return card(g.title || "", `${gFilled}/${gc.length}칸${gNa ? ` · 해당 없음 ${gNa}` : ""}${has(g.description) ? " · " + g.description : ""}`,
         `<div class="mrows">${rows}</div>`);
     }).join("");
   }
@@ -532,7 +546,7 @@
     if (!has(ss) && !has(cv)) return "";
     const ms = allMetrics();
     const kv = ms.length ? `<div class="kv" style="margin-bottom:14px">
-      <div class="kvi"><p class="k">채워진 지표</p><p class="v">${ms.filter(m => has(m.value)).length} / ${ms.length}</p></div>
+      <div class="kvi"><p class="k">채워진 지표</p><p class="v">${countable(ms).filter(m => has(m.value)).length} / ${countable(ms).length}</p></div>
       ${has(ss) ? `<div class="kvi"><p class="k">연결된 출처</p><p class="v">${ss.filter(s => s.status === "connected").length} / ${ss.length}</p></div>` : ""}
     </div>` : "";
     const table = has(ss) ? `<table>

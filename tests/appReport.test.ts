@@ -751,3 +751,50 @@ test("그 기간 캠페인 발급이 0장이면 사용률 칸은 「발급 없�
   // 캠페인 외는 발급이 있으니 그대로 값이 나온다
   assert.equal(find(d, "coupon_rate_organic").value, 6.8);
 });
+
+// ── 「해당 없음」은 못 채운 칸이 아니다 ──────────────────────────────
+/**
+ * status "none" 은 **그 기간에 셀 대상이 없었다**는 뜻이다(캠페인 발급 0건이면
+ * 사용률을 낼 분모가 없다). 아직 못 채운 칸(pending · app_fix · undefined)과 같이 세면
+ * 「20/22」가 우리가 뭔가 놓친 것처럼 읽힌다 — 셋은 할 일이 있고 none 은 할 일이 없다.
+ */
+test("셀 대상이 없는 칸은 분모에서 빼고 따로 말한다", () => {
+  const d = buildAppReportData({
+    end: "20260920", cur, prev, stats, today: "2026-09-22",
+    // 캠페인 발급이 0건인 주 — coupon_rate_campaign 이 status "none" 이 된다
+    coupons: funnel({ campaign: { issued: 0, redeemed: 0, rate: null } }),
+    couponsPrev: funnel(),
+  });
+  const camp = find(d, "coupon_rate_campaign");
+  assert.equal(camp.value, null);
+  assert.equal(camp.status, "none", "「연결 전」이 아니라 「해당 없음」");
+
+  const r = render(fillAppReportTemplate(d));
+  // 머리말만 본다 — 맨 아래 범례에도 「해당 없음(발급 없음) = …」 설명이 있어서
+  // 글 전체에서 찾으면 아무 때나 걸린다.
+  const head = /채워진 지표 (\d+)\/(\d+)( · 해당 없음 (\d+))?/.exec(r.text);
+  assert.ok(head, "채워진 지표 표기를 찾지 못했다");
+  assert.equal(head![4], "1", "머리말이 「해당 없음 1」을 따로 말한다");
+  assert.equal(Number(head![2]), metrics(d).length - 1, "분모에서 1칸 빠져야 한다");
+  assert.equal(r.status, "ok");
+});
+
+test("아직 못 채운 칸은 그대로 분모에 남는다 — 할 일이 있다", () => {
+  // banner_ctr 은 app_fix — 앱 릴리스를 기다리는 중이고, 우리가 할 일이 남아 있다
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22", coupons: funnel(), couponsPrev: funnel() });
+  const ctr = find(d, "banner_ctr");
+  assert.equal(ctr.status, "app_fix");
+  const r = render(fillAppReportTemplate(d));
+  const head = /채워진 지표 (\d+)\/(\d+)( · 해당 없음 (\d+))?/.exec(r.text);
+  assert.equal(Number(head![2]), metrics(d).length, "none 이 없으면 분모는 전체 그대로");
+  assert.equal(head![3], undefined, "머리말에 「해당 없음」을 붙이지 않는다");
+});
+
+test("배너 노출 칸의 설명이 현재 사실과 맞는다", () => {
+  // 0927 에 앱 PR 이 머지돼 호출부가 생겼다. 「상수만 있고 호출하는 곳이 없다」는
+  // 더 이상 사실이 아니다 — 남은 것은 스토어 릴리스다.
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" });
+  const note = String(find(d, "banner_ctr").note);
+  assert.doesNotMatch(note, /상수만 있고/, "낡은 설명이 남아 있다");
+  assert.match(note, /릴리스/, "무엇을 기다리는지 말한다");
+});
