@@ -23,6 +23,8 @@ export interface AppReportBuild {
   week: { start: string; end: string; label: string };
   /** 사람이 읽을 실패 사유. data 가 있어도 칸이 비었을 수 있다 */
   warnings: string[];
+  /** GA4 확정 테이블이 어디까지 있나(YYYYMMDD). 읽지 못하면 null — 창 끝보다 이르면 GA4 칸은 일부만 센 값이다 */
+  through: string | null;
 }
 
 /**
@@ -87,12 +89,13 @@ export async function buildWeeklyAppReport(opts: { end?: string; fetchJson?: Bac
     filename: appReportFilename(end),
     week: { start: shiftDay(end, -6), end, label: weekLabel(end) },
     warnings,
+    through: last,
   };
 }
 
 // ── 월간 ────────────────────────────────────────────────────────────
 /** "2026-09" → { start: "20260901", end: "20260930" } */
-function monthWindow(period: string): { start: string; end: string } {
+export function monthWindow(period: string): { start: string; end: string } {
   const y = +period.slice(0, 4);
   const m = +period.slice(5, 7);
   const last = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 0)).getUTCDate();
@@ -155,5 +158,6 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
     filename: `앱지표_월간보고서_${period}`.replace(/[\\/:*?"<>|\s]+/g, "_"),
     week: { start: win.start, end: win.end, label: `${+period.slice(0, 4)}년 ${+period.slice(5, 7)}월` },
     warnings,
+    through: last,
   };
 }

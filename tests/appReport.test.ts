@@ -6,7 +6,7 @@ import {
 } from "../src/lib/draft/appReportData";
 import { buildMonthlyAppReportData, previousPeriod } from "../src/lib/draft/appReportMonthly";
 import { lastCompleteMonth } from "../src/lib/draft/appReport";
-import { appReportSummary, renderAppReportStatic } from "../src/lib/draft/appReportStatic";
+import { appReportMessage, appReportSummary, renderAppReportStatic } from "../src/lib/draft/appReportStatic";
 import type { Ga4AppMetrics } from "../src/lib/bigquery/appMetrics";
 import { eventCoverage, isCampaignSource, type CouponFunnel } from "../src/lib/bigquery/couponFunnel";
 
@@ -675,4 +675,61 @@ test("메시지 세 줄 — 월간은 월간 사용자와 coupon_redeemed 칸을
   assert.deepEqual(s.map((x) => [x.label, x.key, x.value, x.prev]), [
     ["월간 사용자", "wau", 128, 116], ["쿠폰 사용", "coupon_redeemed", 31, 20], ["스탬프 적립", "stamp_earned", 1102, 900],
   ]);
+});
+
+// ── PROBE 크론 — 슬랙 메시지 본문 ─────────────────────────────────────
+const msgBase = {
+  type: "weekly" as const, label: "9월 3주차", range: { start: "2026-09-14", end: "2026-09-20" },
+  ready: true, through: "20260920", warnings: [] as string[], link: "https://app.example/r/app?week=2026-09-20",
+};
+
+test("메시지 — 세 줄에 값·전주 대비를 싣고, 대시보드 링크로 끝난다", () => {
+  const text = appReportMessage({ ...msgBase, summary: appReportSummary(weekly()) });
+  const lines = text.split("\n");
+  assert.equal(lines[0], ":bar_chart: *앱 지표 주간 보고서 · 9월 3주차* (9/14~9/20)");
+  assert.equal(lines[1], "• 주간 사용자 *253명* · 전주 +267%");
+  assert.equal(lines[2], "• 쿠폰 사용 *12건* · 전주 +50%");
+  assert.equal(lines[3], "• 스탬프 적립 *305건* · 전주 +22%");
+  assert.equal(lines.at(-1), "첨부 HTML · <https://app.example/r/app?week=2026-09-20|대시보드에서 열기>");
+});
+
+test("메시지 — GA4 가 일요일까지 안 들어왔으면 사용자 줄만 「집계 중」, 나머지는 그대로", () => {
+  const text = appReportMessage({
+    ...msgBase, summary: appReportSummary(weekly()), ready: false, through: "20260919",
+    warnings: ["20260920 까지의 확정 테이블이 아직 없습니다 (20260919 까지). 그 주는 일부만 셉니다.", "쿠폰 퍼널을 읽지 못했습니다 — x"],
+  });
+  assert.match(text, /• 주간 사용자 — 집계 중 \(GA4 가 9\/20 데이터를 아직 안 보냈습니다\)/);
+  assert.doesNotMatch(text, /253명/, "6일치 WAU 를 한 주 값처럼 올리면 안 된다");
+  assert.match(text, /• 쿠폰 사용 \*12건\*/);
+  assert.match(text, /첨부 파일의 GA4 칸은 9\/19까지 센 값입니다/);
+  assert.doesNotMatch(text, /확정 테이블/, "「집계 중」이 이미 말한 경고를 되풀이하지 않는다");
+  assert.match(text, /:warning: 쿠폰 퍼널을 읽지 못했습니다/);
+});
+
+test("메시지 — 못 읽은 칸, 줄어든 값, 분모 0, 경고가 많을 때", () => {
+  const text = appReportMessage({
+    ...msgBase,
+    summary: [
+      { key: "wau", label: "주간 사용자", value: null, prev: null, unit: "명" },
+      { key: "coupon_used", label: "쿠폰 사용", value: 6, prev: 8, unit: "건" },
+      { key: "stamp_earned", label: "스탬프 적립", value: 1200, prev: 0, unit: "건" },
+    ],
+    warnings: ["a", "b", "c", "d", "e"],
+  });
+  assert.match(text, /• 주간 사용자 — 읽지 못함/);
+  assert.match(text, /• 쿠폰 사용 \*6건\* · 전주 −25%/);
+  assert.match(text, /• 스탬프 적립 \*1,200건\*\n/, "분모가 0 이면 증감을 싣지 않는다");
+  assert.match(text, /:warning: c\n:warning: 외 2건/);
+});
+
+test("메시지 — 월간은 제목과 비교 기준이 바뀐다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07", { coupon_redeemed: 20, stamp_earned: 900 }) },
+    today: "2026-09-22",
+  });
+  const text = appReportMessage({ ...msgBase, type: "monthly", label: "2026년 8월", range: { start: "2026-08-01", end: "2026-08-31" }, through: "20260831", summary: appReportSummary(d) });
+  assert.match(text, /^:bar_chart: \*앱 지표 월간 보고서 · 2026년 8월\*\n/);
+  assert.match(text, /• 월간 사용자 \*128명\* · 전월 \+10%/);
+  assert.match(text, /• 쿠폰 사용 \*31건\* · 전월 \+55%/);
 });
