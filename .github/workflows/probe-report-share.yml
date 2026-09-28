@@ -1,0 +1,77 @@
+# PROBE 매장 리포트 → #ops-partner — 승인되면 담당자가 받는 것과 같은 PNG 3장 · HTML 을 올린다 (민찬 0928).
+#
+#   09:00~22:50 KST, 10분마다 백엔드 큐(slack-queue)를 본다. 비어 있으면 바로 끝난다(크롬을 띄우지 않는다).
+#   있으면 러너의 크롬으로 대시보드 크론 미리보기를 열어 파일을 만들고(scripts/probe-report-share.mjs),
+#   #ops-partner 에 메시지 하나로 올린 뒤 백엔드에 "올림"을 적는다 — 같은 승인은 두 번 안 올린다.
+#   문구를 고쳐 다시 승인하면 「(수정본)」으로 한 번 더 올린다.
+#
+# **이 저장소는 공개다.** Actions 로그·아티팩트는 누구나 본다 — 로그에는 리포트 id 와 파일 크기만 남기고,
+# 파일을 아티팩트로 올리지 않는다.
+#
+# 필요한 것 (Settings → Secrets and variables → Actions):
+#   BACKEND_BASE_URL · CRON_SECRET_TOKEN · SLACK_PROBE_BOT_TOKEN (PROBE 가 #ops-partner 에 초대돼 있어야 한다)
+name: PROBE 매장 리포트 → ops-partner
+
+on:
+  schedule:
+    - cron: "*/10 0-13 * * *"   # 09:00~22:50 KST
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "리포트 id 하나만 (비우면 큐 전체)"
+        required: false
+      dry_run:
+        description: "만들기까지만 하고 슬랙에는 안 올린다"
+        type: boolean
+        default: true
+
+concurrency:
+  group: probe-report-share
+  cancel-in-progress: false
+
+jobs:
+  share:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DASH: https://app.wouldulike.kr
+      BACKEND: ${{ secrets.BACKEND_BASE_URL }}
+      CRON_TOKEN: ${{ secrets.CRON_SECRET_TOKEN }}
+      SLACK_TOKEN: ${{ secrets.SLACK_PROBE_BOT_TOKEN }}
+      CHANNEL: C0BPSQ7F8LC   # #ops-partner
+      DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+      ONLY_ID: ${{ inputs.id }}
+    steps:
+      - name: 큐 확인
+        id: queue
+        run: |
+          set -euo pipefail
+          [ -n "$BACKEND" ] && [ -n "$CRON_TOKEN" ] || { echo "::error::BACKEND_BASE_URL · CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
+          CODE=$(curl -sS --max-time 30 -o q.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" "$BACKEND/api/probe/reports/slack-queue/") || CODE=000
+          [ "$CODE" = "200" ] || { echo "::error::큐 HTTP $CODE"; exit 1; }
+          N=$(jq '.reports | length' q.json)
+          echo "큐 ${N}건: $(jq -r '[.reports[].id] | join(", ")' q.json)"
+          if [ "$N" = "0" ] && [ -z "$ONLY_ID" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.queue.outputs.run == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.queue.outputs.run == 'true'
+        with:
+          node-version: 20
+
+      - name: 크롬 준비 (playwright-core — 러너에 깔린 크롬을 쓴다)
+        if: steps.queue.outputs.run == 'true'
+        run: |
+          mkdir -p /tmp/pw && cd /tmp/pw
+          npm init -y > /dev/null
+          npm i --no-audit --no-fund playwright-core@1.47.2
+          cp "$GITHUB_WORKSPACE/scripts/probe-report-share.mjs" /tmp/pw/
+
+      - name: 만들어 올리기
+        if: steps.queue.outputs.run == 'true'
+        working-directory: /tmp/pw
+        env:
+          OUT_DIR: /tmp/pw/out
+        run: node probe-report-share.mjs

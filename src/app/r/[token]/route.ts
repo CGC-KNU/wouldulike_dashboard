@@ -1,9 +1,7 @@
 import { cookies } from "next/headers";
 import { requireTool } from "@/lib/draft/guard";
 import { getReport, getReportByToken } from "@/lib/draft/reportStore";
-import { fillReportTemplate, insertAfterBody } from "@/lib/draft/reportTemplate";
-import { toTemplateData } from "@/lib/draft/reportTemplateData";
-import { downloadBar } from "@/lib/draft/reportDownload";
+import { reportPageHtml, originOf } from "@/lib/draft/reportPage";
 import type { StoreReport } from "@/lib/draft/types";
 
 /**
@@ -17,28 +15,6 @@ import type { StoreReport } from "@/lib/draft/types";
  * 미리보기 위 띠에서 사장님께 카톡으로 보낼 파일(PNG · 스크립트 없는 HTML · 인쇄)을 받는다 — reportDownload.ts.
  * 승인된 리포트만. `?print=1` 이면 인쇄창을 바로 연다.
  */
-
-// 0925: 기본값이 vercel 주소였다. 주소를 app.wouldulike.kr 하나로 모았으니 여기도 그쪽이다 —
-// 환경변수가 비면 **사장님께 나가는 리포트 링크**가 이 값을 쓴다.
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.wouldulike.kr";
-
-/**
- * **요청이 들어온 그 출처.** 리포트 안 이미지는 이 출처의 `/api/img` 를 거쳐야 한다.
- *
- * 고정값(NEXT_PUBLIC_SITE_URL·vercel 기본값)으로 짚으면 안 된다 — 운영은 app.wouldulike.kr 인데
- * 그 값이 비어 있어 vercel 주소를 가리켰고, 이미지가 **다른 출처**가 되어 저장이 통째로 실패했다(0923).
- * 프록시 앞에 붙는 출처는 언제나 지금 보고 있는 도메인이어야 한다.
- */
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  if (host) return `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
-  try {
-    return new URL(req.url).origin;
-  } catch {
-    return SITE;
-  }
-}
 
 async function load(token: string): Promise<{ r: StoreReport; preview: boolean } | null> {
   if (!/^[0-9a-f]{40}$/.test(token)) {
@@ -63,7 +39,6 @@ async function load(token: string): Promise<{ r: StoreReport; preview: boolean }
   return r ? { r, preview: false } : null;
 }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const HEADERS = { "Content-Type": "text/html; charset=utf-8", "X-Robots-Tag": "noindex, nofollow", "Cache-Control": "private, no-store" };
 
 function plain(status: number, title: string, body: string): Response {
@@ -76,23 +51,6 @@ function plain(status: number, title: string, body: string): Response {
   );
 }
 
-/** 카톡 미리보기 — 매장 제공 사진(게시물 커버)만. 없으면 앱 아이콘. */
-function headTags(r: StoreReport): string {
-  const s = r.snapshot;
-  // data: 는 og:image 로 못 쓴다(카톡 미리보기가 주소를 받아 간다) — 그때는 앱 아이콘으로.
-  const img = s.post.cover_url && !s.post.cover_url.startsWith("data:")
-    ? s.post.cover_url
-    : new URL("/brand/appicon.png", SITE).toString();
-  return [
-    `<meta name="robots" content="noindex,nofollow">`,
-    `<meta property="og:type" content="article">`,
-    `<meta property="og:title" content="${esc(`${s.store.name} 인스타그램 홍보 성과`)}">`,
-    `<meta property="og:description" content="${esc(r.summary)}">`,
-    `<meta property="og:image" content="${esc(img)}">`,
-    `<meta name="description" content="${esc(r.summary)}">`,
-  ].join("\n");
-}
-
 export async function GET(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const hit = await load(token);
@@ -100,14 +58,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { r, preview } = hit;
   if (r.status === "REVOKED" && !preview) return plain(410, "이 리포트는 더 이상 공개되지 않습니다.", "새 리포트를 받으셨다면 그 링크로 열어 주세요.");
 
-  let html = fillReportTemplate(r, { beaconToken: preview ? undefined : r.token ?? undefined, origin: originOf(req) });
-  html = html.replace("</head>", `${headTags(r)}\n</head>`);
-  if (preview) {
-    const day = toTemplateData(r).report as { day: number | null; measured_at: string };
-    const fname = `${r.snapshot.store.name}_성과리포트${day.day != null ? `_${day.day}일차` : ""}_${day.measured_at.replace(/-/g, "")}`.replace(/[\\/:*?"<>|\s]+/g, "_");
-    const canDownload = r.status === "APPROVED" || r.status === "LINKED" || r.status === "SENT";
-    const label = r.status === "SENT" ? "보냄" : canDownload ? "승인됨" : "승인 전";
-    html = insertAfterBody(html, downloadBar({ filename: fname, canDownload, statusLabel: label }));
-  }
+  const html = reportPageHtml(r, { origin: originOf(req), preview, beaconToken: r.token ?? undefined });
   return new Response(html, { headers: HEADERS });
 }

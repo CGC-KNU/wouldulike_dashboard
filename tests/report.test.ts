@@ -4,6 +4,7 @@ import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplate
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
 import { VERDICT_FRACTION, buildReportText, cohortNote, interpret, ownerLines, propose, verdict } from "../src/lib/draft/report";
 import { downloadBar } from "../src/lib/draft/reportDownload";
+import { DOWNLOADABLE, reportFilename, reportPageHtml } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
 
 const metric = (key: string, value: number, median: number | null = null, n = 0) =>
@@ -523,4 +524,29 @@ test("성과 카드에 프로필 방문·팔로우가 없다 — 값이 와도",
   assert.match(out, /게시물 성과/, "카드 자체는 그대로 그린다");
   assert.match(out, /조회수/);
   assert.doesNotMatch(out, /프로필 방문|팔로우/);
+});
+
+// ── 한 장 만들기 — 점주 링크 · 담당자 미리보기 · PROBE 크론이 같은 함수를 쓴다 (0928) ──────────
+const TOKEN = "a".repeat(40);
+test("미리보기(담당자·PROBE 크론)는 파일 받기 띠가 붙고, 점주 링크에는 없다", () => {
+  const r = report({}, { report_data: rd });
+  const preview = reportPageHtml(r, { origin: "https://app.example", preview: true });
+  assert.match(preview, /data-preview-bar/);
+  assert.match(preview, /window\.__reportFiles/, "러너가 부를 파일 생성 함수가 있어야 한다");
+  assert.match(preview, /승인됨/);
+  assert.ok(preview.includes(JSON.stringify(reportFilename(r))), "띠의 파일 이름과 PROBE 가 올리는 파일 이름이 같아야 한다");
+  const owner = reportPageHtml({ ...r, token: TOKEN }, { origin: "https://app.example", preview: false, beaconToken: TOKEN });
+  assert.doesNotMatch(owner, /data-preview-bar/);
+  assert.match(owner, /og:title/);
+});
+
+test("승인 전 리포트의 미리보기는 파일 받기가 잠겨 있다", () => {
+  const html = reportPageHtml(report({ status: "DRAFT" }), { origin: "https://app.example", preview: true });
+  assert.match(html, /승인 전/);
+  assert.match(html, /CAN = false/);
+  assert.deepEqual(DOWNLOADABLE, ["APPROVED", "LINKED", "SENT"]);
+});
+
+test("파일 이름 — 매장_성과리포트_며칠차_측정일", () => {
+  assert.equal(reportFilename(report({}, { report_data: rd })), "라라더_성과리포트_14일차_20260918");
 });

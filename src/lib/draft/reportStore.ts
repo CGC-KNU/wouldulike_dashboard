@@ -124,3 +124,24 @@ export async function listMyReports(restaurantId: number, asAdmin: boolean): Pro
   const d = await call<{ reports: StoreReport[] }>(`/reports/mine/${asAdmin ? `?restaurant_id=${restaurantId}` : ""}`).catch(() => null);
   return (d?.reports ?? []).filter((r) => r.restaurant_id === restaurantId).map(normalize);
 }
+
+/**
+ * 크론(PROBE → #ops-partner, 0928)이 읽을 때 — 쿠키 대신 X-CRON-TOKEN. 백엔드는 크론에게 **읽기만** 허락한다(백엔드 #79).
+ * 러너가 담당자 미리보기와 같은 HTML 로 PNG·HTML 을 만들려고 부른다.
+ */
+export async function getReportAsCron(id: string, token: string): Promise<StoreReport | null> {
+  if (!reportsOnBackend()) return null;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE()}/api/probe/reports/${encodeURIComponent(id)}/`, { headers: { "X-CRON-TOKEN": token }, cache: "no-store" });
+  } catch {
+    throw new ReportStoreError(502, "리포트 저장소(백엔드)에 연결하지 못했습니다.");
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new ReportStoreError(res.status, body.detail ?? `리포트 저장소 오류 (${res.status})`);
+  }
+  const d = (await res.json()) as { report: StoreReport };
+  return normalize(d.report);
+}
