@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { phoneMatches, tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
+import { readStorePin } from "@/lib/onboard/pinRead";
 
 /**
  * 카카오 로그인 뒤 — 토큰 안의 임시 PIN 으로 백엔드 `verify-owner` 를 통과시켜 점주 세션을 만든다.
@@ -43,17 +44,27 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const bearer = jar.get("pending_token")?.value ?? jar.get("access_token")?.value;
   if (!bearer) return NextResponse.json({ success: false, message: "카카오 로그인이 먼저 필요합니다.", need_kakao: true }, { status: 401 });
 
+  /**
+   * 0928: 임시 PIN 만 고집하지 않는다. 사장님이 [0]에서 PIN 을 이미 정했으면(이층 사고) 그 PIN 으로
+   * 세션을 만든다 — 링크는 더 이상 1회성이 아니고, 본인 확인은 위의 번호 대조가 맡는다.
+   * 0925~0928 사흘치 hmac 줄은 못 읽는다. 그때는 임시 PIN 을 시도하고, 그것도 아니면 아래 안내로 간다.
+   */
+  const cur = await readStorePin(p.rid);
+  const ownerPin = cur.pin && !cur.is_temp ? cur.pin : null;
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/verify-owner/`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
-    body: JSON.stringify({ restaurant_id: p.rid, pin: tempPinFor(p.rid) }),
+    body: JSON.stringify({ restaurant_id: p.rid, pin: ownerPin ?? tempPinFor(p.rid) }),
     cache: "no-store",
   });
   const data = (await res.json().catch(() => ({}))) as { success?: boolean; access?: string; refresh?: string; message?: string; restaurant_id?: number };
 
   if (!res.ok || !data.success || !data.access) {
-    // 임시 PIN 이 이미 바뀌었으면(=온보딩을 한 번 지나갔으면) 여기서 막힌다. 의도된 1회성이다.
-    return NextResponse.json({ success: false, message: data.message ?? "이 링크로는 더 이상 로그인할 수 없습니다. 이미 등록을 마치셨다면 점주 대시보드로 로그인해 주세요.", used: res.status === 400 }, { status: 400 });
+    // 임시 PIN 도 아니고 읽을 수 있는 PIN 도 없다 = 0925~0928 사이에 바뀐 줄. 담당자가 링크를 다시 내면 새 임시 PIN 이 심긴다.
+    const why = cur.unreadable
+      ? "사장님이 정하신 PIN 을 지금은 읽을 수 없어 이 링크로 들어갈 수 없습니다. 담당자에게 '링크 다시 보내 주세요' 라고 말씀해 주세요."
+      : "이 링크로는 로그인할 수 없습니다. 담당자에게 링크를 다시 받아 주세요.";
+    return NextResponse.json({ success: false, message: data.message ?? why, used: res.status === 400 }, { status: 400 });
   }
 
   /**
@@ -77,5 +88,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   if (data.refresh) jar.set("refresh_token", data.refresh, { httpOnly: true, secure, sameSite: "lax", maxAge: 60 * 60 * 24 * 90 });
   jar.delete("pending_token");
   jar.delete("onboard_return");
-  return NextResponse.json({ success: true });
+  // [0]에서 다시 정하게 하지 않는다 — 이미 정한 PIN 이면 그 값을 보여 준다.
+  return NextResponse.json({ success: true, pin_set: ownerPin !== null, pin: ownerPin });
 }

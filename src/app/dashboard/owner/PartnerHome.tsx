@@ -21,6 +21,9 @@ export interface PartnerHomeData {
     coupon_basic: string | null; coupon_limited: string | null; stamp_count: string | null; stamp_reward: string | null;
     /** 스탬프를 계약에서 뺀 매장이 있다. 그 매장의 0 은 "아무도 안 왔다"가 아니라 "안 쓰는 기능"이다. */
     stamp_enabled?: boolean;
+    /** 매장 PIN (0928 — 사장님도 본다). null 이면 없거나 아직 못 읽는 줄. */
+    pin?: string | null;
+    pin_unreadable?: boolean;
   };
   month: string;
   stats: { this: { coupon_used: number; stamp: number; revisit: number }; prev: { coupon_used: number; stamp: number; revisit: number }; loyal_total: number };
@@ -86,6 +89,19 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
           </p>
         </div>
       </div>
+
+      {/* 매장 PIN — 직원이 손님 폰에 찍는 번호. 잊으면 장사가 멈추므로 첫 화면에 둔다 (0928). */}
+      {(store.pin || store.pin_unreadable) && (
+        <section aria-label="매장 PIN" className={`${card} px-4 py-3 flex items-center justify-between gap-3`}>
+          <div className="min-w-0">
+            <p className="text-[12px] text-gray-500">매장 PIN</p>
+            <p className="text-[11.5px] text-gray-400 mt-0.5">손님 스탬프 적립·쿠폰 사용, 그리고 로그인에 쓰는 번호입니다.</p>
+          </div>
+          {store.pin
+            ? <p className="text-[24px] font-bold text-gray-900 tracking-[0.25em] tabular-nums shrink-0" aria-label={`PIN ${store.pin}`}>{store.pin}</p>
+            : <p className="text-[12px] text-amber-700 text-right shrink-0">아직 읽을 수 없습니다<br />한 번 로그인하면 보입니다</p>}
+        </section>
+      )}
 
       {/* 이번 달 숫자 — 관리자 화면과 같은 원본 */}
       <section aria-label={`${month}월 지표`} className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">

@@ -3,6 +3,7 @@ import { actorName, requireTool } from "@/lib/draft/guard";
 import { backendUrl, getAccessToken, proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
 import { phoneTag, shortId, signOnboardToken, tempPinFor, type OnboardPlan } from "@/lib/onboard/token";
+import { readStorePin } from "@/lib/onboard/pinRead";
 import { defaultFee } from "@/lib/onboard/contract";
 import { remoteGet } from "@/lib/draft/remote";
 
@@ -62,21 +63,28 @@ export async function POST(req: NextRequest) {
    * 손님 적립이 그 자리에서 멈춘다. 이 예외도 PIN 을 되읽을 수 있게 되면(다음 단계) 사라진다 —
    * 그때는 임시 PIN 을 심지 않고 실제 PIN 으로 세션을 만들면 된다.
    */
+  /**
+   * 0928 (2): PIN 을 다시 읽을 수 있다. 사장님 PIN 이 걸려 있고 읽히면 **아무것도 심지 않는다** —
+   * 세션 라우트가 그 PIN 으로 로그인시킨다. 운영 중인 매장도 그래서 막을 이유가 없어졌다.
+   * 못 읽는 줄(0925~0928 hmac)만 아래 예전 규칙으로 간다.
+   */
+  const cur = await readStorePin(b.rid);
+  const keepOwnerPin = Boolean(cur.pin && !cur.is_temp);
   const opsRes = await remoteGet<{ ops: { is_test?: boolean; contract_started_on?: string | null; contract_signed_on?: string | null } | null }>(`/api/astro/stores/${b.rid}/`).catch(() => null);
   const ops = opsRes && opsRes.handled && opsRes.ok ? opsRes.data?.ops ?? null : null;
   const isTest = Boolean(ops?.is_test);
   const operating = Boolean(ops?.contract_started_on || ops?.contract_signed_on);
-  if (info.has_pin && !isOurTemp && !isTest && operating) {
+  if (info.has_pin && !isOurTemp && !isTest && operating && !keepOwnerPin) {
     return NextResponse.json({
       detail: "운영 중인 매장(계약 시작일이 적힌 곳)이라 온보딩 링크를 발급하지 않습니다. 그 PIN 은 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 바꾸면 매장 운영이 멈춥니다. 사장님께 현재 매장 번호를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.",
       has_pin: true,
     }, { status: 409 });
   }
   // 온보딩 중인데 사장님이 이미 PIN 을 바꿔 둔 경우 — 이번 발급이 그 PIN 을 새 임시값으로 덮는다. 응답에 적어 화면이 말하게 한다.
-  const replacedOwnerPin = Boolean(info.has_pin && !isOurTemp && !isTest);
+  const replacedOwnerPin = Boolean(info.has_pin && !isOurTemp && !isTest && !keepOwnerPin);
 
-  // 이미 임시 PIN 이 심겨 있으면 그대로 두고 링크만 새로 뽑는다.
-  if (!isOurTemp) {
+  // 이미 임시 PIN 이 심겨 있거나, 읽을 수 있는 사장님 PIN 이 있으면 그대로 두고 링크만 새로 뽑는다.
+  if (!isOurTemp && !keepOwnerPin) {
     // PIN 이 이미 있으면 관리자여도 `current_pin` 을 같이 보내야 한다 (위 주석, ChangePinView).
     // 위에서 읽어 둔 현재 값을 그대로 동봉한다 — 안 보내면 400 "current_pin이 필요합니다".
     // 여기까지 온 매장은 PIN 이 없거나 테스트 매장뿐이다(위 가드).

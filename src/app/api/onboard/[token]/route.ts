@@ -62,6 +62,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
       }).catch(() => false);
   }
 
+  // 0928: 세션이 살아 있으면 PIN 이 이미 정해졌는지도 알려 준다 — 새로고침해도 [0]을 다시 시키지 않는다.
+  let pin_set = false; let pin: string | null = null;
+  if (session.ok) {
+    const { readStorePin } = await import("@/lib/onboard/pinRead");
+    const cur = await readStorePin(p.rid);
+    if (cur.pin && !cur.is_temp) { pin_set = true; pin = cur.pin; }
+  }
+
   // 아직 동의 전이므로 "오늘 동의한다면" 기준으로 날짜를 미리 보여 준다. 확정은 consent 에서 한다.
   const sched = scheduleFrom(startsOnAfter(todaySeoul()));
   return NextResponse.json({
@@ -82,5 +90,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
     bank: process.env.ASTRO_BANK_ACCOUNT ? { name: process.env.ASTRO_BANK_NAME ?? "", account: process.env.ASTRO_BANK_ACCOUNT, holder: process.env.ASTRO_BANK_HOLDER ?? "" } : null,
     done: stepStampOk(p.n, "done", jar.get(`ob_done_${p.rid}`)?.value),
     already,
+    pin_set, pin,
   });
 }

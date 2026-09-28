@@ -19,6 +19,8 @@ interface RestaurantInfo {
   category: string;
   s3_image_urls: string[];
   has_pin: boolean;
+  pin?: string | null;
+  pin_unreadable?: boolean;
   pin_updated_at: string | null;
   promotion_text: string;
 }
@@ -129,9 +131,10 @@ function benefitLabel(bj: Record<string, unknown>): string {
  *
  * 예전에는 이 화면이 **현재 PIN 을 그대로 띄웠다.** 서버가 값을 내려 줬기 때문이다.
  * 이제 PIN 은 해시로 저장돼 우리도 못 읽는다 — 사장님이 직접 지금 번호를 넣어야 바꾼다.
- * 잊으셨으면 담당자가 새로 정해 드린다. 알려 드릴 방법은 이제 없다.
+ * 0928: 다시 읽을 수 있다(암호화 저장). 현재 번호를 접힌 줄 옆에 그대로 보여 준다 — 잊어서 담당자에게
+ * 전화하던 일이 사라진다. 0925~0928 사이에 바꾼 줄만 못 읽고, 한 번 로그인하면 읽히는 모양으로 올라간다.
  */
-function PinChangeSection({ hasPin, updatedAt, rid }: { hasPin: boolean; updatedAt: string | null; rid: string | null }) {
+function PinChangeSection({ hasPin, updatedAt, rid, pin, unreadable }: { hasPin: boolean; updatedAt: string | null; rid: string | null; pin?: string | null; unreadable?: boolean }) {
   const [currentPin, setCurrentPin] = useState("");
   const [open, setOpen]             = useState(false);
   const [newPin, setNewPin]         = useState("");
@@ -176,6 +179,8 @@ function PinChangeSection({ hasPin, updatedAt, rid }: { hasPin: boolean; updated
         <div className="flex items-center gap-2">
           <span className="text-base">🔐</span>
           <span>{hasPin ? "PIN 변경" : "PIN 등록"}</span>
+          {pin && <span className="ml-1 text-gray-900 font-bold tracking-[0.2em] tabular-nums" aria-label={`현재 PIN ${pin}`}>{pin}</span>}
+          {!pin && unreadable && <span className="ml-1 text-[11.5px] text-amber-700">지금은 못 읽습니다 · 한 번 로그인하면 보입니다</span>}
         </div>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={`transition-transform ${open ? "rotate-180" : ""}`}>
           <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -589,7 +594,7 @@ export default function RestaurantPage() {
             </div>
           )}
 
-          <PinChangeSection hasPin={Boolean(info?.has_pin)} updatedAt={info?.pin_updated_at ?? null} rid={rid ?? null} />
+          <PinChangeSection hasPin={Boolean(info?.has_pin)} updatedAt={info?.pin_updated_at ?? null} rid={rid ?? null} pin={info?.pin ?? null} unreadable={info?.pin_unreadable} />
         </>
       )}
 

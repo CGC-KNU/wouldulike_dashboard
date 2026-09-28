@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { phoneMatches, tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
+import { readStorePin } from "@/lib/onboard/pinRead";
 
 /**
  * [0] PIN 을 점주 것으로 바꾼다.
@@ -35,9 +36,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   if (!/^\d{4}$/.test(new_pin ?? "")) return NextResponse.json({ success: false, message: "PIN 은 숫자 4자리입니다." }, { status: 400 });
   if (/^(\d)\1{3}$/.test(new_pin!) || new_pin === "1234") return NextResponse.json({ success: false, message: "너무 쉬운 PIN 입니다. 다른 번호로 정해 주세요." }, { status: 400 });
 
+  // 0928: 이미 사장님 PIN 이 걸려 있으면 그걸 current 로 — 임시 PIN 만 넣으면 두 번째 시도부터 늘 실패했다(이층).
+  const cur = await readStorePin(v.payload.rid);
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/change-pin/?restaurant_id=${v.payload.rid}`, {
     method: "POST", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ current_pin: tempPinFor(v.payload.rid), new_pin }), cache: "no-store",
+    body: JSON.stringify({ current_pin: cur.pin ?? tempPinFor(v.payload.rid), new_pin }), cache: "no-store",
   });
   const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
   if (!res.ok || data.success === false) {
