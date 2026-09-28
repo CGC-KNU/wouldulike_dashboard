@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { VERDICT_FRACTION, buildReportText, cohortNote, interpret, ownerLines, propose, verdict } from "../src/lib/draft/report";
+import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, ownerHeadline, ownerParagraphs, ownerStory, propose, refreshText, verdict } from "../src/lib/draft/report";
 import { downloadBar } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
@@ -72,15 +72,83 @@ test("점주 리포트 HTML 에 우리 계정 평균·중앙값·순위가 실�
 
 const CHANNEL = /우리 채널|평소|가운데 값|번째|건 중|위\)|낮았|적었|적게/;
 
-test("해석 문장은 우리 채널과 견주지 않고, 작은 숫자는 문장에 쓰지 않는다", () => {
-  const ms = [metric("saved", 644, 244, 45), metric("reach", 18702, 9000, 45), metric("views", 32657, 17085, 45), metric("comments", 2, 3, 45)];
-  const lines = ownerLines(ms);
-  assert.equal(lines.length, 2, "저장 → 조회 두 줄 (도달은 제목 줄이 말한다)");
-  assert.match(lines[0], /저장이 644번 모였습니다/);
-  assert.match(lines[1], /32,657회 조회됐습니다/);
-  for (const l of lines) assert.doesNotMatch(l, CHANNEL);
-  assert.doesNotMatch(interpret(metric("saved", 30, 500, 45)), CHANNEL, "평소보다 낮아도 낮다고 말하지 않는다");
-  assert.deepEqual(ownerLines([metric("saved", 3, 50, 45), metric("views", 9, 50, 45)]), [], "10 미만만 있으면 문장을 만들지 않는다");
+// ── 0928: 해석 문단은 마케팅이 쓴 기프트버거 글의 형식 ─────────────────
+const GIFT_TEXT = `이번 기프트버거 콘텐츠 성과를 정리해 전달드립니다.
+해당 콘텐츠는 총 3,482명의 이용자에게 도달했으며, 조회수는 6,674회를 기록했습니다. 도달은 게시물을 한 번 이상 본 계정의 수이고, 조회는 게시물이 화면에 나타난 횟수를 모두 센 값입니다. 조회수가 도달한 이용자 수를 넘어섰다는 것은, 게시물을 한 번 넘게 본 이용자가 있었다는 뜻입니다.
+이용자 반응 가운데서는 공유가 105회로 가장 많았습니다. 공유는 게시물을 다른 사람에게 직접 보내는 행동입니다. 이번 콘텐츠는 처음 본 이용자에게서 끝나지 않고, 그 주변 사람들에게까지 한 번 더 전달되었습니다.
+저장은 67회로 집계되었습니다. 저장은 게시물을 나중에 다시 볼 수 있도록 자신의 보관함에 담아 두는 기능입니다. 이번 콘텐츠는 67회 저장되어, 그만큼 이용자들의 보관함에 기프트버거 소개가 남게 되었습니다. 이 밖에 좋아요는 66개를 기록했습니다.`;
+
+/** report-data(카드가 쓰는 값)만 기프트버거 숫자로 — 스냅샷 지표는 일부러 다르게 둔다 */
+const gift = () => ({
+  ...report().snapshot, store: { name: "기프트버거", campus: null },
+  metrics: [metric("views", 1000), metric("reach", 900), metric("saved", 11)],
+  report_data: { ...rd, metrics: { views: 6674, reach: 3482, shares: 105, saved: 67, likes: 66, comments: 3 } },
+});
+
+test("기프트버거 숫자를 넣으면 마케팅이 쓴 글과 글자까지 같다", () => {
+  assert.equal(ownerStory(gift()).join("\n"), GIFT_TEXT);
+});
+
+test("숫자는 리포트 카드와 같은 출처(report-data)를 쓴다 — 카드는 14일차, 글은 7일차가 되지 않게", () => {
+  const t = ownerStory(gift()).join(" ");
+  assert.match(t, /3,482명/);
+  assert.doesNotMatch(t, /900명|1,000회/);
+});
+
+test("반응은 많은 순으로 — 저장이 가장 많으면 저장부터, 10 미만은 쓰지 않는다", () => {
+  const s = { ...gift(), report_data: { ...rd, metrics: { views: 32657, reach: 18702, saved: 644, shares: 528, likes: 258, comments: 2 } } };
+  const [, , third, fourth] = ownerStory(s);
+  assert.match(third, /^이용자 반응 가운데서는 저장이 644회로 가장 많았습니다\./);
+  assert.match(fourth, /^공유는 528회로 집계되었습니다\..* 이 밖에 좋아요는 258개를 기록했습니다\.$/);
+  assert.doesNotMatch(ownerStory(s).join(" "), /댓글/, "댓글 2개는 문장에 쓰지 않는다");
+  // 우리 채널과 견주는 말이 없다
+  assert.doesNotMatch(ownerStory(s).join(" "), /우리 채널|평소|가운데 값|번째|건 중/);
+});
+
+test("조회가 도달보다 크지 않으면 「한 번 넘게 본」 문장을 쓰지 않는다 · 반응이 모두 10 미만이면 반응 문단이 없다", () => {
+  const s = { ...gift(), report_data: { ...rd, metrics: { views: 850, reach: 900, shares: 4, saved: 3, likes: 8, comments: 1 } } };
+  const out = ownerStory(s);
+  assert.equal(out.length, 2);
+  assert.doesNotMatch(out[1], /한 번 넘게/);
+});
+
+test("좋아요·댓글이 앞설 때도 뜻과 한 일을 쓴다", () => {
+  const s = { ...gift(), report_data: { ...rd, metrics: { views: 5000, reach: 3000, likes: 300, comments: 40, shares: 12, saved: 11 } } };
+  const out = ownerStory(s);
+  assert.match(out[2], /좋아요가 300개로 가장 많았습니다\. 좋아요는 .* 300명이 좋아요를 눌렀습니다\./);
+  assert.match(out[3], /^댓글은 40개로 집계되었습니다\..*댓글 40개가 달렸습니다\. 이 밖에 공유는 12회, 저장은 11회를 기록했습니다\.$/);
+});
+
+test("편집 화면 한도(한 줄 300자 · 4줄) 안에 든다 — 가장 긴 경우", () => {
+  const s = { ...gift(), store: { name: "아주아주긴가게이름수제버거본점", campus: null },
+    report_data: { ...rd, metrics: { views: 1234567, reach: 987654, saved: 123456, shares: 234567, likes: 345678, comments: 45678 } } };
+  const out = ownerStory(s);
+  assert.ok(out.length <= 4);
+  for (const t of out) assert.ok(t.length <= 300, `${t.length}자: ${t.slice(0, 30)}…`);
+});
+
+test("해석 문단의 숫자는 승인 가드를 통과한다 — report-data 에만 있는 숫자도 스냅샷 값이다", () => {
+  const s = gift();
+  const r = checkText(ownerStory(s).join("\n"), s);
+  assert.ok(r.ok, r.problems.join(", "));
+});
+
+test("이미 만든 리포트의 자동 문장(9/25~9/28 짧은 문장)은 새 글로, 사람이 쓴 문장은 뒤에 남긴다", () => {
+  const s = gift();
+  const out = ownerParagraphs(["저장이 67번 모였습니다. 저장은 '나중에 가봐야지' 하고 담아두는 행동이라, …", "사장님 메뉴가 특히 반응이 좋았습니다."], s);
+  assert.deepEqual(out, [...ownerStory(s), "사장님 메뉴가 특히 반응이 좋았습니다."]);
+  assert.deepEqual(ownerParagraphs(["사람이 다 고쳐 쓴 문단입니다."], s), ["사람이 다 고쳐 쓴 문단입니다."], "자동 문장이 하나도 없으면 사람 것만");
+  assert.deepEqual(ownerParagraphs(ownerStory(s), s), ownerStory(s));
+});
+
+test("「수치 다시 읽기」는 손대지 않은 자동 문장만 새 숫자로 다시 쓴다", () => {
+  const old = gift();
+  const next = { ...old, report_data: { ...rd, metrics: { views: 9000, reach: 4100, shares: 150, saved: 80, likes: 70, comments: 3 } } };
+  const untouched = refreshText({ summary: ownerHeadline(old), interpretation: ownerStory(old), snapshot: old }, next);
+  assert.deepEqual(untouched.interpretation, ownerStory(next));
+  assert.equal(untouched.summary, ownerHeadline(next));
+  const edited = refreshText({ summary: "사람이 쓴 요약", interpretation: ["사람이 다 고쳐 쓴 문단입니다."], snapshot: old }, next);
+  assert.deepEqual(edited, {}, "사람이 고친 것은 건드리지 않는다");
 });
 
 test("약점을 말하던 제안(P2·P4)은 더 생기지 않고, P1 은 평소·부족을 말하지 않는다", () => {
@@ -113,9 +181,10 @@ test("이미 만든 리포트의 옛 채널 비교 문장·약점 제안은 그�
   const d = toTemplateData(legacy) as { insight: { headline: string | null; paragraphs: string[]; limitation: string | null } };
   const all = [d.insight.headline ?? "", ...d.insight.paragraphs].join("\n");
   assert.doesNotMatch(all, /우리 채널|가운데 값|번째|평소|아직 없습니다/);
-  assert.match(d.insight.headline!, /15,503명에게 닿았습니다/);
+  assert.equal(d.insight.headline, null, "자동 요약은 카드 제목으로 쓰지 않는다(0928)");
   assert.ok(d.insight.paragraphs.includes("사장님 메뉴 사진이 특히 반응이 좋았습니다."), "사람이 쓴 줄은 남는다");
-  assert.ok(d.insight.paragraphs.some((t) => t.includes("저장이 538번 모였습니다")), "옛 줄 자리에 지금 문장");
+  assert.equal(d.insight.paragraphs[0], "이번 라라더 콘텐츠 성과를 정리해 전달드립니다.", "옛 줄 자리에 지금 규칙의 글");
+  assert.ok(d.insight.paragraphs.some((t) => t.startsWith("이용자 반응 가운데서는 저장이 538회로 가장 많았습니다.")));
   assert.ok(!d.insight.paragraphs.some((t) => t.includes("촬영 재진행")), "없앤 제안은 빠진다");
   assert.ok(d.insight.paragraphs.some((t) => t.includes("사람이 고친 공유 제안입니다.")), "고친 제안은 그대로");
   assert.match(d.insight.limitation!, /3곳을 함께 소개한 큐레이션입니다\. 라라더가 추천 가게 중 한 곳으로 실렸습니다/, "「혼자 받은 숫자 아님」 대신");
@@ -129,6 +198,8 @@ test("카톡용 텍스트에 채널 비교·순위·작은 숫자가 없다", ()
   assert.doesNotMatch(t, /댓글 2/, "10 미만은 싣지 않는다");
   assert.doesNotMatch(t, /쿠폰 0장/, "앱도 0 은 싣지 않는다");
   assert.match(t, /스탬프 4개가 적립됐습니다\./);
+  assert.match(t, /이용자 반응 가운데서는 저장이 538회로 가장 많았습니다\./, "공개 리포트와 같은 글");
+  assert.doesNotMatch(t, /성과를 정리해 전달드립니다/, "첫 문장은 인사 줄이 대신한다");
   assert.match(t, /'대구 면 요리 맛집' 게시물에 라라더를 소개해/, "내부 표시 「(… 포함)」을 떼고 조사를 맞춘다");
 });
 

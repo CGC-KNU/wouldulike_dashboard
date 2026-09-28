@@ -1,4 +1,4 @@
-import { DEFAULT_SUMMARY, isLegacyChannelLine, josa, ownerHeadline, ownerLines, ownerProposalText, stripMarker } from "./report";
+import { isAutoSummary, josa, ownerParagraphs, ownerProposalText, stripMarker } from "./report";
 import { isEmbedded } from "./coverImage";
 import type { StoreReport } from "./types";
 
@@ -77,10 +77,10 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
   const proposals = r.proposals.filter((p) => p.approved)
     .map((p) => { const t = ownerProposalText(p, s); return t ? `**${p.title}** ${t}` : null; })
     .filter((t): t is string => t !== null);
-  // 옛 채널 비교 문장이 섞여 있으면 그 줄만 빼고 지금 규칙의 문장을 붙인다
-  const legacy = r.interpretation.some(isLegacyChannelLine);
-  const paragraphs = legacy ? [...r.interpretation.filter((t) => !isLegacyChannelLine(t)), ...ownerLines(s.metrics)] : r.interpretation;
-  const summary = r.summary && isLegacyChannelLine(r.summary) ? ownerHeadline(s) : r.summary;
+  // 해석 문단(0928 ownerStory) — 자동으로 들어갔던 문장은 지금 규칙의 글로, 사람이 고친 문장은 그대로
+  const paragraphs = ownerParagraphs(r.interpretation, s);
+  // 자동 요약은 카톡 미리보기용이다 — 카드 제목으로는 사람이 직접 쓴 요약만 올린다
+  const headline = isAutoSummary(r.summary, s) ? null : r.summary;
 
   return {
     store: { name: s.store.name },
@@ -131,7 +131,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
     benchmarks: {},
     notes: {},
     insight: {
-      headline: summary && summary !== DEFAULT_SUMMARY ? summary : null,
+      headline,
       paragraphs: [...paragraphs, ...proposals],
       // 여러 가게를 함께 실은 편이면 양식이 "이번 도달은 {store} 혼자 받은 숫자가 아닙니다" 를 붙인다.
       // 큐레이션이라는 사실은 그대로 밝히되, 약점으로 말하지 않는다(0925).

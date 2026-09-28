@@ -281,7 +281,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
-      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 문구는 그대로 두었습니다 — 숫자가 달라졌으면 문장도 확인해 주세요." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '카톡으로 보냈음'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "보냈음으로 표시했습니다." : "링크를 회수했습니다." }); onChanged();
+      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '카톡으로 보냈음'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "보냈음으로 표시했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
   /** 초안 지우기 — 게시물 목록에서 다시 만들 수 있게 돌려놓는다. 보낸 리포트는 이 버튼이 없다. */
@@ -336,7 +336,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title="문구">
         <Field label="제목"><Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!editable} /></Field>
         <Field label="한 줄 요약 (카톡 미리보기에 보입니다)"><Textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!editable} /></Field>
-        <Field label="비교 해석 (줄마다 한 문장 · 지표 이름으로 시작)" hint="스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={3} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
+        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(도달·조회 → 가장 많은 반응 → 두 번째 반응). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
       </PanelSection>
 
       <PanelSection title={`다음 제안 (${props.filter((p) => p.approved).length} 승인 / ${props.length})`}>

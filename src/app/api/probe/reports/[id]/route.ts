@@ -4,7 +4,7 @@ import { actorName, requireTool } from "@/lib/draft/guard";
 import { isPreview } from "@/lib/draft/previewStores";
 import { appendDraftItem, readDraft } from "@/lib/draft/store";
 import { ReportStoreError, deleteReport, getReport, patchReport, reportStorePersistent, reportsOnBackend } from "@/lib/draft/reportStore";
-import { checkText, cohortNote, reportAllText } from "@/lib/draft/report";
+import { checkText, cohortNote, refreshText, reportAllText } from "@/lib/draft/report";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { fetchPapillonMonths } from "@/lib/draft/papillon";
 import { buildSnapshot } from "@/lib/draft/snapshot";
@@ -103,8 +103,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const ops = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).find((o) => o.id === store.restaurant_id);
     const snapshot = await buildSnapshot({ ...store, campus: ops?.campus ?? null }, plan, stores.filter((s) => s.is_affiliate !== false));
     snapshot.cohort_note = cohortNote(snapshot.metrics);
-    // 문구는 사람이 쓴 것이라 그대로 둔다. 스냅샷에 없는 숫자를 쓴 문장은 승인 단계에서 걸린다.
-    const updated = await save(id, { snapshot });
+    // 손대지 않은 자동 문장은 새 숫자로 다시 쓰고, 사람이 고친 문장은 그대로 둔다(refreshText).
+    const updated = await save(id, { snapshot, ...refreshText(cur, snapshot) });
     if (updated instanceof NextResponse) return updated;
     return NextResponse.json({ report: updated, draft: draft() });
   }
