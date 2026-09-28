@@ -5,6 +5,7 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { remoteGet } from "@/lib/draft/remote";
 import type { BackendRestaurant, Lead, StoreOps } from "@/lib/draft/types";
 import { tempPinFor } from "@/lib/onboard/token";
+import { normName } from "@/lib/draft/sheet";
 import { describe, diffStore, foldByStore, readLedger, type Folded } from "@/lib/onboard/reconcile";
 
 /**
@@ -61,11 +62,26 @@ export async function GET() {
   // 매장 ↔ 후보. 한 매장에 후보가 둘 이어져 있으면 단계가 앞선 쪽(계약 완료 > 구두 합의)을 쓴다.
   const RANK: Record<string, number> = { "계약 완료": 2, "구두 합의": 1 };
   const leadOf = new Map<number, Lead>();
+  /**
+   * 매장 번호로 안 이어진 구두 합의·계약 완료 후보. 이름이 같은 매장이 있으면 그 줄에 붙인다 —
+   * 0928 실측: 88왕족발이 후보(계약 완료)와 매장(#329) 둘 다 있는데 서로 안 이어져 있어 두 줄로 떴다.
+   * 이름으로 붙인 건 링크에 lid 가 실리므로 사장님이 온보딩을 마칠 때 정식으로 이어진다.
+   */
+  const unlinked = new Map<string, Lead>();
   if (leadsRes.handled && leadsRes.ok) {
     for (const l of leadsRes.data?.leads ?? []) {
-      if (!l.converted_restaurant_id) continue;
-      const cur = leadOf.get(l.converted_restaurant_id);
-      if (!cur || (RANK[l.stage] ?? 0) > (RANK[cur.stage] ?? 0)) leadOf.set(l.converted_restaurant_id, l);
+      if (l.converted_restaurant_id) {
+        const cur = leadOf.get(l.converted_restaurant_id);
+        if (!cur || (RANK[l.stage] ?? 0) > (RANK[cur.stage] ?? 0)) leadOf.set(l.converted_restaurant_id, l);
+      } else if (l.stage === "구두 합의" || l.stage === "계약 완료") {
+        unlinked.set(normName(l.name), l);
+      }
+    }
+    for (const r of backend?.restaurants ?? []) {
+      const l = unlinked.get(normName(r.name));
+      if (!l) continue;
+      unlinked.delete(normName(r.name));
+      if (!leadOf.has(r.restaurant_id)) leadOf.set(r.restaurant_id, l);
     }
   }
   const ops = new Map<number, StoreOps>();
@@ -150,8 +166,7 @@ export async function GET() {
    */
   if (leadsRes.handled && leadsRes.ok) {
     const tierOf = (plan: string | null) => { const p = (plan ?? "").toLowerCase(); return p.includes("boost") ? "BOOST" : p.includes("premium") || p.includes("content") ? "CONTENT" : p.includes("무료") || p.includes("free") ? "FREE" : null; };
-    for (const l of leadsRes.data?.leads ?? []) {
-      if (l.converted_restaurant_id || !(l.stage === "구두 합의" || l.stage === "계약 완료")) continue;
+    for (const l of unlinked.values()) {
       rows.push({
         rid: null, name: l.name, campus: l.campus ?? null, tier: tierOf(l.proposed_plan), fee: null,
         owner_phone: l.contact ?? l.phone ?? null, stage: "후보", at: l.last_touch_at ?? null,
