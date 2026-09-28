@@ -2602,6 +2602,32 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  */
 type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | "drive" | "playroom";
 
+/**
+ * Astro 사이드바 묶음 (민열님 0928). 순서는 요청 그대로:
+ * 홈 · 일정 · 파트너 관리(매장·계약·후보) · 스팟 제작 · 혜택 신청 · 정산(입금 현황·세금계산서) · 자료실.
+ * "재무" 대신 **정산** — 입금 확인과 계산서 발행은 둘 다 '받을 돈을 마무리하는 일'이라 그 말이 맞다.
+ * 묶음은 화면이 아니다. 권한으로 빠진 탭은 묶음에서도 빠지고, 다 빠지면 묶음도 안 보인다.
+ */
+const ASTRO_NAV_GROUPS: { key: string; label: string; items: string[] }[] = [
+  { key: "astro-partners", label: "파트너 관리", items: ["astro-ops", "astro-contracts", "astro-leads"] },
+  { key: "astro-finance", label: "정산", items: ["astro-billing", "astro-tax"] },
+];
+function groupNav<T extends { key: string; label: string }>(items: T[], groups: { key: string; label: string; items: string[] }[]): (T & { children?: T[] })[] {
+  if (!groups.length) return items;
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  const placed = new Set<string>();
+  const out: (T & { children?: T[] })[] = [];
+  for (const it of items) {
+    if (placed.has(it.key)) continue;
+    const g = groups.find((x) => x.items.includes(it.key));
+    if (!g) { out.push(it); continue; }
+    const children = g.items.map((k) => byKey.get(k)).filter((x): x is T => Boolean(x));
+    children.forEach((c) => placed.add(c.key));
+    out.push({ ...it, key: g.key, label: g.label, children });
+  }
+  return out;
+}
+
 const PRODUCTS: {
   key: Product;
   name: string;
@@ -2972,7 +2998,7 @@ export default function AdminHomePage() {
         (selectedProduct === "astro" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
         <ToolShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
-          navItems={productTabs.map((t) => ({ key: t.key, label: t.label }))}
+          navItems={groupNav(productTabs.map((t) => ({ key: t.key, label: t.label })), selectedProduct === "astro" ? ASTRO_NAV_GROUPS : [])}
           activeKey={activeTab}
           onSelect={(key) => { setActiveTab(key as Tab); syncUrl(key); }}
           onBack={showProductPicker ? backToProducts : undefined}
