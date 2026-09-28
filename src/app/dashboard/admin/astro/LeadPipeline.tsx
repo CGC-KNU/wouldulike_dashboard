@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport, IconTargetArrow } from "@tabler/icons-react";
+import EndContractButton from "./EndContractButton";
 import { ALL_LEAD_STAGES, APP_CATEGORIES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES, PROPOSED_PLANS, type Campus, type Lead, type LeadIntent, type LeadStage } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
 import { INSTA_STATES, fitOf, type InstaState } from "@/lib/draft/fit";
@@ -42,7 +43,18 @@ function isStale(l: Lead) {
 }
 const campusOf = (l: Lead): Campus => l.campus ?? "경북대";
 
-export default function LeadPipeline({ actor }: { actor: string }) {
+/** 미팅이 끝난 카드에서 바로 고르는 결과 — 상세를 열지 않고 한 번에 (민열님 0928) */
+const MEETING_OUTCOMES: { stage: LeadStage; variant: "primary" | "secondary" }[] = [
+  { stage: "구두 합의", variant: "primary" }, { stage: "재컨택", variant: "secondary" }, { stage: "보류", variant: "secondary" }, { stage: "거절", variant: "secondary" },
+];
+
+/** 제안 플랜 문구 → 앱 플랜. 상세 패널의 convert 와 같은 규칙이라 여기 한 곳에 둔다. */
+function tierOf(plan: string | null): string | null {
+  const p = (plan ?? "").toLowerCase();
+  return p.includes("boost") ? "BOOST" : p.includes("premium") || p.includes("content") ? "CONTENT" : p.includes("무료") || p.includes("free") ? "FREE" : null;
+}
+
+export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (tab: string) => void }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<{ on: boolean; note?: string }>({ on: false });
@@ -74,6 +86,25 @@ export default function LeadPipeline({ actor }: { actor: string }) {
       setLeads((prev) => prev.map((l) => (l.id === id ? d.lead : l)));
     } catch { setLeads(snapshot); }
   }, []);
+
+  /**
+   * 구두 합의 → 계약·매장 탭으로 보내기. 매장을 만들고(있으면 잇고) 후보에 매장 번호를 적는다.
+   * 단계는 그대로다 — '계약 완료' 는 사장님이 온보딩을 마칠 때 올라간다.
+   * 카드와 상세 패널이 같은 함수를 쓴다. 결과 문구는 호출한 쪽이 보여 준다.
+   */
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+  const convertLead = useCallback(async (lead: Lead): Promise<{ ok: boolean; text: string; rid?: number }> => {
+    setConvertingId(lead.id);
+    try {
+      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, tier: tierOf(lead.proposed_plan), updated_by: actor }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, text: d.detail ?? "보내지 못했습니다." };
+      if (d.lead) setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, ...d.lead } : l)));
+      else load();
+      return { ok: true, rid: d.restaurant_id, text: d.created ? `매장 #${d.restaurant_id} 를 만들었습니다. 파트너 계약·매장 탭에 올라왔습니다.` : `이미 있던 매장 #${d.restaurant_id} 에 이었습니다.` };
+    } catch { return { ok: false, text: "서버에 연결하지 못했습니다." }; }
+    finally { setConvertingId(null); }
+  }, [actor, load]);
 
   const campuses = useMemo(() => allCampuses(leads.map((l) => l.campus)), [leads]);
   const countIn = (c: Campus) => leads.filter((l) => campusOf(l) === c && !isSide(l.stage)).length;
@@ -137,7 +168,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
                   <span className="text-[13px] font-bold text-gray-700 tabular-nums">{list.length}</span>
                 </header>
                 <div className="space-y-2">
-                  {list.map((l) => <LeadCard key={l.id} lead={l} onOpen={() => setOpenId(l.id)} showCampus={campus === "all"} />)}
+                  {list.map((l) => <LeadCard key={l.id} lead={l} actor={actor} onOpen={() => setOpenId(l.id)} showCampus={campus === "all"} onStage={(s) => patch(l.id, { stage: s })} onConvert={() => convertLead(l)} converting={convertingId === l.id} onGo={onGo} onEnded={load} />)}
                   {list.length === 0 && <div className="border border-dashed border-black/[0.08] rounded-xl py-8 text-center text-[12px] text-gray-400">비어 있음</div>}
                 </div>
               </section>
@@ -147,7 +178,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
       ) : (
         <Card flush>
           <Table minWidth="52rem">
-            <thead><tr><Th>매장</Th><Th width="7rem">단계</Th><Th width="6rem">의향</Th><Th width="7rem">제안 플랜</Th><Th>다음 액션</Th><Th width="5rem">담당</Th><Th width="7rem" align="right">마지막 접촉</Th></tr></thead>
+            <thead><tr><Th>매장</Th><Th width="7rem">단계</Th><Th width="6rem">의향</Th><Th width="7rem">제안 플랜</Th><Th>다음 액션</Th><Th width="5rem">담당</Th><Th width="7rem" align="right">마지막 접촉</Th><Th width="9rem" align="right"><span className="sr-only">동작</span></Th></tr></thead>
             <tbody>
               {(showSide ? sorted : sorted.filter((l) => !isSide(l.stage))).map((l) => (
                 <tr key={l.id} className={rowClickable} onClick={() => setOpenId(l.id)}>
@@ -158,6 +189,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
                   <Td className="text-gray-700 truncate max-w-[14rem]">{l.next_action ?? <span className="text-gray-300">-</span>}{l.due && <span className="text-gray-400"> · {l.due}</span>}</Td>
                   <Td className="text-gray-600">{l.owner ?? "-"}</Td>
                   <Td align="right" className={`text-[12px] ${isStale(l) ? "text-red-600 font-semibold" : "text-gray-500"}`}>{agoLabel(l.last_touch_at)}</Td>
+                  <Td align="right"><span onClick={(e) => e.stopPropagation()}><LeadActions lead={l} actor={actor} onStage={(s) => patch(l.id, { stage: s })} onConvert={() => convertLead(l)} converting={convertingId === l.id} onGo={onGo} onEnded={load} compact /></span></Td>
                 </tr>
               ))}
             </tbody>
@@ -176,7 +208,7 @@ export default function LeadPipeline({ actor }: { actor: string }) {
         </div>
       </div>
 
-      <LeadDetailPanel lead={open} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onConverted={load} />
+      <LeadDetailPanel lead={open} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onConvert={convertLead} converting={convertingId === open?.id} />
       {adding && <NewLeadPanel actor={actor} campus={campus === "all" ? (campuses[0] ?? "경북대") : campus} campusOptions={campuses} onClose={() => setAdding(false)} onCreated={load} />}
       {importing && <ImportPanel onClose={() => setImporting(false)} onDone={load} />}
     </>
@@ -185,10 +217,50 @@ export default function LeadPipeline({ actor }: { actor: string }) {
 
 /* ═══════════ 카드 — 한 줄에 필요한 것만 ═══════════ */
 
-function LeadCard({ lead, onOpen, showCampus }: { lead: Lead; onOpen: () => void; showCampus?: boolean }) {
+type LeadActionProps = { lead: Lead; actor: string; onStage: (s: LeadStage) => void; onConvert: () => Promise<{ ok: boolean; text: string }>; converting: boolean; onGo?: (tab: string) => void; onEnded: () => void; compact?: boolean };
+
+/**
+ * 단계별로 지금 할 수 있는 한두 가지만 (민열님 0928 "미팅 완료면 결과를 바로 체크, 구두 합의면 계약·매장 탭으로").
+ *   미팅 예정   → [미팅 완료]
+ *   미팅 완료   → [구두 합의] [재컨택] [보류] [거절]
+ *   구두 합의   → [계약·매장 탭으로 보내기]  (아직 매장이 없을 때)
+ *   매장이 이어짐 → 매장 번호 · [계약 탭] · [종료]
+ * 그 밖의 단계는 상세를 열어야 한다 — 카드가 버튼 천지가 되면 아무것도 안 눌린다.
+ */
+function LeadActions({ lead, actor, onStage, onConvert, converting, onGo, onEnded, compact }: LeadActionProps) {
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const rid = lead.converted_restaurant_id;
+  const linked = Boolean(rid);
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  let body: React.ReactNode = null;
+  if (lead.stage === "미팅 예정") {
+    body = <Button size="sm" variant="secondary" onClick={() => onStage("미팅 완료")}>미팅 완료</Button>;
+  } else if (lead.stage === "미팅 완료") {
+    body = <>{!compact && <span className="text-[11px] text-gray-500 mr-1">결과</span>}{MEETING_OUTCOMES.map((o) => <Button key={o.stage} size="sm" variant={o.variant} onClick={() => onStage(o.stage)}>{o.stage}</Button>)}</>;
+  } else if ((lead.stage === "구두 합의" || lead.stage === "계약 완료") && !linked) {
+    body = <Button size="sm" variant="primary" icon={<IconBuildingStore size={13} />} disabled={converting} onClick={async () => setMsg(await onConvert())}>{converting ? "보내는 중…" : compact ? "계약·매장 탭으로" : "계약·매장 탭으로 보내기"}</Button>;
+  } else if (linked) {
+    body = (
+      <>
+        <span className="text-[11px] text-gray-500">매장 #{rid}</span>
+        {onGo && <Button size="sm" variant="secondary" onClick={() => onGo("astro-contracts")}>계약 탭</Button>}
+        {(lead.stage === "구두 합의" || lead.stage === "계약 완료") && <EndContractButton rid={rid!} name={lead.name} actor={actor} onDone={onEnded} compact />}
+      </>
+    );
+  }
+  if (!body && !msg) return null;
+  return (
+    <div onClick={stop} className={`flex flex-wrap items-center gap-1 ${compact ? "justify-end" : "mt-2 pt-2 border-t border-black/[0.05]"}`}>
+      {body}
+      {msg && <span className={`basis-full text-[11px] ${msg.ok ? "text-navy" : "text-red-600"}`} role="status">{msg.text}</span>}
+    </div>
+  );
+}
+
+function LeadCard({ lead, actor, onOpen, showCampus, onStage, onConvert, converting, onGo, onEnded }: { lead: Lead; onOpen: () => void; showCampus?: boolean } & Omit<LeadActionProps, "compact">) {
   const stale = isStale(lead);
   return (
-    <button type="button" onClick={onOpen} className={`w-full text-left bg-white rounded-xl border p-3 transition-[border-color,box-shadow] hover:border-navy/30 hover:shadow-[0_8px_20px_-14px_rgba(5,0,114,0.35)] ${focusRing} ${stale ? "border-red-200" : "border-black/[0.06]"}`}>
+    <div role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }} className={`w-full text-left bg-white rounded-xl border p-3 cursor-pointer transition-[border-color,box-shadow] hover:border-navy/30 hover:shadow-[0_8px_20px_-14px_rgba(5,0,114,0.35)] ${focusRing} ${stale ? "border-red-200" : "border-black/[0.06]"}`}>
       <div className="flex items-start justify-between gap-2">
         <p className="text-[13px] font-semibold text-gray-900 leading-snug inline-flex items-center gap-1.5">{showCampus && <CampusMark campus={campusOf(lead)} size={14} />}{lead.name}</p>
         <Chip tone={STAGE_TONE[lead.stage]}>{lead.stage}</Chip>
@@ -204,7 +276,8 @@ function LeadCard({ lead, onOpen, showCampus }: { lead: Lead; onOpen: () => void
         <span className="text-gray-500">{lead.owner ?? "담당 없음"}</span>
         <span className={stale ? "text-red-600 font-semibold" : "text-gray-400"}>{agoLabel(lead.last_touch_at)}</span>
       </div>
-    </button>
+      <LeadActions lead={lead} actor={actor} onStage={onStage} onConvert={onConvert} converting={converting} onGo={onGo} onEnded={onEnded} />
+    </div>
   );
 }
 
@@ -252,28 +325,20 @@ function Cell({ label, value, onCommit, placeholder, type, rows, hint }: { label
   );
 }
 
-function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConverted }: { lead: Lead | null; actor: string; campusOptions: string[]; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConverted?: () => void }) {
-  const [converting, setConverting] = useState(false);
+function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConvert, converting }: { lead: Lead | null; actor: string; campusOptions: string[]; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConvert: (lead: Lead) => Promise<{ ok: boolean; text: string }>; converting: boolean }) {
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => setMsg(null), [lead?.id]);
   if (!lead) return null;
   const idx = LEAD_STAGES.indexOf(lead.stage as (typeof LEAD_STAGES)[number]);
   const side = isSide(lead.stage);
   const set = (k: keyof Lead) => (v: string | null) => onPatch(lead.id, { [k]: v } as Partial<Lead>);
+  void actor;
 
   async function convert() {
     if (converting) return;
-    setConverting(true); setMsg(null);
-    try {
-      const plan = (lead!.proposed_plan ?? "").toLowerCase();
-      const tier = plan.includes("boost") ? "BOOST" : plan.includes("content") ? "CONTENT" : plan.includes("무료") || plan.includes("free") ? "FREE" : null;
-      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead!.id, tier, updated_by: actor }) });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setMsg(d.detail ?? "등록하지 못했습니다."); return; }
-      setMsg(d.created ? `매장 #${d.restaurant_id} 를 만들고 이었습니다. 계약 조건은 매장 현황에서 채우세요.` : `이미 있던 매장 #${d.restaurant_id} 에 이었습니다.`);
-      onConverted?.();
-    } catch { setMsg("서버에 연결하지 못했습니다."); }
-    finally { setConverting(false); }
+    setMsg(null);
+    const r = await onConvert(lead!);
+    setMsg(r.text);
   }
 
   return (
@@ -283,7 +348,7 @@ function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConve
       footer={
         <>
           {!side && idx >= 0 && idx < LEAD_STAGES.length - 1 && <Button variant="primary" icon={<IconArrowRight />} onClick={() => onPatch(lead.id, { stage: LEAD_STAGES[idx + 1] })}>{LEAD_STAGES[idx + 1]}(으)로</Button>}
-          {(lead.stage === "구두 합의" || lead.stage === "계약 완료") && !lead.converted_restaurant_id && <Button icon={<IconBuildingStore />} onClick={convert} disabled={converting}>{converting ? "등록하는 중…" : "제휴 매장으로 등록"}</Button>}
+          {(lead.stage === "구두 합의" || lead.stage === "계약 완료") && !lead.converted_restaurant_id && <Button icon={<IconBuildingStore />} onClick={convert} disabled={converting}>{converting ? "보내는 중…" : "계약·매장 탭으로 보내기"}</Button>}
           <Select value={lead.stage} onChange={(e) => onPatch(lead.id, { stage: e.target.value as LeadStage })} aria-label="단계 직접 지정" className="w-32 ml-auto">{ALL_LEAD_STAGES.map((s) => <option key={s}>{s}</option>)}</Select>
         </>
       }>

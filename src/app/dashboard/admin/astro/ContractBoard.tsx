@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconPlus, IconRefresh } from "@tabler/icons-react";
+import { IconBuildingStore, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { Button, Card, Chip, Empty, FilterPills, PageHeader, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
 import OnboardLink from "./OnboardLink";
 import OnboardReconcile from "./OnboardReconcile";
 import SpecialApprovals from "./SpecialApprovals";
 import CampusMark from "./CampusMark";
 import NewStorePanel from "./NewStorePanel";
+import EndContractButton from "./EndContractButton";
 
 /**
  * 파트너 계약 — **매장 추가 → 링크 발급 → 계약 → 반영** 한 사이클을 한 화면에서.
@@ -20,19 +21,24 @@ import NewStorePanel from "./NewStorePanel";
  * 원장(시트) 조회가 느려 **이 화면에서만** 읽는다.
  */
 
-type Stage = "미발급" | "대기" | "동의" | "완료" | "반영대기" | "종이계약";
+type Stage = "후보" | "미발급" | "대기" | "동의" | "완료" | "반영대기" | "종이계약";
 
 interface Row {
-  rid: number; name: string; campus: string | null; tier: string | null; fee: number | null;
+  rid: number | null; name: string; campus: string | null; tier: string | null; fee: number | null;
   owner_phone: string | null; stage: Stage; at: string | null; todo: string | null; blocked: string | null;
+  lead_id: string | null; lead_stage: string | null;
 }
 
-const TONE: Record<Stage, ChipTone> = { 반영대기: "amber", 완료: "green", 동의: "blue", 대기: "navy", 미발급: "gray", 종이계약: "gray" };
+/** 후보 탭의 칩과 같은 색 — 두 탭에서 같은 단어가 다른 색이면 다른 뜻으로 읽힌다 */
+const LEAD_TONE: Record<string, ChipTone> = { "구두 합의": "amber", "계약 완료": "green", 보류: "gray", 재컨택: "amber", 거절: "red" };
+
+const TONE: Record<Stage, ChipTone> = { 반영대기: "amber", 완료: "green", 동의: "blue", 대기: "navy", 후보: "amber", 미발급: "gray", 종이계약: "gray" };
 const HELP: Record<Stage, string> = {
   반영대기: "등록은 끝났는데 매장에 값이 안 들어갔습니다",
   완료: "계약·혜택·키트까지 끝났습니다",
   동의: "계약에 동의하셨고 혜택 등록이 남았습니다",
   대기: "링크를 냈고 사장님이 아직 안 여셨습니다",
+  후보: "매장을 아직 안 만들었습니다 — 만들면 바로 링크를 낼 수 있습니다",
   미발급: "아직 링크를 내지 않았습니다",
   종이계약: "온보딩 이전에 종이로 계약한 매장입니다",
 };
@@ -50,6 +56,21 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
    */
   const [adding, setAdding] = useState(false);
   const [justAdded, setJustAdded] = useState<{ rid: number; name: string } | null>(null);
+  /** '후보' 행에서 매장 만들기 — 후보 탭의 "계약·매장 탭으로 보내기" 와 같은 경로(convert) */
+  const [making, setMaking] = useState<string | null>(null);
+  const [makeErr, setMakeErr] = useState<Record<string, string>>({});
+  async function makeStore(r: Row) {
+    if (!r.lead_id) return;
+    setMaking(r.lead_id); setMakeErr((m) => ({ ...m, [r.lead_id!]: "" }));
+    try {
+      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: r.lead_id, tier: r.tier, updated_by: actor }) });
+      const d = (await res.json().catch(() => ({}))) as { detail?: string; restaurant_id?: number };
+      if (!res.ok) { setMakeErr((m) => ({ ...m, [r.lead_id!]: d.detail ?? `만들지 못했습니다 (${res.status}).` })); return; }
+      if (d.restaurant_id) setJustAdded({ rid: d.restaurant_id, name: r.name });
+      load();
+    } catch { setMakeErr((m) => ({ ...m, [r.lead_id!]: "서버에 연결하지 못했습니다." })); }
+    finally { setMaking(null); }
+  }
 
   const load = useCallback(() => {
     setBusy(true);
@@ -64,7 +85,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
   useEffect(load, [load]);
 
   const visible = useMemo(() => (rows ?? []).filter((r) => filter === "all" || r.stage === filter), [rows, filter]);
-  const stages: Stage[] = ["반영대기", "대기", "동의", "완료", "미발급", "종이계약"];
+  const stages: Stage[] = ["반영대기", "대기", "동의", "완료", "후보", "미발급", "종이계약"];
 
   return (
     <>
@@ -106,31 +127,41 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
         ) : (
           <Table minWidth="48rem">
             <thead>
-              <tr><Th>매장</Th><Th width="7rem">단계</Th><Th width="8rem">플랜</Th><Th width="10rem">대표자 연락처</Th><Th>다음 할 일</Th></tr>
+              <tr><Th>매장</Th><Th width="7rem">영업</Th><Th width="7rem">온보딩</Th><Th width="8rem">플랜</Th><Th width="10rem">대표자 연락처</Th><Th>다음 할 일</Th><Th width="6.5rem" align="right"><span className="sr-only">동작</span></Th></tr>
             </thead>
             <tbody>
               {visible.map((r) => (
-                <tr key={r.rid} className="border-t border-gray-100 align-top">
+                <tr key={r.rid ?? `lead:${r.lead_id}`} className="border-t border-gray-100 align-top">
                   <Td>
                     <div className="flex items-center gap-1.5">
                       {r.campus && <CampusMark campus={r.campus} size={14} />}
                       <span className="font-semibold text-gray-900">{r.name}</span>
-                      <span className="text-gray-400 text-[11.5px]">{r.rid}</span>
+                      {r.rid !== null && <span className="text-gray-400 text-[11.5px]">{r.rid}</span>}
                     </div>
                     {r.at && <span className="block text-[11.5px] text-gray-400 mt-0.5">{new Date(r.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}
                   </Td>
+                  {/* 영업 단계(후보 탭)와 온보딩 단계(이 탭)를 나란히 — "후보에선 계약 완료인데 여긴 미발급" 이 그대로 보인다 */}
+                  <Td>{r.lead_stage ? <Chip tone={LEAD_TONE[r.lead_stage] ?? "gray"}>{r.lead_stage}</Chip> : <span className="text-gray-300" title="파트너 후보에 이어진 건이 없습니다">-</span>}</Td>
                   <Td><Chip tone={TONE[r.stage]}>{r.stage}</Chip></Td>
                   <Td>{r.tier === "FREE" ? <span className="text-gray-500">무료</span> : <span className="font-semibold text-gray-900">{r.tier === "CONTENT" ? "Premium" : r.tier ?? "-"}{r.fee ? ` · ${r.fee.toLocaleString()}원` : ""}</span>}</Td>
                   <Td>{r.owner_phone ?? <span className="text-amber-700">없음 — 본인 확인 불가</span>}</Td>
                   <Td>
                     <p className="text-[12.5px] text-gray-600">{r.todo ?? HELP[r.stage]}</p>
                     {r.blocked && <p className="text-[11.5px] text-gray-400 mt-0.5">{r.blocked}</p>}
-                    {(r.stage === "미발급" || r.stage === "대기") && (
+                    {r.stage === "후보" && (
                       <div className="mt-1.5">
-                        <OnboardLink rid={r.rid} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} />
+                        <Button size="sm" variant="primary" icon={<IconBuildingStore size={13} />} disabled={making === r.lead_id} onClick={() => makeStore(r)}>{making === r.lead_id ? "만드는 중…" : "매장 만들기"}</Button>
+                        {r.lead_id && makeErr[r.lead_id] && <p className="text-[11.5px] text-red-600 mt-1">{makeErr[r.lead_id]}</p>}
+                      </div>
+                    )}
+                    {r.rid !== null && (r.stage === "미발급" || r.stage === "대기") && (
+                      <div className="mt-1.5">
+                        {/* lid 를 실어 보내야 사장님이 온보딩을 마칠 때 후보 단계가 '계약 완료' 로 올라간다 */}
+                        <OnboardLink rid={r.rid} lid={r.lead_id} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} />
                       </div>
                     )}
                   </Td>
+                  <Td align="right">{r.rid !== null && <EndContractButton rid={r.rid} name={r.name} actor={actor} onDone={load} compact />}</Td>
                 </tr>
               ))}
             </tbody>
@@ -143,7 +174,8 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
         </p>
       )}
       <p className="text-[11.5px] text-gray-400 mt-2">
-        단계는 저장된 값이 아니라 흔적으로 되짚은 것입니다 — 임시 PIN 이 남아 있으면 <b>대기</b>, 온보딩 원장에 기록이 있으면 <b>동의·완료</b>.
+        <b>영업</b>은 파트너 후보의 단계이고 <b>온보딩</b>은 이 탭이 흔적으로 되짚은 것입니다 — 임시 PIN 이 남아 있으면 <b>대기</b>, 온보딩 원장에 기록이 있으면 <b>동의·완료</b>. 사장님이 온보딩을 마치면 영업 단계도 <b>계약 완료</b>로 올라갑니다.
+        <b>종료</b>는 제휴를 끄고 종료일을 남깁니다(삭제가 아닙니다 — 파트너 매장의 '계약 종료' 칸에서 되돌립니다).
         매장 정보 수정과 발급은 <button type="button" className="underline" onClick={() => onGo?.("astro-ops")}>파트너 매장</button> 에서도 그대로 됩니다. · {actor}
       </p>
       {adding && (

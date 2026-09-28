@@ -3,7 +3,7 @@ import { requireTool } from "@/lib/draft/guard";
 import { backendUrl, getAccessToken } from "@/lib/apiProxy";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { remoteGet } from "@/lib/draft/remote";
-import type { BackendRestaurant, StoreOps } from "@/lib/draft/types";
+import type { BackendRestaurant, Lead, StoreOps } from "@/lib/draft/types";
 import { tempPinFor } from "@/lib/onboard/token";
 import { describe, diffStore, foldByStore, readLedger, type Folded } from "@/lib/onboard/reconcile";
 
@@ -21,10 +21,11 @@ import { describe, diffStore, foldByStore, readLedger, type Folded } from "@/lib
  * 원장(시트)은 느리다(4~21초). **이 화면에서만** 읽는다 — 점주 화면 경로에는 절대 두지 않는다.
  */
 
-export type ContractStage = "미발급" | "대기" | "동의" | "완료" | "반영대기" | "종이계약";
+export type ContractStage = "후보" | "미발급" | "대기" | "동의" | "완료" | "반영대기" | "종이계약";
 
 export interface BoardRow {
-  rid: number;
+  /** 매장 번호. **후보만 있고 매장이 아직 없으면 null** — 그 행은 '매장 만들기' 부터다 (0928) */
+  rid: number | null;
   name: string;
   campus: string | null;
   tier: string | null;
@@ -37,19 +38,36 @@ export interface BoardRow {
   todo: string | null;
   /** 발급을 막는 이유 (운영 중인 매장의 PIN 등) */
   blocked: string | null;
+  /**
+   * 파트너 후보에서 이어진 건이면 그 후보의 영업 단계(구두 합의 · 계약 완료 …).
+   * 0928 민열님: 세 탭이 따로 놀았다 — 후보 탭은 "계약 완료" 인데 여기는 "미발급". 두 축을 한 줄에 놓는다.
+   */
+  lead_id: string | null;
+  lead_stage: string | null;
 }
 
-const ORDER: Record<ContractStage, number> = { 반영대기: 0, 완료: 1, 동의: 2, 대기: 3, 미발급: 4, 종이계약: 5 };
+const ORDER: Record<ContractStage, number> = { 반영대기: 0, 완료: 1, 동의: 2, 대기: 3, 후보: 4, 미발급: 5, 종이계약: 6 };
 
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
 
-  const [backend, remote, ledger] = await Promise.all([
+  const [backend, remote, ledger, leadsRes] = await Promise.all([
     fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/", "include_inactive=1", true),
     remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/"),
     readLedger().catch(() => []),
+    remoteGet<{ leads: Lead[] }>("/api/astro/leads/"),
   ]);
+  // 매장 ↔ 후보. 한 매장에 후보가 둘 이어져 있으면 단계가 앞선 쪽(계약 완료 > 구두 합의)을 쓴다.
+  const RANK: Record<string, number> = { "계약 완료": 2, "구두 합의": 1 };
+  const leadOf = new Map<number, Lead>();
+  if (leadsRes.handled && leadsRes.ok) {
+    for (const l of leadsRes.data?.leads ?? []) {
+      if (!l.converted_restaurant_id) continue;
+      const cur = leadOf.get(l.converted_restaurant_id);
+      if (!cur || (RANK[l.stage] ?? 0) > (RANK[cur.stage] ?? 0)) leadOf.set(l.converted_restaurant_id, l);
+    }
+  }
   const ops = new Map<number, StoreOps>();
   if (remote.handled && remote.ok) for (const o of remote.data?.ops ?? []) ops.set(o.id, o);
   const folded = new Map<number, Folded>();
@@ -58,6 +76,9 @@ export async function GET() {
   // 매장 PIN 은 매장마다 한 번씩 물어야 한다 — 원장·운영행에 걸린 매장만 본다(전수 조회는 느리다).
   const need = new Set<number>([...folded.keys()]);
   for (const [rid, o] of ops) if (o.is_test !== true && (o.contract_started_on || o.monthly_fee || o.contract_signed_on)) need.add(rid);
+  // 후보에서 "계약·매장 탭으로 보내기" 를 누른 매장은 요금이 아직 없어도 사이클에 올라와야 한다 —
+  // 그래야 보낸 사람이 여기서 바로 링크를 낼 수 있다. 종료(보류)된 후보는 제외.
+  for (const [rid, l] of leadOf) if (l.stage === "구두 합의" || l.stage === "계약 완료") need.add(rid);
   /**
    * 0925: 예전에는 매장마다 PIN **값**을 읽어 와 우리가 심은 임시값과 비교했다.
    * PIN 을 해시로 저장하면서 값을 못 읽게 됐으므로, **비교를 서버에 맡긴다** —
@@ -86,6 +107,9 @@ export async function GET() {
     const rid = r.restaurant_id;
     const o = ops.get(rid) ?? null;
     if (o?.is_test) continue;
+    // 계약 종료(제휴 꺼짐)한 매장은 이 사이클에서 뺀다 — 파트너 매장 탭 '계약 종료' 칸이 그 자리다.
+    // 안 빼면 이 탭의 '종료' 버튼을 눌러도 행이 그대로 남아 "안 됐나?" 가 된다.
+    if (r.is_affiliate === false) continue;
     const f = folded.get(rid);
     const inCycle = Boolean(f) || need.has(rid);
     if (!inCycle) continue;
@@ -110,11 +134,31 @@ export async function GET() {
       stage = "미발급";
     }
 
+    const l = leadOf.get(rid) ?? null;
     rows.push({
-      rid, name: r.name, campus: o?.campus ?? null, tier: r.tier ?? null, fee: o?.monthly_fee ?? null,
-      owner_phone: o?.owner_phone ?? null, stage, at, todo,
+      rid, name: r.name, campus: o?.campus ?? l?.campus ?? null, tier: r.tier ?? null, fee: o?.monthly_fee ?? null,
+      owner_phone: o?.owner_phone ?? l?.contact ?? l?.phone ?? null, stage, at, todo,
       blocked: stage === "종이계약" ? "이미 매장 PIN 이 있어 링크를 낼 수 없습니다 (손님 적립에 쓰이는 번호입니다)" : null,
+      lead_id: l?.id ?? null, lead_stage: l?.stage ?? null,
     });
+  }
+
+  /**
+   * 0928 민열님: "후보 탭에서 구두 합의이거나 계약 완료인 매장은 다 계약 탭에 보이게" —
+   * 아직 매장을 안 만든 후보도 여기 선다. 링크는 매장 번호가 있어야 나가므로, 이 행은
+   * '매장 만들기' 가 다음 할 일이다. 누르면 convert 가 매장을 만들고 다음 새로고침부터 미발급 행이 된다.
+   */
+  if (leadsRes.handled && leadsRes.ok) {
+    const tierOf = (plan: string | null) => { const p = (plan ?? "").toLowerCase(); return p.includes("boost") ? "BOOST" : p.includes("premium") || p.includes("content") ? "CONTENT" : p.includes("무료") || p.includes("free") ? "FREE" : null; };
+    for (const l of leadsRes.data?.leads ?? []) {
+      if (l.converted_restaurant_id || !(l.stage === "구두 합의" || l.stage === "계약 완료")) continue;
+      rows.push({
+        rid: null, name: l.name, campus: l.campus ?? null, tier: tierOf(l.proposed_plan), fee: null,
+        owner_phone: l.contact ?? l.phone ?? null, stage: "후보", at: l.last_touch_at ?? null,
+        todo: "매장을 아직 안 만들었습니다 — 만들면 바로 링크를 낼 수 있습니다", blocked: null,
+        lead_id: l.id, lead_stage: l.stage,
+      });
+    }
   }
 
   rows.sort((a, b) => ORDER[a.stage] - ORDER[b.stage] || (b.at ?? "").localeCompare(a.at ?? "") || a.name.localeCompare(b.name, "ko"));

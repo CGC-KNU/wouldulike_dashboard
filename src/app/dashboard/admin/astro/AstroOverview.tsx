@@ -9,6 +9,7 @@ import CampusPicker, { allCampuses } from "./CampusPicker";
 import NewStorePanel from "./NewStorePanel";
 import CampusMark from "./CampusMark";
 import TestStoreDelete from "./TestStoreDelete";
+import EndContractButton from "./EndContractButton";
 import OnboardReconcile from "./OnboardReconcile";
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 
@@ -263,6 +264,10 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                         <span className="block mt-1" onClick={(e) => e.stopPropagation()}>
                           <TestStoreDelete rid={r.restaurant_id} name={r.name} onDeleted={() => load(true)} />
                         </span>
+                      )}
+                      {/* 계약 종료는 행에서 바로 (0928). 제휴 중인 진짜 매장에만 뜬다 — 이미 끝난 곳·테스트에는 없다. */}
+                      {!o?.is_test && r.is_affiliate && (
+                        <span className="block mt-1"><EndContractButton rid={r.restaurant_id} name={r.name} actor={actor} onDone={() => load(true)} compact /></span>
                       )}
                     </Td>
                   </tr>
