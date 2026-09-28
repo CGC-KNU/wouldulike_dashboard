@@ -28,10 +28,14 @@ interface Meta {
   phone_required?: boolean;
   /** 백엔드 상태로 본 "이미 등록을 마친 매장" — done(쿠키)과 달리 기기가 바뀌어도 남는다 */
   already?: boolean; done: boolean; expires_at: string;
+  /** 세션이 있을 때, [0]의 PIN 이 이미 정해졌는가 · 그 값 (0928) */
+  pin_set?: boolean; pin?: string | null;
 }
 interface Draft {
   step: number;
   owner_name: string; biz_no: string; phone: string; email: string; pin_set: boolean;
+  /** 서버가 알려 준 현재 PIN — 정한 걸 잊어도 이 화면에서 본다 */
+  pin_known?: string | null;
   checks: Record<string, string>; signature: string; consent_at: string | null; contract_url: string | null;
   /** 고른 스탬프 칸(1~10) → 그 칸의 보상 문구 */
   stamp_steps: Record<string, string>;
@@ -94,7 +98,9 @@ export default function OnboardClient({ token }: { token: string }) {
   const load = useCallback(async () => {
     const r = await fetch(`/api/onboard/${token}${sp.get("preview") === "1" ? "?preview=1" : ""}`, { cache: "no-store" });
     if (!r.ok) { setFatal(r.status === 410 ? "이 링크는 기한이 지났습니다." : "유효하지 않은 링크입니다."); return null; }
-    const m = (await r.json()) as Meta; setMeta(m); return m;
+    const m = (await r.json()) as Meta; setMeta(m);
+    if (m.pin_set) patch({ pin_set: true, pin_known: m.pin ?? null });
+    return m;
   }, [token, sp]);
 
   // 첫 진입 / 카카오에서 돌아옴(?resume=1) → 세션 교환
@@ -147,10 +153,10 @@ export default function OnboardClient({ token }: { token: string }) {
       const s = await fetch(`/api/onboard/${token}/session`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }),
       });
-      const j = (await s.json().catch(() => ({}))) as { success?: boolean; message?: string; need_kakao?: boolean; phone_mismatch?: boolean };
+      const j = (await s.json().catch(() => ({}))) as { success?: boolean; message?: string; need_kakao?: boolean; phone_mismatch?: boolean; pin_set?: boolean; pin?: string | null };
       if (j.success) {
         setNeedPhone(false);
-        patch({ phone });          // [0]단계에서 다시 적지 않게 그대로 물려준다
+        patch({ phone, ...(j.pin_set ? { pin_set: true, pin_known: j.pin ?? null } : {}) }); // [0]에서 다시 적지 않게 그대로 물려준다
         await load();
         history.replaceState(null, "", location.pathname);
         return;
@@ -342,11 +348,13 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
         <p className="text-[13.5px] font-semibold text-gray-900 mb-1">점주 대시보드 PIN 4자리 정하기 <span className="text-red-600">*</span></p>
         <p className="text-[12px] text-gray-600 mb-3">앞으로 카카오 로그인 뒤 이 번호로 매장을 확인합니다. <b>사장님만 아는 번호</b>로 정해 주세요.</p>
         {!d.pin_set && !okPhone && <p className="text-[12px] text-gray-500 mb-3">위 <b>휴대폰 번호</b>를 먼저 적어 주세요. 미팅 때 알려주신 번호와 맞는지 확인합니다.</p>}
-        {d.pin_set ? <p className="text-[13px] text-green-700 font-semibold">✓ PIN 을 설정했습니다.</p> : (
+        {d.pin_set ? (
+          <p className="text-[13px] text-green-700 font-semibold">✓ PIN 을 설정했습니다.{d.pin_known ? <span className="ml-2 text-gray-800 font-bold tracking-[0.2em]">{d.pin_known}</span> : null}<span className="block text-[12px] font-normal text-gray-500 mt-0.5">이 번호는 등록을 마친 뒤 대시보드에서도 볼 수 있습니다.</span></p>
+        ) : (
           <div className="flex flex-wrap items-end gap-2">
             <Field label="PIN"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
             <Field label="확인"><Input type="password" autoComplete="new-password" inputMode="numeric" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="w-24" /></Field>
-            <Button variant="primary" disabled={busy || pin.length !== 4 || pin !== pin2 || !okPhone} onClick={() => run(async () => { await post(`/api/onboard/${token}/pin`, { new_pin: pin, phone: d.phone }); patch({ pin_set: true }); }, "PIN 을 설정하고 있습니다")}>설정</Button>
+            <Button variant="primary" disabled={busy || pin.length !== 4 || pin !== pin2 || !okPhone} onClick={() => run(async () => { await post(`/api/onboard/${token}/pin`, { new_pin: pin, phone: d.phone }); patch({ pin_set: true, pin_known: pin }); }, "PIN 을 설정하고 있습니다")}>설정</Button>
           </div>
         )}
       </div>

@@ -39,6 +39,8 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
    */
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [pinUpdatedAt, setPinUpdatedAt] = useState<string | null>(null);
+  /** 0928: 다시 읽을 수 있다. null 이면 0925~0928 에 바뀐 줄 — 사장님이 한 번 로그인하면 읽힌다. */
+  const [pinValue, setPinValue] = useState<string | null>(null);
   const [promotionText, setPromotionText] = useState("");
   const [promotionTextSaved, setPromotionTextSaved] = useState("");
   const [promoTextSaving, setPromoTextSaving] = useState(false);
@@ -60,6 +62,7 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
       setPin("");
       setHasPin(d ? Boolean(d.has_pin) : null);
       setPinUpdatedAt((d?.pin_updated_at as string | null) ?? null);
+      setPinValue(typeof d?.pin === "string" && d.pin ? (d.pin as string) : null);
       onPinState?.({ has_pin: Boolean(d?.has_pin) });
       setPromotionText(d?.promotion_text ?? "");
       setPromotionTextSaved(d?.promotion_text ?? "");
@@ -90,7 +93,7 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
       const res = await fetch(`/api/dashboard/auth/change-pin?rid=${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = (await res.json().catch(() => ({}))) as { detail?: string; success?: boolean };
       if (!res.ok || d.success === false) { setMsg({ tone: "red", text: d.detail ?? `저장하지 못했습니다 (${res.status}).` }); return; }
-      setPin(""); setHasPin(true); onPinState?.({ has_pin: true });
+      setPin(""); setHasPin(true); setPinValue(next); onPinState?.({ has_pin: true });
       setMsg({ tone: "blue", text: "매장 PIN 을 바꿨습니다. 손님 적립·쿠폰 사용에도 이 번호가 쓰입니다 — 매장에 안내된 번호도 같이 바꿔 주세요." });
       onChanged?.();
     } finally { setBusy(false); }
@@ -238,9 +241,12 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
           hint={hasPin === null
             ? "손님이 부르는 번호 — 점주 로그인·쿠폰 사용·스탬프 적립에 모두 씁니다."
             : hasPin
-              ? `지금 번호가 걸려 있습니다${pinUpdatedAt ? ` (마지막 변경 ${pinUpdatedAt.slice(0, 10)})` : ""}. 번호 자체는 우리도 볼 수 없습니다 — 새로 정하는 것만 됩니다.`
+              ? pinValue
+                ? `지금 번호${pinUpdatedAt ? ` (마지막 변경 ${pinUpdatedAt.slice(0, 10)})` : ""}. 사장님 화면에도 같은 번호가 보입니다.`
+                : `번호가 걸려 있지만 아직 읽을 수 없습니다${pinUpdatedAt ? ` (마지막 변경 ${pinUpdatedAt.slice(0, 10)})` : ""} — 사장님이 한 번 로그인하시면 보입니다. 급하면 여기서 새로 정하세요.`
               : "아직 번호가 없습니다. 여기서 정하면 그 번호로 손님 적립·쿠폰 사용이 됩니다."}
         >
+          {pinValue && <p className="text-[22px] font-bold text-gray-900 tracking-[0.25em] tabular-nums mb-1.5" aria-label={`현재 PIN ${pinValue}`}>{pinValue}</p>}
           <div className="flex gap-1.5">
             <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={hasPin ? "새 번호" : "1234"} inputMode="numeric" />
             <Button size="sm" onClick={savePin} disabled={busy || !pin}>{hasPin ? "바꾸기" : "정하기"}</Button>
