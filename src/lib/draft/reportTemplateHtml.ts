@@ -1,5 +1,8 @@
 /**
- * 우주라이크 매장 성과 리포트 양식 v0.9.1 (마케팅_퍼포먼스/인스타그램_게시물_보고서_양식.html, 0925) — 원문 그대로.
+ * 우주라이크 매장 성과 리포트 양식 v0.9.2 (마케팅_퍼포먼스/인스타그램_게시물_보고서_양식.html, 0928) — 원문 그대로.
+ *
+ * 다음 판(v1.0, 0925 마케팅 피드백)은 같은 폴더의 `인스타그램_게시물_보고서_양식_v1.0_검토중.html` 에서 검토 중이다.
+ * 검토가 끝나 붙여 넣을 때 0927 의 「시간이 지나며 쌓인 숫자」(r-change)를 v1.0 에도 옮겨야 한다 — 지금 v1.0 초안엔 없다.
  *
  * 이 파일은 손으로 고치지 않는다. 양식이 바뀌면 원본 HTML 을 통째로 다시 붙여 넣는다.
  * 채우는 건 `fillReportTemplate()`(reportTemplate.ts) 가 `id="report-data"` JSON 블록만 갈아 끼워서 한다 —
@@ -14,7 +17,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
 <title>매장 성과 리포트</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <!--
-  ▣ 우주라이크 매장 성과 리포트 양식 v0.9.1 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제)
+  ▣ 우주라이크 매장 성과 리포트 양식 v0.9.2 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제 · 0927: 「시간이 지나며 쌓인 숫자」 · 0928: 「프로필 방문 · 팔로우」 줄 삭제)
   ──────────────────────────────────────────────
   사용법: 자동화 툴은 아래 id="report-data" 인 JSON 스크립트 블록의 **내용(JSON)만** 교체한다.
           나머지(HTML·CSS·JS)는 건드리지 않는다. 결과물은 파일 하나 — 카톡 링크/첨부로 보내 폰에서 연다.
@@ -39,7 +42,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   report.measured_at*    "YYYY-MM-DD" 측정일(= 게시일 + N일)
   metrics.*              Graph API /{media-id}/insights 값 그대로
      views* reach* saved* shares* likes* comments*   (필수)
-     profile_visits follows   (피드만 — API가 릴스엔 안 줌)
+     profile_visits follows   (피드만 — API가 릴스엔 안 줌) · 0928: 사장님 화면에는 싣지 않는다(민찬 결정)
      avg_watch_sec            (릴스만 — ig_reels_avg_watch_time ÷ 1000)
      interactions             넣으면 「반응 합계」에 그대로 사용, 없으면 좋아요+댓글+저장+공유 합.
                               ※ API total_interactions 는 리포스트 등이 섞여 네 항목 합과 다를 수 있음 → 경고로 기록
@@ -368,8 +371,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   }
   var rows = kv("조회수", n(M.views)) + kv("도달", n(M.reach), false, isReels ? "영상을 본 사람 수" : "게시물을 본 사람 수") +
     kv("저장", n(M.saved), true) + kv("공유", n(M.shares)) + kv("좋아요", n(M.likes)) + kv("댓글", n(M.comments));
-  if (!isReels && has(M.profile_visits) && has(M.follows)) rows += kv("프로필 방문 · 팔로우", n(M.profile_visits) + " · " + n(M.follows));
-  else if (!isReels && has(M.follows)) rows += kv("팔로우", n(M.follows));
+  // 0928: 「프로필 방문 · 팔로우」 줄은 뺐다 — 우주라이크 계정에 대한 숫자라 가게 성과가 아니다(민찬 결정)
   if (isReels && has(M.avg_watch_sec)) rows += kv("평균 시청 시간", (Math.round(M.avg_watch_sec * 10) / 10) + "<small>초</small>");
   put("r-metrics", '<div class="card"><div class="pad"><h2>게시물 성과</h2>' + rows +
     '<div class="note">' + d(R.measured_at) + " 기준 인스타그램 수치예요.</div></div></div>");

@@ -426,8 +426,8 @@ test("사진을 다시 압축해서 넘긴다 — PNG·HTML·스냅샷이 같이
 // ── 시간이 지나며 쌓인 숫자 (1일 · 7일 · 14일) ────────────────────────
 import * as vm2 from "node:vm";
 
-/** 양식의 렌더러를 최소 DOM 에서 돌려 r-change 자리에 무엇이 들어갔는지 읽는다. */
-function renderChange(html: string): string {
+/** 양식의 렌더러를 최소 DOM 에서 돌려 각 자리(r-…)에 무엇이 들어갔는지 읽는다. */
+function renderNodes(html: string): Record<string, { textContent?: string; innerHTML: string }> {
   const json = /<script type="application\/json" id="report-data">([\s\S]*?)<\/script>/.exec(html);
   assert.ok(json, "report-data 블록을 못 찾았습니다");
   const scripts = [...html.matchAll(/<script>\n([\s\S]*?)\n<\/script>/g)];
@@ -446,8 +446,9 @@ function renderChange(html: string): string {
   };
   vm2.createContext(ctx);
   new vm2.Script(scripts[scripts.length - 1][1]).runInContext(ctx);
-  return nodes["r-change"].innerHTML;
+  return nodes;
 }
+const renderChange = (html: string) => renderNodes(html)["r-change"].innerHTML;
 
 const withSeries = (series: { day: number; measured_at: string; reach?: number; views?: number }[]) =>
   fillReportTemplate(report({}, { report_data: { ...rd, series } }));
@@ -559,4 +560,13 @@ test("순위는 안 적어도 알리지 않는다 — 비중만 있어도 카드
 
 test("공백만 적은 것은 안 적은 것으로 센다", () => {
   assert.equal(manualTodo({ age_range: "   ", age_pct: " " }, 1).length, 1);
+});
+
+// ── 0928: 「프로필 방문 · 팔로우」 줄을 사장님 화면에서 뺀다 ─────────────
+test("성과 카드에 프로필 방문·팔로우가 없다 — 값이 와도", () => {
+  const html = fillReportTemplate(report({}, { report_data: { ...rd, metrics: { ...rd.metrics, profile_visits: 165, follows: 27 } } }));
+  const out = renderNodes(html)["r-metrics"].innerHTML;
+  assert.match(out, /게시물 성과/, "카드 자체는 그대로 그린다");
+  assert.match(out, /조회수/);
+  assert.doesNotMatch(out, /프로필 방문|팔로우/);
 });
