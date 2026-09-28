@@ -79,3 +79,23 @@ export function manualShows(m: ReportManual | null | undefined, coStores: number
     even,
   };
 }
+
+/**
+ * 아직 안 적은 수기 값 — 편집 화면이 「비어 있습니다」로 알려 준다.
+ *
+ * 비워 두면 리포트에서 그 카드가 **조용히 빠진다.** 승인을 막지는 않는다(적을 값이
+ * 없는 편도 있다). 대신 어디서 가져오는지까지 같이 돌려줘, 담당자가 바뀌어도 같은
+ * 자리에서 같은 값을 옮기게 한다.
+ *
+ * 슬라이드 비중은 **여러 가게 편에서만** 센다 — 단독 편에서는 적을 값이 아니다.
+ */
+export function manualTodo(input: ManualInput, coStores: number): { label: string; where: string }[] {
+  const todo: { label: string; where: string }[] = [];
+  if (blank(input.age_range) || blank(input.age_pct)) {
+    todo.push({ label: "연령대와 그 비중", where: "인스타 앱 → 게시물 → 인사이트 → 도달한 계정 → 연령대" });
+  }
+  if (coStores > 1 && blank(input.slide_pct)) {
+    todo.push({ label: "이 가게 슬라이드 좋아요 비중", where: "인스타 앱 → 게시물 → 장을 넘겨 보며 장별 좋아요 (API로는 못 받습니다)" });
+  }
+  return todo;
+}

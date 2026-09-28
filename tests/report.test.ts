@@ -520,3 +520,43 @@ test("시계열은 PNG 2쪽에 들어간다 — 자리가 빠지면 사장님이
   const bar = downloadBar({ filename: "r", canDownload: true, statusLabel: "승인됨" });
   assert.match(bar, /"r-metrics", "r-app", "r-change"/, "r-change 가 PNG 쪽 목록에 있어야 한다");
 });
+
+// ── 손으로 적어야 하는 값 표시 ────────────────────────────────────────
+import { manualTodo } from "../src/lib/draft/reportManual";
+
+/**
+ * 수기 값은 비워 두면 리포트에서 카드가 **조용히 빠진다.** 담당자가 잊은 걸 모르게
+ * 되므로 편집 화면이 「비어 있습니다」로 알려 준다. 여기서 보는 것:
+ *   ① 안 적은 것만 집는가 (적은 것을 또 알리면 무시하게 된다)
+ *   ② 단독 편에서 슬라이드를 요구하지 않는가 — 적을 값이 아니다
+ *   ③ 어디서 가져오는지 같이 주는가 — 담당자가 바뀌어도 같은 자리에서 옮기게
+ */
+test("안 적은 수기 값만 집어낸다", () => {
+  const all = manualTodo({ age_range: "", age_pct: "", slide_pct: "", slide_rank: "" }, 3);
+  assert.deepEqual(all.map((t) => t.label), ["연령대와 그 비중", "이 가게 슬라이드 좋아요 비중"]);
+  for (const t of all) assert.match(t.where, /인스타 앱/, "어디서 가져오는지 적는다");
+
+  const done = manualTodo({ age_range: "18~34", age_pct: "83.6", slide_pct: "38.8", slide_rank: "1" }, 3);
+  assert.deepEqual(done, [], "다 적었으면 알리지 않는다");
+});
+
+test("연령은 둘 중 하나만 비어도 알린다 — 짝이라 하나만으로는 카드가 안 뜬다", () => {
+  assert.equal(manualTodo({ age_range: "18~34", age_pct: "" }, 1).length, 1);
+  assert.equal(manualTodo({ age_range: "", age_pct: "83.6" }, 1).length, 1);
+});
+
+test("단독 편에서는 슬라이드 비중을 요구하지 않는다", () => {
+  const solo = manualTodo({ age_range: "18~34", age_pct: "83.6", slide_pct: "" }, 1);
+  assert.deepEqual(solo, [], "한 가게만 실린 편에는 나눌 슬라이드가 없다");
+  const multi = manualTodo({ age_range: "18~34", age_pct: "83.6", slide_pct: "" }, 2);
+  assert.equal(multi.length, 1, "두 곳 이상이면 요구한다");
+});
+
+test("순위는 안 적어도 알리지 않는다 — 비중만 있어도 카드가 뜬다", () => {
+  const t = manualTodo({ age_range: "18~34", age_pct: "83.6", slide_pct: "38.8", slide_rank: "" }, 3);
+  assert.deepEqual(t, []);
+});
+
+test("공백만 적은 것은 안 적은 것으로 센다", () => {
+  assert.equal(manualTodo({ age_range: "   ", age_pct: " " }, 1).length, 1);
+});
