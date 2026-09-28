@@ -15,10 +15,10 @@ import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, 
  *  - 우리 채널 평소 게시물과 견주지 않는다. 사장님이 궁금한 건 채널 안 순위가 아니라 가게가 얼마나 알려졌는지다.
  *    채널 비교(verdict · cohortNote · 제안 근거 줄)는 Probe 내부 화면에만 남는다.
  *  - 약점을 말하지 않고, 문장에 올릴 만한 크기(MIN_OWNER_VALUE)의 숫자만 쓴다. 없는 숫자를 만들지는 않는다.
+ *  - (0928) 해석 문단은 마케팅이 쓴 기프트버거 글의 형식(ownerStory) — 지표의 뜻을 풀고, 이 게시물 안에서만 견준다.
  */
 
 export const METRIC_LABEL: Record<string, string> = { saved: "저장", reach: "도달", views: "조회", shares: "공유", likes: "좋아요", comments: "댓글", profile_visits: "프로필 방문", follows: "팔로우" };
-export const TILE_KEYS = ["views", "reach", "likes", "comments", "saved", "shares"] as const;
 export const MIN_COHORT = 5;
 /** 비교할 근거가 없을 때의 한 줄 요약 — 공개 양식에서는 제목으로 쓰지 않는다(뜻이 없는 문장이라). */
 export const DEFAULT_SUMMARY = "인스타그램 수치와 같은 기간 앱에서 일어난 일을 정리했습니다.";
@@ -90,19 +90,6 @@ export const METRIC_SOURCE: Record<ReportMetricSource, { label: string; tone: "b
 /** 점주 문장에 올릴 만한 크기 — 이보다 작은 수는 문장에 쓰지 않는다(댓글 2개를 크게 말하지 않는다). */
 export const MIN_OWNER_VALUE = 10;
 
-const WHY: Record<string, string> = {
-  saved: "저장은 '나중에 가봐야지' 하고 담아두는 행동이라, 맛집 콘텐츠에서는 방문 의향에 가장 가까운 신호로 봅니다.",
-  reach: "도달은 게시물을 한 번이라도 본 계정 수입니다.",
-  views: "조회는 게시물이 화면에 펼쳐진 횟수입니다.",
-  shares: "공유는 '여기 같이 가자'고 친구에게 보낸 수입니다.",
-};
-const OWNER_LINE: Record<string, (v: string) => string> = {
-  saved: (v) => `저장이 ${v}번 모였습니다.`,
-  reach: (v) => `${v}명에게 닿았습니다.`,
-  views: (v) => `${v}회 조회됐습니다.`,
-  shares: (v) => `${v}번 공유됐습니다.`,
-};
-
 /** 제목 끝 "(정든밤 포함)" 은 우리끼리의 표시라 점주에게 보이지 않는다 — 공개 양식·카톡 텍스트가 같이 쓴다 */
 export const stripMarker = (t: string) => t.replace(/\s*[(（][^()（）]*포함\s*[)）]\s*/g, " ").trim();
 
@@ -113,37 +100,109 @@ export function josa(word: string, withBatchim: string, without: string): string
   return word + ((c - 0xac00) % 28 ? withBatchim : without);
 }
 
+type OwnerKey = "views" | "reach" | "saved" | "shares" | "likes" | "comments";
 /**
- * 점주 문장 한 줄 — 수치는 정확하게, 뜻은 WHY 로. **우리 채널 평소 게시물과 견주지 않는다**(0925, 머리말).
- * 0925 이전에는 "우리 채널이 평소 올리는 게시물 N건의 가운데 값보다 낮았습니다 · N건 중 M번째" 를 썼다.
+ * 점주 문장이 쓰는 숫자 — 리포트 카드와 **같은 출처**다(reportTemplateData 의 val 과 같은 순서).
+ * 백엔드 report-data(D+7/D+14 그 시점 값)가 있으면 그것, 없으면 스냅샷 지표. 카드는 14일차인데 문장은 7일차가 되지 않게.
  */
-export function interpret(m: ReportMetric): string {
-  const v = m.value.toLocaleString();
-  const head = OWNER_LINE[m.key]?.(v) ?? `${METRIC_LABEL[m.key] ?? m.key} ${v}.`;
-  return [head, WHY[m.key]].filter(Boolean).join(" ");
+export function ownerNumbers(s: ReportSnapshot): Partial<Record<OwnerKey, number>> {
+  const out: Partial<Record<OwnerKey, number>> = {};
+  for (const k of ["views", "reach", "saved", "shares", "likes", "comments"] as const) {
+    const v = s.report_data?.available ? s.report_data.metrics?.[k] : undefined;
+    const m = v ?? s.metrics.find((x) => x.key === k)?.value;
+    if (typeof m === "number") out[k] = m;
+  }
+  return out;
 }
 
-/** 점주 해석 문단의 순서 — 도달은 제목 줄(ownerHeadline)이 말하므로 여기서 또 말하지 않는다 */
-const OWNER_ORDER = ["saved", "views", "shares"] as const;
+/** 반응 지표마다 — 무엇인지(정의) 한 문장 + 이번 콘텐츠에서 한 일 한 문장. 좋아요·댓글 문장은 0928 민찬 확인. */
+const REACTION: Record<"shares" | "saved" | "likes" | "comments", { label: string; unit: string; def: string; did: (v: string, store: string) => string }> = {
+  shares: { label: "공유", unit: "회", def: "공유는 게시물을 다른 사람에게 직접 보내는 행동입니다.",
+    did: () => "이번 콘텐츠는 처음 본 이용자에게서 끝나지 않고, 그 주변 사람들에게까지 한 번 더 전달되었습니다." },
+  saved: { label: "저장", unit: "회", def: "저장은 게시물을 나중에 다시 볼 수 있도록 자신의 보관함에 담아 두는 기능입니다.",
+    did: (v, store) => `이번 콘텐츠는 ${v}회 저장되어, 그만큼 이용자들의 보관함에 ${store} 소개가 남게 되었습니다.` },
+  likes: { label: "좋아요", unit: "개", def: "좋아요는 게시물이 마음에 든다는 것을 바로 표시하는 반응입니다.",
+    did: (v) => `이번 콘텐츠를 본 이용자 가운데 ${v}명이 좋아요를 눌렀습니다.` },
+  comments: { label: "댓글", unit: "개", def: "댓글은 게시물 아래에 직접 글을 남기는 반응입니다.",
+    did: (v) => `이번 콘텐츠에는 댓글 ${v}개가 달렸습니다.` },
+};
 
-/** 점주 해석 문단 — 저장 → 조회 → 공유 중 문장에 올릴 만한 크기인 것 두 개. 없으면 빈 배열 */
-export function ownerLines(metrics: ReportMetric[]): string[] {
-  return OWNER_ORDER.map((k) => metrics.find((m) => m.key === k))
-    .filter((m): m is ReportMetric => Boolean(m) && (m as ReportMetric).value >= MIN_OWNER_VALUE)
-    .slice(0, 2).map(interpret);
+/**
+ * 점주 해석 문단 (0928 — 마케팅이 쓴 기프트버거 글을 규칙으로 옮겼다. 그 글과 글자까지 같게 나온다: 테스트 참고).
+ *
+ *   ① "이번 {가게} 콘텐츠 성과를 정리해 전달드립니다."
+ *   ② 도달·조회 + 두 지표의 뜻. 조회가 도달보다 클 때만 "한 번 넘게 본 이용자가 있었다".
+ *   ③ 공유·저장·좋아요·댓글 중 가장 많은 것 + 뜻 + 이번 콘텐츠에서 한 일
+ *   ④ 두 번째 + 뜻 + 한 일, 나머지는 "이 밖에 좋아요는 66개를 기록했습니다."
+ *
+ * 비교는 **이 게시물 안에서만**(조회 vs 도달, 반응끼리 순위) — 우리 채널과 견주지 않는다. 10 미만은 문장에 쓰지 않는다.
+ * 같은 값이면 공유 > 저장 > 좋아요 > 댓글. 편집 화면 PATCH 한도(한 줄 300자 · 4줄) 안에 든다.
+ */
+export function ownerStory(s: ReportSnapshot): string[] {
+  const m = ownerNumbers(s), store = s.store.name;
+  const n = (v: number) => v.toLocaleString();
+  const ok = (v: number | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
+  const out = [`이번 ${store} 콘텐츠 성과를 정리해 전달드립니다.`];
+  if (ok(m.reach)) {
+    out.push(`해당 콘텐츠는 총 ${n(m.reach)}명의 이용자에게 도달했${ok(m.views) ? `으며, 조회수는 ${n(m.views)}회를 기록했습니다.` : "습니다."}` +
+      " 도달은 게시물을 한 번 이상 본 계정의 수" + (ok(m.views) ? "이고, 조회는 게시물이 화면에 나타난 횟수를 모두 센 값입니다." : "입니다.") +
+      (ok(m.views) && m.views > m.reach ? " 조회수가 도달한 이용자 수를 넘어섰다는 것은, 게시물을 한 번 넘게 본 이용자가 있었다는 뜻입니다." : ""));
+  } else if (ok(m.views)) {
+    out.push(`해당 콘텐츠는 조회수 ${n(m.views)}회를 기록했습니다. 조회는 게시물이 화면에 나타난 횟수를 모두 센 값입니다.`);
+  }
+  const order = (["shares", "saved", "likes", "comments"] as const).filter((k) => ok(m[k])).sort((a, b) => (m[b] as number) - (m[a] as number));
+  const [first, second, ...rest] = order;
+  const say = (k: (typeof order)[number]) => `${n(m[k] as number)}${REACTION[k].unit}`;
+  if (first) out.push(`이용자 반응 가운데서는 ${josa(REACTION[first].label, "이", "가")} ${say(first)}로 가장 많았습니다. ${REACTION[first].def} ${REACTION[first].did(n(m[first] as number), store)}`);
+  if (second) {
+    const tail = rest.map((k) => `${josa(REACTION[k].label, "은", "는")} ${say(k)}`);
+    out.push(`${josa(REACTION[second].label, "은", "는")} ${say(second)}로 집계되었습니다. ${REACTION[second].def} ${REACTION[second].did(n(m[second] as number), store)}` +
+      (tail.length ? ` 이 밖에 ${tail.join(", ")}를 기록했습니다.` : ""));
+  }
+  return out;
 }
 
-/** 점주 리포트 제목 줄 — 이 콘텐츠가 몇 명에게 닿았나. 문장에 올릴 크기가 아니면 DEFAULT_SUMMARY(공개 양식은 제목을 숨긴다) */
+/** 점주 리포트 한 줄 요약 — 카톡 링크 미리보기(og:description)·사장님 리포트 목록에 쓴다. 리포트 카드 제목으로는 쓰지 않는다(0928). */
 export function ownerHeadline(s: ReportSnapshot): string {
-  const r = s.metrics.find((m) => m.key === "reach");
-  if (!r || r.value < MIN_OWNER_VALUE) return DEFAULT_SUMMARY;
+  const r = ownerNumbers(s).reach;
+  if (r === undefined || r < MIN_OWNER_VALUE) return DEFAULT_SUMMARY;
   const who = s.post.co_stores > 1 ? `${s.store.name} 등 ${s.post.co_stores}곳을 소개한 이번 콘텐츠가` : `이번 ${s.store.name} 콘텐츠가`;
-  return `${who} ${r.value.toLocaleString()}명에게 닿았습니다.`;
+  return `${who} ${r.toLocaleString()}명에게 닿았습니다.`;
 }
 
 /** 0925 이전 interpret() 가 쓴 채널 비교 문장 — 이미 만든 리포트에 박혀 있어 공개 양식에서 알아보고 갈아 끼운다 */
 const LEGACY_CHANNEL_LINE = /우리 채널(이 평소 올리는 게시물| 평소 게시물)/;
 export const isLegacyChannelLine = (t: string) => LEGACY_CHANNEL_LINE.test(t);
+
+/** 0925~0928 에 자동으로 넣던 짧은 문장("저장이 644번 모였습니다. …") — 사람이 쓴 게 아니므로 새 글로 갈아 끼운다 */
+const OLD_AUTO_LINE = /^(저장이 [\d,]+번 모였습니다|[\d,]+회 조회됐습니다|[\d,]+번 공유됐습니다|[\d,]+명에게 닿았습니다)\./;
+const isAutoLine = (t: string, s: ReportSnapshot) => isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t);
+
+/**
+ * 리포트에 실을 해석 문단 — 자동으로 들어갔던 문장(옛 채널 비교 · 옛 짧은 문장 · 지금 규칙의 글)은 **지금 규칙의 글**로,
+ * 사람이 쓰거나 고친 문장은 그대로 뒤에 둔다. 사람이 전부 고쳤으면(자동 문장이 하나도 없으면) 사람 것만 싣는다.
+ */
+export function ownerParagraphs(interpretation: string[], s: ReportSnapshot): string[] {
+  const human = interpretation.filter((t) => !isAutoLine(t, s));
+  const hadAuto = interpretation.length === 0 || human.length < interpretation.length;
+  return hadAuto ? [...ownerStory(s), ...human] : human;
+}
+
+/** 요약이 자동으로 들어간 것인가 — 자동이면 리포트 카드 제목으로 쓰지 않는다 */
+export const isAutoSummary = (summary: string, s: ReportSnapshot) =>
+  !summary || summary === DEFAULT_SUMMARY || summary === ownerHeadline(s) || isLegacyChannelLine(summary);
+
+/**
+ * 「수치 다시 읽기」 — 손대지 않은 자동 문장은 **새 숫자로 다시 쓴다.** 그대로 두면 옛 숫자가 남아
+ * 승인 가드가 "스냅샷에 없는 수치"로 막는다. 사람이 고친 문장·요약은 건드리지 않는다.
+ */
+export function refreshText(cur: { summary: string; interpretation: string[]; snapshot: ReportSnapshot }, next: ReportSnapshot): { summary?: string; interpretation?: string[] } {
+  const out: { summary?: string; interpretation?: string[] } = {};
+  if (isAutoSummary(cur.summary, cur.snapshot)) out.summary = ownerHeadline(next);
+  const human = cur.interpretation.filter((t) => !isAutoLine(t, cur.snapshot));
+  if (human.length < cur.interpretation.length || cur.interpretation.length === 0) out.interpretation = [...ownerStory(next), ...human];
+  return out;
+}
 
 export function cohortNote(metrics: ReportMetric[]): string | null {
   // 순위가 있으면 분모를 셋 다 보여 준다 — "몇 건과 견줬는지"가 곧 이 숫자를 얼마나 믿을지다
@@ -161,8 +220,9 @@ export function cohortNote(metrics: ReportMetric[]): string | null {
 }
 
 /**
- * 사장님 보고글(카톡 본문). 구조는 라라더 건 그대로 — 인사 · 어떤 게시물 · 해석 · 나머지 · 앱 · 맺음.
- * 제목 줄(도달) 다음에 ownerLines(저장 → 조회 → 공유 중 문장에 올릴 크기). 채널 비교·순위 근거 줄은 싣지 않는다(0925).
+ * 사장님 보고글(카톡 본문). 구조는 라라더 건 그대로 — 인사 · 어떤 게시물 · 해석 · 앱 · 맺음.
+ * 해석은 공개 리포트와 같은 ownerStory(0928) — 첫 문장("성과를 정리해 전달드립니다")은 인사 줄이 대신해 뺀다.
+ * 채널 비교·순위 근거 줄은 싣지 않는다(0925).
  * 체크포인트마다 맺음이 다르다.
  */
 export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D14" | "done" | "waiting"): string {
@@ -178,13 +238,8 @@ export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D1
   if (!s.metrics.length) {
     lines.push("아직 인스타그램 수치가 모이지 않았습니다. 모이는 대로 다시 보내드리겠습니다.");
   } else {
-    const headline = ownerHeadline(s);
-    const said = [...(headline !== DEFAULT_SUMMARY ? [headline] : []), ...ownerLines(s.metrics)];
-    if (said.length) lines.push(...said, "");
-    const saidKeys = ["reach", ...OWNER_ORDER.filter((k) => s.metrics.some((m) => m.key === k && m.value >= MIN_OWNER_VALUE)).slice(0, 2)] as string[];
-    const rest = TILE_KEYS.filter((k) => !saidKeys.includes(k)).map((k) => s.metrics.find((m) => m.key === k))
-      .filter((m): m is ReportMetric => Boolean(m) && (m as ReportMetric).value >= MIN_OWNER_VALUE);
-    if (rest.length) lines.push(rest.map((m) => `${METRIC_LABEL[m.key] ?? m.key} ${m.value.toLocaleString()}`).join(" · "), "");
+    const story = ownerStory(s).slice(1);
+    if (story.length) lines.push(...story.flatMap((t) => [t, ""]));
     lines.push(`(${new Date(s.as_of).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 기준 인스타그램 수치)`, "");
   }
   // 앱은 0 이 아닌 것만 — "쿠폰 0장" 을 보내지 않는다
@@ -297,6 +352,8 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
   const allowed = new Set<string>();
   const add = (v: number) => { allowed.add(String(v)); allowed.add(v.toLocaleString()); allowed.add(approx(v).replace("약 ", "")); };
   for (const m of s.metrics) { for (const v of [m.value, m.median, m.p10, m.p90]) if (v !== null) add(v); if (m.delta_pct !== null) add(Math.abs(m.delta_pct)); add(m.n); }
+  // 리포트 카드와 해석 문단은 report-data(그 시점 값)를 먼저 쓴다 — 그 숫자도 스냅샷 값이다
+  if (s.report_data?.available) for (const v of Object.values(s.report_data.metrics ?? {})) if (typeof v === "number") add(v);
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");

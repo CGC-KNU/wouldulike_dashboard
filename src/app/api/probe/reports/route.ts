@@ -6,7 +6,7 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { fetchPapillonMonths } from "@/lib/draft/papillon";
 import { buildSnapshot } from "@/lib/draft/snapshot";
-import { cohortNote, ownerHeadline, ownerLines, propose } from "@/lib/draft/report";
+import { cohortNote, ownerHeadline, ownerStory, propose } from "@/lib/draft/report";
 import { seedStoreOps } from "@/lib/draft/seed";
 import type { BackendRestaurant, StoreOps, StoreReport } from "@/lib/draft/types";
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     title: `${store.name} 인스타그램 홍보 성과`,
     // 점주 문장 — 우리 채널과 견주지 않는다(0925). 채널 비교는 cohort_note · 제안 근거 줄(내부)에만.
     summary: ownerHeadline(snapshot),
-    interpretation: ownerLines(snapshot.metrics),
+    interpretation: ownerStory(snapshot),
     snapshot, proposals: propose(snapshot, usedRules),
     created_by: actor, created_at: now, approved_by: null, approved_at: null, linked_at: null, sent_at: null, revoked_at: null,
     views: { count: 0, first_at: null, last_at: null },
