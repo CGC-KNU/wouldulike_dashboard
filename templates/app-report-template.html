@@ -21,6 +21,7 @@
                      칸 정의는 dashboard `src/app/api/probe/app/route.ts` 가 정(正)이다.
   출처 배지          DB(백엔드 DB) · 푸시(푸시 발송 기록) · GA4 · Firebase
   상태 3단계         connected(연결됨) · app_fix(앱 수정 대기) · pending(연결 전) — 여기에 undefined(정의 보류)를 더 쓴다
+                     none(해당 없음) — 그 기간에 셀 대상이 없었다(분모 0). 칸마다 status_label 로 말을 바꿀 수 있다(예: 「발급 없음」)
 
   ── ★ 주간 보고서를 만들 때 반드시 지킬 것 ──
   백엔드 `/api/dashboard/admin/app-stats/` 는 **KST 이번 달 누계만** 준다(기간 파라미터가 없다).
@@ -42,7 +43,8 @@
   groups[]*             {key, title, description, metrics[]}
     metrics[]*          key* label* value(null 가능) unit source*
                         prev        전기 값 — 있으면 증감칩을 계산한다
-                        status      "connected|app_fix|pending|undefined" — value 가 null 일 때 그 이유를 쓴다
+                        status      "connected|app_fix|pending|undefined|none" — value 가 null 일 때 그 이유를 쓴다
+                        status_label  (선택) 빈 칸에 보일 말 — 없으면 status 의 기본 말
                         scope       "period"(기본) | "month_to_date" (주간 보고서의 DB 칸)
                         sample      표본 수. 30 미만이면 「표본 작음」이 붙고 판정을 흐린다
                         note        Probe 화면의 주석 문구를 그대로
@@ -139,6 +141,7 @@
   .tag.app_fix{color:var(--warn);background:var(--warnbg)}
   .tag.pending{color:var(--sub);background:var(--line2)}
   .tag.undefined{color:var(--sub);background:var(--line2)}
+  .tag.none{color:var(--sub);background:var(--line2)}
 
   /* 추이 막대 */
   .trend{display:flex;align-items:flex-end;gap:10px;height:132px;padding-top:18px}
@@ -345,8 +348,10 @@
   const need = (v, name) => { if (!has(v)) MISSING.push(name); return v; };
 
   const SRC = {backend:"DB", push:"푸시", ga4:"GA4", firebase:"Firebase"};
-  const STATUS = {connected:"연결됨", app_fix:"앱 수정 대기", pending:"연결 전", undefined_:"정의 보류"};
+  const STATUS = {connected:"연결됨", app_fix:"앱 수정 대기", pending:"연결 전", undefined_:"정의 보류", none:"해당 없음"};
   const statusLabel = s => s === "undefined" ? STATUS.undefined_ : (STATUS[s] || "연결 전");
+  // 칸마다 빈 칸의 말을 바꿀 수 있다(status_label) — 「해당 없음」보다 「발급 없음」이 뜻이 분명한 칸이 있다
+  const emptyLabel = m => has(m.status_label) ? m.status_label : statusLabel(m.status);
   const SMALL_SAMPLE = 30;
   const isWeekly = () => (D.report || {}).type === "weekly";
   const cmpLabel = () => has((D.report||{}).compare_label) ? D.report.compare_label : (isWeekly() ? "지난주" : "지난달");
@@ -410,7 +415,7 @@
         <p class="k">${esc(m.label)}</p>
         ${has(m.value)
           ? `<p class="v">${n(m.value)}${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</p>`
-          : `<p class="v empty">${esc(statusLabel(m.status))}</p>`}
+          : `<p class="v empty">${esc(emptyLabel(m))}</p>`}
         ${sub ? `<p class="s">${sub}</p>` : ""}
       </div>`;
     });
@@ -495,7 +500,7 @@
         const right = has(m.value)
           ? `<p class="mval">${n(m.value)}${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</p>
              ${m.scope === "month_to_date" ? "" : `<p class="mdelta">${delta(m.value, m.prev, m.unit, m.verdict)}</p>`}`
-          : `<p class="mval empty"><span class="tag ${esc(m.status || "pending")}">${esc(statusLabel(m.status))}</span></p>`;
+          : `<p class="mval empty"><span class="tag ${esc(m.status || "pending")}">${esc(emptyLabel(m))}</span></p>`;
         return `<div class="mrow">
           <div class="mleft">
             <p class="mlabel">${esc(m.label)}${tags}</p>
@@ -567,7 +572,7 @@
         : ["발급 → 사용", "그 달 발급된 쿠폰 중 쓴 비율입니다. 달이 끝난 뒤 센 값이라 달 중간에 보던 수치보다 높습니다."],
       ["푸시 → 앱 열기", "Firebase 자동 이벤트 기준이며 안드로이드만 분모에 들어갑니다(iOS 는 수신 기록이 없습니다)."],
       ["집계 경계", "DB 칸은 KST 월 경계로 셉니다(서버 시간은 UTC 라 그대로 쓰면 1일 오전 9시에 달이 바뀝니다). GA4·Firebase 칸은 BigQuery 확정 테이블 기준이라 하루 한 번 늘어납니다."],
-      ["빈 칸의 뜻", "연결됨 = 값이 들어온다 · 앱 수정 대기 = 앱에 이벤트가 없어 수정·배포가 먼저 · 연결 전 = 쿼리가 아직 안 붙음 · 정의 보류 = 무엇을 셀지 정하지 못함. 어느 쪽도 0 이 아닙니다."],
+      ["빈 칸의 뜻", "연결됨 = 값이 들어온다 · 앱 수정 대기 = 앱에 이벤트가 없어 수정·배포가 먼저 · 연결 전 = 쿼리가 아직 안 붙음 · 정의 보류 = 무엇을 셀지 정하지 못함 · 해당 없음(발급 없음) = 그 기간에 셀 대상이 없었음. 어느 쪽도 0 이 아닙니다."],
     ];
     return `<div class="foot"><h2>지표 읽는 법</h2><dl>
       ${items.map(([t,d]) => `<div><dt>${esc(t)}</dt><dd>${esc(d)}</dd></div>`).join("")}
