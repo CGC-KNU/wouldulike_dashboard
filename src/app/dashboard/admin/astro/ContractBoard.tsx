@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconBuildingStore, IconPlus, IconRefresh } from "@tabler/icons-react";
-import { Button, Card, Chip, Empty, FilterPills, PageHeader, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
+import { IconBuildingStore, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-react";
+import { Button, Card, Chip, Empty, FilterPills, Input, PageHeader, Segmented, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
+import { allCampuses } from "./CampusPicker";
 import OnboardLink from "./OnboardLink";
 import OnboardReconcile from "./OnboardReconcile";
 import SpecialApprovals from "./SpecialApprovals";
@@ -45,9 +46,14 @@ const HELP: Record<Stage, string> = {
 
 export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (tab: string) => void }) {
   const [rows, setRows] = useState<Row[] | null>(null);
-  const [count, setCount] = useState<Record<string, number>>({});
   const [ledgerOn, setLedgerOn] = useState(true);
   const [filter, setFilter] = useState<Stage | "all">("all");
+  /**
+   * 캠퍼스 필터 + 검색 (민열님 0928). 캠퍼스 목록은 행에 실제로 있는 값에서 만든다 —
+   * 상권이 하나 늘면 필터도 저절로 는다. 후보·매장 탭과 같은 규칙(allCampuses).
+   */
+  const [campus, setCampus] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   /**
    * 매장 추가를 **이 탭 안에서** 한다 (민열님 0923 인계 §3).
@@ -77,14 +83,21 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
     fetch("/api/onboard/board", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { rows?: Row[]; count?: Record<string, number>; ledger_on?: boolean } | null) => {
-        setRows(j?.rows ?? []); setCount(j?.count ?? {}); setLedgerOn(j?.ledger_on !== false);
+        setRows(j?.rows ?? []); setLedgerOn(j?.ledger_on !== false);
       })
       .catch(() => setRows([]))
       .finally(() => setBusy(false));
   }, []);
   useEffect(load, [load]);
 
-  const visible = useMemo(() => (rows ?? []).filter((r) => filter === "all" || r.stage === filter), [rows, filter]);
+  const campuses = useMemo(() => allCampuses((rows ?? []).map((r) => r.campus)), [rows]);
+  const countIn = (c: string) => (rows ?? []).filter((r) => (r.campus ?? "") === c).length;
+  const scoped = useMemo(() => {
+    const q = search.trim();
+    return (rows ?? []).filter((r) => (campus === "all" || (r.campus ?? "") === campus) && (!q || [r.name, r.owner_phone, r.lead_stage, r.stage, r.tier].some((v) => v?.includes(q))));
+  }, [rows, campus, search]);
+  const visible = useMemo(() => scoped.filter((r) => filter === "all" || r.stage === filter), [scoped, filter]);
+  const countOf = (st: Stage) => scoped.filter((r) => r.stage === st).length;
   const stages: Stage[] = ["반영대기", "대기", "동의", "완료", "후보", "미발급", "종이계약"];
 
   return (
@@ -98,7 +111,15 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
             <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button>
           </>
         }
-      />
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <Segmented<string> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c, label: `${c} ${countIn(c)}`, icon: <CampusMark campus={c} size={15} /> })), { key: "all", label: "전체" }]} />
+          <div className="relative flex-1 min-w-[12rem] max-w-xs ml-auto">
+            <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장, 연락처, 단계" aria-label="계약 현황 검색" className="pl-8" />
+          </div>
+        </div>
+      </PageHeader>
 
       {!ledgerOn && (
         <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
@@ -116,13 +137,13 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
             label="단계"
             value={filter}
             onChange={(v) => setFilter(v as Stage | "all")}
-            options={[{ key: "all", label: "전체", count: rows?.length ?? 0 }, ...stages.filter((s) => count[s]).map((s) => ({ key: s, label: s, count: count[s] }))]}
+            options={[{ key: "all", label: "전체", count: scoped.length }, ...stages.filter((s) => countOf(s)).map((s) => ({ key: s, label: s, count: countOf(s) }))]}
           />
         }>
         {rows === null ? <Skeleton rows={6} cols={5} /> : visible.length === 0 ? (
           <Empty
-            title={filter === "all" ? "계약 사이클에 올라온 매장이 없습니다" : `'${filter}' 단계인 매장이 없습니다`}
-            detail={filter === "all" ? "파트너 매장에서 매장을 추가하고 온보딩 링크를 내면 여기에 나타납니다." : "다른 단계를 눌러 보세요."}
+            title={search.trim() ? `'${search.trim()}' 에 맞는 매장이 없습니다` : filter === "all" ? (campus === "all" ? "계약 사이클에 올라온 매장이 없습니다" : `${campus} 에는 아직 없습니다`) : `'${filter}' 단계인 매장이 없습니다`}
+            detail={search.trim() ? "검색어를 지우거나 다른 캠퍼스를 눌러 보세요." : filter === "all" ? "파트너 후보에서 구두 합의가 되거나, 여기서 매장을 추가하고 링크를 내면 나타납니다." : "다른 단계를 눌러 보세요."}
           />
         ) : (
           <Table minWidth="48rem">
