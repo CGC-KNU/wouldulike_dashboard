@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, reportAllText, verdict } from "@/lib/draft/report";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
-import { manualShows, manualToInput, parseManual } from "@/lib/draft/reportManual";
+import { manualShows, manualToInput, manualTodo, parseManual } from "@/lib/draft/reportManual";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import InsightsSummary from "./InsightsSummary";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
@@ -34,6 +34,22 @@ const S_LABEL: Record<ReportStatus, string> = { DRAFT: "초안", APPROVED: "승�
 const S_TONE: Record<ReportStatus, ChipTone> = { DRAFT: "gray", APPROVED: "blue", LINKED: "amber", SENT: "green", REVOKED: "red" };
 const M_LABEL: Record<string, string> = { saved: "저장", reach: "도달", views: "조회", shares: "공유", likes: "좋아요", comments: "댓글", profile_visits: "프로필 방문", follows: "팔로우" };
 const postKey = (p: Pick<Post, "plan_id" | "restaurant_id" | "store">) => `${p.plan_id}-${p.restaurant_id ?? p.store}`;
+
+/**
+ * 손으로 적는 칸의 라벨 — 옆에 「수기」 배지를 붙인다.
+ *
+ * 스냅샷 칸들은 출처 배지(인스타 · DB · 시트)를 달고 있다. 수기 값만 배지가 없으면
+ * 어느 숫자가 사람이 옮긴 것인지 화면에서 구분되지 않는다 — 나중에 값이 틀렸을 때
+ * 어디를 봐야 하는지 알 수 없다.
+ */
+function ManualLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {children}
+      <Chip tone="amber">수기</Chip>
+    </span>
+  );
+}
 
 export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   // ── 위: Papillon 에서 온 게시물
@@ -266,6 +282,8 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const co = r.snapshot.post.co_stores;
   const manParsed = useMemo(() => parseManual(man, co), [man, co]);
   const manShow = manualShows(manParsed.manual, co);
+  // 판정은 reportManual.ts 에 둔다 — 화면과 검사가 같은 함수를 쓰게 한다
+  const todo = useMemo(() => manualTodo(man, co), [man, co]);
   // 저장 전에도 클라이언트에서 같은 검사를 돌려 미리 보여준다 (최종 판정은 서버)
   const precheck = useMemo(() => {
     const t = checkText(reportAllText({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props.map((p) => ({ ...p, generated_text: "", edited_by: null, edited_at: null })) }), r.snapshot);
@@ -342,12 +360,18 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
 
       <PanelSection title="인스타 앱에서 옮기는 값 (수기)">
         <p className="text-[12px] text-gray-500 mb-2">API로 받을 수 없는 값이라 인스타 앱의 이 게시물 인사이트를 보고 적습니다. 비워 두면 리포트에 그 카드가 나오지 않습니다. 리포트 양식 v1.0부터 보입니다.</p>
+        {/* 안 적은 칸을 먼저 알린다 — 비워 두면 카드가 조용히 빠져서 잊은 걸 모른다 */}
+        {editable && todo.length > 0 && (
+          <Notice tone="amber" title={`손으로 적어야 하는 값 ${todo.length}개가 비어 있습니다`}>
+            <ul className="list-disc pl-4">{todo.map((t) => <li key={t.label}><b>{t.label}</b> — {t.where}</li>)}</ul>
+          </Notice>
+        )}
         <div className="grid grid-cols-2 gap-2">
-          <Field label="가장 큰 연령대" hint="예: 18~34"><Input value={man.age_range} placeholder="18~34" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, age_range: e.target.value }))} /></Field>
-          <Field label="그 연령대 비중 (%)" hint="50% 이상일 때만 리포트에 나갑니다"><Input value={man.age_pct} inputMode="decimal" placeholder="83.6" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, age_pct: e.target.value }))} /></Field>
+          <Field label={<ManualLabel>가장 큰 연령대</ManualLabel>} hint="인스타 앱 → 게시물 → 인사이트 → 도달한 계정 → 연령대. 예: 18~34"><Input value={man.age_range} placeholder="18~34" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, age_range: e.target.value }))} /></Field>
+          <Field label={<ManualLabel>그 연령대 비중 (%)</ManualLabel>} hint="같은 화면의 그 연령대 막대 값. 50% 이상일 때만 리포트에 나갑니다"><Input value={man.age_pct} inputMode="decimal" placeholder="83.6" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, age_pct: e.target.value }))} /></Field>
           {co > 1 && <>
-            <Field label="이 가게 슬라이드 좋아요 비중 (%)" hint={`썸네일을 뺀 좋아요 중. ${co}곳이 똑같이 나눈 ${manShow.even !== null ? Math.round(manShow.even * 10) / 10 : "-"}%보다 클 때만 나갑니다`}><Input value={man.slide_pct} inputMode="decimal" placeholder="38.8" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, slide_pct: e.target.value }))} /></Field>
-            <Field label={`${co}곳 중 순위`} hint="1이면 “가장 많이 모였다”로 씁니다"><Input value={man.slide_rank} inputMode="numeric" placeholder="1" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, slide_rank: e.target.value }))} /></Field>
+            <Field label={<ManualLabel>이 가게 슬라이드 좋아요 비중 (%)</ManualLabel>} hint={`인스타 앱 → 게시물 → 슬라이드를 넘겨 보며 장별 좋아요. 썸네일을 뺀 좋아요 중. ${co}곳이 똑같이 나눈 ${manShow.even !== null ? Math.round(manShow.even * 10) / 10 : "-"}%보다 클 때만 나갑니다`}><Input value={man.slide_pct} inputMode="decimal" placeholder="38.8" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, slide_pct: e.target.value }))} /></Field>
+            <Field label={<ManualLabel>{`${co}곳 중 순위`}</ManualLabel>} hint="같은 화면에서 이 가게 장이 몇 번째로 많이 받았는지. 1이면 “가장 많이 모였다”로 씁니다"><Input value={man.slide_rank} inputMode="numeric" placeholder="1" disabled={!editable} onChange={(e) => setMan((m) => ({ ...m, slide_rank: e.target.value }))} /></Field>
           </>}
         </div>
         {manParsed.errors.length > 0
