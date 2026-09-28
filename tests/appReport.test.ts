@@ -798,3 +798,52 @@ test("배너 노출 칸의 설명이 현재 사실과 맞는다", () => {
   assert.doesNotMatch(note, /상수만 있고/, "낡은 설명이 남아 있다");
   assert.match(note, /릴리스/, "무엇을 기다리는지 말한다");
 });
+
+// ── WAU: 설치가 몰린 주와 견줄 때 ────────────────────────────────────
+import { returningBase } from "../src/lib/draft/appReportData";
+
+/**
+ * 2026-09 에 실제로 있었던 일이다.
+ *   9/14~20  WAU 253 (첫 실행 164 · 65%)  ← 설치가 몰린 주
+ *   9/21~27  WAU  93 (첫 실행   9 · 10%)
+ * 그대로 보면 「▼63.2%」인데, 처음 온 기기를 빼면 89 → 84 로 거의 그대로다.
+ * 「쓰던 사람이 떠났다」와 「전주에 설치가 몰렸다가 안 남았다」는 뜻이 완전히 다르다.
+ */
+test("설치가 몰린 주와 견줄 때는 처음 온 기기를 빼고 같이 말한다", () => {
+  const spike = { ...cur, wau: 253, new_devices: 164 };
+  const after = { ...cur, wau: 93, new_devices: 9 };
+  const r = returningBase(after, spike);
+  assert.ok(r);
+  assert.equal(r!.prev, 89);
+  assert.equal(r!.cur, 84);
+  assert.equal(r!.delta, -5.6);
+  assert.equal(r!.mixShifted, true, "첫 실행 비중이 65% → 10% 로 벌어졌다");
+
+  const d = buildAppReportData({ end: "20260927", cur: after, prev: spike, stats, today: "2026-09-28" });
+  const w = find(d, "wau");
+  assert.equal(w.value, 93);
+  assert.equal(w.prev, 253, "날것의 값은 그대로 둔다 — 사실이다");
+  assert.equal(w.verdict, "flat", "색을 칠하면 「쓰던 사람이 떠났다」로 읽힌다");
+  assert.match(String(w.note), /처음 온 기기를 빼면 89 → 84대\(-5\.6%\)/);
+});
+
+test("구성이 비슷한 주끼리는 갈라 적지 않는다 — 군더더기가 된다", () => {
+  const a = { ...cur, wau: 100, new_devices: 20 };   // 20%
+  const b = { ...cur, wau: 90, new_devices: 16 };    // 17.8% — 2.2%p 차이
+  assert.equal(returningBase(a, b)!.mixShifted, false);
+
+  const d = buildAppReportData({ end: "20260927", cur: a, prev: b, stats, today: "2026-09-28" });
+  const w = find(d, "wau");
+  assert.equal(w.verdict, undefined, "평범한 주는 색을 칠한다");
+  assert.doesNotMatch(String(w.note), /처음 온 기기를 빼면/);
+});
+
+test("첫 실행 수를 모르면 아무 말도 하지 않는다", () => {
+  assert.equal(returningBase({ ...cur, wau: 93, new_devices: null }, { ...cur, wau: 253, new_devices: 164 }), null);
+  assert.equal(returningBase({ ...cur, wau: 93, new_devices: 9 }, { ...cur, wau: null, new_devices: null }), null);
+});
+
+test("돌아온 기기가 음수로 나오면 말하지 않는다 — 창이 어긋난 것이다", () => {
+  // first_open 코호트 창과 활성 창이 어긋나면 새 기기가 활성보다 많게 잡힐 수 있다
+  assert.equal(returningBase({ ...cur, wau: 10, new_devices: 12 }, { ...cur, wau: 100, new_devices: 10 }), null);
+});
