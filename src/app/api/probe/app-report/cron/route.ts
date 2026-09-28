@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { hasCronToken } from "@/lib/draft/guard";
-import { buildMonthlyAppReport, buildWeeklyAppReport, type BackendFetch } from "@/lib/draft/appReport";
+import { buildMonthlyAppReport, buildWeeklyAppReport } from "@/lib/draft/appReport";
 import { dash, fillAppReportTemplate, normalizeWeekEnd } from "@/lib/draft/appReportData";
 import { appReportSummary, renderAppReportStatic } from "@/lib/draft/appReportStatic";
+import { backendWithCronToken, checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 
 /**
  * PROBE 가 #sat-probe 에 올릴 앱 지표 보고서 — **크론 전용** (0927).
@@ -17,29 +17,26 @@ import { appReportSummary, renderAppReportStatic } from "@/lib/draft/appReportSt
  * GET /api/probe/app-report/cron?type=monthly&month=2026-08
  *
  * 응답의 `status` 가 "error" 면 양식의 발송 전 검사에서 빠진 값이 나왔다는 뜻이다 — 워크플로는 보내지 않는다.
- * 백엔드는 같은 X-CRON-TOKEN 으로 읽는다(app-stats · app-stats/period · metric-snapshots, 백엔드 #75 · #78).
+ *
+ * **토큰 판정은 백엔드가 한다**(cronAuth.ts, 0928). 대시보드는 비밀 값을 들고 있지 않고, 받은 X-CRON-TOKEN 을
+ * 백엔드에 한 번 보여 준 뒤 그대로 들고 백엔드를 읽는다(app-stats · app-stats/period · metric-snapshots,
+ * 백엔드 #75 · #78). Vercel 에 CRON_SECRET_TOKEN 을 넣지 않아도 된다.
  */
 
 /** 보고서 한 장이 BigQuery 쿼리 스무 개쯤을 때린다 — /r/app 과 같은 여유 */
 export const maxDuration = 60;
 
-const withCron: BackendFetch = async <T,>(path: string, search?: string): Promise<T | null> => {
-  const base = process.env.NEXT_PUBLIC_API_URL;
-  const token = process.env.CRON_SECRET_TOKEN;
-  if (!base || !token) return null;
-  try {
-    const res = await fetch(`${base}${path}${search ? `?${search}` : ""}`, { headers: { "X-CRON-TOKEN": token }, cache: "no-store" });
-    return res.ok ? ((await res.json()) as T) : null;
-  } catch {
-    return null;
-  }
-};
+/** 오늘(KST) "YYYY-MM-DD" — 토큰 확인에 쓰는 하루치 구간 */
+const todayKst = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 
 export async function GET(req: Request) {
-  if (!process.env.CRON_SECRET_TOKEN) {
-    return NextResponse.json({ detail: "CRON_SECRET_TOKEN 이 설정되지 않았습니다 — Vercel 환경변수에 백엔드와 같은 값을 넣으세요." }, { status: 503 });
-  }
-  if (!hasCronToken(req)) return NextResponse.json({ detail: "크론 토큰이 맞지 않습니다." }, { status: 403 });
+  const token = req.headers.get("x-cron-token");
+  if (!plausibleCronToken(token)) return NextResponse.json({ detail: "크론 토큰이 맞지 않습니다." }, { status: 403 });
+  const base = process.env.NEXT_PUBLIC_API_URL;
+  const check = await checkCronToken(base, token, todayKst());
+  if (check === "denied") return NextResponse.json({ detail: "크론 토큰이 맞지 않습니다." }, { status: 403 });
+  if (check === "unreachable") return NextResponse.json({ detail: "백엔드에 토큰을 확인하지 못했습니다 — 백엔드가 떠 있는지 보세요." }, { status: 502 });
+  const withCron = backendWithCronToken(base, token);
 
   const q = new URL(req.url).searchParams;
   const monthly = q.get("type") === "monthly";
