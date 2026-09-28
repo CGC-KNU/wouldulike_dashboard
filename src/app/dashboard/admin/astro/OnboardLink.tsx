@@ -26,7 +26,7 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
   const [days, setDays] = useState("14");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [out, setOut] = useState<{ url: string; kakao_text: string; expires_at: string; short_id: string } | null>(null);
+  const [out, setOut] = useState<{ url: string; kakao_text: string; expires_at: string; short_id: string; replaced?: boolean } | null>(null);
   const [copied, setCopied] = useState<"url" | "text" | null>(null);
   // 기존 PIN 이 있으면 발급이 그것을 갈아엎는다 — 운영 중인 매장에서 사고가 나는 지점이라 미리 경고한다.
   const [hasPin, setHasPin] = useState<boolean | null>(null);
@@ -61,10 +61,10 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
       if (plan !== "FREE" && feeIn.trim()) body.fee = Number(feeIn.replace(/\D/g, ""));
       if (plan === "FREE") body.fee = 0;
       const r = await fetch("/api/onboard/issue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = (await r.json().catch(() => ({}))) as { detail?: string; url?: string; kakao_text?: string; expires_at?: string; short_id?: string; has_pin?: boolean };
+      const j = (await r.json().catch(() => ({}))) as { detail?: string; url?: string; kakao_text?: string; expires_at?: string; short_id?: string; has_pin?: boolean; replaced_owner_pin?: boolean };
       if (j.has_pin) setBlocked(true);
       if (!r.ok || !j.url) throw new Error(j.detail ?? `발급 실패 (${r.status})`);
-      setOut({ url: j.url, kakao_text: j.kakao_text ?? j.url, expires_at: j.expires_at ?? "", short_id: j.short_id ?? "" });
+      setOut({ url: j.url, kakao_text: j.kakao_text ?? j.url, expires_at: j.expires_at ?? "", short_id: j.short_id ?? "", replaced: Boolean(j.replaced_owner_pin) });
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   /** 손으로 카톡에 붙여넣던 것을 그대로 알림톡으로. 번호는 링크를 묶어 둔 사장님 번호와 같다. */
@@ -113,9 +113,9 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
               </p>
               {hasPin === true && (
                 <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
-                  <b>이 매장은 이미 매장 PIN 이 있습니다.</b> 그 번호는 점주 로그인뿐 아니라
-                  <b> 손님 스탬프 적립·쿠폰 사용</b>에도 쓰이므로, 운영 중인 매장이면 발급이 막힙니다.<br />
-                  전에 온보딩 링크를 냈다가 안 끝낸 매장이면 그대로 <b>재발급</b>됩니다. 눌러 보시면 서버가 판단합니다.
+                  <b>이 매장은 이미 매장 PIN 이 있습니다.</b> 온보딩 중인 매장이면 그대로 <b>다시 발급</b>됩니다 —
+                  사장님이 정해 두신 PIN 은 새 임시값으로 바뀌고, 링크를 열어 다시 정하시게 됩니다.<br />
+                  <b>운영 중인 매장</b>(계약 시작일이 적힌 곳)만 막힙니다. 그 번호는 <b>손님 스탬프 적립·쿠폰 사용</b>에도 쓰여서입니다.
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -134,9 +134,9 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
               {restored && <div className="mt-2"><Notice tone="blue" title="PIN 을 복구했습니다">{restored}</Notice></div>}
               {blocked && (
                 <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                  <b>같은 버튼을 다시 눌러도 결과는 같습니다.</b> 통하는 길은 둘뿐입니다.<br />
-                  · <b>테스트 매장</b>이면 아래 운영 항목의 <b>테스트 매장</b>을 켜고 다시 시도하세요.<br />
-                  · <b>운영 중인 매장</b>이면 발급하지 마세요. 사장님께 <b>현재 매장 번호</b>를 안내해 점주 대시보드로 바로 로그인하시게 하는 것이 맞습니다.
+                  <b>운영 중인 매장이라 막았습니다.</b> 같은 버튼을 다시 눌러도 결과는 같습니다.<br />
+                  · 사장님께 <b>현재 매장 번호</b>를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.<br />
+                  · 정말 새로 온보딩해야 하면 매장 상세에서 <b>계약 시작일·계약일</b>을 비우고 다시 시도하세요(손님 적립이 새 PIN 으로 바뀝니다).
                 </div>
               )}
               <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" disabled={busy} onClick={issue}>{busy ? "발급 중…" : blocked ? "다시 시도" : "링크 발급"}</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>
@@ -162,6 +162,11 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
           ) : (
             <>
               <p className="text-[12px] text-gray-700 mb-1"><b>#{out.short_id}</b> · {new Date(out.expires_at).toLocaleDateString("ko-KR")}까지 유효 · 채널에는 토큰이 안 올라갑니다</p>
+              {out.replaced && (
+                <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                  <b>사장님이 전에 정하신 PIN 은 더 이상 안 됩니다.</b> 이 링크를 열면 처음처럼 카카오 로그인 → PIN 을 다시 정하시게 됩니다. 사장님께 그렇게 말씀해 주세요.
+                </div>
+              )}
               <div className="flex gap-1 items-center"><Input readOnly value={out.url} className="text-[11px]" /><Button size="sm" icon={copied === "url" ? <IconCheck /> : <IconCopy />} onClick={() => copy("url")}>{copied === "url" ? "복사됨" : "URL"}</Button></div>
               <textarea readOnly value={out.kakao_text} rows={6} className="mt-2 w-full text-[12px] rounded-[10px] bg-white border border-gray-200 p-2 text-gray-800" />
               <div className="flex gap-2 mt-2"><Button variant="primary" size="sm" icon={copied === "text" ? <IconCheck /> : <IconCopy />} onClick={() => copy("text")}>{copied === "text" ? "복사됨" : "카톡 문안 복사"}</Button>{talk?.configured && ownerPhone && <Button variant="secondary" size="sm" icon={<IconSend />} onClick={sendTalk} disabled={sending}>{sending ? "보내는 중…" : "알림톡 보내기"}</Button>}<Button variant="ghost" size="sm" onClick={() => { setOut(null); }}>다시 발급</Button><Button variant="ghost" size="sm" onClick={() => setOpen(false)}>닫기</Button></div>

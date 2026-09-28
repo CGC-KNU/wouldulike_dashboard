@@ -144,8 +144,12 @@ export async function GET() {
       stage = "동의"; at = f.consent.at;
     } else if (isTemp.get(rid) === true) {
       stage = "대기";
+    } else if (isTemp.get(rid) === false && (o?.contract_started_on || o?.contract_signed_on)) {
+      stage = "종이계약"; // PIN 이 있고 계약도 적혀 있다 = 온보딩 이전에 운영을 시작한 매장
     } else if (isTemp.get(rid) === false) {
-      stage = "종이계약"; // PIN 이 이미 있다 = 온보딩 이전에 운영을 시작한 매장
+      // PIN 은 있는데 계약이 없다 = 온보딩 중에 사장님이 PIN 을 이미 바꿔 둔 매장(0928 이층). 링크를 다시 낼 수 있다.
+      stage = "미발급";
+      todo = "사장님이 PIN 을 바꿔 두셨습니다. 링크를 다시 내면 새 임시 PIN 으로 바뀌고, 사장님이 다시 정하십니다";
     } else {
       stage = "미발급";
     }
