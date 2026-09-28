@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
+import { backendUrl, getAccessToken } from "@/lib/apiProxy";
 import { shortId, stepStamp, stepStampOk, verifyOnboardToken } from "@/lib/onboard/token";
 import { PLAN_LABEL, TERMS_VERSION, kdate, startsOnAfter, termsHash, todaySeoul } from "@/lib/onboard/contract";
 import { anyCopy, clientMeta, notifyOnboard, persistRecord, type ConsentRecord } from "@/lib/onboard/records";
@@ -59,13 +60,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const copies = await persistRecord(rec, { ownerToken: access });
   if (!anyCopy(copies)) return NextResponse.json({ detail: "완료 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.", errors: copies.errors }, { status: 503 });
 
-  // 3) 후보 단계 → 계약 완료 (최선 노력)
+  /**
+   * 3) 후보 단계 → 계약 완료 (최선 노력).
+   *
+   * 0928: 전에는 점주 토큰(`access`)으로 불러서 **늘 403** 이었다 — astro/* 는 관리자만 연다.
+   * 그래서 후보 탭은 convert 가 미리 올려 둔 "계약 완료" 만 믿고 있었고, 그 값은 사장님이 링크를
+   * 열기도 전에 찍힌 것이었다. 이제 convert 는 단계를 안 올리고, 진짜 끝난 여기서 서버 계정으로 올린다.
+   * 매장이 이어져 있지 않으면(후보 없이 매장부터 만든 경우) 이어 주기도 한다.
+   */
   let stage_ok = false;
   if (p.lid && API()) {
-    stage_ok = await fetch(`${API()}/api/astro/leads/${encodeURIComponent(p.lid)}/`, {
-      method: "PATCH", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ stage: "계약 완료" }), cache: "no-store",
-    }).then((r) => r.ok).catch(() => false);
+    const admin = await getAccessToken().catch(() => "");
+    if (admin) {
+      stage_ok = await fetch(backendUrl(`/api/astro/leads/${encodeURIComponent(p.lid)}/`), {
+        method: "PATCH", headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: "계약 완료", converted_restaurant_id: p.rid }), cache: "no-store",
+      }).then((r) => r.ok).catch(() => false);
+    }
   }
 
   /**

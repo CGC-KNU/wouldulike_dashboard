@@ -18,6 +18,11 @@ import { remoteGet, remoteSend } from "@/lib/draft/remote";
  * 매장 운영 필드로 옮기고 (3) 후보에 매장 ID 를 잇는다. 이미 같은 이름의 매장이 있으면 만들지 않고 잇기만 한다.
  *
  * 매장 생성은 기존 `/api/dashboard/admin/restaurants/create/` 를 그대로 쓴다 (식당 관리와 같은 경로).
+ *
+ * **단계는 건드리지 않는다** (0928). 전에는 여기서 '계약 완료' 로 올렸는데, 그러면 사장님이 링크를
+ * 열기도 전에 후보 탭에 "계약 완료" 가 서고 계약 탭은 "미발급" 이라 두 탭이 서로 다른 말을 했다.
+ * 구두 합의에서 보내면 구두 합의로 남고, '계약 완료' 는 온보딩을 마칠 때(api/onboard/[token]/complete)
+ * 또는 사람이 직접 올릴 때만 된다.
  */
 
 export async function POST(req: NextRequest) {
@@ -81,7 +86,6 @@ export async function POST(req: NextRequest) {
     });
     const patched = await remoteSend<{ lead: Lead }>("PATCH", `/api/astro/leads/${lead_id}/`, {
       converted_restaurant_id: store.restaurant_id,
-      stage: "계약 완료",
     });
     await notifyAstro(
       `:tada: *파트너 전환* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${tier ? ` · ${tier}` : ""} ${created ? "(매장 새로 만듦)" : "(기존 매장에 연결)"} · ${updated_by ?? "unknown"}`
@@ -107,10 +111,9 @@ export async function POST(req: NextRequest) {
   else list[idx] = next;
   writeDraft("astro_store_ops", list);
 
-  // 3) 후보에 매장을 잇고 단계를 계약 완료로
+  // 3) 후보에 매장을 잇는다 (단계는 그대로)
   const lead2 = patchDraftItem<Lead>("astro_leads", seedLeads, lead_id, {
     converted_restaurant_id: store.restaurant_id,
-    stage: "계약 완료",
     last_touch_at: now,
   });
 
