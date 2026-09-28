@@ -50,15 +50,30 @@ export async function POST(req: NextRequest) {
     method: "POST", headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
     body: JSON.stringify({ pin: tp }), cache: "no-store",
   }).then(async (r) => (r.ok ? Boolean(((await r.json()) as { matches?: boolean }).matches) : false)).catch(() => false);
-  // 테스트 매장(StoreOps.is_test)은 손님이 없다 — 막을 이유가 없고, 막으면 온보딩을 시험해 볼 방법이 사라진다.
-  const isTest = await remoteGet<{ ops: { is_test?: boolean } | null }>(`/api/astro/stores/${b.rid}/`)
-    .then((r) => Boolean(r.handled && r.ok && r.data?.ops?.is_test)).catch(() => false);
-  if (info.has_pin && !isOurTemp && !isTest) {
+  /**
+   * 0928 민열님: "이미 PIN 번호가 있어도 발급이 되게끔".
+   *
+   * 실제 사고 — 계명대 '이층'(#332): 사장님이 [0]에서 PIN 을 **성공적으로** 바꿨는데(18:53) 화면이 그걸
+   * 잃고 다시 [0]을 보여 줬다. 다시 넣으니 임시 PIN 은 이미 없어 실패 → "PIN 등록이 안 돼요"(19:04).
+   * 그때 담당자가 링크를 다시 내려 했으면 여기 409 에 막혔을 것이다. 온보딩 **중**인 매장은
+   * PIN 이 있어도 다시 낸다 — 손님이 아직 없으니 새 임시 PIN 으로 갈아엎어도 잃는 게 없다.
+   *
+   * 여전히 막는 곳은 **운영 중인 매장**뿐이다(계약 시작·체결일이 적혀 있는 곳). 거기서 임시 PIN 을 심으면
+   * 손님 적립이 그 자리에서 멈춘다. 이 예외도 PIN 을 되읽을 수 있게 되면(다음 단계) 사라진다 —
+   * 그때는 임시 PIN 을 심지 않고 실제 PIN 으로 세션을 만들면 된다.
+   */
+  const opsRes = await remoteGet<{ ops: { is_test?: boolean; contract_started_on?: string | null; contract_signed_on?: string | null } | null }>(`/api/astro/stores/${b.rid}/`).catch(() => null);
+  const ops = opsRes && opsRes.handled && opsRes.ok ? opsRes.data?.ops ?? null : null;
+  const isTest = Boolean(ops?.is_test);
+  const operating = Boolean(ops?.contract_started_on || ops?.contract_signed_on);
+  if (info.has_pin && !isOurTemp && !isTest && operating) {
     return NextResponse.json({
-      detail: "이 매장에는 이미 매장 PIN 이 있어 온보딩 링크를 발급하지 않습니다. 그 PIN 은 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 바꾸면 매장 운영이 멈춥니다. 이미 운영 중인 매장이면 사장님께 현재 매장 번호를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.",
+      detail: "운영 중인 매장(계약 시작일이 적힌 곳)이라 온보딩 링크를 발급하지 않습니다. 그 PIN 은 손님 스탬프 적립·쿠폰 사용에도 쓰이므로 바꾸면 매장 운영이 멈춥니다. 사장님께 현재 매장 번호를 안내해 점주 대시보드로 바로 로그인하시게 해 주세요.",
       has_pin: true,
     }, { status: 409 });
   }
+  // 온보딩 중인데 사장님이 이미 PIN 을 바꿔 둔 경우 — 이번 발급이 그 PIN 을 새 임시값으로 덮는다. 응답에 적어 화면이 말하게 한다.
+  const replacedOwnerPin = Boolean(info.has_pin && !isOurTemp && !isTest);
 
   // 이미 임시 PIN 이 심겨 있으면 그대로 두고 링크만 새로 뽑는다.
   if (!isOurTemp) {
@@ -86,6 +101,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     url, phone_checked: Boolean(ph), expires_at: new Date(payload.exp * 1000).toISOString(), short_id: shortId(payload),
+    replaced_owner_pin: replacedOwnerPin,
     // 담당자가 그대로 복사해 카톡으로 보낸다(자동 발송은 하지 않는다 — 0922 결정).
     // 번호 대조가 걸려 있으면 **미리 알려야 한다.** 모르고 다른 번호를 적으면 [0]에서 막히고,
     // 사장님은 왜 막혔는지 알 길이 없다.
