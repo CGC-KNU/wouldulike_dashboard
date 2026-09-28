@@ -733,3 +733,21 @@ test("메시지 — 월간은 제목과 비교 기준이 바뀐다", () => {
   assert.match(text, /• 월간 사용자 \*128명\* · 전월 \+10%/);
   assert.match(text, /• 쿠폰 사용 \*31건\* · 전월 \+55%/);
 });
+
+test("그 기간 캠페인 발급이 0장이면 사용률 칸은 「발급 없음」 — 이유 없이 비지 않는다", () => {
+  // 9/21~27 실측: 캠페인 쿠폰 0장이라 칸이 status 없이 비어 양식이 경고를 남겼다(0928 첫 PROBE dry_run)
+  const f = funnel({ campaign: { issued: 0, redeemed: 0, rate: null } });
+  const d = weekly({ coupons: f, couponsPrev: funnel() });
+  const m = find(d, "coupon_rate_campaign") as ReturnType<typeof find> & { status_label?: string };
+  assert.equal(m.value, null);
+  assert.equal(m.status, "none");
+  assert.equal(m.status_label, "발급 없음");
+  assert.match(m.note ?? "", /캠페인으로 발급한 쿠폰이 없습니다/);
+  assert.equal(m.prev, undefined);
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "", `양식 경고: ${r.warnings}`);
+  assert.match(r.text, /발급 없음/);
+  // 캠페인 외는 발급이 있으니 그대로 값이 나온다
+  assert.equal(find(d, "coupon_rate_organic").value, 6.8);
+});

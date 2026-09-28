@@ -50,7 +50,9 @@ export interface Metric {
   prev?: Num;
   unit?: string;
   source: "backend" | "push" | "ga4" | "firebase";
-  status?: "connected" | "app_fix" | "pending" | "undefined";
+  status?: "connected" | "app_fix" | "pending" | "undefined" | "none";
+  /** 빈 칸에 보일 말 — 없으면 status 의 기본 말(양식). 예: none 인데 「해당 없음」 대신 「발급 없음」 */
+  status_label?: string;
   scope?: "period" | "month_to_date";
   sample?: number;
   note?: string;
@@ -417,6 +419,9 @@ export function couponMetrics(f: CouponFunnel | null, p: CouponFunnel | null): M
   // 9월 36% 옆에 놓으면 "8배 좋아졌다"가 된다. 부분만 덮인 비율은 온전한 기간과 비교할 수 없다.
   const walletLive = cov?.wallet_to_use === "full";
   const outcomeLive = cov?.redeem_outcome === "full";
+  // 그 기간 발급이 0장이면 사용률의 분모가 없다 — 비우고 「발급 없음」이라 적는다(민찬 0928).
+  // 9/21~27 에 캠페인 쿠폰이 0장이라 칸이 이유 없이 비어 양식이 경고를 남겼다.
+  const noIssue = { status: "none" as const, status_label: "발급 없음" };
   const why = (c?: "full" | "partial" | "none", ev = "") =>
     c === "partial"
       ? `${ev} 이벤트가 이 기간 중간에 앱에 배포됐습니다 — 기간의 일부만 세게 되어 비웁니다. 0 이 아닙니다`
@@ -428,19 +433,23 @@ export function couponMetrics(f: CouponFunnel | null, p: CouponFunnel | null): M
       value: org?.rate ?? null, prev: pv(p?.organic.rate, org?.issued), unit: "%", source: "ga4",
       ...(org ? { sample: org.issued } : {}),
       note: org
-        ? `가입 환영·스탬프 보상·추천·한정 등 ${org.issued.toLocaleString()}장 중 ${org.redeemed.toLocaleString()}장. 기획전으로 뿌린 쿠폰은 뺐습니다`
+        ? org.issued === 0
+          ? "이 기간에 캠페인 외로 발급한 쿠폰이 없습니다 — 0 이 아니라 셀 대상이 없습니다"
+          : `가입 환영·스탬프 보상·추천·한정 등 ${org.issued.toLocaleString()}장 중 ${org.redeemed.toLocaleString()}장. 기획전으로 뿌린 쿠폰은 뺐습니다`
         : "GA4 를 읽지 못했습니다",
-      ...(f ? {} : { status: "pending" as const }),
+      ...(f ? (org?.issued === 0 ? noIssue : {}) : { status: "pending" as const }),
     },
     {
       key: "coupon_rate_campaign", label: "쿠폰 사용률 (캠페인)",
       value: camp?.rate ?? null, prev: pv(p?.campaign.rate, camp?.issued), unit: "%", source: "ga4",
       ...(camp ? { sample: camp.issued } : {}),
       note: camp
-        ? `기획전으로 뿌린 ${camp.issued.toLocaleString()}장 중 ${camp.redeemed.toLocaleString()}장`
-          + (f && sourceRateNote(f, 4, "campaign") ? ` · 경로별: ${sourceRateNote(f, 4, "campaign")}` : "")
+        ? camp.issued === 0
+          ? "이 기간에 캠페인으로 발급한 쿠폰이 없습니다 — 0 이 아니라 셀 대상이 없습니다"
+          : `기획전으로 뿌린 ${camp.issued.toLocaleString()}장 중 ${camp.redeemed.toLocaleString()}장`
+            + (f && sourceRateNote(f, 4, "campaign") ? ` · 경로별: ${sourceRateNote(f, 4, "campaign")}` : "")
         : "GA4 를 읽지 못했습니다",
-      ...(f ? {} : { status: "pending" as const }),
+      ...(f ? (camp?.issued === 0 ? noIssue : {}) : { status: "pending" as const }),
     },
     {
       key: "wallet_to_use", label: "쿠폰함 → 사용 화면",
