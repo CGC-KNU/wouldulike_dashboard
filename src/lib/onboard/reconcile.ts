@@ -31,8 +31,9 @@ export interface LedgerRow {
 
 const COLS = ["at", "kind", "short_id", "rid", "lid", "name", "campus", "plan", "fee", "owner_name", "biz_no", "phone", "phone_verified", "email", "kakao_id", "signature", "terms_version", "terms_hash", "checks", "ip", "ua", "stamp_ok", "kit_address", "starts_on"] as const;
 
-export async function readLedger(): Promise<LedgerRow[]> {
-  const [values, fromBackend] = await Promise.all([sheetRead(`A2:X10000`).catch(() => []), readBackendLedger().catch(() => [])]);
+/** rid 를 주면 그 매장 기록만 읽는다 — 점주 토큰은 자기 매장만 읽을 수 있다(계약서 사본 화면). */
+export async function readLedger(rid?: number): Promise<LedgerRow[]> {
+  const [values, fromBackend] = await Promise.all([sheetRead(`A2:X10000`).catch(() => []), readBackendLedger(rid).catch(() => [])]);
   const out: LedgerRow[] = [];
   const seen = new Set<string>();
   for (const r of values) {
@@ -59,9 +60,9 @@ export async function readLedger(): Promise<LedgerRow[]> {
  * 그걸 시트 한 줄과 같은 모양(LedgerRow)으로 펴서 합친다. 시트가 살아 있으면 그쪽이 우선이다.
  */
 const KIND_OF: Record<string, string> = { 계약동의: "consent", 온보딩완료: "complete", 온보딩수정: "revise" };
-async function readBackendLedger(): Promise<LedgerRow[]> {
+async function readBackendLedger(rid?: number): Promise<LedgerRow[]> {
   const { remoteGet } = await import("@/lib/draft/remote");
-  const r = await remoteGet<{ activities: { target_type: string; target_id: string; kind: string; body: string; created_at: string }[] }>("/api/astro/activities/");
+  const r = await remoteGet<{ activities: { target_type: string; target_id: string; kind: string; body: string; created_at: string }[] }>("/api/astro/activities/", rid ? `target_type=store&target_id=${rid}` : undefined);
   if (!r.handled || !r.ok) return [];
   const out: LedgerRow[] = [];
   for (const a of r.data?.activities ?? []) {

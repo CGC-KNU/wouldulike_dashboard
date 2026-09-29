@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   if (!v.ok) return new NextResponse(page("이 링크로는 계약서를 볼 수 없습니다.", `링크가 유효하지 않습니다 (${v.reason}).`), { status: 400, headers: HTML });
   const p = v.payload;
 
-  const rows = await readLedger().catch(() => []);
+  const rows = await readLedger(p.rid).catch(() => []);
   const mine = rows.filter((r) => r.rid === p.rid && r.kind === "consent");
   const rec = mine[mine.length - 1];
   if (!rec) {
