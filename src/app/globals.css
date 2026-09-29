@@ -253,3 +253,26 @@ body {
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* ── 폰에서 표를 카드로 쌓기 (0929 모바일 2차) — _shared/ui.tsx 의 <Table> ── */
+@media (max-width: 767px) {
+  .rtable { background: none !important; overflow: visible; }
+  .rtable table { min-width: 0 !important; display: block; }
+  .rtable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .rtable tbody, .rtable tfoot { display: block; }
+  .rtable tr { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-bottom: 1px solid rgb(16 24 40 / 0.07); }
+  :root[data-theme="dark"] .rtable tr { border-bottom-color: rgb(255 255 255 / 0.09); }
+  .rtable tr:last-child { border-bottom: 0; }
+  .rtable td { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 0 !important; border: 0 !important; text-align: right !important; width: auto !important; min-width: 0; }
+  .rtable td > * { min-width: 0; }
+  .rtable td[data-label]:not([data-label=""])::before { content: attr(data-label); flex: none; max-width: 42%; text-align: left; font-size: 12px; font-weight: 500; color: rgb(107 114 128); padding-top: 1px; }
+  /* 첫 칸 = 행 제목: 이름표 없이 왼쪽 정렬, 한 줄 전체 */
+  .rtable td:first-child { display: block; text-align: left !important; font-size: 14px; }
+  .rtable td:first-child::before { content: none !important; }
+  /* 이름표 없는 칸(버튼 모음 등)은 오른쪽에 붙이지 말고 줄 전체를 쓴다 */
+  .rtable td[data-label=""] { justify-content: flex-start; text-align: left !important; }
+  /* 비어 있는 칸은 감춘다 */
+  .rtable td:empty { display: none; }
+  /* 빈 상태·묶음 행(colspan) */
+  .rtable td[colspan] { justify-content: center; text-align: center !important; }
+}

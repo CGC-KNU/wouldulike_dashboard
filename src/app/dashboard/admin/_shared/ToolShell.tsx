@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -176,8 +176,8 @@ export default function ToolShell({
   return (
     <div className={`grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-6 items-start ${dock ? "pb-24" : ""}`}>
       <aside className="md:sticky md:top-16 bg-white/70 backdrop-blur-xl rounded-[18px] border border-white/60 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_16px_40px_-28px_rgba(5,0,114,0.35)] overflow-hidden">
-        {/* 제품 표시 + 메인(런처)으로 돌아가기 */}
-        <div className="px-3 pt-3 pb-2 border-b border-black/[0.05]">
+        {/* 제품 표시 + 메인(런처)으로 돌아가기 — 폰에서는 위에 '메인으로'가 이미 있어 숨기고 메뉴줄만 남긴다 (0929) */}
+        <div className="hidden md:block px-3 pt-3 pb-2 border-b border-black/[0.05]">
           {onBack ? (
             <button
               type="button"
@@ -323,6 +323,14 @@ export function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
 /** 사이드바 한 줄 — 묶음 안팎이 같은 모양이라 한 곳에서 그린다. */
 function NavLeaf({ n, on, badge, onSelect, nested }: { n: ToolNavItem; on: boolean; badge?: number; onSelect: (key: string) => void; nested?: boolean }) {
   const Icon = NAV_ICON[n.key] ?? IconLayoutGrid;
+  /* 폰의 가로 메뉴줄에서 지금 탭이 화면 밖이면 보이게 민다 — 탭이 바뀔 때만 (0929) */
+  const btn = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const el = btn.current, row = el?.closest("ul.overflow-x-auto") as HTMLElement | null;
+    if (!on || !el || !row || window.innerWidth >= 768) return;
+    const x = el.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft;
+    row.scrollTo({ left: x - row.clientWidth / 2 + el.clientWidth / 2, behavior: "smooth" });
+  }, [on]);
   return (
     <li className="shrink-0 md:shrink">
       {n.sepBefore && <div className="hidden md:block h-px bg-black/[0.06] my-1.5 mx-2" aria-hidden="true" />}
@@ -330,6 +338,7 @@ function NavLeaf({ n, on, badge, onSelect, nested }: { n: ToolNavItem; on: boole
         type="button"
         onClick={() => onSelect(n.key)}
         aria-current={on ? "page" : undefined}
+        ref={btn}
         className={`w-full flex items-center gap-2.5 h-9 px-3 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 touch-manipulation ${focusRing} ${
           on ? (ACCENT[n.key] ?? ACCENT_DEFAULT) : "text-gray-600 hover:bg-navy/[0.05] hover:text-gray-900"
         }`}

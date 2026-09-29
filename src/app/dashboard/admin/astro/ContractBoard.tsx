@@ -226,7 +226,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
       >
         <div className="flex flex-wrap items-center gap-3">
           <Segmented<string> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c, label: `${c} ${countIn(c)}`, icon: <CampusMark campus={c} size={15} /> })), { key: "all", label: "전체" }]} />
-          <div className="relative flex-1 min-w-[12rem] max-w-xs ml-auto">
+          <div className="relative flex-1 min-w-[12rem] w-full md:w-auto md:max-w-xs md:ml-auto">
             <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장, 연락처, 단계" aria-label="계약 현황 검색" className="pl-8" />
           </div>
@@ -286,7 +286,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                     {step >= 0 ? (
                       <>
                         <div className="flex items-center gap-1" aria-hidden="true">
-                          {STEPS.map((st, i) => <span key={st} className={`h-1.5 w-6 rounded-full ${i < step ? "bg-navy" : "bg-gray-200"}`} />)}
+                          {STEPS.map((st, i) => <span key={st} className={`h-1.5 w-6 rounded-full ${i < step ? "bg-periwinkle" : "bg-gray-200"}`} />)}
                         </div>
                         <p className="mt-1 whitespace-nowrap"><Chip tone={TONE[r.stage]}>{LABEL[r.stage]}</Chip></p>
                       </>
