@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { wrongStore } from "@/lib/onboard/storeGuard";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { backendUrl, getAccessToken } from "@/lib/apiProxy";
@@ -27,6 +28,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const jar = await cookies();
   const access = jar.get("access_token")?.value;
   if (!access) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
+  // 0929: 다른 매장 토큰으로 이 매장 값을 쓰지 않는다 (lib/onboard/storeGuard.ts).
+  const mismatch = wrongStore(access, p.rid);
+  if (mismatch) return mismatch;
   if (!stepStampOk(p.n, "consent", jar.get(`ob_consent_${p.rid}`)?.value)) {
     return NextResponse.json({ detail: "계약 동의 단계가 완료되지 않았습니다.", step: 2 }, { status: 409 });
   }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { wrongStore } from "@/lib/onboard/storeGuard";
 import { cookies } from "next/headers";
 
 async function getToken() {
@@ -9,6 +10,8 @@ async function getToken() {
 export async function GET(req: NextRequest) {
   const token = await getToken();
   const rid = req.nextUrl.searchParams.get("rid");
+  const mismatch = wrongStore(token, rid); // 0929: 점주 토큰은 ?rid 를 무시하므로, 다른 매장이면 여기서 막는다
+  if (mismatch) return mismatch;
 
   const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/restaurant/`);
   if (rid) url.searchParams.set("restaurant_id", rid);
@@ -24,6 +27,8 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const token = await getToken();
   const rid = req.nextUrl.searchParams.get("rid");
+  const mismatch = wrongStore(token, rid); // 0929: 점주 토큰은 ?rid 를 무시하므로, 다른 매장이면 여기서 막는다
+  if (mismatch) return mismatch;
   const body = await req.json();
 
   const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/restaurant/`);
