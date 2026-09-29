@@ -144,7 +144,8 @@ function kstDate(iso: string): string {
  * 한 매장의 온보딩 기록과 현재 운영 행을 대조한다.
  * 비교는 **정규화해서** 한다 — 시트에는 하이픈이 들어간 문자열이, 툴에는 숫자만 있을 수 있다.
  */
-export function diffStore(f: Folded, ops: OpsLike | null, tier: string | null, is_affiliate: boolean): Diff | null {
+/** leadStage: 이어진 후보의 지금 단계. 이미 "계약 완료"면 후보는 할 일이 아니다(0929 — 안 그러면 영원히 반영대기). */
+export function diffStore(f: Folded, ops: OpsLike | null, tier: string | null, is_affiliate: boolean, leadStage?: string | null): Diff | null {
   const done = f.done;
   if (!done) return null; // 아직 완료하지 않은 매장 — 반영할 것이 없다
 
@@ -174,7 +175,7 @@ export function diffStore(f: Folded, ops: OpsLike | null, tier: string | null, i
   }
 
   // 후보 단계 — 계약을 마쳤으면 파이프라인에서도 끝난 자리에 있어야 한다
-  const lead = done.lid ? { lid: done.lid, to: "계약 완료" } : null;
+  const lead = done.lid && leadStage !== "계약 완료" ? { lid: done.lid, to: "계약 완료" } : null;
 
   // 매장 본체 — 제휴 켜기 + 플랜 맞추기. FREE 도 제휴 매장이다(앱에 나간다).
   const wantTier = done.plan === "BOOST" ? "BOOST" : done.plan === "PREMIUM" ? "CONTENT" : "FREE";

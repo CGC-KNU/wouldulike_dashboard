@@ -46,6 +46,8 @@ export interface BoardRow {
   lead_id: string | null;
   lead_stage: string | null;
   is_test?: boolean;
+  /** 사장님이 적은 값과 우리가 이미 적어 둔 값이 다른 칸 — 반영은 안 건드린다. 화면이 칸별로 고르게 한다. */
+  conflicts?: { field: string; label: string; ours: string; theirs: string }[];
 }
 
 /**
@@ -154,9 +156,11 @@ export async function GET() {
     let stage: ContractStage;
     let at: string | null = null;
     let todo: string | null = null;
+    let conflicts: { field: string; label: string; ours: string; theirs: string }[] = [];
     if (f?.done) {
       at = f.done.at;
-      const d = diffStore(f, o, r.tier ?? null, Boolean(r.is_affiliate));
+      const d = diffStore(f, o, r.tier ?? null, Boolean(r.is_affiliate), leadOf.get(rid)?.stage ?? null);
+      conflicts = d?.conflicts ?? [];
       // 채울 것이 있을 때만 '반영대기' — 충돌만 있는 건 사람이 판단할 일이지 밀린 일이 아니다
       const pending = d && (Object.keys(d.fill).length || Object.keys(d.store).length || d.lead);
       stage = pending ? "반영대기" : "완료";
@@ -180,7 +184,7 @@ export async function GET() {
       rid, name: r.name, campus: o?.campus ?? l?.campus ?? null, tier: r.tier ?? null, fee: o?.monthly_fee ?? null,
       owner_phone: pickMobile(o?.owner_phone, l?.contact, l?.phone), stage, at, todo,
       blocked: stage === "종이계약" ? "이미 매장 PIN 이 있어 링크를 낼 수 없습니다 (손님 적립에 쓰이는 번호입니다)" : null,
-      lead_id: l?.id ?? null, lead_stage: l?.stage ?? null, is_test: Boolean(o?.is_test),
+      lead_id: l?.id ?? null, lead_stage: l?.stage ?? null, is_test: Boolean(o?.is_test), conflicts,
     });
   }
 

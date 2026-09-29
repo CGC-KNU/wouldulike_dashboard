@@ -40,11 +40,14 @@ async function loadStores(): Promise<Map<number, { tier: string | null; is_affil
 }
 
 async function collect(): Promise<Diff[]> {
-  const [ledger, stores] = await Promise.all([readLedger(), loadStores()]);
+  const [ledger, stores, leadsRes] = await Promise.all([readLedger(), loadStores(), remoteGet<{ leads: { id: string; stage: string }[] }>("/api/astro/leads/")]);
+  const leadStage = new Map<string, string>();
+  if (leadsRes.handled && leadsRes.ok) for (const l of leadsRes.data?.leads ?? []) leadStage.set(String(l.id), l.stage);
   const out: Diff[] = [];
   for (const f of foldByStore(ledger)) {
     const s = stores.get(f.rid);
-    const d = diffStore(f, s?.ops ?? null, s?.tier ?? null, s?.is_affiliate ?? false);
+    if (!s) continue; // 지운 매장(테스트 등) — 반영할 곳이 없다 (0929: "매장 본체 404")
+    const d = diffStore(f, s.ops ?? null, s.tier ?? null, s.is_affiliate ?? false, f.done?.lid ? leadStage.get(String(f.done.lid)) ?? null : null);
     if (d) out.push(d);
   }
   return out;
