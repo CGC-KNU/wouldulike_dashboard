@@ -9,7 +9,9 @@ export async function GET(req: NextRequest) {
   if (deny) return deny;
   const rid = Number(req.nextUrl.searchParams.get("rid"));
   if (!Number.isFinite(rid) || rid <= 0) return NextResponse.json({ detail: "rid 가 필요합니다." }, { status: 400 });
-  const [ledger, check] = await Promise.all([readLedger().catch(() => []), readChecklist(rid)]);
+  // ?only=check — 견적서처럼 등록 현황만 필요한 화면은 시트 원장(느림, ~10초)을 건너뛴다 (0929)
+  const onlyCheck = req.nextUrl.searchParams.get("only") === "check";
+  const [ledger, check] = await Promise.all([onlyCheck ? Promise.resolve([]) : readLedger().catch(() => []), readChecklist(rid)]);
   const f = foldByStore(ledger).find((x) => x.rid === rid) ?? null;
   const rec = f?.done ?? f?.consent ?? null;
   return NextResponse.json({
