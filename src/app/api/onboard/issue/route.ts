@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
   const url = `${base}/onboard/${token}`;
 
   // 발급 기록 — 현황판이 '대기'(링크 냈고 안 들어오심)를 이걸로 안다. 임시 PIN 이 사라져 흔적이 따로 필요하다.
-  await remoteSend("POST", "/api/astro/activities/", { target_type: "store", target_id: String(b.rid), kind: "온보딩링크발급", body: JSON.stringify({ short_id: shortId(payload), at: new Date().toISOString(), exp: payload.exp, plan: b.plan, fee }), author: by }).catch(() => null);
+  await remoteSend("POST", "/api/astro/activities/", { target_type: "store", target_id: String(b.rid), kind: "링크발급", body: JSON.stringify({ short_id: shortId(payload), at: new Date().toISOString(), exp: payload.exp, plan: b.plan, fee }), author: by }).catch(() => null);
   await notifyAstro(`:link: *${b.name}* 온보딩 링크 발급 · ${b.campus} · ${b.plan}${fee ? ` ${fee.toLocaleString()}원` : ""} · ${by} · #${shortId(payload)} (${b.days ?? 14}일 유효)`);
 
   return NextResponse.json({
