@@ -258,9 +258,9 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
             detail={search.trim() ? "검색어를 지우거나 다른 캠퍼스를 눌러 보세요." : filter === "all" ? "파트너 후보에서 구두 합의가 되거나, 여기서 매장을 추가하고 링크를 내면 나타납니다." : "다른 단계를 눌러 보세요."}
           />
         ) : (
-          <Table minWidth="60rem">
+          <Table minWidth="52rem">
             <thead>
-              <tr><Th width="15rem">매장</Th><Th width="13rem">진행</Th><Th width="17rem">등록 현황</Th><Th>다음 할 일</Th><Th width="5.5rem" align="right"><span className="sr-only">종료</span></Th></tr>
+              <tr><Th width="13rem">매장</Th><Th width="9rem">진행</Th><Th width="14rem">등록 현황</Th><Th>다음 할 일</Th><Th width="4.5rem" align="right"><span className="sr-only">종료</span></Th></tr>
             </thead>
             <tbody>
               {visible.map((r) => {
@@ -273,7 +273,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                   <Td>
                     <div className="flex items-center gap-1.5">
                       {r.campus && <CampusMark campus={r.campus} size={14} />}
-                      <span className="font-semibold text-gray-900 truncate max-w-[11rem]" title={r.name}>{r.name}</span>
+                      <span className="font-semibold text-gray-900 truncate max-w-[10rem]" title={r.name}>{r.name}</span>
                       {r.is_test && <Chip tone="gray">테스트</Chip>}
                     </div>
                     <p className="text-[12px] text-gray-500 mt-0.5 whitespace-nowrap">
@@ -286,7 +286,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                     {step >= 0 ? (
                       <>
                         <div className="flex items-center gap-1" aria-hidden="true">
-                          {STEPS.map((st, i) => <span key={st} className={`h-1.5 w-8 rounded-full ${i < step ? "bg-navy" : "bg-gray-200"}`} />)}
+                          {STEPS.map((st, i) => <span key={st} className={`h-1.5 w-6 rounded-full ${i < step ? "bg-navy" : "bg-gray-200"}`} />)}
                         </div>
                         <p className="mt-1 whitespace-nowrap"><Chip tone={TONE[r.stage]}>{LABEL[r.stage]}</Chip></p>
                       </>
@@ -297,14 +297,15 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                   {/* 다음 할 일 — 한 문장 + 버튼 하나 */}
                   <Td>
                     <div className="flex flex-wrap items-center gap-2">
-                      {r.stage === "후보" && <><span className="text-[12.5px] text-gray-600">매장을 만들어야 링크를 낼 수 있습니다</span><Button size="sm" variant="primary" icon={<IconBuildingStore size={13} />} disabled={making === r.lead_id} onClick={() => makeStore(r)}>{making === r.lead_id ? "만드는 중…" : "매장 만들기"}</Button></>}
+                      {r.stage === "후보" && <><Button size="sm" variant="primary" icon={<IconBuildingStore size={13} />} disabled={making === r.lead_id} onClick={() => makeStore(r)}>{making === r.lead_id ? "만드는 중…" : "매장 만들기"}</Button></>}
                       {r.rid !== null && r.stage === "미발급" && <OnboardLink rid={r.rid} lid={r.lead_id} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} />}
-                      {r.rid !== null && r.stage === "대기" && <><span className="text-[12.5px] text-gray-600">사장님이 링크를 열기를 기다리는 중</span><OnboardLink rid={r.rid} lid={r.lead_id} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} /></>}
-                      {r.stage === "동의" && <span className="text-[12.5px] text-gray-600">사장님이 혜택을 등록하는 중 — 기다리면 됩니다</span>}
-                      {r.stage === "승인대기" && <><span className="text-[12.5px] font-semibold text-amber-800">등록 내용 확인 후 승인{n ? ` · 값 다른 칸 ${n}개` : ""}</span><Button size="sm" variant="primary" disabled={applying === r.rid} onClick={() => applyRow(r)}>{applying === r.rid ? "승인 중…" : "승인"}</Button></>}
-                      {r.stage === "완료" && <span className="text-[12.5px] text-gray-500">할 일 없음{n ? ` · 값 다른 칸 ${n}개 확인` : ""}</span>}
-                      {r.stage === "종이계약" && <span className="text-[12.5px] text-gray-400">온보딩 이전 계약 — 할 일 없음</span>}
-                      {showDetail && <Button size="sm" onClick={() => setDetailOf({ rid: r.rid!, name: r.name })}>상세</Button>}
+                      {r.rid !== null && r.stage === "대기" && <><span className="text-[12.5px] text-gray-500 whitespace-nowrap">링크 열기 기다리는 중</span><OnboardLink rid={r.rid} lid={r.lead_id} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} /></>}
+                      {r.stage === "동의" && <span className="text-[12.5px] text-gray-500 whitespace-nowrap">사장님 등록 기다리는 중</span>}
+                      {r.stage === "승인대기" && <><Button size="sm" variant="primary" disabled={applying === r.rid} onClick={() => applyRow(r)}>{applying === r.rid ? "승인 중…" : "승인"}</Button></>}
+                      {r.stage === "완료" && <span className="text-[12.5px] text-gray-400 whitespace-nowrap">할 일 없음</span>}
+                      {r.stage === "종이계약" && <span className="text-[12.5px] text-gray-400 whitespace-nowrap">할 일 없음</span>}
+                      {showDetail && <Button size="sm" onClick={() => setDetailOf({ rid: r.rid!, name: r.name })}>{r.stage === "승인대기" ? "확인하기" : "상세"}</Button>}
+                      {n > 0 && <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-[11.5px] font-semibold text-amber-800" title="이미 적힌 값과 사장님 값이 다른 칸 — [상세]에서 봅니다">값 다름 {n}</span>}
                     </div>
                     {r.lead_id && makeErr[r.lead_id] && <p className="text-[11.5px] text-red-600 mt-1">{makeErr[r.lead_id]}</p>}
                     {r.rid !== null && rowMsg[r.rid] && <p className={`text-[11.5px] mt-1 ${rowMsg[r.rid].ok ? "text-navy" : "text-red-600"}`} role="status">{rowMsg[r.rid].text}</p>}
