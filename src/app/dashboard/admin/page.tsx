@@ -23,6 +23,7 @@ import ContractBoard from "./astro/ContractBoard";
 import BillingBoard from "./astro/BillingBoard";
 import AstroDocs from "./astro/AstroDocs";
 import TaxInvoices from "./astro/TaxInvoices";
+import QuoteBoard from "./astro/QuoteBoard";
 import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
 import MileageOps from "./probe/MileageOps";
@@ -69,6 +70,7 @@ type Tab =
   | "astro-billing"
   | "astro-docs"
   | "astro-tax"
+  | "astro-quotes"
   // Probe(지표·데이터)
   | "probe-home"
   | "probe-metrics"
@@ -2565,6 +2567,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "astro-benefits", label: "혜택 신청", icon: "◈", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-billing", label: "입금 현황", icon: "₩", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-tax", label: "세금계산서", icon: "▥", allow: (me) => me.permissions.can_restaurants },
+  { key: "astro-quotes", label: "견적서", icon: "▧", allow: (me) => me.permissions.can_restaurants },
   { key: "astro-docs", label: "자료실", icon: "▤", allow: (me) => me.permissions.can_restaurants },
 
   // ── Probe. 입금·계약 상태까지 다루므로 식당 관리와 같은 권한이다.
@@ -2610,7 +2613,7 @@ type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | 
  */
 const ASTRO_NAV_GROUPS: { key: string; label: string; items: string[] }[] = [
   { key: "astro-partners", label: "파트너 관리", items: ["astro-ops", "astro-contracts", "astro-leads"] },
-  { key: "astro-finance", label: "정산", items: ["astro-billing", "astro-tax"] },
+  { key: "astro-finance", label: "정산", items: ["astro-billing", "astro-tax", "astro-quotes"] },
 ];
 function groupNav<T extends { key: string; label: string }>(items: T[], groups: { key: string; label: string; items: string[] }[]): (T & { children?: T[] })[] {
   if (!groups.length) return items;
@@ -2652,7 +2655,7 @@ const PRODUCTS: {
     /* 0913 민열님: 식당 관리에서 하던 일(사진·플랜·PIN·제휴·포스터/QR)이 파트너 매장 상세로 옮겨져
        탭을 없앤다. 데이터 풀은 그대로 백엔드 매장 레코드다 — 화면만 하나로 합쳤다.
        (식당 관리 화면 자체는 남아 있다. `?tab=restaurants` 로 열 수 있고, Aether 쪽에서도 쓴다.) */
-    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-spots", "astro-leads", "astro-contracts", "astro-benefits", "astro-billing", "astro-tax", "astro-docs"],
+    tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-spots", "astro-leads", "astro-contracts", "astro-benefits", "astro-billing", "astro-tax", "astro-quotes", "astro-docs"],
     ready: true,
   },
   {
@@ -3022,6 +3025,7 @@ export default function AdminHomePage() {
           {activeTab === "astro-spots" && <SpotBoard actor={actorName} />}
           {activeTab === "astro-ops" && <AstroOverview actor={actorName} onGo={go} />}
           {activeTab === "astro-docs" && <AstroDocs actor={actorName} />}
+          {activeTab === "astro-quotes" && <QuoteBoard actor={actorName} />}
           {activeTab === "astro-tax" && <TaxInvoices actor={actorName} isAdmin={Boolean(me.is_admin || me.is_superadmin)} onGo={go} />}
           {activeTab === "astro-leads" && <LeadPipeline actor={actorName} onGo={go} />}
           {activeTab === "astro-contracts" && <ContractBoard actor={actorName} onGo={go} />}
