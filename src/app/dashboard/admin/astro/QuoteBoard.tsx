@@ -93,9 +93,9 @@ export default function QuoteBoard({ actor }: { actor: string }) {
    */
   async function loadAppBenefits(id: number) {
     try {
-      const d = await fetch(`/api/onboard/detail?rid=${id}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
+      const d = await fetch(`/api/onboard/detail?rid=${id}&only=check`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
       if (picking.current !== id) return;
-      const c = d?.check as { coupons?: { title: string; subtitle: string }[]; special?: { title: string; subtitle: string; active?: boolean }[]; stamp?: { on: boolean; steps: { at: number; reward: string }[] } } | undefined;
+      const c = d?.check as { coupons?: { title: string; subtitle: string }[]; special?: { title: string; subtitle: string; active?: boolean }[]; stamp?: { on: boolean; steps: { at: number; reward: string }[]; notes?: string } } | undefined;
       const e = d?.entered as { owner_name?: string; biz_no?: string } | null | undefined;
       const line = (b: { title: string; subtitle: string }) => [b.title, b.subtitle].filter(Boolean).join(" — ");
       const basic = (c?.coupons ?? []).filter((b) => b.title).map(line).join(" / ");
@@ -107,6 +107,8 @@ export default function QuoteBoard({ actor }: { actor: string }) {
         coupon_basic: basic || p.coupon_basic,
         coupon_limited: special || p.coupon_limited,
         stamp: stamp || p.stamp,
+        // 스탬프 유의사항("테이블당 1회, 중복 사용 금지" 등)은 제외 조건이 비었을 때만 채운다
+        exclusions: p.exclusions || (c?.stamp?.on ? c.stamp.notes ?? "" : ""),
         owner_name: p.owner_name || e?.owner_name || "",
         biz_no: p.biz_no || e?.biz_no || "",
       }));
