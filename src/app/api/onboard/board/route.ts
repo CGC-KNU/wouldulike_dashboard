@@ -47,6 +47,16 @@ export interface BoardRow {
   lead_stage: string | null;
 }
 
+/**
+ * 본인 확인에 쓸 번호 — **휴대폰(01x)만** (0929).
+ * 후보 카드의 '매장 전화'(0507·053 같은 유선)가 대표자 연락처 칸으로 흘러와 링크에 묶이면,
+ * 사장님은 자기 휴대폰을 넣어도 영원히 [0]을 못 넘는다. 휴대폰이 없으면 null — 링크는 대조 없이 나간다.
+ */
+function pickMobile(...cands: (string | null | undefined)[]): string | null {
+  for (const c of cands) { const d = (c ?? "").replace(/\D/g, ""); if (/^01\d{8,9}$/.test(d)) return d; }
+  return null;
+}
+
 const ORDER: Record<ContractStage, number> = { 반영대기: 0, 완료: 1, 동의: 2, 대기: 3, 후보: 4, 미발급: 5, 종이계약: 6 };
 
 export async function GET() {
@@ -157,7 +167,7 @@ export async function GET() {
     const l = leadOf.get(rid) ?? null;
     rows.push({
       rid, name: r.name, campus: o?.campus ?? l?.campus ?? null, tier: r.tier ?? null, fee: o?.monthly_fee ?? null,
-      owner_phone: o?.owner_phone ?? l?.contact ?? l?.phone ?? null, stage, at, todo,
+      owner_phone: pickMobile(o?.owner_phone, l?.contact, l?.phone), stage, at, todo,
       blocked: stage === "종이계약" ? "이미 매장 PIN 이 있어 링크를 낼 수 없습니다 (손님 적립에 쓰이는 번호입니다)" : null,
       lead_id: l?.id ?? null, lead_stage: l?.stage ?? null,
     });
@@ -173,7 +183,7 @@ export async function GET() {
     for (const l of unlinked.values()) {
       rows.push({
         rid: null, name: l.name, campus: l.campus ?? null, tier: tierOf(l.proposed_plan), fee: null,
-        owner_phone: l.contact ?? l.phone ?? null, stage: "후보", at: l.last_touch_at ?? null,
+        owner_phone: pickMobile(l.contact, l.phone), stage: "후보", at: l.last_touch_at ?? null,
         todo: "매장을 아직 안 만들었습니다 — 만들면 바로 링크를 낼 수 있습니다", blocked: null,
         lead_id: l.id, lead_stage: l.stage,
       });

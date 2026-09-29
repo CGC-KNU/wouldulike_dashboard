@@ -100,7 +100,9 @@ export async function POST(req: NextRequest) {
   const fee = typeof b.fee === "number" && b.fee >= 0 ? b.fee : defaultFee(b.plan, b.campus);
   // 미팅에서 받아 둔 번호가 있으면 대조표를 실어 보낸다 — 링크를 잘못 받은 사람이 계약하는 것을 막는다.
   // 번호를 모르면 그냥 뺀다. 확인할 근거가 없다고 링크를 못 내면 본말이 전도된다.
-  const ph = phoneTag(b.phone ?? "");
+  // 0929: 휴대폰(01x)만 묶는다. 유선번호가 묶이면 사장님이 영원히 본인 확인을 못 넘는다.
+  const mobile = (b.phone ?? "").replace(/\D/g, "");
+  const ph = /^01\d{8,9}$/.test(mobile) ? phoneTag(mobile) : "";
   const { token, payload } = signOnboardToken({ rid: b.rid, lid: b.lid ?? null, name: b.name, campus: b.campus, plan: b.plan, fee, days: b.days ?? 14, ...(ph ? { ph } : {}) });
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
   const url = `${base}/onboard/${token}`;
