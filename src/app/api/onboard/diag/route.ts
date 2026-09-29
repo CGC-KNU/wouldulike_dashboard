@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { driveUpload, postActivity, sheetAppend } from "@/lib/onboard/records";
+import { linkSessionReady } from "@/lib/onboard/linkSession";
+import { getAccessToken } from "@/lib/apiProxy";
 
 /**
  * 온보딩 기록 통로 진단 (관리자만). 세 사본이 지금 살아 있는지 실제로 써 본다.
@@ -42,5 +44,7 @@ export async function POST(req: NextRequest) {
     at, sheet: sheet === true ? "ok" : sheet, drive: drive.url ? "ok" : drive.err, activity: activity === true ? "ok" : activity,
     config: { gsheet_id_prefix: id.slice(0, 6), gsheet_deploy_prefix: dep.slice(0, 10), token_len: token.length, tab: tabName, drive_deploy_prefix: (/\/macros\/s\/([^/]+)\//.exec(process.env.ONBOARD_DRIVE_URL ?? "")?.[1] ?? "").slice(0, 10) },
     sheet_tabs: tabs, sheet_header: header,
+    // 임시 PIN 없이 링크로 로그인하는 길 — false 면 Koyeb 에 ONBOARD_SECRET 이 없다
+    link_session_ready: await linkSessionReady(await getAccessToken()),
   });
 }
