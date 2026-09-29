@@ -28,6 +28,7 @@ interface Row {
   rid: number | null; name: string; campus: string | null; tier: string | null; fee: number | null;
   owner_phone: string | null; stage: Stage; at: string | null; todo: string | null; blocked: string | null;
   lead_id: string | null; lead_stage: string | null; is_test?: boolean;
+  conflicts?: { field: string; label: string; ours: string; theirs: string }[];
 }
 
 /** 후보 탭의 칩과 같은 색 — 두 탭에서 같은 단어가 다른 색이면 다른 뜻으로 읽힌다 */
@@ -65,6 +66,32 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
   /** '후보' 행에서 매장 만들기 — 후보 탭의 "계약·매장 탭으로 보내기" 와 같은 경로(convert) */
   const [making, setMaking] = useState<string | null>(null);
   const [makeErr, setMakeErr] = useState<Record<string, string>>({});
+  /**
+   * 행 단위 반영 (민열님 0929: "반영대기에 반영하는 버튼이 없고 일괄 반영밖에 안 되잖아").
+   * 빈 칸 채우기·제휴/플랜·후보 단계는 [반영하기] 한 번. 값이 다른 칸은 칸마다 고른다 — 기계가 덮지 않는다.
+   */
+  const [applying, setApplying] = useState<number | null>(null);
+  const [rowMsg, setRowMsg] = useState<Record<number, { ok: boolean; text: string }>>({});
+  async function applyRow(r: Row) {
+    if (r.rid === null) return;
+    setApplying(r.rid);
+    try {
+      const res = await fetch("/api/onboard/reconcile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rids: [r.rid] }) });
+      const j = (await res.json().catch(() => ({}))) as { applied?: { summary: string }[]; failed?: { detail: string }[]; detail?: string };
+      const f = j.failed?.[0];
+      setRowMsg((m) => ({ ...m, [r.rid!]: f ? { ok: false, text: `반영하지 못했습니다 — ${f.detail}` } : res.ok ? { ok: true, text: j.applied?.[0]?.summary ? `반영했습니다 — ${j.applied[0].summary}` : "반영할 것이 없었습니다." } : { ok: false, text: j.detail ?? `실패 (${res.status})` } }));
+      load();
+    } catch { setRowMsg((m) => ({ ...m, [r.rid!]: { ok: false, text: "서버에 연결하지 못했습니다." } })); }
+    finally { setApplying(null); }
+  }
+  async function takeOwnerValue(r: Row, c: { field: string; label: string; ours: string }) {
+    if (r.rid === null) return;
+    const v = c.field === "monthly_fee" ? Number(c.ours) : c.ours;
+    const res = await fetch(`/api/astro/stores/${r.rid}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [c.field]: v, updated_by: `${actor} · 온보딩 값 채택` }) });
+    setRowMsg((m) => ({ ...m, [r.rid!]: res.ok ? { ok: true, text: `${c.label}을(를) 사장님 값으로 바꿨습니다.` } : { ok: false, text: `${c.label} 을(를) 바꾸지 못했습니다 (${res.status}).` } }));
+    load();
+  }
+
   async function makeStore(r: Row) {
     if (!r.lead_id) return;
     setMaking(r.lead_id); setMakeErr((m) => ({ ...m, [r.lead_id!]: "" }));
@@ -170,6 +197,18 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                   <Td>
                     <p className="text-[12.5px] text-gray-600">{r.todo ?? HELP[r.stage]}</p>
                     {r.blocked && <p className="text-[11.5px] text-gray-400 mt-0.5">{r.blocked}</p>}
+                    {r.rid !== null && (r.stage === "반영대기" || (r.conflicts?.length ?? 0) > 0) && (
+                      <div className="mt-1.5 space-y-1.5">
+                        {r.stage === "반영대기" && <Button size="sm" variant="primary" disabled={applying === r.rid} onClick={() => applyRow(r)}>{applying === r.rid ? "반영 중…" : "반영하기"}</Button>}
+                        {(r.conflicts ?? []).map((c) => (
+                          <div key={c.field} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[12px] text-amber-900">
+                            <b>{c.label}</b> — 지금 <span className="font-mono">{c.theirs}</span> · 사장님 <span className="font-mono">{c.ours}</span>
+                            <button type="button" className="ml-2 underline font-semibold" onClick={() => takeOwnerValue(r, c)}>사장님 값으로</button>
+                          </div>
+                        ))}
+                        {rowMsg[r.rid] && <p className={`text-[11.5px] ${rowMsg[r.rid].ok ? "text-navy" : "text-red-600"}`} role="status">{rowMsg[r.rid].text}</p>}
+                      </div>
+                    )}
                     {r.stage === "후보" && (
                       <div className="mt-1.5">
                         <Button size="sm" variant="primary" icon={<IconBuildingStore size={13} />} disabled={making === r.lead_id} onClick={() => makeStore(r)}>{making === r.lead_id ? "만드는 중…" : "매장 만들기"}</Button>
