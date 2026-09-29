@@ -4,6 +4,7 @@ import { backendUrl, getAccessToken } from "@/lib/apiProxy";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { remoteGet } from "@/lib/draft/remote";
 import type { BackendRestaurant, Lead, StoreOps } from "@/lib/draft/types";
+import { readChecklist, type StoreChecklist } from "@/lib/onboard/checklist";
 import { tempPinFor } from "@/lib/onboard/token";
 import { normName } from "@/lib/draft/sheet";
 import { describe, diffStore, foldByStore, readLedger, type Folded } from "@/lib/onboard/reconcile";
@@ -22,7 +23,7 @@ import { describe, diffStore, foldByStore, readLedger, type Folded } from "@/lib
  * 원장(시트)은 느리다(4~21초). **이 화면에서만** 읽는다 — 점주 화면 경로에는 절대 두지 않는다.
  */
 
-export type ContractStage = "후보" | "미발급" | "대기" | "동의" | "완료" | "반영대기" | "종이계약";
+export type ContractStage = "후보" | "미발급" | "대기" | "동의" | "완료" | "승인대기" | "종이계약";
 
 export interface BoardRow {
   /** 매장 번호. **후보만 있고 매장이 아직 없으면 null** — 그 행은 '매장 만들기' 부터다 (0928) */
@@ -35,7 +36,7 @@ export interface BoardRow {
   stage: ContractStage;
   /** 원장에서 읽은 시각 — 언제 일어난 일인지 */
   at: string | null;
-  /** 반영대기일 때 무엇을 넣어야 하는지 */
+  /** 승인대기일 때 무엇을 넣어야 하는지 */
   todo: string | null;
   /** 발급을 막는 이유 (운영 중인 매장의 PIN 등) */
   blocked: string | null;
@@ -48,6 +49,10 @@ export interface BoardRow {
   is_test?: boolean;
   /** 사장님이 적은 값과 우리가 이미 적어 둔 값이 다른 칸 — 반영은 안 건드린다. 화면이 칸별로 고르게 한다. */
   conflicts?: { field: string; label: string; ours: string; theirs: string }[];
+  /** 동의·완료한 매장만 — 사진·스탬프·쿠폰·PIN 을 등록했나 */
+  check?: StoreChecklist | null;
+  /** 사장님이 적은 이메일(기록) — 계산서 받을 곳 */
+  entered_email?: string | null;
 }
 
 /**
@@ -60,7 +65,7 @@ function pickMobile(...cands: (string | null | undefined)[]): string | null {
   return null;
 }
 
-const ORDER: Record<ContractStage, number> = { 반영대기: 0, 완료: 1, 동의: 2, 대기: 3, 후보: 4, 미발급: 5, 종이계약: 6 };
+const ORDER: Record<ContractStage, number> = { 승인대기: 0, 완료: 1, 동의: 2, 대기: 3, 후보: 4, 미발급: 5, 종이계약: 6 };
 
 export async function GET() {
   const deny = await requireTool("restaurants");
@@ -161,9 +166,9 @@ export async function GET() {
       at = f.done.at;
       const d = diffStore(f, o, r.tier ?? null, Boolean(r.is_affiliate), leadOf.get(rid)?.stage ?? null);
       conflicts = d?.conflicts ?? [];
-      // 채울 것이 있을 때만 '반영대기' — 충돌만 있는 건 사람이 판단할 일이지 밀린 일이 아니다
+      // 채울 것이 있을 때만 '승인대기' — 충돌만 있는 건 사람이 판단할 일이지 밀린 일이 아니다
       const pending = d && (Object.keys(d.fill).length || Object.keys(d.store).length || d.lead);
-      stage = pending ? "반영대기" : "완료";
+      stage = pending ? "승인대기" : "완료";
       todo = pending ? describe(d!) : null;
     } else if (f?.consent) {
       stage = "동의"; at = f.consent.at;
@@ -204,6 +209,12 @@ export async function GET() {
       });
     }
   }
+
+  await Promise.all(rows.filter((r) => r.rid !== null && (r.stage === "동의" || r.stage === "완료" || r.stage === "승인대기")).map(async (r) => {
+    r.check = await readChecklist(r.rid!).catch(() => null);
+    const f = folded.get(r.rid!);
+    r.entered_email = (f?.done ?? f?.consent)?.email || null;
+  }));
 
   rows.sort((a, b) => ORDER[a.stage] - ORDER[b.stage] || (b.at ?? "").localeCompare(a.at ?? "") || a.name.localeCompare(b.name, "ko"));
   const count = rows.reduce((m, r) => ({ ...m, [r.stage]: (m[r.stage] ?? 0) + 1 }), {} as Record<string, number>);

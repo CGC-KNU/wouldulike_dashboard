@@ -39,7 +39,7 @@ export default function OnboardReconcile({ onDone }: { onDone?: () => void }) {
       const r = await fetch("/api/onboard/reconcile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const j = (await r.json().catch(() => ({}))) as { applied?: { name: string }[]; failed?: { name: string; detail: string }[] };
       const ok = j.applied?.length ?? 0, no = j.failed?.length ?? 0;
-      setMsg(no ? `${ok}곳 반영 · ${no}곳 실패 — ${j.failed!.map((f) => `${f.name}(${f.detail})`).join(", ")}` : `${ok}곳 반영했습니다.`);
+      setMsg(no ? `${ok}곳 승인 · ${no}곳 실패 — ${j.failed!.map((f) => `${f.name}(${f.detail})`).join(", ")}` : `${ok}곳 승인했습니다.`);
       load(); onDone?.();
     } catch (e) {
       setMsg((e as Error).message);
@@ -53,7 +53,7 @@ export default function OnboardReconcile({ onDone }: { onDone?: () => void }) {
     <div className="mb-3 rounded-xl border border-navy/20 bg-navy/[0.03] p-3">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <p className="text-[13px] font-semibold text-gray-900">온보딩을 마친 매장 {items.length}곳이 아직 반영되지 않았습니다</p>
+          <p className="text-[13px] font-semibold text-gray-900">온보딩을 마친 매장 {items.length}곳이 승인을 기다립니다</p>
           <p className="text-[12px] text-gray-600 mt-0.5">
             사장님이 등록하신 값(대표자·사업자번호·개시일·청구 시작 월·플랜)을 매장에 채웁니다.
             <b> 이미 적혀 있는 값은 건드리지 않습니다.</b>
@@ -62,7 +62,7 @@ export default function OnboardReconcile({ onDone }: { onDone?: () => void }) {
         </div>
         <div className="flex gap-2">
           <Button size="sm" onClick={() => setOpen((v) => !v)}>{open ? "접기" : "무엇이 바뀌나"}</Button>
-          <Button size="sm" variant="primary" disabled={busy} onClick={apply}>{busy ? "반영 중…" : "반영하기"}</Button>
+          <Button size="sm" variant="primary" disabled={busy} onClick={apply}>{busy ? "승인 중…" : "일괄 승인"}</Button>
         </div>
       </div>
 
