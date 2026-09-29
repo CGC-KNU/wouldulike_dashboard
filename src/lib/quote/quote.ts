@@ -17,7 +17,9 @@ export const PLAN_NAME: Record<QuotePlan, string> = { FREE: "무료", BOOST: "Bo
 export const PLAN_DESC: Record<QuotePlan, string> = {
   FREE: "앱 매장 정보 상시 게재 · 기본 쿠폰·스탬프 운영 · 마일리지 추첨 참여 · 포스터 1종·QR 스티커 2매",
   BOOST: "무료 전체 + 캠페인(한정 쿠폰) 편입(개시일부터 60일 이내 1회 이상) · 캠페인 회차마다 앱 배너·푸시 · 월 1회 이상 앱 배너 · 학생회 채널 배포 요청",
-  PREMIUM: "Boost 전체 + 인스타그램 단독 콘텐츠 월 1건 · 고정 알림·배너 노출",
+  // 계약서(26-2 간소화) 제3조 표 기준 — 단독 콘텐츠는 **1회**(카드뉴스·릴스 중 매장 선택), 배너는 고정.
+  // 사장님 플랜 화면(owner/plan)의 "월 1건·고정 알림"은 계약서와 달라 따르지 않는다 (0929 민열님 지적).
+  PREMIUM: "Boost 전체 + 우주라이크 인스타그램 단독 콘텐츠 1회(카드뉴스 또는 릴스 중 매장 선택) · 앱 고정 배너",
 };
 
 export function planFromTier(tier: string | null | undefined): QuotePlan {
@@ -50,6 +52,8 @@ export function minTermTo(starts: string): string {
 export const kdate = (s: string) => { if (!s) return "—"; const [y, m, d] = s.split("-"); return `${y}년 ${Number(m)}월 ${Number(d)}일`; };
 export const dotDate = (s: string) => { if (!s) return "—"; const [y, m, d] = s.split("-"); return `${y}. ${Number(m)}. ${Number(d)}`; };
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
+/** 사업자번호 10자리를 000-00-00000 으로. 자리수가 다르면 그대로. */
+export const bizNo = (s: string) => { const d = s.replace(/\D/g, ""); return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : s; };
 
 /** 견적번호 — WJ-발급일(YYMMDD)-매장번호. 같은 날 같은 매장을 다시 뽑으면 같은 번호(=같은 견적의 재출력). */
 export const quoteNo = (issued: string, rid: number | null) => `WJ-${issued.replaceAll("-", "").slice(2)}-${rid ?? "000"}`;

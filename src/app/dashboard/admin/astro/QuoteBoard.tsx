@@ -4,7 +4,7 @@ import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, type
 import { IconDownload, IconPhoto, IconFileTypePdf, IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import type { StoreRow } from "@/lib/draft/types";
 import {
-  ISSUER_FALLBACK, PLAN_DESC, PLAN_NAME, addDays, defaultQuoteFee, dotDate, kdate, minTermTo, nextMonthFirst, planFromTier, quoteNo, todaySeoul, won,
+  ISSUER_FALLBACK, PLAN_DESC, PLAN_NAME, addDays, bizNo, defaultQuoteFee, dotDate, kdate, minTermTo, nextMonthFirst, planFromTier, quoteNo, todaySeoul, won,
   type IssuerInfo, type QuotePlan, type QuoteValues,
 } from "@/lib/quote/quote";
 import { Button, Card, Field, Input, Notice, PageHeader, Select, Textarea } from "../_shared/ui";
@@ -38,6 +38,9 @@ export default function QuoteBoard({ actor }: { actor: string }) {
   const [mark, setMark] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /** 혜택을 어디서 가져왔나 — 앱에 실제 등록된 값(쿠폰·스탬프 설정)이 우선, 없으면 매장 운영값 */
+  const [benefitSrc, setBenefitSrc] = useState<"app" | "ops" | "loading" | null>(null);
+  const picking = useRef<number | null>(null);
   const sheet = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,9 +65,9 @@ export default function QuoteBoard({ actor }: { actor: string }) {
 
   /** 매장을 고르면 운영값으로 채운다. 발급일은 오늘, 유효기간 14일, 개시일은 약관대로 다음 달 1일. */
   function pick(id: number | null) {
-    setRid(id); setMsg(null);
+    setRid(id); setMsg(null); picking.current = id;
     const s = (stores ?? []).find((x) => x.restaurant_id === id);
-    if (!s) { setV(blank()); return; }
+    if (!s) { setV(blank()); setBenefitSrc(null); return; }
     const o = s.ops;
     const plan = planFromTier(s.tier);
     const issued = todaySeoul();
@@ -79,6 +82,38 @@ export default function QuoteBoard({ actor }: { actor: string }) {
       stamp: [o?.stamp_count ? `${o.stamp_count}개` : "", o?.stamp_reward ?? ""].filter(Boolean).join(" · "),
       exclusions: o?.exclusions ?? "", note: "",
     });
+    setBenefitSrc("loading");
+    loadAppBenefits(s.restaurant_id);
+  }
+
+  /**
+   * 앱에 실제 등록된 혜택으로 덮는다 (민열님 0929 "혜택도 매장 선택하면 연동되게").
+   * 계약 탭 [상세]와 같은 /api/onboard/detail — 기본 쿠폰(GENERAL)·특별 쿠폰(SPECIAL)·스탬프 단계·온보딩 입력값.
+   * 앱에 값이 있는 칸만 덮고, 빈 칸은 운영값을 그대로 둔다. 그 사이 다른 매장을 고르면 버린다.
+   */
+  async function loadAppBenefits(id: number) {
+    try {
+      const d = await fetch(`/api/onboard/detail?rid=${id}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
+      if (picking.current !== id) return;
+      const c = d?.check as { coupons?: { title: string; subtitle: string }[]; special?: { title: string; subtitle: string; active?: boolean }[]; stamp?: { on: boolean; steps: { at: number; reward: string }[] } } | undefined;
+      const e = d?.entered as { owner_name?: string; biz_no?: string } | null | undefined;
+      const line = (b: { title: string; subtitle: string }) => [b.title, b.subtitle].filter(Boolean).join(" — ");
+      const basic = (c?.coupons ?? []).filter((b) => b.title).map(line).join(" / ");
+      const special = (c?.special ?? []).filter((b) => b.title && b.active !== false).map(line).join(" / ");
+      const stamp = c?.stamp?.on ? c.stamp.steps.filter((t) => t.at > 0).map((t) => `${t.at}개 ${t.reward}`.trim()).join(" / ") : "";
+      const any = Boolean(basic || special || stamp);
+      setV((p) => ({
+        ...p,
+        coupon_basic: basic || p.coupon_basic,
+        coupon_limited: special || p.coupon_limited,
+        stamp: stamp || p.stamp,
+        owner_name: p.owner_name || e?.owner_name || "",
+        biz_no: p.biz_no || e?.biz_no || "",
+      }));
+      setBenefitSrc(any ? "app" : "ops");
+    } catch {
+      if (picking.current === id) setBenefitSrc("ops");
+    }
   }
 
   const set = <K extends keyof QuoteValues>(k: K, val: QuoteValues[K]) => setV((p) => {
@@ -105,11 +140,13 @@ export default function QuoteBoard({ actor }: { actor: string }) {
     if (!v.starts_on.endsWith("-01")) warn.starts = "약관상 개시일은 매월 1일입니다";
     else if (v.starts_on < v.issued_on) warn.starts = "발급일보다 이른 개시일입니다";
     else ok.starts = kdate(v.starts_on);
-    if (!v.coupon_basic && !v.stamp && !v.coupon_limited) warn.benefit = "비어 있음 — 견적서에는 '온보딩 화면에서 사장님이 등록'으로 나갑니다"; else ok.benefit = "매장 운영값";
+    if (benefitSrc === "loading") warn.benefit = "앱에 등록된 혜택을 불러오는 중…";
+    else if (!v.coupon_basic && !v.stamp && !v.coupon_limited) warn.benefit = "앱에도 운영값에도 없음 — 견적서에는 '온보딩 화면에서 사장님이 등록'으로 나갑니다";
+    else ok.benefit = benefitSrc === "app" ? "앱에 등록된 쿠폰·스탬프" : "매장 운영값 (앱에는 아직 없음)";
     if (!v.owner_name || !v.biz_no) warn.owner = "비워도 발급은 됩니다 — 받는 쪽 정보가 빠진 채로 나갑니다"; else ok.owner = `${v.owner_name} · ${v.biz_no}`;
     if (v.plan !== "FREE" && !issuer.bank_account) warn.bank = "세금계산서 › 발행 주체 설정에 계좌가 없습니다"; else ok.bank = v.plan === "FREE" ? "무료 플랜은 표시 안 함" : `${issuer.bank_name} ${issuer.bank_account}`;
     return CHECK_ORDER.map((k, i) => ({ k, n: i + 1, warn: warn[k], ok: ok[k] }));
-  }, [store, v, issuer]);
+  }, [store, v, issuer, benefitSrc]);
   const warnCount = checks.filter((c) => c.warn).length;
 
   async function download(fmt: "pdf" | "png" | "jpg") {
@@ -189,7 +226,7 @@ export default function QuoteBoard({ actor }: { actor: string }) {
             </div>
           </Card>
 
-          <Card title="혜택">
+          <Card title="혜택" description={benefitSrc === "app" ? "앱에 등록된 쿠폰·스탬프를 불러왔습니다. 고치면 견적서에만 반영됩니다." : benefitSrc === "loading" ? "앱에 등록된 혜택을 불러오는 중…" : benefitSrc === "ops" ? "앱에 등록된 혜택이 없어 매장 운영값을 넣었습니다." : undefined}>
             <div className="space-y-3">
               <Field label="기본 쿠폰 (상시)"><Input value={v.coupon_basic} onChange={(e) => set("coupon_basic", e.target.value)} /></Field>
               <Field label="캠페인 한정 쿠폰"><Input value={v.coupon_limited} onChange={(e) => set("coupon_limited", e.target.value)} disabled={v.plan === "FREE"} /></Field>
@@ -341,7 +378,7 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
         ]} />
         <Party label="수신" accent rows={[
           ["매장명", <V k="store" on={mark}><b style={{ fontSize: 14 }}>{v.store_name || "매장을 고르세요"}</b>{v.campus ? <span style={{ color: SOFT }}> · {v.campus}</span> : null} <span style={{ color: SOFT }}>귀중</span></V>],
-          ["대표자", <V k="owner" on={mark}>{[v.owner_name, v.biz_no].filter(Boolean).join(" · ") || <span style={{ color: "#A3A6BF" }}>—</span>}</V>],
+          ["대표자", <V k="owner" on={mark}>{[v.owner_name, v.biz_no && bizNo(v.biz_no)].filter(Boolean).join(" · ") || <span style={{ color: "#A3A6BF" }}>—</span>}</V>],
           ["이용 플랜", <V k="plan" on={mark} block><b>{PLAN_NAME[v.plan]}</b> — {v.plan_desc}</V>],
           ["개시일", <V k="starts" on={mark}><b>{kdate(v.starts_on)}</b> · 최소 이용기간 {dotDate(v.starts_on)} ~ {dotDate(endMin)} (1개월) · 이후 해지 시까지 월 단위</V>],
         ]} />
