@@ -88,6 +88,13 @@ export async function POST(req: NextRequest) {
   // 이미 임시 PIN 이 심겨 있거나, 읽을 수 있는 사장님 PIN 이 있으면 그대로 두고 링크만 새로 뽑는다.
   // 0929: 링크로 바로 로그인하는 길이 켜져 있으면 임시 PIN 을 심지 않는다 — 온보딩 전까지 PIN 은 비어 있다.
   const noTempPin = await linkSessionReady(admin);
+  // 새 길이 켜져 있고 예전에 우리가 심은 임시 PIN 이 남아 있으면 걷어낸다 — 온보딩 전까지 PIN 은 비어 있어야 한다.
+  // (사장님이 정한 PIN 은 건드리지 않는다. 백엔드는 점주 계정이 붙은 매장이면 409 로 거절한다.)
+  let clearedTemp = false;
+  if (noTempPin && isOurTemp) {
+    const c = await proxyBody("POST", `/api/dashboard/auth/clear-pin/?restaurant_id=${b.rid}`, {});
+    clearedTemp = c.ok;
+  }
   if (!noTempPin && !isOurTemp && !keepOwnerPin) {
     // PIN 이 이미 있으면 관리자여도 `current_pin` 을 같이 보내야 한다 (위 주석, ChangePinView).
     // 위에서 읽어 둔 현재 값을 그대로 동봉한다 — 안 보내면 400 "current_pin이 필요합니다".
@@ -119,6 +126,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     url, phone_checked: Boolean(ph), expires_at: new Date(payload.exp * 1000).toISOString(), short_id: shortId(payload),
     replaced_owner_pin: replacedOwnerPin,
+    no_temp_pin: noTempPin, cleared_temp_pin: clearedTemp,
     // 담당자가 그대로 복사해 카톡으로 보낸다(자동 발송은 하지 않는다 — 0922 결정).
     // 번호 대조가 걸려 있으면 **미리 알려야 한다.** 모르고 다른 번호를 적으면 [0]에서 막히고,
     // 사장님은 왜 막혔는지 알 길이 없다.
