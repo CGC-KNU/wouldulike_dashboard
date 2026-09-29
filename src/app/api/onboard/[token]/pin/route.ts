@@ -44,7 +44,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const cur = await readStorePin(v.payload.rid);
   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/change-pin/?restaurant_id=${v.payload.rid}`, {
     method: "POST", headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ current_pin: cur.pin ?? tempPinFor(v.payload.rid), new_pin }), cache: "no-store",
+    // 0929: PIN 이 비어 있으면(임시 PIN 폐지 후 기본) 새로 정한다. 걸려 있으면 그 값을 current 로.
+    body: JSON.stringify(cur.has_pin ? { current_pin: cur.pin ?? tempPinFor(v.payload.rid), new_pin } : { new_pin }), cache: "no-store",
   });
   const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
   if (!res.ok || data.success === false) {

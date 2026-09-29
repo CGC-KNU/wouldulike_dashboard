@@ -63,6 +63,8 @@ export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
 
+  // 0929: 임시 PIN 폐지 — '링크를 냈다' 는 이제 발급 기록(활동 kind=온보딩링크발급)으로 안다.
+  const issuedRes = remoteGet<{ activities: { target_type: string; target_id: string; kind: string; created_at: string }[] }>("/api/astro/activities/");
   const [backend, remote, ledger, leadsRes] = await Promise.all([
     fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/", "include_inactive=1", true),
     remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/"),
@@ -100,7 +102,14 @@ export async function GET() {
   for (const f of foldByStore(ledger)) folded.set(f.rid, f);
 
   // 매장 PIN 은 매장마다 한 번씩 물어야 한다 — 원장·운영행에 걸린 매장만 본다(전수 조회는 느리다).
-  const need = new Set<number>([...folded.keys()]);
+  const issuedAt = new Map<number, string>();
+  const ir = await issuedRes;
+  if (ir.handled && ir.ok) for (const a of ir.data?.activities ?? []) {
+    if (a.kind !== "온보딩링크발급" || a.target_type !== "store") continue;
+    const rid = Number(a.target_id); if (!rid) continue;
+    if (!issuedAt.has(rid) || (issuedAt.get(rid)! < a.created_at)) issuedAt.set(rid, a.created_at);
+  }
+  const need = new Set<number>([...folded.keys(), ...issuedAt.keys()]);
   for (const [rid, o] of ops) if (o.is_test !== true && (o.contract_started_on || o.monthly_fee || o.contract_signed_on)) need.add(rid);
   // 후보에서 "계약·매장 탭으로 보내기" 를 누른 매장은 요금이 아직 없어도 사이클에 올라와야 한다 —
   // 그래야 보낸 사람이 여기서 바로 링크를 낼 수 있다. 종료(보류)된 후보는 제외.
@@ -152,8 +161,8 @@ export async function GET() {
       todo = pending ? describe(d!) : null;
     } else if (f?.consent) {
       stage = "동의"; at = f.consent.at;
-    } else if (isTemp.get(rid) === true) {
-      stage = "대기";
+    } else if (issuedAt.has(rid) || isTemp.get(rid) === true) {
+      stage = "대기"; at = issuedAt.get(rid) ?? null;
     } else if (isTemp.get(rid) === false && (o?.contract_started_on || o?.contract_signed_on)) {
       stage = "종이계약"; // PIN 이 있고 계약도 적혀 있다 = 온보딩 이전에 운영을 시작한 매장
     } else if (isTemp.get(rid) === false) {
