@@ -127,5 +127,6 @@ export const config = {
   // brand/ · fonts/ 는 로고와 브랜드 서체다. 점주 온보딩은 **로그인 없이** 여는 화면이라
   // 여기서 막히면 로고 자리에 깨진 이미지가 뜨고 제목이 시스템 폰트로 떨어진다 (0921).
   // 공개해도 되는 자산만 뺀다 — astro-docs·bannerlab·campus·satellite 는 그대로 보호한다.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|brand/|fonts/).*)"],
+  // icon·apple-icon 은 탭·홈 화면 아이콘이다. 막히면 iOS 가 로그인 페이지를 받고 글자("S") 아이콘을 그린다 (0929).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icons/|brand/|fonts/).*)"],
 };
