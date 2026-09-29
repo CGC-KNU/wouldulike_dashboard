@@ -56,6 +56,8 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
       .catch(() => { setPinState(null); setHasPin(null); });
   }, [open, hasPin, rid]);
 
+  /** 0929: 요금 칸을 비웠을 때 실제로 들어가는 값 — 서버 defaultFee(lib/onboard/contract.ts)와 같은 규칙. 전에는 플랜과 무관하게 Boost 요금을 보여 줬다. */
+  const defaultFeeText = plan === "PREMIUM" ? "80000" : campus === "경북대" ? "30000" : "45000";
   const issue = async () => {
     setBusy(true); setErr(null); setBlocked(false);
     try {
@@ -133,10 +135,10 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
                 <Field label="플랜"><Select value={plan} onChange={(e) => setPlan(e.target.value as Plan)}><option value="FREE">무료</option><option value="BOOST">Boost</option><option value="PREMIUM">Premium</option></Select></Field>
                 <Field label="유효기간(일)"><Input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} /></Field>
                 <div className="col-span-2">
-                  <Field label="월 이용료 (부가세 별도)" hint={plan === "FREE" ? "무료 플랜" : "비우면 상권 기본값 — 경북대 30,000 · 그 외 45,000"}><Input inputMode="numeric" disabled={plan === "FREE"} value={plan === "FREE" ? "0" : feeIn} onChange={(e) => setFeeIn(e.target.value)} placeholder={campus === "경북대" ? "30000" : "45000"} /></Field>
+                  <Field label="월 이용료 (부가세 별도)" hint={plan === "FREE" ? "무료 플랜" : plan === "PREMIUM" ? "비우면 Premium 기본값 80,000" : "비우면 Boost 상권 기본값 — 경북대 30,000 · 그 외 45,000"}><Input inputMode="numeric" disabled={plan === "FREE"} value={plan === "FREE" ? "0" : feeIn} onChange={(e) => setFeeIn(e.target.value)} placeholder={defaultFeeText} /></Field>
                   {/* 계약서와 입금 안내에 찍히는 건 아래 '실제 청구' 금액이다. 두 숫자를 같이 보여 줘야 별도/포함을 헷갈리지 않는다. */}
                   {plan !== "FREE" && (() => {
-                    const base = Number((feeIn || (campus === "경북대" ? "30000" : "45000")).replace(/\D/g, "")) || 0;
+                    const base = Number((feeIn || defaultFeeText).replace(/\D/g, "")) || 0;
                     return <p className="text-[12px] text-gray-600 -mt-1">사장님께는 <b className="text-gray-900">월 {(base + Math.round(base * 0.1)).toLocaleString()}원</b> 으로 안내됩니다 <span className="text-gray-400">({base.toLocaleString()} + 부가세 {Math.round(base * 0.1).toLocaleString()})</span></p>;
                   })()}
                 </div>
