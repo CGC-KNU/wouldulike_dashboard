@@ -709,7 +709,7 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <p className="text-[14px] font-bold text-gray-900 mb-1">④ 대표 사진</p>
         <p className="text-[12.5px] text-gray-600 mb-3">앱에 가장 먼저 보이는 사진입니다. 메뉴 사진 한 장이면 충분합니다.</p>
-        <ImageUploader initialUrls={d.photo_urls} uploadType="restaurant" maxImages={3} onSave={async (urls: string[]) => { patch({ photo_urls: urls }); await fetch(`/api/dashboard/restaurant${rq}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ s3_image_urls: urls }) }).catch(() => null); }} />
+        <ImageUploader initialUrls={d.photo_urls} uploadType="restaurant" maxImages={3} restaurantId={Number(new URLSearchParams(rq).get("rid")) || undefined} onSave={async (urls: string[]) => { patch({ photo_urls: urls }); await fetch(`/api/dashboard/restaurant${rq}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ s3_image_urls: urls }) }).catch(() => null); }} />
       </div>
 
       <Nav onBack={onBack} onNext={onNext} nextLabel={nextLabel} nextDisabled={!stampSaved} nextHint={stampSaved ? undefined : "스탬프를 등록해야 다음으로 갈 수 있습니다"} />

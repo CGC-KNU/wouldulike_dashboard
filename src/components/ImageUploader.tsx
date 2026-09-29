@@ -130,7 +130,12 @@ export default function ImageUploader({
             upload_type: uploadType,
           }),
         });
-        if (!presignRes.ok) { setError("업로드 URL 발급 실패"); continue; }
+        if (!presignRes.ok) {
+          // 0929: 사유를 보여 준다 — "발급 실패" 한 줄로는 권한 문제인지 형식 문제인지 알 수 없었다.
+          const pj = (await presignRes.json().catch(() => ({}))) as { detail?: string };
+          setError(`업로드 URL 발급 실패 (${presignRes.status}${pj.detail ? ` · ${pj.detail}` : ""})`);
+          continue;
+        }
         const { upload_url, public_url } = await presignRes.json();
 
         const putRes = await fetch(upload_url, {
