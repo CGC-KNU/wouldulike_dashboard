@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { driveUpload, postActivity, sheetAppend } from "@/lib/onboard/records";
 import { linkSessionReady } from "@/lib/onboard/linkSession";
+import { signOnboardToken } from "@/lib/onboard/token";
+import { backendUrl } from "@/lib/apiProxy";
 import { getAccessToken } from "@/lib/apiProxy";
 
 /**
@@ -46,5 +48,12 @@ export async function POST(req: NextRequest) {
     sheet_tabs: tabs, sheet_header: header,
     // 임시 PIN 없이 링크로 로그인하는 길 — false 면 Koyeb 에 ONBOARD_SECRET 이 없다
     link_session_ready: await linkSessionReady(await getAccessToken()),
+    // 열쇠 일치 — 없는 매장(16777215)으로 서명해 보낸다. 서명이 맞으면 "매장을 찾을 수 없습니다", 다르면 "서명". 계정은 안 생긴다.
+    key_match: await (async () => {
+      const { token } = signOnboardToken({ rid: 16777215, lid: null, name: "진단", campus: "진단", plan: "FREE", fee: 0, days: 1 });
+      const r = await fetch(backendUrl("/api/dashboard/auth/onboard-session/"), { method: "POST", headers: { Authorization: `Bearer ${await getAccessToken()}`, "Content-Type": "application/json" }, body: JSON.stringify({ token }), cache: "no-store" }).catch(() => null);
+      const j = r ? ((await r.json().catch(() => ({}))) as { reason?: string; message?: string }) : {};
+      return j.reason === "서명" ? "다름" : (j.message ?? "").includes("매장 정보") ? "같음" : `알 수 없음 ${r?.status ?? ""} ${j.reason ?? j.message ?? ""}`;
+    })(),
   });
 }
