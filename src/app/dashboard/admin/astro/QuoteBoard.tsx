@@ -100,7 +100,7 @@ export default function QuoteBoard({ actor }: { actor: string }) {
     const tierPlan = store ? planFromTier(store.tier) : null;
     if (tierPlan && tierPlan !== v.plan) warn.plan = `매장 플랜은 ${PLAN_NAME[tierPlan]}인데 ${PLAN_NAME[v.plan]}로 발급합니다`; else ok.plan = PLAN_NAME[v.plan];
     if (v.plan !== "FREE" && v.fee !== def) warn.fee = `기본 단가 ${won(def)}와 다릅니다 (${v.campus || "상권 미지정"} ${PLAN_NAME[v.plan]})`;
-    else if (o?.monthly_fee != null && v.plan !== "FREE" && o.monthly_fee !== v.fee) warn.fee = o.monthly_fee === Math.round(v.fee * 1.1) ? `매장 운영값 ${won(o.monthly_fee)}은 부가세 포함 금액이라 ${won(v.fee)}로 채웠습니다 — 파트너 매장에서 운영값도 고쳐 주세요` : `매장 운영값 ${won(o.monthly_fee)}과 다릅니다`;
+    else if (o?.monthly_fee != null && v.plan !== "FREE" && o.monthly_fee !== v.fee) warn.fee = o.monthly_fee === Math.round(v.fee * 1.1) ? `매장 운영값 ${won(o.monthly_fee)}은 부가세 포함 금액이라 기본 단가 ${won(v.fee)}을 넣었습니다 — 파트너 매장에서 운영값도 고쳐 주세요` : `매장 운영값 ${won(o.monthly_fee)}과 다릅니다`;
     else ok.fee = v.plan === "FREE" ? "0원" : `${won(v.fee)} + 부가세`;
     if (!v.starts_on.endsWith("-01")) warn.starts = "약관상 개시일은 매월 1일입니다";
     else if (v.starts_on < v.issued_on) warn.starts = "발급일보다 이른 개시일입니다";
