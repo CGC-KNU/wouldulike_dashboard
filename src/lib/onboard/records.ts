@@ -1,4 +1,5 @@
 import { notifyPartnerOps } from "@/lib/slack";
+import { getAccessToken } from "@/lib/apiProxy";
 
 /**
  * 온보딩 기록 — **어디에 남기나.**
@@ -49,19 +50,26 @@ export interface ConsentRecord {
 
 export interface CopyResult { activity: boolean; sheet: boolean; drive_contract: string | null; drive_json: string | null; errors: string[] }
 
-/* ── 1. 백엔드 활동 기록 ── */
-export async function postActivity(token: string, rid: number, kind: string, body: string, author: string): Promise<boolean> {
-  if (!API()) return false;
+/* ── 1. 백엔드 활동 기록 ──
+ * 0929: **서버 계정**으로 쓴다. 전에는 점주 토큰으로 썼는데 0925 전수 점검에서 astro/activities 를
+ * 관리자 전용으로 잠그면서 이 사본은 늘 403 이 됐다 — 그리고 그 사실이 어디에도 안 남았다.
+ * 실측: 일공초밥 사장님이 [2]에서 "동의 기록을 저장하지 못했습니다" 로 막힘. 세 사본이 다 실패해야
+ * 뜨는 문구라, 이 사본만 살아도 계약은 진행된다. 실패 사유는 errText 에 남겨 응답·로그로 나간다. */
+export async function postActivity(_ownerToken: string, rid: number, kind: string, body: string, author: string): Promise<boolean | string> {
+  if (!API()) return "API 미설정";
   try {
+    const admin = await getAccessToken();
     const res = await fetch(`${API()}/api/astro/activities/`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
       body: JSON.stringify({ target_type: "store", target_id: String(rid), kind, body, author }),
       cache: "no-store",
     });
-    return res.ok;
-  } catch {
-    return false;
+    if (res.ok) return true;
+    const t = (await res.text().catch(() => "")).slice(0, 120);
+    return `백엔드 ${res.status}${t ? ` ${t}` : ""}`;
+  } catch (e) {
+    return `백엔드 연결 실패 ${(e as Error).message}`;
   }
 }
 
@@ -81,16 +89,19 @@ const phoneText = (d: string) => {
   return d ?? "";
 };
 
-async function sheetAppend(row: (string | number | boolean | null)[]): Promise<boolean> {
+/** true 면 성공, 문자열이면 실패 사유 (브리지가 준 error 나 HTTP 상태). 진단 라우트가 같이 쓴다. */
+export async function sheetAppend(row: (string | number | boolean | null)[], sheetName?: string): Promise<true | string> {
   const url = process.env.ONBOARD_GSHEET_URL, token = process.env.ONBOARD_GSHEET_TOKEN, id = process.env.ONBOARD_GSHEET_ID;
-  const sheet = process.env.ONBOARD_GSHEET_TAB ?? "온보딩기록";
-  if (!url || !token || !id) return false;
+  const sheet = sheetName ?? process.env.ONBOARD_GSHEET_TAB ?? "온보딩기록";
+  if (!url || !token || !id) return "시트 미설정";
   try {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "append", id, sheet, row, token }), redirect: "follow", cache: "no-store" });
-    const j = (await res.json().catch(() => ({}))) as { ok?: boolean };
-    return Boolean(j.ok);
-  } catch {
-    return false;
+    const text = await res.text().catch(() => "");
+    let j: { ok?: boolean; error?: string } = {};
+    try { j = JSON.parse(text) as typeof j; } catch { return `시트 응답이 JSON 이 아님 (${res.status}) ${text.slice(0, 80)}`; }
+    return j.ok ? true : `시트 ${j.error ?? `실패 (${res.status})`}`;
+  } catch (e) {
+    return `시트 연결 실패 ${(e as Error).message}`;
   }
 }
 
@@ -110,16 +121,19 @@ export async function sheetRead(range: string): Promise<string[][]> {
 }
 
 /* ── 3. 드라이브 브리지 (자료실_업로드.gs 와 같은 Web App) ── */
-async function driveUpload(name: string, content: string, mime: string): Promise<string | null> {
+/** 성공이면 {url}, 실패면 {err}. */
+export async function driveUpload(name: string, content: string, mime: string): Promise<{ url: string | null; err: string | null }> {
   const url = process.env.ONBOARD_DRIVE_URL, token = process.env.ONBOARD_DRIVE_TOKEN;
-  if (!url || !token) return null;
+  if (!url || !token) return { url: null, err: "드라이브 미설정" };
   try {
     const b64 = Buffer.from(content, "utf8").toString("base64");
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "upload", name, b64, mime, token }), redirect: "follow", cache: "no-store" });
-    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string };
-    return j.ok && j.url ? j.url : null;
-  } catch {
-    return null;
+    const text = await res.text().catch(() => "");
+    let j: { ok?: boolean; url?: string; error?: string } = {};
+    try { j = JSON.parse(text) as typeof j; } catch { return { url: null, err: `드라이브 응답이 JSON 이 아님 (${res.status}) ${text.slice(0, 80)}` }; }
+    return j.ok && j.url ? { url: j.url, err: null } : { url: null, err: `드라이브 ${j.error ?? `실패 (${res.status})`}` };
+  } catch (e) {
+    return { url: null, err: `드라이브 연결 실패 ${(e as Error).message}` };
   }
 }
 
@@ -129,22 +143,26 @@ export async function persistRecord(rec: ConsentRecord, opts: { ownerToken: stri
   const stamp = rec.at.replace(/[-:]/g, "").slice(0, 15);
   const base = `온보딩_${rec.rid}_${rec.name}_${stamp}`;
 
-  const [activity, sheet, drive_json, drive_contract] = await Promise.all([
-    postActivity(opts.ownerToken, rec.rid, rec.kind === "consent" ? "계약동의" : rec.kind === "revise" ? "온보딩수정" : "온보딩완료", JSON.stringify(rec), "onboard").catch(() => false),
+  const [activityR, sheetR, driveJsonR, driveContractR] = await Promise.all([
+    postActivity(opts.ownerToken, rec.rid, rec.kind === "consent" ? "계약동의" : rec.kind === "revise" ? "온보딩수정" : "온보딩완료", JSON.stringify(rec), "onboard").catch((e) => `백엔드 ${(e as Error).message}`),
     sheetAppend([
       rec.at, rec.kind, rec.short_id, rec.rid, rec.lid ?? "", rec.name, rec.campus, rec.plan, rec.fee,
       rec.owner_name, bizText(rec.biz_no), phoneText(rec.phone), rec.phone_verified ? "Y" : "N", rec.email, rec.kakao_id ?? "",
       rec.signature, rec.terms_version, rec.terms_hash, JSON.stringify(rec.checks), rec.ip, rec.ua.slice(0, 160),
       rec.stamp_ok === undefined ? "" : rec.stamp_ok ? "Y" : "N", rec.kit_address ?? "", rec.starts_on ?? "",
-    ]).catch(() => false),
-    driveUpload(`${base}_${rec.kind}.json`, JSON.stringify(rec, null, 2), "application/json").catch(() => null),
-    opts.contractHtml ? driveUpload(`${base}_계약서.html`, opts.contractHtml, "text/html").catch(() => null) : Promise.resolve(null),
+    ]).catch((e) => `시트 ${(e as Error).message}`),
+    driveUpload(`${base}_${rec.kind}.json`, JSON.stringify(rec, null, 2), "application/json").catch((e) => ({ url: null, err: `드라이브 ${(e as Error).message}` })),
+    opts.contractHtml ? driveUpload(`${base}_계약서.html`, opts.contractHtml, "text/html").catch((e) => ({ url: null, err: `드라이브 ${(e as Error).message}` })) : Promise.resolve({ url: null, err: null }),
   ]);
 
-  if (!activity) errors.push("백엔드 활동기록 실패");
-  if (!sheet) errors.push(process.env.ONBOARD_GSHEET_URL ? "시트 기록 실패" : "시트 미설정");
-  if (!drive_json) errors.push(process.env.ONBOARD_DRIVE_URL ? "드라이브 JSON 실패" : "드라이브 미설정");
-  if (opts.contractHtml && !drive_contract) errors.push("드라이브 계약서 사본 실패");
+  const activity = activityR === true, sheet = sheetR === true;
+  const drive_json = driveJsonR.url, drive_contract = driveContractR.url;
+  if (!activity) errors.push(typeof activityR === "string" ? activityR : "백엔드 활동기록 실패");
+  if (!sheet) errors.push(typeof sheetR === "string" ? sheetR : "시트 기록 실패");
+  if (!drive_json) errors.push(driveJsonR.err ?? "드라이브 JSON 실패");
+  if (opts.contractHtml && !drive_contract) errors.push(driveContractR.err ?? "드라이브 계약서 사본 실패");
+  // 어디가 왜 실패했는지를 서버 로그에 남긴다 — 0929 까지는 아무 데도 안 남아 원인을 못 찾았다.
+  if (errors.length) console.error(`[onboard/${rec.kind}] rid=${rec.rid} 사본 실패:`, errors.join(" · "));
   return { activity, sheet, drive_contract, drive_json, errors };
 }
 

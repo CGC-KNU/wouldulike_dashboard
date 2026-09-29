@@ -64,7 +64,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
 
   const copies = await persistRecord(rec, { ownerToken: access, contractHtml: html });
   if (!anyCopy(copies)) {
-    return NextResponse.json({ detail: "동의 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요. (기록 없이 계약을 진행하지 않습니다)", errors: copies.errors }, { status: 503 });
+    // 사유를 문구에 싣는다 — 사장님이 담당자에게 그대로 보여 주면 우리가 어디가 막혔는지 안다.
+    return NextResponse.json({ detail: `동의 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요. 계속 그러면 담당자에게 이 문구를 보내 주세요 — ${copies.errors.join(" / ")}`, errors: copies.errors }, { status: 503 });
   }
 
   const secure = process.env.NODE_ENV === "production";
