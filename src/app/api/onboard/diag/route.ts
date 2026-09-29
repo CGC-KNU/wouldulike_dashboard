@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { driveUpload, postActivity, sheetAppend } from "@/lib/onboard/records";
 
@@ -9,12 +9,14 @@ import { driveUpload, postActivity, sheetAppend } from "@/lib/onboard/records";
  *   백엔드 → 매장 0 에 활동기록 (target 0 은 실제 매장이 아니다)
  * 0929 일공초밥 동의 실패 때 "왜" 를 알 길이 없어서 만들었다. 결과는 사유 문자열 그대로.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // ?tab=원장탭 이면 실제 원장 탭에 kind=diag 행을 1줄 쓴다 — 현황판은 consent/complete/revise 만 읽으므로 무시된다.
+  const tab = req.nextUrl.searchParams.get("tab") || "_진단";
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   const at = new Date().toISOString();
   const [sheet, drive, activity] = await Promise.all([
-    sheetAppend([at, "diag", "진단", 0, "", "진단", "", "", 0], "_진단").catch((e) => `시트 ${(e as Error).message}`),
+    sheetAppend([at, "diag", "진단", 0, "", "진단", "", "", 0], tab).catch((e) => `시트 ${(e as Error).message}`),
     driveUpload(`_진단_${at.replace(/[:.]/g, "")}.txt`, `diag ${at}`, "text/plain").catch((e) => ({ url: null, err: `드라이브 ${(e as Error).message}` })),
     postActivity("", 0, "진단", `diag ${at}`, "diag").catch((e) => `백엔드 ${(e as Error).message}`),
   ]);
