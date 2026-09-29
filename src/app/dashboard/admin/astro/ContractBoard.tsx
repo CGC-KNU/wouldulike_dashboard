@@ -45,16 +45,21 @@ function CheckChips({ c, email }: { c: Check; email?: string | null }) {
     ["이메일", Boolean(email), ""],
   ];
   return (
-    <div className="flex flex-wrap gap-1 mt-1">
+    <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-[12px] whitespace-nowrap">
       {items.map(([k, ok, n]) => (
-        <span key={k} className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${ok ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-400"}`}>{ok ? "✓" : "–"} {k}{n ? ` ${n}` : ""}</span>
+        <span key={k} className={ok ? "text-emerald-700 font-semibold" : "text-gray-300"}>{ok ? "✓" : "✕"} {k}{n ? <span className="font-normal text-gray-500"> {n}</span> : null}</span>
       ))}
     </div>
   );
 }
 
 /** [상세] 팝업 — 사장님이 적은 값과 등록한 혜택·사진 전부 */
-function DetailModal({ rid, name, onClose }: { rid: number; name: string; onClose: () => void }) {
+function DetailModal({ rid, name, onClose, conflicts = [], onTake, canApprove, onApprove, approving }: {
+  rid: number; name: string; onClose: () => void;
+  conflicts?: { field: string; label: string; ours: string; theirs: string }[];
+  onTake?: (c: { field: string; label: string; ours: string }) => void;
+  canApprove?: boolean; onApprove?: () => void; approving?: boolean;
+}) {
   const [d, setD] = useState<{ entered: Record<string, string | number | null> | null; check: Check } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -70,6 +75,17 @@ function DetailModal({ rid, name, onClose }: { rid: number; name: string; onClos
         {err && <p className="text-red-600">{err}</p>}
         {!d && !err && <p className="text-gray-400">불러오는 중…</p>}
         {d && (<>
+          {conflicts.length > 0 && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[12.5px] font-semibold text-amber-900 mb-1.5">이미 적혀 있던 값과 다른 칸 {conflicts.length}개 — 승인해도 바뀌지 않습니다</p>
+              {conflicts.map((c) => (
+                <div key={c.field} className="flex items-center justify-between gap-2 py-1 text-[12.5px]">
+                  <span><b>{c.label}</b> <span className="text-gray-600">지금</span> {c.theirs} <span className="text-gray-400">→</span> <span className="text-gray-600">사장님</span> <b>{c.ours}</b></span>
+                  {onTake && <button type="button" className="shrink-0 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[12px] font-semibold" onClick={() => onTake(c)}>사장님 값으로</button>}
+                </div>
+              ))}
+            </div>
+          )}
           <p className="text-[12px] font-semibold text-gray-500 mb-1">사장님이 적은 값</p>
           {e ? (<div className="mb-4">
             <Row k="대표자" v={e.owner_name as string} /><Row k="사업자번호" v={e.biz_no as string} /><Row k="휴대폰" v={e.phone as string} /><Row k="이메일" v={e.email as string} />
@@ -85,6 +101,12 @@ function DetailModal({ rid, name, onClose }: { rid: number; name: string; onClos
           <div className="mt-3"><p className="text-gray-500 mb-1.5">사진 {d.check.photos.length}장</p>
             <div className="flex gap-2 flex-wrap">{d.check.photos.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-24 h-24 object-cover rounded-lg border border-gray-200" /></a>)}</div>
           </div>
+          {canApprove && onApprove && (
+            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
+              <p className="text-[12px] text-gray-500">확인했으면 승인하세요. 빈 칸만 채우고, 이미 적힌 값은 건드리지 않습니다.</p>
+              <Button variant="primary" disabled={approving} onClick={onApprove}>{approving ? "승인 중…" : "승인"}</Button>
+            </div>
+          )}
         </>)}
       </div>
     </div>
@@ -94,16 +116,19 @@ function DetailModal({ rid, name, onClose }: { rid: number; name: string; onClos
 /** 후보 탭의 칩과 같은 색 — 두 탭에서 같은 단어가 다른 색이면 다른 뜻으로 읽힌다 */
 const LEAD_TONE: Record<string, ChipTone> = { "구두 합의": "amber", "계약 완료": "green", 보류: "gray", 재컨택: "amber", 거절: "red" };
 
-const TONE: Record<Stage, ChipTone> = { 승인대기: "amber", 완료: "green", 동의: "blue", 대기: "navy", 후보: "amber", 미발급: "gray", 종이계약: "gray" };
-const HELP: Record<Stage, string> = {
-  승인대기: "사장님 등록이 끝났습니다 — 확인하고 승인하면 매장에 들어갑니다",
-  완료: "계약·혜택·키트까지 끝났습니다",
-  동의: "계약에 동의하셨고 혜택 등록이 남았습니다",
-  대기: "링크를 냈고 사장님이 아직 안 여셨습니다",
-  후보: "매장을 아직 안 만들었습니다 — 만들면 바로 링크를 낼 수 있습니다",
-  미발급: "아직 링크를 내지 않았습니다",
-  종이계약: "온보딩 이전에 종이로 계약한 매장입니다",
+const TONE: Record<Stage, ChipTone> = { 승인대기: "amber", 완료: "green", 동의: "blue", 대기: "navy", 후보: "gray", 미발급: "gray", 종이계약: "gray" };
+/**
+ * 단계 이름 — **누가 무엇을 해야 하나**로 부른다 (민열님 0929: "승인/완료/대기라는 표현이 너무 모호").
+ * 내부 키(Stage)는 API 와 맞추느라 그대로 두고, 사람에게 보이는 말만 바꾼다.
+ */
+const LABEL: Record<Stage, string> = {
+  후보: "매장 만들기 전", 미발급: "링크 안 보냄", 대기: "사장님 미접속", 동의: "사장님 등록 중",
+  승인대기: "우리 확인 필요", 완료: "온보딩 끝", 종이계약: "종이 계약(기존)",
 };
+/** 흐름 순서 — 필터 알약도 이 순서로 */
+const FLOW: Stage[] = ["후보", "미발급", "대기", "동의", "승인대기", "완료", "종이계약"];
+const STEPS = ["링크", "동의", "등록", "승인"] as const;
+const STEP_AT: Record<Stage, number> = { 후보: 0, 미발급: 0, 대기: 1, 동의: 2, 승인대기: 3, 완료: 4, 종이계약: -1 };
 
 export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (tab: string) => void }) {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -186,7 +211,6 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
   }, [rows, campus, search]);
   const visible = useMemo(() => scoped.filter((r) => filter === "all" || r.stage === filter), [scoped, filter]);
   const countOf = (st: Stage) => scoped.filter((r) => r.stage === st).length;
-  const stages: Stage[] = ["승인대기", "대기", "동의", "완료", "후보", "미발급", "종이계약"];
 
   return (
     <>
@@ -225,71 +249,70 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
             label="단계"
             value={filter}
             onChange={(v) => setFilter(v as Stage | "all")}
-            options={[{ key: "all", label: "전체", count: scoped.length }, ...stages.filter((s) => countOf(s)).map((s) => ({ key: s, label: s, count: countOf(s) }))]}
+            options={[{ key: "all", label: "전체", count: scoped.length }, ...FLOW.filter((s) => countOf(s)).map((s) => ({ key: s, label: LABEL[s], count: countOf(s) }))]}
           />
         }>
         {rows === null ? <Skeleton rows={6} cols={5} /> : visible.length === 0 ? (
           <Empty
-            title={search.trim() ? `'${search.trim()}' 에 맞는 매장이 없습니다` : filter === "all" ? (campus === "all" ? "계약 사이클에 올라온 매장이 없습니다" : `${campus} 에는 아직 없습니다`) : `'${filter}' 단계인 매장이 없습니다`}
+            title={search.trim() ? `'${search.trim()}' 에 맞는 매장이 없습니다` : filter === "all" ? (campus === "all" ? "계약 사이클에 올라온 매장이 없습니다" : `${campus} 에는 아직 없습니다`) : `'${LABEL[filter as Stage]}' 인 매장이 없습니다`}
             detail={search.trim() ? "검색어를 지우거나 다른 캠퍼스를 눌러 보세요." : filter === "all" ? "파트너 후보에서 구두 합의가 되거나, 여기서 매장을 추가하고 링크를 내면 나타납니다." : "다른 단계를 눌러 보세요."}
           />
         ) : (
-          <Table minWidth="48rem">
+          <Table minWidth="60rem">
             <thead>
-              <tr><Th>매장</Th><Th width="7rem">영업</Th><Th width="7rem">온보딩</Th><Th width="8rem">플랜</Th><Th width="10rem">대표자 연락처</Th><Th>다음 할 일</Th><Th width="6.5rem" align="right"><span className="sr-only">동작</span></Th></tr>
+              <tr><Th width="15rem">매장</Th><Th width="13rem">진행</Th><Th width="17rem">등록 현황</Th><Th>다음 할 일</Th><Th width="5.5rem" align="right"><span className="sr-only">종료</span></Th></tr>
             </thead>
             <tbody>
-              {visible.map((r) => (
-                <tr key={r.rid ?? `lead:${r.lead_id}`} className="border-t border-gray-100 align-top">
+              {visible.map((r) => {
+                const step = STEP_AT[r.stage];
+                const n = r.conflicts?.length ?? 0;
+                const showDetail = r.rid !== null && (r.stage === "동의" || r.stage === "승인대기" || r.stage === "완료");
+                return (
+                <tr key={r.rid ?? `lead:${r.lead_id}`} className="border-t border-gray-100 align-middle">
+                  {/* 매장 — 이름 한 줄, 그 아래 플랜·연락처 */}
                   <Td>
-                    <div className="flex items-center gap-1.5 min-w-[9rem]">
+                    <div className="flex items-center gap-1.5">
                       {r.campus && <CampusMark campus={r.campus} size={14} />}
-                      <span className="font-semibold text-gray-900 break-keep">{r.name}</span>
+                      <span className="font-semibold text-gray-900 truncate max-w-[11rem]" title={r.name}>{r.name}</span>
                       {r.is_test && <Chip tone="gray">테스트</Chip>}
-                      {r.rid !== null && <span className="text-gray-400 text-[11.5px]">{r.rid}</span>}
                     </div>
-                    {r.at && <span className="block text-[11.5px] text-gray-400 mt-0.5">{new Date(r.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}
+                    <p className="text-[12px] text-gray-500 mt-0.5 whitespace-nowrap">
+                      {r.tier === "FREE" || !r.tier ? "무료" : `${r.tier === "CONTENT" ? "Premium" : r.tier}${r.fee ? ` ${(r.fee / 1000).toLocaleString()}천원` : ""}`}
+                      {r.owner_phone ? ` · ${r.owner_phone.replace(/(\d{3})(\d{3,4})(\d{4})/, "$1-$2-$3")}` : " · 휴대폰 없음"}
+                    </p>
                   </Td>
-                  {/* 영업 단계(후보 탭)와 온보딩 단계(이 탭)를 나란히 — "후보에선 계약 완료인데 여긴 미발급" 이 그대로 보인다 */}
-                  <Td>{r.lead_stage ? <Chip tone={LEAD_TONE[r.lead_stage] ?? "gray"}>{r.lead_stage}</Chip> : <span className="text-gray-300" title="파트너 후보에 이어진 건이 없습니다">-</span>}</Td>
-                  <Td><Chip tone={TONE[r.stage]}>{r.stage}</Chip></Td>
-                  <Td>{r.tier === "FREE" ? <span className="text-gray-500">무료</span> : <span className="font-semibold text-gray-900">{r.tier === "CONTENT" ? "Premium" : r.tier ?? "-"}{r.fee ? ` · ${r.fee.toLocaleString()}원` : ""}</span>}</Td>
-                  <Td>{r.owner_phone ?? <span className="text-amber-700 text-[12px]">대표자 휴대폰 없음<span className="block text-gray-400">번호 확인 없이 발급됩니다</span></span>}</Td>
+                  {/* 진행 — 링크·동의·등록·승인 네 칸 + 지금 누가 할 차례인지 */}
                   <Td>
-                    <p className="text-[12.5px] text-gray-600">{r.todo ?? HELP[r.stage]}</p>
-                    {r.blocked && <p className="text-[11.5px] text-gray-400 mt-0.5">{r.blocked}</p>}
-                    {r.check && <CheckChips c={r.check} email={r.entered_email} />}
-                    {r.rid !== null && (r.stage === "동의" || r.stage === "완료" || r.stage === "승인대기") && (
-                      <button type="button" className="mt-1 text-[12px] text-navy font-semibold underline" onClick={() => setDetailOf({ rid: r.rid!, name: r.name })}>상세 — 사장님이 적은 값·등록한 혜택 보기</button>
-                    )}
-                    {r.rid !== null && (r.stage === "승인대기" || (r.conflicts?.length ?? 0) > 0) && (
-                      <div className="mt-1.5 space-y-1.5">
-                        {r.stage === "승인대기" && <Button size="sm" variant="primary" disabled={applying === r.rid} onClick={() => applyRow(r)}>{applying === r.rid ? "승인 중…" : "승인"}</Button>}
-                        {(r.conflicts ?? []).map((c) => (
-                          <div key={c.field} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[12px] text-amber-900">
-                            <b>{c.label}</b> — 지금 <span className="font-mono">{c.theirs}</span> · 사장님 <span className="font-mono">{c.ours}</span>
-                            <button type="button" className="ml-2 underline font-semibold" onClick={() => takeOwnerValue(r, c)}>사장님 값으로</button>
-                          </div>
-                        ))}
-                        {rowMsg[r.rid] && <p className={`text-[11.5px] ${rowMsg[r.rid].ok ? "text-navy" : "text-red-600"}`} role="status">{rowMsg[r.rid].text}</p>}
-                      </div>
-                    )}
-                    {r.stage === "후보" && (
-                      <div className="mt-1.5">
-                        <Button size="sm" variant="primary" icon={<IconBuildingStore size={13} />} disabled={making === r.lead_id} onClick={() => makeStore(r)}>{making === r.lead_id ? "만드는 중…" : "매장 만들기"}</Button>
-                        {r.lead_id && makeErr[r.lead_id] && <p className="text-[11.5px] text-red-600 mt-1">{makeErr[r.lead_id]}</p>}
-                      </div>
-                    )}
-                    {r.rid !== null && (r.stage === "미발급" || r.stage === "대기") && (
-                      <div className="mt-1.5">
-                        {/* lid 를 실어 보내야 사장님이 온보딩을 마칠 때 후보 단계가 '계약 완료' 로 올라간다 */}
-                        <OnboardLink rid={r.rid} lid={r.lead_id} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} />
-                      </div>
-                    )}
+                    {step >= 0 ? (
+                      <>
+                        <div className="flex items-center gap-1" aria-hidden="true">
+                          {STEPS.map((st, i) => <span key={st} className={`h-1.5 w-8 rounded-full ${i < step ? "bg-navy" : "bg-gray-200"}`} />)}
+                        </div>
+                        <p className="mt-1 whitespace-nowrap"><Chip tone={TONE[r.stage]}>{LABEL[r.stage]}</Chip></p>
+                      </>
+                    ) : <Chip tone="gray">{LABEL[r.stage]}</Chip>}
+                  </Td>
+                  {/* 등록 현황 — 사장님이 무엇을 넣었나 */}
+                  <Td>{r.check ? <CheckChips c={r.check} email={r.entered_email} /> : <span className="text-[12px] text-gray-300">—</span>}</Td>
+                  {/* 다음 할 일 — 한 문장 + 버튼 하나 */}
+                  <Td>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {r.stage === "후보" && <><span className="text-[12.5px] text-gray-600">매장을 만들어야 링크를 낼 수 있습니다</span><Button size="sm" variant="primary" icon={<IconBuildingStore size={13} />} disabled={making === r.lead_id} onClick={() => makeStore(r)}>{making === r.lead_id ? "만드는 중…" : "매장 만들기"}</Button></>}
+                      {r.rid !== null && r.stage === "미발급" && <OnboardLink rid={r.rid} lid={r.lead_id} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} />}
+                      {r.rid !== null && r.stage === "대기" && <><span className="text-[12.5px] text-gray-600">사장님이 링크를 열기를 기다리는 중</span><OnboardLink rid={r.rid} lid={r.lead_id} name={r.name} campus={r.campus ?? "경북대"} tier={r.tier} fee={r.fee} ownerPhone={r.owner_phone} actor={actor} autoOpen={justAdded?.rid === r.rid} /></>}
+                      {r.stage === "동의" && <span className="text-[12.5px] text-gray-600">사장님이 혜택을 등록하는 중 — 기다리면 됩니다</span>}
+                      {r.stage === "승인대기" && <><span className="text-[12.5px] font-semibold text-amber-800">등록 내용 확인 후 승인{n ? ` · 값 다른 칸 ${n}개` : ""}</span><Button size="sm" variant="primary" disabled={applying === r.rid} onClick={() => applyRow(r)}>{applying === r.rid ? "승인 중…" : "승인"}</Button></>}
+                      {r.stage === "완료" && <span className="text-[12.5px] text-gray-500">할 일 없음{n ? ` · 값 다른 칸 ${n}개 확인` : ""}</span>}
+                      {r.stage === "종이계약" && <span className="text-[12.5px] text-gray-400">온보딩 이전 계약 — 할 일 없음</span>}
+                      {showDetail && <Button size="sm" onClick={() => setDetailOf({ rid: r.rid!, name: r.name })}>상세</Button>}
+                    </div>
+                    {r.lead_id && makeErr[r.lead_id] && <p className="text-[11.5px] text-red-600 mt-1">{makeErr[r.lead_id]}</p>}
+                    {r.rid !== null && rowMsg[r.rid] && <p className={`text-[11.5px] mt-1 ${rowMsg[r.rid].ok ? "text-navy" : "text-red-600"}`} role="status">{rowMsg[r.rid].text}</p>}
                   </Td>
                   <Td align="right">{r.rid !== null && <EndContractButton rid={r.rid} name={r.name} actor={actor} onDone={load} compact />}</Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </Table>
         )}
@@ -300,11 +323,16 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
         </p>
       )}
       <p className="text-[11.5px] text-gray-400 mt-2">
-        <b>영업</b>은 파트너 후보의 단계이고 <b>온보딩</b>은 이 탭이 흔적으로 되짚은 것입니다 — 임시 PIN 이 남아 있으면 <b>대기</b>, 온보딩 원장에 기록이 있으면 <b>동의·완료</b>. 사장님이 온보딩을 마치면 영업 단계도 <b>계약 완료</b>로 올라갑니다.
+        진행 막대는 <b>링크 → 동의 → 등록 → 승인</b> 네 단계입니다. <b>우리 확인 필요</b>는 사장님 등록이 끝나 담당자가 [상세]로 확인하고 [승인]할 차례라는 뜻입니다. 승인하면 비어 있던 칸이 채워지고, 이미 적힌 값은 바뀌지 않습니다.
         <b>종료</b>는 제휴를 끄고 종료일을 남깁니다(삭제가 아닙니다 — 파트너 매장의 '계약 종료' 칸에서 되돌립니다).
         매장 정보 수정과 발급은 <button type="button" className="underline" onClick={() => onGo?.("astro-ops")}>파트너 매장</button> 에서도 그대로 됩니다. · {actor}
       </p>
-      {detailOf && <DetailModal rid={detailOf.rid} name={detailOf.name} onClose={() => setDetailOf(null)} />}
+      {detailOf && (() => {
+        const r = (rows ?? []).find((x) => x.rid === detailOf.rid);
+        return <DetailModal rid={detailOf.rid} name={detailOf.name} onClose={() => setDetailOf(null)}
+          conflicts={r?.conflicts ?? []} onTake={r ? (c) => takeOwnerValue(r, c) : undefined}
+          canApprove={r?.stage === "승인대기"} onApprove={r ? () => { applyRow(r); setDetailOf(null); } : undefined} approving={applying === detailOf.rid} />;
+      })()}
       {adding && (
         <NewStorePanel
           actor={actor}
