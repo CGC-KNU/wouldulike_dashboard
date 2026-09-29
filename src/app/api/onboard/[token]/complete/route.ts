@@ -62,7 +62,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     phone_verified: false, email: (b.email ?? "").trim(), kakao_id, ip, ua, at, stamp_ok, kit_address, starts_on,
   };
   const copies = await persistRecord(rec, { ownerToken: access });
-  if (!anyCopy(copies)) return NextResponse.json({ detail: "완료 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.", errors: copies.errors }, { status: 503 });
+  if (!anyCopy(copies)) return NextResponse.json({ detail: `완료 기록을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요. 계속 그러면 담당자에게 이 문구를 보내 주세요 — ${copies.errors.join(" / ")}`, errors: copies.errors }, { status: 503 });
 
   /**
    * 3) 후보 단계 → 계약 완료 (최선 노력).
