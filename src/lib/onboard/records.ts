@@ -116,7 +116,11 @@ async function appendByUpdate(url: string, token: string, id: string, sheet: str
     const post = (body: Record<string, unknown>) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, token }), redirect: "follow", cache: "no-store" }).then((r) => r.json() as Promise<{ ok?: boolean; values?: unknown[][]; error?: string }>);
     const cur = await post({ op: "read", id, range: `${sheet}!A1:A20000` });
     if (!cur.ok) return `읽기 실패 ${cur.error ?? ""}`;
-    const next = (cur.values?.length ?? 0) + 1;
+    // 브리지 read 는 범위 전체를 빈 칸까지 채워 돌려줄 수 있다 — 값이 있는 마지막 줄 다음에 적는다.
+    const vals = cur.values ?? [];
+    let last = 0;
+    vals.forEach((r, i) => { if (r.some((c) => c !== "" && c !== null && c !== undefined)) last = i + 1; });
+    const next = last + 1;
     const col = String.fromCharCode(64 + Math.min(row.length, 26)); // 24열 = X
     const w = await post({ op: "update", id, range: `${sheet}!A${next}:${col}${next}`, values: [row.map((v) => (v === null ? "" : v))] });
     return w.ok ? true : `update 실패 ${w.error ?? ""}`;
