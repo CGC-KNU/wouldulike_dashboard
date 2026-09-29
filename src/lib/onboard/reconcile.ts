@@ -32,15 +32,55 @@ export interface LedgerRow {
 const COLS = ["at", "kind", "short_id", "rid", "lid", "name", "campus", "plan", "fee", "owner_name", "biz_no", "phone", "phone_verified", "email", "kakao_id", "signature", "terms_version", "terms_hash", "checks", "ip", "ua", "stamp_ok", "kit_address", "starts_on"] as const;
 
 export async function readLedger(): Promise<LedgerRow[]> {
-  const values = await sheetRead(`A2:X10000`);
+  const [values, fromBackend] = await Promise.all([sheetRead(`A2:X10000`).catch(() => []), readBackendLedger().catch(() => [])]);
   const out: LedgerRow[] = [];
+  const seen = new Set<string>();
   for (const r of values) {
     const o = {} as Record<string, unknown>;
     COLS.forEach((c, i) => (o[c] = r[i] ?? ""));
     const rid = Number(o.rid);
     if (!rid || !o.at) continue;
     o.rid = rid; o.fee = Number(o.fee) || 0;
+    seen.add(`${o.kind}|${o.short_id}|${o.at}`);
     out.push(o as unknown as LedgerRow);
+  }
+  // 시트에 없는 기록은 백엔드 사본으로 채운다 (0929). 같은 기록이 둘 다 있으면 시트 것을 쓴다.
+  for (const r of fromBackend) if (!seen.has(`${r.kind}|${r.short_id}|${r.at}`)) out.push(r);
+  out.sort((a, b) => a.at.localeCompare(b.at));
+  return out;
+}
+
+/**
+ * 백엔드 활동기록(astro Activity, target_type=store) 에서 동의·완료 기록을 읽는다 (0929).
+ *
+ * 0929 실측: 시트 원장 쓰기가 "문서 접근 권한 없음", 드라이브가 "일일 한도 초과"로 죽어 있었다.
+ * 세 사본 중 백엔드만 살아 있었는데, 현황판은 시트만 읽어서 사장님이 동의·완료를 해도 화면이 몰랐다.
+ * 백엔드 사본은 records.ts persistRecord 가 ConsentRecord 전체를 JSON 으로 body 에 넣는다 —
+ * 그걸 시트 한 줄과 같은 모양(LedgerRow)으로 펴서 합친다. 시트가 살아 있으면 그쪽이 우선이다.
+ */
+const KIND_OF: Record<string, string> = { 계약동의: "consent", 온보딩완료: "complete", 온보딩수정: "revise" };
+async function readBackendLedger(): Promise<LedgerRow[]> {
+  const { remoteGet } = await import("@/lib/draft/remote");
+  const r = await remoteGet<{ activities: { target_type: string; target_id: string; kind: string; body: string; created_at: string }[] }>("/api/astro/activities/");
+  if (!r.handled || !r.ok) return [];
+  const out: LedgerRow[] = [];
+  for (const a of r.data?.activities ?? []) {
+    const kind = KIND_OF[a.kind];
+    if (!kind || a.target_type !== "store") continue;
+    let rec: Record<string, unknown>;
+    try { rec = JSON.parse(a.body) as Record<string, unknown>; } catch { continue; }
+    const rid = Number(rec.rid ?? a.target_id);
+    if (!rid) continue;
+    const s = (k: string) => (rec[k] == null ? "" : String(rec[k]));
+    out.push({
+      at: s("at") || a.created_at, kind, short_id: s("short_id"), rid, lid: s("lid"),
+      name: s("name"), campus: s("campus"), plan: s("plan"), fee: Number(rec.fee) || 0,
+      owner_name: s("owner_name"), biz_no: s("biz_no"), phone: s("phone"), phone_verified: rec.phone_verified ? "Y" : "N",
+      email: s("email"), kakao_id: s("kakao_id"), signature: s("signature"),
+      terms_version: s("terms_version"), terms_hash: s("terms_hash"), checks: typeof rec.checks === "string" ? rec.checks : JSON.stringify(rec.checks ?? {}),
+      ip: s("ip"), ua: s("ua"), stamp_ok: rec.stamp_ok === undefined ? "" : rec.stamp_ok ? "Y" : "N",
+      kit_address: s("kit_address"), starts_on: s("starts_on"),
+    });
   }
   return out;
 }
