@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { wrongStore } from "@/lib/onboard/storeGuard";
 import { cookies } from "next/headers";
 import { phoneMatches, tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
 import { readStorePin } from "@/lib/onboard/pinRead";
@@ -14,6 +15,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   if (!v.ok) return NextResponse.json({ success: false, message: `링크가 유효하지 않습니다 (${v.reason}).` }, { status: 400 });
   const access = (await cookies()).get("access_token")?.value;
   if (!access) return NextResponse.json({ success: false, message: "로그인이 필요합니다." }, { status: 401 });
+  // 0929: 다른 매장 토큰으로 이 매장 값을 쓰지 않는다 (lib/onboard/storeGuard.ts).
+  const mismatch = wrongStore(access, v.payload.rid);
+  if (mismatch) return mismatch;
 
   const { new_pin, phone } = (await req.json().catch(() => ({}))) as { new_pin?: string; phone?: string };
 

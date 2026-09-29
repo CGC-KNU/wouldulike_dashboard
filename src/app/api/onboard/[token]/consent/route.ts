@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { wrongStore } from "@/lib/onboard/storeGuard";
 import { cookies } from "next/headers";
 import { decodeJwt } from "@/lib/jwt";
 import { phoneMatches, shortId, stepStamp, verifyOnboardToken } from "@/lib/onboard/token";
@@ -22,6 +23,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const jar = await cookies();
   const access = jar.get("access_token")?.value;
   if (!access) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
+  // 0929: 다른 매장 토큰으로 이 매장 값을 쓰지 않는다 (lib/onboard/storeGuard.ts).
+  const mismatch = wrongStore(access, p.rid);
+  if (mismatch) return mismatch;
   let kakao_id: string | null = null;
   try { const j = decodeJwt<{ kakao_id?: number | string }>(access); kakao_id = j.kakao_id != null ? String(j.kakao_id) : null; } catch { /* 무시 */ }
 

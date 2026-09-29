@@ -32,8 +32,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ token: stri
     try {
       const j = decodeJwt<{ restaurant_id?: number; restaurant_ids?: number[]; kakao_id?: number | string; user_id?: number }>(access);
       const rids = [j.restaurant_id, ...(j.restaurant_ids ?? [])].filter((x): x is number => typeof x === "number");
-      // 토큰에 매장이 안 실려 있는 백엔드 JWT 도 있다 — 그 경우는 세션 존재만 인정하고 매장 확인은 백엔드 호출에서 걸린다.
-      session = { ok: rids.length === 0 || rids.includes(p.rid), kakao_id: j.kakao_id != null ? String(j.kakao_id) : null };
+      // 0929: 매장 번호가 **같을 때만** 세션으로 인정한다. 전에는 번호 없는 토큰도 통과시켰는데, 백엔드는
+      // 그런 점주 토큰을 "그 계정의 유일한 매장"으로 풀어서 — 이미 이층 점주인 계정이 일공초밥 링크를 열자
+      // 매장명이 이층으로 떴다. 통과시키지 않으면 카카오로 다시 들어가 이 매장 토큰을 새로 받는다.
+      session = { ok: rids.includes(p.rid), kakao_id: j.kakao_id != null ? String(j.kakao_id) : null };
     } catch {
       session = { ok: false, kakao_id: null };
     }
