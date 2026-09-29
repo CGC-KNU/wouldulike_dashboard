@@ -154,9 +154,9 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
               {visible.map((r) => (
                 <tr key={r.rid ?? `lead:${r.lead_id}`} className="border-t border-gray-100 align-top">
                   <Td>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-[9rem]">
                       {r.campus && <CampusMark campus={r.campus} size={14} />}
-                      <span className="font-semibold text-gray-900">{r.name}</span>
+                      <span className="font-semibold text-gray-900 break-keep">{r.name}</span>
                       {r.rid !== null && <span className="text-gray-400 text-[11.5px]">{r.rid}</span>}
                     </div>
                     {r.at && <span className="block text-[11.5px] text-gray-400 mt-0.5">{new Date(r.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}
@@ -165,7 +165,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                   <Td>{r.lead_stage ? <Chip tone={LEAD_TONE[r.lead_stage] ?? "gray"}>{r.lead_stage}</Chip> : <span className="text-gray-300" title="파트너 후보에 이어진 건이 없습니다">-</span>}</Td>
                   <Td><Chip tone={TONE[r.stage]}>{r.stage}</Chip></Td>
                   <Td>{r.tier === "FREE" ? <span className="text-gray-500">무료</span> : <span className="font-semibold text-gray-900">{r.tier === "CONTENT" ? "Premium" : r.tier ?? "-"}{r.fee ? ` · ${r.fee.toLocaleString()}원` : ""}</span>}</Td>
-                  <Td>{r.owner_phone ?? <span className="text-amber-700">없음 — 본인 확인 불가</span>}</Td>
+                  <Td>{r.owner_phone ?? <span className="text-amber-700 text-[12px]">대표자 휴대폰 없음<span className="block text-gray-400">번호 확인 없이 발급됩니다</span></span>}</Td>
                   <Td>
                     <p className="text-[12.5px] text-gray-600">{r.todo ?? HELP[r.stage]}</p>
                     {r.blocked && <p className="text-[11.5px] text-gray-400 mt-0.5">{r.blocked}</p>}

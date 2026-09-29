@@ -30,6 +30,8 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
   const [copied, setCopied] = useState<"url" | "text" | null>(null);
   // 기존 PIN 이 있으면 발급이 그것을 갈아엎는다 — 운영 중인 매장에서 사고가 나는 지점이라 미리 경고한다.
   const [hasPin, setHasPin] = useState<boolean | null>(null);
+  /** 0929: PIN 이 누구 것인가 — 우리가 심은 임시 PIN 을 "사장님 PIN" 으로 경고하지 않으려고 */
+  const [pinState, setPinState] = useState<"none" | "temp" | "owner" | "unreadable" | null>(null);
   // 서버가 실제로 "PIN 이 있어 막았다"(409 has_pin)고 답한 상태.
   // 이때 같은 버튼을 다시 누르는 건 아무 의미가 없다 — 라우트에 force 가 없어 같은 409 가 온다.
   // 그래서 재시도를 권하지 않고, 실제로 통하는 길을 적는다 (0921).
@@ -49,8 +51,9 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
     if (!open || hasPin !== null) return;
     // 기존 PIN 이 있으면 발급이 막힌다. 다만 우리가 심은 임시 PIN 이면 재발급이므로 서버가 허용한다 —
     // 화면은 그 구분을 모르니 발급을 시도해 보고 409 일 때만 막힌 것으로 본다.
-    fetch(`/api/dashboard/restaurant?rid=${rid}`).then((r) => (r.ok ? r.json() : null))
-      .then((j: { has_pin?: boolean } | null) => setHasPin(Boolean(j?.has_pin))).catch(() => setHasPin(null));
+    fetch(`/api/onboard/pin-state?rid=${rid}`).then((r) => (r.ok ? r.json() : null))
+      .then((j: { state?: "none" | "temp" | "owner" | "unreadable" } | null) => { setPinState(j?.state ?? null); setHasPin(j?.state ? j.state !== "none" : null); })
+      .catch(() => { setPinState(null); setHasPin(null); });
   }, [open, hasPin, rid]);
 
   const issue = async () => {
@@ -111,11 +114,19 @@ export default function OnboardLink({ rid, lid = null, name, campus, tier, fee, 
                       카톡으로 전달된 링크도 그대로 열립니다. 아래 운영 항목에 번호를 먼저 넣어 주세요.
                     </span>}
               </p>
-              {hasPin === true && (
-                <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
-                  <b>이 매장은 이미 매장 PIN 이 있습니다.</b> 온보딩 중인 매장이면 그대로 <b>다시 발급</b>됩니다 —
-                  사장님이 정해 두신 PIN 은 새 임시값으로 바뀌고, 링크를 열어 다시 정하시게 됩니다.<br />
-                  <b>운영 중인 매장</b>(계약 시작일이 적힌 곳)만 막힙니다. 그 번호는 <b>손님 스탬프 적립·쿠폰 사용</b>에도 쓰여서입니다.
+              {/* 0929: 우리가 심은 임시 PIN 은 경고할 일이 아니다 — 수연님이 그걸 보고 멈췄다 */}
+              {pinState === "temp" && (
+                <p className="mb-2 text-[12px] text-gray-500">전에 링크를 낸 적이 있는 매장입니다. 다시 내도 괜찮습니다 — 예전 링크와 새 링크 둘 다 열립니다.</p>
+              )}
+              {pinState === "owner" && (
+                <p className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-700">
+                  사장님이 이미 PIN 을 정하셨습니다. <b>그 PIN 은 그대로 둡니다</b> — 새 링크로 들어오셔도 PIN 을 다시 정하실 필요가 없습니다.
+                </p>
+              )}
+              {pinState === "unreadable" && (
+                <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                  <b>9/25~9/28 사이에 정한 PIN 이 걸려 있어 지금은 읽을 수 없습니다.</b> 다시 발급하면 임시 PIN 으로 바뀌고,
+                  사장님이 링크에서 새로 정하시게 됩니다. 손님 적립에도 쓰는 번호라, 이미 장사에 쓰고 있다면 사장님께 먼저 말씀해 주세요.
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2">
