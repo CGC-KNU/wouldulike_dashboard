@@ -45,7 +45,8 @@ export default function QuoteBoard({ actor }: { actor: string }) {
     fetch("/api/astro/invoices/settings").then((r) => r.json()).then((d) => {
       const i = d.issuer ?? {};
       setIssuer({
-        name: i.name || ISSUER_FALLBACK.name, ceo: i.ceo || ISSUER_FALLBACK.ceo, biz_no: i.biz_no || ISSUER_FALLBACK.biz_no,
+        // 설정의 상호가 "코끼리 (우주라이크)" 로 들어가 있다 — 견적서가 서비스명을 따로 적으므로 괄호는 뺀다
+        name: String(i.name || ISSUER_FALLBACK.name).replace(/\s*\(.*?\)\s*/g, "").trim() || ISSUER_FALLBACK.name, ceo: i.ceo || ISSUER_FALLBACK.ceo, biz_no: i.biz_no || ISSUER_FALLBACK.biz_no,
         address: i.address || ISSUER_FALLBACK.address, email: i.email || ISSUER_FALLBACK.email,
         bank_name: i.bank_name || "", bank_account: i.bank_account || "", bank_holder: i.bank_holder || "",
       });
@@ -72,7 +73,7 @@ export default function QuoteBoard({ actor }: { actor: string }) {
       no: quoteNo(issued, s.restaurant_id), issued_on: issued, valid_to: addDays(issued, 14),
       store_name: o?.map_name || s.name, owner_name: o?.owner_name ?? "", biz_no: o?.biz_no ?? "", campus: o?.campus ?? "",
       plan, plan_desc: PLAN_DESC[plan],
-      fee: o?.monthly_fee != null && plan !== "FREE" ? o.monthly_fee : defaultQuoteFee(plan, o?.campus),
+      fee: pickFee(plan, o?.campus, o?.monthly_fee),
       starts_on: started,
       coupon_basic: o?.coupon_basic ?? "", coupon_limited: o?.coupon_limited ?? "",
       stamp: [o?.stamp_count ? `${o.stamp_count}개` : "", o?.stamp_reward ?? ""].filter(Boolean).join(" · "),
@@ -99,7 +100,7 @@ export default function QuoteBoard({ actor }: { actor: string }) {
     const tierPlan = store ? planFromTier(store.tier) : null;
     if (tierPlan && tierPlan !== v.plan) warn.plan = `매장 플랜은 ${PLAN_NAME[tierPlan]}인데 ${PLAN_NAME[v.plan]}로 발급합니다`; else ok.plan = PLAN_NAME[v.plan];
     if (v.plan !== "FREE" && v.fee !== def) warn.fee = `기본 단가 ${won(def)}와 다릅니다 (${v.campus || "상권 미지정"} ${PLAN_NAME[v.plan]})`;
-    else if (o?.monthly_fee != null && v.plan !== "FREE" && o.monthly_fee !== v.fee) warn.fee = `매장 운영값 ${won(o.monthly_fee)}과 다릅니다 — 부가세 포함 금액이 들어가 있지 않은지 확인`;
+    else if (o?.monthly_fee != null && v.plan !== "FREE" && o.monthly_fee !== v.fee) warn.fee = o.monthly_fee === Math.round(v.fee * 1.1) ? `매장 운영값 ${won(o.monthly_fee)}은 부가세 포함 금액이라 ${won(v.fee)}로 채웠습니다 — 파트너 매장에서 운영값도 고쳐 주세요` : `매장 운영값 ${won(o.monthly_fee)}과 다릅니다`;
     else ok.fee = v.plan === "FREE" ? "0원" : `${won(v.fee)} + 부가세`;
     if (!v.starts_on.endsWith("-01")) warn.starts = "약관상 개시일은 매월 1일입니다";
     else if (v.starts_on < v.issued_on) warn.starts = "발급일보다 이른 개시일입니다";
@@ -236,6 +237,18 @@ export default function QuoteBoard({ actor }: { actor: string }) {
   );
 }
 
+/**
+ * 월 이용료 기본값. 매장 운영값을 따르되, 운영값이 **기본 단가 × 1.1**(부가세 포함 금액)이면 기본 단가로 채운다 —
+ * 북성로 33,000·88왕족발 88,000 처럼 합계가 들어가 있는 매장이 있어 그대로 쓰면 부가세가 두 번 붙는다 (0929).
+ */
+function pickFee(plan: QuotePlan, campus: string | null | undefined, stored: number | null | undefined): number {
+  const def = defaultQuoteFee(plan, campus);
+  if (plan === "FREE") return 0;
+  if (stored == null || stored === 0) return def;
+  if (stored === Math.round(def * 1.1)) return def;
+  return stored;
+}
+
 function blank(): QuoteValues {
   const issued = todaySeoul();
   return {
@@ -279,8 +292,8 @@ function V({ k, on, children, block }: { k: Key; on: boolean; children: ReactNod
 }
 
 const box: CSSProperties = { border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden", background: "#fff" };
-const th: CSSProperties = { width: 92, padding: "9px 12px", fontSize: 11.5, fontWeight: 700, color: SOFT, background: TINT, verticalAlign: "top", borderBottom: `1px solid ${LINE}`, textAlign: "left" };
-const td: CSSProperties = { padding: "9px 12px", fontSize: 12.5, color: INK, borderBottom: `1px solid ${LINE}`, verticalAlign: "top", lineHeight: 1.5 };
+const th: CSSProperties = { width: 92, padding: "7px 12px", fontSize: 11.5, fontWeight: 700, color: SOFT, background: TINT, verticalAlign: "top", borderBottom: `1px solid ${LINE}`, textAlign: "left" };
+const td: CSSProperties = { padding: "7px 12px", fontSize: 12.5, color: INK, borderBottom: `1px solid ${LINE}`, verticalAlign: "top", lineHeight: 1.5 };
 
 const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; mark: boolean }>(function Sheet({ v, issuer, mark }, ref) {
   const paid = v.plan !== "FREE";
@@ -295,7 +308,7 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
     ["식사권 제외 조건", v.exclusions || "없음"],
   ];
   return (
-    <div ref={ref} style={{ width: W, height: H, background: "#fff", color: INK, fontFamily: "Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", padding: "34px 40px 26px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div ref={ref} style={{ width: W, height: H, background: "#fff", color: INK, fontFamily: "Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif", padding: "30px 40px 22px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 13 }}>
       {/* 머리 */}
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -319,7 +332,7 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
       <div style={{ height: 2, background: NAVY }} />
 
       {/* 공급자 · 수신 */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
         <Party label="공급자" rows={[
           ["상호", <><b>{issuer.name}</b> (서비스명 우주라이크) · 대표자 {issuer.ceo}</>],
           ["등록번호", <><b>{issuer.biz_no}</b> · 일반과세자</>],
@@ -335,7 +348,7 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
       </div>
 
       {/* 이용료 · 혜택 */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16, flex: 1, minHeight: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <SectionTitle>이용료 및 납부</SectionTitle>
           <div style={box}>
@@ -371,6 +384,7 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
         </div>
       </div>
 
+      <div style={{ flex: 1 }} />
       {/* 합계 띠 */}
       <div style={{ background: NAVY, color: "#fff", borderRadius: 10, padding: "14px 22px", display: "flex", alignItems: "baseline", gap: 14 }}>
         <span style={{ fontSize: 13, opacity: 0.8 }}>{paid ? `${PLAN_NAME[v.plan]} 월 이용료` : "무료 플랜"}</span>
