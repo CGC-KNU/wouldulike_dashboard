@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect, useRef } from "react";
 import { IconX } from "@tabler/icons-react";
 
 /**
@@ -325,17 +325,18 @@ export function StepTiles({
   onSelect?: (key: string) => void;
 }) {
   return (
-    <ol className="flex gap-2 overflow-x-auto pb-1 -mb-1">
+    /* 폰에서는 옆으로 밀지 않고 두 칸씩 쌓는다 (0929) */
+    <ol className="grid grid-cols-2 gap-2 md:flex md:overflow-x-auto md:pb-1 md:-mb-1">
       {steps.map((s, i) => {
         const alert = s.tone === "alert" && s.count > 0;
         const on = active === s.key;
         return (
-          <li key={s.key} className="flex items-center gap-2 shrink-0">
+          <li key={s.key} className="flex items-center gap-2 md:shrink-0 min-w-0">
             <button
               type="button"
               onClick={() => onSelect?.(s.key)}
               aria-pressed={on}
-              className={`${surface} min-w-[9.5rem] px-3.5 py-3 text-left transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-16px_rgba(5,0,114,0.35)] motion-reduce:hover:translate-y-0 ${focusRing} ${on ? "ring-2 ring-navy border-transparent" : ""}`}
+              className={`${surface} w-full md:w-auto md:min-w-[9.5rem] px-3.5 py-3 text-left transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-16px_rgba(5,0,114,0.35)] motion-reduce:hover:translate-y-0 ${focusRing} ${on ? "ring-2 ring-navy border-transparent" : ""}`}
             >
               <p className="text-[12px] font-medium text-gray-500">{s.label}</p>
               <p className={`text-[22px] font-bold leading-tight mt-0.5 tabular-nums ${alert ? "text-red-600" : s.tone === "good" ? "text-emerald-700" : "text-gray-900"}`}>
@@ -344,7 +345,7 @@ export function StepTiles({
               </p>
               {s.hint && <p className="text-[12px] text-gray-500 mt-0.5 truncate">{s.hint}</p>}
             </button>
-            {i < steps.length - 1 && <span className="text-gray-300" aria-hidden="true">›</span>}
+            {i < steps.length - 1 && <span className="hidden md:inline text-gray-300" aria-hidden="true">›</span>}
           </li>
         );
       })}
@@ -392,9 +393,40 @@ export function Card({
  * (0914 모바일 점검). 양 끝에 옅은 그늘을 둔다 — `background-attachment: local` 이라
  * 끝까지 밀면 그늘이 저절로 사라진다. 자바스크립트도 스크롤 이벤트도 필요 없다.
  */
-export function Table({ children, minWidth = "40rem" }: { children: ReactNode; minWidth?: string }) {
+export function Table({ children, minWidth = "40rem", stack = true }: { children: ReactNode; minWidth?: string; stack?: boolean }) {
+  /**
+   * 폰(768px 미만)에서는 표를 **한 행 = 한 장**으로 쌓는다 (0929 모바일 2차).
+   * 가로로 밀어 가며 읽던 걸 세로로 읽게 — 칸 이름은 머리줄(th)에서 가져와 각 칸 앞에 붙인다.
+   * 첫 칸은 행의 제목이라 이름 없이 굵게. 스타일은 globals.css 의 `.rtable`.
+   * 가로로 비교해야 의미가 있는 표(행렬 등)는 stack={false}.
+   */
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = ref.current;
+    if (!box || !stack) return;
+    const label = () => {
+      const heads = Array.from(box.querySelectorAll("thead th")).map((th) => {
+        const clone = th.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll(".sr-only,[aria-hidden='true']").forEach((n) => n.remove());
+        return (clone.textContent ?? "").trim();
+      });
+      box.querySelectorAll("tbody tr").forEach((tr) => {
+        let col = 0;
+        Array.from(tr.children).forEach((td) => {
+          const span = Number((td as HTMLTableCellElement).colSpan) || 1;
+          const want = span > 1 ? "" : heads[col] ?? "";
+          if (td.getAttribute("data-label") !== want) td.setAttribute("data-label", want);
+          col += span;
+        });
+      });
+    };
+    label();
+    const mo = new MutationObserver(label);
+    mo.observe(box, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, [stack]);
   return (
-    <div className="overflow-x-auto bg-[linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgba(16,24,40,0.10),rgba(16,24,40,0)),linear-gradient(to_left,rgba(16,24,40,0.10),rgba(16,24,40,0))] bg-[length:22px_100%,22px_100%,14px_100%,14px_100%] bg-[position:left_center,right_center,left_center,right_center] bg-no-repeat [background-attachment:local,local,scroll,scroll]">
+    <div ref={ref} className={`${stack ? "rtable " : ""}overflow-x-auto bg-[linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgba(16,24,40,0.10),rgba(16,24,40,0)),linear-gradient(to_left,rgba(16,24,40,0.10),rgba(16,24,40,0))] bg-[length:22px_100%,22px_100%,14px_100%,14px_100%] bg-[position:left_center,right_center,left_center,right_center] bg-no-repeat [background-attachment:local,local,scroll,scroll]`}>
       <table className="w-full text-[13px] border-collapse" style={{ minWidth }}>
         {children}
       </table>

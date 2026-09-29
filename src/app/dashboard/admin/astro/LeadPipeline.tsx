@@ -140,7 +140,7 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
         <div className="flex flex-wrap items-center gap-3">
           <Segmented<Campus | "all"> label="캠퍼스" value={campus} onChange={setCampus} options={[...campuses.map((c) => ({ key: c as Campus | "all", label: `${c} ${countIn(c)}`, icon: <CampusMark campus={c} size={15} /> })), { key: "all", label: "전체" }]} />
           <Segmented<"board" | "table"> label="보기" value={view} onChange={setView} options={[{ key: "board", label: "칸반", icon: <IconLayoutKanban /> }, { key: "table", label: "테이블", icon: <IconTable /> }]} />
-          <div className="relative flex-1 min-w-[12rem] max-w-xs ml-auto">
+          <div className="relative flex-1 min-w-[12rem] w-full md:w-auto md:max-w-xs md:ml-auto">
             <IconSearch size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="매장, 대표자, 담당, 메모" aria-label="후보 검색" className="pl-8" />
           </div>
