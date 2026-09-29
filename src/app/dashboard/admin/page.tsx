@@ -565,6 +565,9 @@ interface PushNotification {
   sent_at: string | null;
   target_kakao_ids: number[] | null;
   test_only: boolean;
+  send_success?: number;
+  send_failure?: number;
+  sending?: boolean;
   created_at: string;
 }
 
@@ -1208,8 +1211,8 @@ function MarketingTab() {
   const [sendingId, setSendingId] = useState<number | null>(null);
   const [sendResult, setSendResult] = useState<{ id: number; msg: string } | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setErr("");
     try {
       const res = await fetch("/api/dashboard/admin/notifications");
@@ -1219,12 +1222,19 @@ function MarketingTab() {
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "불러오기 실패");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   // 푸시 알림은 잠금 해제 후에만 로드
   useEffect(() => { if (pushUnlocked) load(); }, [pushUnlocked, load]);
+
+  const anySending = notifications.some((n) => n.sending);
+  useEffect(() => {
+    if (!anySending) return;
+    const timer = setInterval(() => { load(true); }, 5000);
+    return () => clearInterval(timer);
+  }, [anySending, load]);
 
   async function verifyPush() {
     if (!pushSecPw) { setPushVerifyErr("2차 비밀번호를 입력해주세요."); return; }
@@ -1312,12 +1322,16 @@ function MarketingTab() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail ?? "발송 실패");
+      const updated = data.notification;
       setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === id ? { ...n, sent: true, sent_at: data.notification?.sent_at ?? null } : n
-        )
+        prev.map((n) => (n.id === id && updated ? { ...n, ...updated } : n))
       );
-      setSendResult({ id, msg: `발송 완료 — 성공 ${data.success}건 / 실패 ${data.failure}건 (토큰 ${data.tokens_tried}개)` });
+      setSendResult({
+        id,
+        msg: updated?.sent
+          ? `발송 완료 — 성공 ${data.success ?? 0}건 / 실패 ${data.failure ?? 0}건`
+          : "발송을 시작했습니다. 순서대로 전달됩니다.",
+      });
     } catch (e: unknown) {
       setSendResult({ id, msg: `오류: ${e instanceof Error ? e.message : "발송 실패"}` });
     } finally {
@@ -1471,6 +1485,8 @@ function MarketingTab() {
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       {n.sent ? (
                         <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full">발송됨</span>
+                      ) : n.sending ? (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">발송 중</span>
                       ) : (
                         <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">예약</span>
                       )}
@@ -1488,6 +1504,8 @@ function MarketingTab() {
                     <p className="text-[10px] text-gray-400 mt-1">
                       예약: {fmtKST(n.scheduled_time)}
                       {n.sent_at && ` · 발송: ${fmtKST(n.sent_at)}`}
+                      {(n.sending || n.sent) && ((n.send_success ?? 0) > 0 || (n.send_failure ?? 0) > 0) &&
+                        ` · 성공 ${n.send_success ?? 0} / 실패 ${n.send_failure ?? 0}`}
                     </p>
                     {/* 발송 결과 인라인 표시 */}
                     {sendResult?.id === n.id && (
@@ -1503,7 +1521,7 @@ function MarketingTab() {
                         disabled={sendingId === n.id}
                         className="text-[10px] px-2 py-1.5 bg-periwinkle text-white rounded-lg hover:bg-periwinkle/90 disabled:opacity-60 transition-colors font-semibold"
                       >
-                        {sendingId === n.id ? "발송 중..." : "지금 발송"}
+                        {sendingId === n.id ? "시작 중..." : n.sending ? "이어서 발송" : "지금 발송"}
                       </button>
                     )}
                     {!n.sent && (
