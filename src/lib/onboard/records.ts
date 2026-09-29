@@ -99,10 +99,28 @@ export async function sheetAppend(row: (string | number | boolean | null)[], she
     const text = await res.text().catch(() => "");
     let j: { ok?: boolean; error?: string } = {};
     try { j = JSON.parse(text) as typeof j; } catch { return `시트 응답이 JSON 이 아님 (${res.status}) ${text.slice(0, 80)}`; }
-    return j.ok ? true : `시트 ${j.error ?? `실패 (${res.status})`}`;
+    if (j.ok) return true;
+    /**
+     * 0929: 브리지의 append 만 "요청한 문서를 액세스할 권한이 없습니다" 로 실패한다 — 같은 탭에 update 는
+     * 되고 소유자도 coggiri629 다. 스크립트 쪽 문제라 여기서 돌아간다: 마지막 줄을 읽고 그다음 줄에 update.
+     */
+    const viaUpdate = await appendByUpdate(url, token, id, sheet, row);
+    return viaUpdate === true ? true : `시트 ${j.error ?? `실패 (${res.status})`} / 우회 ${viaUpdate}`;
   } catch (e) {
     return `시트 연결 실패 ${(e as Error).message}`;
   }
+}
+
+async function appendByUpdate(url: string, token: string, id: string, sheet: string, row: (string | number | boolean | null)[]): Promise<true | string> {
+  try {
+    const post = (body: Record<string, unknown>) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, token }), redirect: "follow", cache: "no-store" }).then((r) => r.json() as Promise<{ ok?: boolean; values?: unknown[][]; error?: string }>);
+    const cur = await post({ op: "read", id, range: `${sheet}!A1:A20000` });
+    if (!cur.ok) return `읽기 실패 ${cur.error ?? ""}`;
+    const next = (cur.values?.length ?? 0) + 1;
+    const col = String.fromCharCode(64 + Math.min(row.length, 26)); // 24열 = X
+    const w = await post({ op: "update", id, range: `${sheet}!A${next}:${col}${next}`, values: [row.map((v) => (v === null ? "" : v))] });
+    return w.ok ? true : `update 실패 ${w.error ?? ""}`;
+  } catch (e) { return `연결 실패 ${(e as Error).message}`; }
 }
 
 /** 원장 읽기 — 담당자 쪽 대조(reconcile.ts)가 쓴다. 범위는 "A2:X10000" 처럼 준다. */
