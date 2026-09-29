@@ -347,7 +347,7 @@ function Step0({ d, patch, rq, token, busy, run, post, onNext, sms }: StepProps 
       <div className="mt-5 rounded-2xl border border-navy/20 bg-navy/[0.03] p-4">
         <p className="text-[13.5px] font-semibold text-gray-900 mb-1">점주 대시보드 PIN 4자리 정하기 <span className="text-red-600">*</span></p>
         <p className="text-[12px] text-gray-600 mb-3">앞으로 카카오 로그인 뒤 이 번호로 매장을 확인합니다. <b>사장님만 아는 번호</b>로 정해 주세요.</p>
-        {!d.pin_set && !okPhone && <p className="text-[12px] text-gray-500 mb-3">위 <b>휴대폰 번호</b>를 먼저 적어 주세요. 미팅 때 알려주신 번호와 맞는지 확인합니다.</p>}
+        {!d.pin_set && !okPhone && <p className="text-[12px] text-gray-500 mb-3">위 <b>휴대폰 번호</b>를 먼저 적어 주세요. 계약서 사본과 연락에 씁니다.</p>}
         {d.pin_set ? (
           <p className="text-[13px] text-green-700 font-semibold">✓ PIN 을 설정했습니다.{d.pin_known ? <span className="ml-2 text-gray-800 font-bold tracking-[0.2em]">{d.pin_known}</span> : null}<span className="block text-[12px] font-normal text-gray-500 mt-0.5">이 번호는 등록을 마친 뒤 대시보드에서도 볼 수 있습니다.</span></p>
         ) : (
