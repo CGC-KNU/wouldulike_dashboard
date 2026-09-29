@@ -328,8 +328,13 @@ function NavLeaf({ n, on, badge, onSelect, nested }: { n: ToolNavItem; on: boole
   useEffect(() => {
     const el = btn.current, row = el?.closest("ul.overflow-x-auto") as HTMLElement | null;
     if (!on || !el || !row || window.innerWidth >= 768) return;
-    const x = el.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft;
-    row.scrollTo({ left: x - row.clientWidth / 2 + el.clientWidth / 2, behavior: "smooth" });
+    // 처음 그릴 때는 메뉴가 다 안 채워져 밀 거리가 없다 — 자리 잡는 동안 몇 번 더 맞춘다.
+    const center = () => {
+      const x = el.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft;
+      row.scrollLeft = Math.max(0, x - row.clientWidth / 2 + el.clientWidth / 2);
+    };
+    const timers = [0, 150, 600, 1500].map((ms) => setTimeout(center, ms));
+    return () => timers.forEach(clearTimeout);
   }, [on]);
   return (
     <li className="shrink-0 md:shrink">
