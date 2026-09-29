@@ -37,6 +37,7 @@ import {
   IconTags,
   IconTargetArrow,
   IconUserCircle,
+  IconFileDollar,
 } from "@tabler/icons-react";
 import { focusRing } from "./ui";
 
@@ -99,6 +100,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "astro-billing": IconCash,
   "astro-docs": IconFiles,
   "astro-tax": IconFileInvoice,
+  "astro-quotes": IconFileDollar,
   "probe-metrics": IconChartBar,
   "probe-quality": IconAlertTriangle,
   "probe-mileage": IconGift,
