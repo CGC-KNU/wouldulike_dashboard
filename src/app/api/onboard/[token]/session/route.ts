@@ -51,13 +51,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
    */
   const cur = await readStorePin(p.rid);
   const ownerPin = cur.pin && !cur.is_temp ? cur.pin : null;
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/verify-owner/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
-    body: JSON.stringify({ restaurant_id: p.rid, pin: ownerPin ?? tempPinFor(p.rid) }),
-    cache: "no-store",
-  });
-  const data = (await res.json().catch(() => ({}))) as { success?: boolean; access?: string; refresh?: string; message?: string; restaurant_id?: number };
+  // 읽어 온 PIN 으로 먼저, 안 되면 임시 PIN 으로 한 번 더 — 읽기가 어긋나도(0929 13:45) 링크가 죽지 않게.
+  const verify = async (pin: string) => {
+    const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/verify-owner/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
+      body: JSON.stringify({ restaurant_id: p.rid, pin }),
+      cache: "no-store",
+    });
+    const d = (await r.json().catch(() => ({}))) as { success?: boolean; access?: string; refresh?: string; message?: string; restaurant_id?: number };
+    return { r, d };
+  };
+  let { r: res, d: data } = await verify(ownerPin ?? tempPinFor(p.rid));
+  if (ownerPin && (!res.ok || !data.success)) ({ r: res, d: data } = await verify(tempPinFor(p.rid)));
 
   if (!res.ok || !data.success || !data.access) {
     // 임시 PIN 도 아니고 읽을 수 있는 PIN 도 없다 = 0925~0928 사이에 바뀐 줄. 담당자가 링크를 다시 내면 새 임시 PIN 이 심긴다.
