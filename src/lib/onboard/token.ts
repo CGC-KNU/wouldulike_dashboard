@@ -55,7 +55,12 @@ export function phoneTag(phone: string): string {
 
 /** 대조 — 토큰에 표가 없으면 통과(확인할 근거가 없으니 막지 않는다). */
 export function phoneMatches(p: OnboardPayload, phone: string): boolean {
-  if (!p.ph) return true;
+  /**
+   * 0929 민열님: "번호 인증 자체를 없애. 어차피 링크는 사장님한테만 카톡으로 주는데."
+   * 서버가 대조를 안 하므로 이미 나간 링크(번호표가 실린 것)도 그대로 통과한다. 함수와 인자는
+   * 부르는 곳 다섯 군데를 안 건드리려고 남긴다. 다시 켜려면 아래 한 줄을 지운다.
+   */
+  if (p.ph || !p.ph) return true;
   const a = Buffer.from(p.ph), b = Buffer.from(phoneTag(phone));
   return a.length === b.length && timingSafeEqual(a, b);
 }
