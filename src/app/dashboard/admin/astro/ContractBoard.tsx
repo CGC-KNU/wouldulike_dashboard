@@ -32,7 +32,7 @@ interface Row {
   check?: Check | null;
   entered_email?: string | null;
 }
-interface Check { pin: boolean; photos: string[]; stamp: { on: boolean; target: number | null; steps: { at: number; reward: string }[] }; coupons: { title: string; subtitle: string }[]; special: { title: string; subtitle: string; active?: boolean }[] }
+interface Check { pin: boolean; photos: string[]; stamp: { on: boolean; target: number | null; steps: { at: number; reward: string }[]; notes?: string }; coupons: { title: string; subtitle: string }[]; special: { title: string; subtitle: string; active?: boolean }[] }
 
 /** 등록 현황 칩 — 한눈에 무엇이 비었는지 (민열님 0929) */
 function CheckChips({ c, email }: { c: Check; email?: string | null }) {
@@ -79,7 +79,7 @@ function DetailModal({ rid, name, onClose }: { rid: number; name: string; onClos
           </div>) : <p className="text-gray-400 mb-4">아직 동의 기록이 없습니다.</p>}
           <p className="text-[12px] font-semibold text-gray-500 mb-1">등록한 것</p>
           <div className="mb-3"><CheckChips c={d.check} email={(e?.email as string) || null} /></div>
-          <Row k="스탬프" v={d.check.stamp.on ? `${d.check.stamp.target ?? "?"}개 한 바퀴 · ` + d.check.stamp.steps.map((x) => `${x.at}개 ${x.reward}`).join(" · ") : ""} />
+          <Row k="스탬프" v={d.check.stamp.on ? d.check.stamp.steps.map((x) => `${x.at}개 → ${x.reward}`).join(" · ") + (d.check.stamp.notes ? ` (${d.check.stamp.notes})` : "") : ""} />
           <Row k="쿠폰" v={d.check.coupons.map((c) => `${c.title}${c.subtitle ? ` (${c.subtitle})` : ""}`).join(" · ")} />
           <Row k="특별 쿠폰" v={d.check.special.map((c) => `${c.title}${c.subtitle ? ` (${c.subtitle})` : ""}${c.active === false ? " · 승인 대기" : ""}`).join(" · ")} />
           <div className="mt-3"><p className="text-gray-500 mb-1.5">사진 {d.check.photos.length}장</p>
