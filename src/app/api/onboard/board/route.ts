@@ -63,7 +63,7 @@ export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
 
-  // 0929: 임시 PIN 폐지 — '링크를 냈다' 는 이제 발급 기록(활동 kind=온보딩링크발급)으로 안다.
+  // 0929: 임시 PIN 폐지 — '링크를 냈다' 는 이제 발급 기록(활동 kind=링크발급)으로 안다.
   const issuedRes = remoteGet<{ activities: { target_type: string; target_id: string; kind: string; created_at: string }[] }>("/api/astro/activities/");
   const [backend, remote, ledger, leadsRes] = await Promise.all([
     fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/", "include_inactive=1", true),
@@ -105,7 +105,7 @@ export async function GET() {
   const issuedAt = new Map<number, string>();
   const ir = await issuedRes;
   if (ir.handled && ir.ok) for (const a of ir.data?.activities ?? []) {
-    if (a.kind !== "온보딩링크발급" || a.target_type !== "store") continue;
+    if (a.kind !== "링크발급" || a.target_type !== "store") continue;
     const rid = Number(a.target_id); if (!rid) continue;
     if (!issuedAt.has(rid) || (issuedAt.get(rid)! < a.created_at)) issuedAt.set(rid, a.created_at);
   }
