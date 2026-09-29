@@ -34,8 +34,9 @@ async function loadStores(): Promise<Map<number, { tier: string | null; is_affil
   for (const r of backend?.restaurants ?? []) {
     m.set(r.restaurant_id, { tier: r.tier ?? null, is_affiliate: Boolean(r.is_affiliate), ops: ops.get(r.restaurant_id) ?? null });
   }
-  // 운영 행만 있고 식당 목록에 없는 경우(비제휴 제외 등)도 버리지 않는다 — 반영 대상일 수 있다
-  for (const [rid, o] of ops) if (!m.has(rid)) m.set(rid, { tier: null, is_affiliate: false, ops: o });
+  // 0929: 운영 행만 있고 매장 본체가 없는 건 **지운 매장**이다(목록은 include_inactive=1 이라 비제휴도 이미 들어 있다).
+  // 전에는 이것도 반영 대상으로 넣어 일괄 반영이 "매장 본체 404" 를 냈다.
+  if (!backend?.restaurants) for (const [rid, o] of ops) if (!m.has(rid)) m.set(rid, { tier: null, is_affiliate: false, ops: o });
   return m;
 }
 

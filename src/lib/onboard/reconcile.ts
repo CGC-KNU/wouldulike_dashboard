@@ -42,6 +42,7 @@ export async function readLedger(rid?: number): Promise<LedgerRow[]> {
     const rid = Number(o.rid);
     if (!rid || !o.at) continue;
     o.rid = rid; o.fee = Number(o.fee) || 0;
+    o.starts_on = kstDate(String(o.starts_on ?? ""));
     seen.add(`${o.kind}|${o.short_id}|${o.at}`);
     out.push(o as unknown as LedgerRow);
   }
@@ -80,7 +81,7 @@ async function readBackendLedger(rid?: number): Promise<LedgerRow[]> {
       email: s("email"), kakao_id: s("kakao_id"), signature: s("signature"),
       terms_version: s("terms_version"), terms_hash: s("terms_hash"), checks: typeof rec.checks === "string" ? rec.checks : JSON.stringify(rec.checks ?? {}),
       ip: s("ip"), ua: s("ua"), stamp_ok: rec.stamp_ok === undefined ? "" : rec.stamp_ok ? "Y" : "N",
-      kit_address: s("kit_address"), starts_on: s("starts_on"),
+      kit_address: s("kit_address"), starts_on: kstDate(s("starts_on")),
     });
   }
   return out;
