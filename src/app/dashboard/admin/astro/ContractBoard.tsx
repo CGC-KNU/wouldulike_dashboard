@@ -27,7 +27,7 @@ type Stage = "후보" | "미발급" | "대기" | "동의" | "완료" | "반영�
 interface Row {
   rid: number | null; name: string; campus: string | null; tier: string | null; fee: number | null;
   owner_phone: string | null; stage: Stage; at: string | null; todo: string | null; blocked: string | null;
-  lead_id: string | null; lead_stage: string | null;
+  lead_id: string | null; lead_stage: string | null; is_test?: boolean;
 }
 
 /** 후보 탭의 칩과 같은 색 — 두 탭에서 같은 단어가 다른 색이면 다른 뜻으로 읽힌다 */
@@ -157,6 +157,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                     <div className="flex items-center gap-1.5 min-w-[9rem]">
                       {r.campus && <CampusMark campus={r.campus} size={14} />}
                       <span className="font-semibold text-gray-900 break-keep">{r.name}</span>
+                      {r.is_test && <Chip tone="gray">테스트</Chip>}
                       {r.rid !== null && <span className="text-gray-400 text-[11.5px]">{r.rid}</span>}
                     </div>
                     {r.at && <span className="block text-[11.5px] text-gray-400 mt-0.5">{new Date(r.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}

@@ -45,6 +45,7 @@ export interface BoardRow {
    */
   lead_id: string | null;
   lead_stage: string | null;
+  is_test?: boolean;
 }
 
 /**
@@ -141,7 +142,8 @@ export async function GET() {
   for (const r of backend?.restaurants ?? []) {
     const rid = r.restaurant_id;
     const o = ops.get(rid) ?? null;
-    if (o?.is_test) continue;
+    // 0929: 테스트 매장도 보인다(민열님 "테스트 매장이 계약 탭에 없는데?"). 링크를 낸 것만 — 칩으로 구분한다.
+    if (o?.is_test && !issuedAt.has(rid) && !folded.has(rid)) continue;
     // 계약 종료(제휴 꺼짐)한 매장은 이 사이클에서 뺀다 — 파트너 매장 탭 '계약 종료' 칸이 그 자리다.
     // 안 빼면 이 탭의 '종료' 버튼을 눌러도 행이 그대로 남아 "안 됐나?" 가 된다.
     if (r.is_affiliate === false) continue;
@@ -178,7 +180,7 @@ export async function GET() {
       rid, name: r.name, campus: o?.campus ?? l?.campus ?? null, tier: r.tier ?? null, fee: o?.monthly_fee ?? null,
       owner_phone: pickMobile(o?.owner_phone, l?.contact, l?.phone), stage, at, todo,
       blocked: stage === "종이계약" ? "이미 매장 PIN 이 있어 링크를 낼 수 없습니다 (손님 적립에 쓰이는 번호입니다)" : null,
-      lead_id: l?.id ?? null, lead_stage: l?.stage ?? null,
+      lead_id: l?.id ?? null, lead_stage: l?.stage ?? null, is_test: Boolean(o?.is_test),
     });
   }
 
