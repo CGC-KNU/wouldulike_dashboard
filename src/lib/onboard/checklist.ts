@@ -8,7 +8,7 @@ import { backendUrl, getAccessToken } from "@/lib/apiProxy";
 export interface StoreChecklist {
   pin: boolean;
   photos: string[];
-  stamp: { on: boolean; target: number | null; steps: { at: number; reward: string }[] };
+  stamp: { on: boolean; target: number | null; steps: { at: number; reward: string }[]; notes?: string };
   coupons: { title: string; subtitle: string }[];
   special: { title: string; subtitle: string; active?: boolean }[];
 }
@@ -23,7 +23,7 @@ export async function readChecklist(rid: number): Promise<StoreChecklist> {
     get("/api/dashboard/restaurant-benefits/", `restaurant_id=${rid}&kind=GENERAL`),
     get("/api/dashboard/restaurant-benefits/", `restaurant_id=${rid}&kind=SPECIAL`),
   ]);
-  const rule = (stamp?.rule ?? stamp?.stamp_rule ?? stamp) as { active?: boolean; config_json?: { cycle_target?: number; thresholds?: { stamps?: number; at?: number; reward?: string; label?: string; coupon_code?: string }[]; stamp_enabled?: boolean } } | null;
+  const rule = (stamp?.rule ?? stamp?.stamp_rule ?? stamp) as { active?: boolean; config_json?: { cycle_target?: number; thresholds?: { stamps?: number; at?: number; reward_text?: string; reward?: string; label?: string; coupon_code?: string }[]; stamp_enabled?: boolean; notes?: string } } | null;
   const cfg = rule?.config_json ?? {};
   const list = (x: unknown) => (Array.isArray(x) ? x : Array.isArray((x as { results?: unknown[] })?.results) ? (x as { results: unknown[] }).results : []) as { title?: string; subtitle?: string; active?: boolean }[];
   return {
@@ -32,7 +32,8 @@ export async function readChecklist(rid: number): Promise<StoreChecklist> {
     stamp: {
       on: Boolean(rule && rule.active !== false && cfg.stamp_enabled !== false && (cfg.thresholds?.length ?? 0) > 0),
       target: typeof cfg.cycle_target === "number" ? cfg.cycle_target : null,
-      steps: (cfg.thresholds ?? []).map((t) => ({ at: Number(t.stamps ?? t.at ?? 0), reward: String(t.reward ?? t.label ?? t.coupon_code ?? "") })),
+      steps: (cfg.thresholds ?? []).map((t) => ({ at: Number(t.stamps ?? t.at ?? 0), reward: String(t.reward_text ?? t.reward ?? t.label ?? t.coupon_code ?? "") })).sort((a, b) => a.at - b.at),
+      notes: cfg.notes ?? "",
     },
     coupons: list(gen).map((b) => ({ title: b.title ?? "", subtitle: b.subtitle ?? "" })),
     special: list(sp).map((b) => ({ title: b.title ?? "", subtitle: b.subtitle ?? "", active: b.active })),
