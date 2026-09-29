@@ -4,6 +4,8 @@ import { backendUrl, getAccessToken, proxyBody } from "@/lib/apiProxy";
 import { notifyAstro } from "@/lib/slack";
 import { phoneTag, shortId, signOnboardToken, tempPinFor, type OnboardPlan } from "@/lib/onboard/token";
 import { readStorePin } from "@/lib/onboard/pinRead";
+import { linkSessionReady } from "@/lib/onboard/linkSession";
+import { remoteSend } from "@/lib/draft/remote";
 import { defaultFee } from "@/lib/onboard/contract";
 import { remoteGet } from "@/lib/draft/remote";
 
@@ -84,7 +86,9 @@ export async function POST(req: NextRequest) {
   const replacedOwnerPin = Boolean(info.has_pin && !isOurTemp && !isTest && !keepOwnerPin);
 
   // 이미 임시 PIN 이 심겨 있거나, 읽을 수 있는 사장님 PIN 이 있으면 그대로 두고 링크만 새로 뽑는다.
-  if (!isOurTemp && !keepOwnerPin) {
+  // 0929: 링크로 바로 로그인하는 길이 켜져 있으면 임시 PIN 을 심지 않는다 — 온보딩 전까지 PIN 은 비어 있다.
+  const noTempPin = await linkSessionReady(admin);
+  if (!noTempPin && !isOurTemp && !keepOwnerPin) {
     // PIN 이 이미 있으면 관리자여도 `current_pin` 을 같이 보내야 한다 (위 주석, ChangePinView).
     // 위에서 읽어 둔 현재 값을 그대로 동봉한다 — 안 보내면 400 "current_pin이 필요합니다".
     // 여기까지 온 매장은 PIN 이 없거나 테스트 매장뿐이다(위 가드).
@@ -108,6 +112,8 @@ export async function POST(req: NextRequest) {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
   const url = `${base}/onboard/${token}`;
 
+  // 발급 기록 — 현황판이 '대기'(링크 냈고 안 들어오심)를 이걸로 안다. 임시 PIN 이 사라져 흔적이 따로 필요하다.
+  await remoteSend("POST", "/api/astro/activities/", { target_type: "store", target_id: String(b.rid), kind: "온보딩링크발급", body: JSON.stringify({ short_id: shortId(payload), at: new Date().toISOString(), exp: payload.exp, plan: b.plan, fee }), author: by }).catch(() => null);
   await notifyAstro(`:link: *${b.name}* 온보딩 링크 발급 · ${b.campus} · ${b.plan}${fee ? ` ${fee.toLocaleString()}원` : ""} · ${by} · #${shortId(payload)} (${b.days ?? 14}일 유효)`);
 
   return NextResponse.json({

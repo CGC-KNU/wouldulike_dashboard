@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { phoneMatches, tempPinFor, verifyOnboardToken } from "@/lib/onboard/token";
 import { readStorePin } from "@/lib/onboard/pinRead";
+import { linkSession } from "@/lib/onboard/linkSession";
 
 /**
  * 카카오 로그인 뒤 — 토큰 안의 임시 PIN 으로 백엔드 `verify-owner` 를 통과시켜 점주 세션을 만든다.
@@ -43,6 +44,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   // 신규 카카오 사용자는 pending_token, 이미 다른 매장 점주면 access_token 을 들고 온다. 둘 다 시도한다.
   const bearer = jar.get("pending_token")?.value ?? jar.get("access_token")?.value;
   if (!bearer) return NextResponse.json({ success: false, message: "카카오 로그인이 먼저 필요합니다.", need_kakao: true }, { status: 401 });
+
+  // 0929: 링크로 바로 (임시 PIN 없음). 입구가 꺼져 있으면(열쇠 미설정) 아래 예전 길로.
+  const ls = await linkSession(bearer, token);
+  if (ls.kind === "ok") {
+    if (typeof ls.restaurant_id === "number" && ls.restaurant_id !== p.rid) {
+      return NextResponse.json({ success: false, wrong_store: true, message: "다른 매장의 로그인 정보가 돌아왔습니다. 새로고침해 다시 시도해 주세요." }, { status: 409 });
+    }
+    const secure = process.env.NODE_ENV === "production";
+    jar.set("access_token", ls.access, { httpOnly: true, secure, sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
+    if (ls.refresh) jar.set("refresh_token", ls.refresh, { httpOnly: true, secure, sameSite: "lax", maxAge: 60 * 60 * 24 * 90 });
+    jar.delete("pending_token");
+    jar.delete("onboard_return");
+    const mine = await readStorePin(p.rid);
+    const pin = mine.pin && !mine.is_temp ? mine.pin : null;
+    return NextResponse.json({ success: true, pin_set: pin !== null, pin });
+  }
+  if (ls.kind === "error") return NextResponse.json({ success: false, message: ls.message }, { status: ls.status >= 400 && ls.status < 600 ? ls.status : 400 });
 
   /**
    * 0928: 임시 PIN 만 고집하지 않는다. 사장님이 [0]에서 PIN 을 이미 정했으면(이층 사고) 그 PIN 으로
