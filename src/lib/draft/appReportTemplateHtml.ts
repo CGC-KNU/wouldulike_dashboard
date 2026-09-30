@@ -2,10 +2,10 @@
  * 우주라이크 앱 지표 보고서 양식 (templates/app-report-template.html) — 원문 그대로.
  *
  * 이 파일은 **생성물이다. 손으로 고치지 않는다.** 양식이 바뀌면 원본 HTML 을 고치고
- * `node scripts/embed-app-report-template.mjs` 를 다시 돌린다.
+ * `node scripts/embed-report-template.mjs` 를 다시 돌린다.
  *
- * 채우는 건 fillAppReportTemplate()(appReport.ts) 이 id="report-data" JSON 블록만 갈아 끼워서 한다 —
- * 계산·증감칩·퍼널 전환율·빈 칸 표기는 전부 양식 안의 스크립트가 한다.
+ * 채우는 건 fillAppReportTemplate()(appReportData.ts) 이 id="report-data" JSON 블록만 갈아 끼워서 한다 —
+ * 계산·증감칩·빈 칸 표기는 전부 양식 안의 스크립트가 한다.
  */
 // prettier-ignore
 const APP_REPORT_TEMPLATE_HTML = [
