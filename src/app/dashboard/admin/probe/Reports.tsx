@@ -49,10 +49,12 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
 
-  const loadPosts = useCallback(() => { setPostsLoading(true); fetch("/api/probe/insights").then((r) => r.json()).then(setPosts).catch(() => setPosts(null)).finally(() => setPostsLoading(false)); }, []);
+  // 목록은 서버가 5분 기억한다(만드는 데 10초). 처음 열 때만 그걸 쓰고, 리포트를 만들거나 고친 뒤·「다시 읽기」는
+  // 새로 읽는다 — 안 그러면 방금 만든 리포트가 5분 동안 「만들기」로 남아, 다시 누르면 「갱신본 만들기」가 뜬다.
+  const loadPosts = useCallback((fresh: boolean) => { setPostsLoading(true); fetch(`/api/probe/insights${fresh ? "?fresh=1" : ""}`).then((r) => r.json()).then(setPosts).catch(() => setPosts(null)).finally(() => setPostsLoading(false)); }, []);
   const loadList = useCallback(() => { fetch("/api/probe/reports").then((r) => r.json()).then((d) => { setList(d.reports ?? []); setNote(d.draft_note); }).catch(() => setList([])); }, []);
-  const load = useCallback(() => { loadPosts(); loadList(); }, [loadPosts, loadList]);
-  useEffect(load, [load]);
+  const load = useCallback((fresh = true) => { loadPosts(fresh); loadList(); }, [loadPosts, loadList]);
+  useEffect(() => load(false), [load]);
 
   const allPosts = posts?.insights ?? [];
 
@@ -107,7 +109,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   return (
     <>
       <PageHeader title="매장 리포트" description="Papillon 이 올린 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 시기와 상관없이 리포트를 만들 수 있고(D+7 · D+14 권장), 승인하면 PNG·HTML 파일로 받아 카톡으로 보냅니다."
-        actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button>#{TOOLS.probe.slack.channel}</Button></a><Button variant="primary" icon={<IconRefresh />} onClick={load} disabled={postsLoading}>다시 읽기</Button></>} />
+        actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button>#{TOOLS.probe.slack.channel}</Button></a><Button variant="primary" icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>} />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+7 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
@@ -192,7 +194,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       </div>
 
       {openP && <PostPanel p={openP} onClose={() => setOpenPost(null)} onMake={(force) => make(openP, force)} making={making === postKey(openP)} askForce={askForce === postKey(openP)} onOpenReport={(id) => { setOpenPost(null); setOpenId(id); }} />}
-      {open && <ReportEditor r={open} onClose={() => setOpenId(null)} onChanged={load} />}
+      {open && <ReportEditor r={open} onClose={() => setOpenId(null)} onChanged={() => load()} />}
     </>
   );
 }
