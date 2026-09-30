@@ -42,7 +42,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const patch: Partial<StoreReport> = { status: "DRAFT", approved_by: null, approved_at: null }; // 문구가 바뀌면 승인은 무효
   if (typeof b.title === "string") patch.title = b.title.trim().slice(0, 80);
   if (typeof b.summary === "string") patch.summary = b.summary.trim().slice(0, 300);
-  if (Array.isArray(b.interpretation)) patch.interpretation = b.interpretation.map((s) => String(s).trim().slice(0, 300)).filter(Boolean).slice(0, 4);
+  if (Array.isArray(b.interpretation)) patch.interpretation = b.interpretation.map((s) => String(s).trim().slice(0, 300)).filter(Boolean).slice(0, 6); // 릴스 글은 시청 시간 문단까지 다섯 줄
   if (Array.isArray(b.proposals)) {
     patch.proposals = cur.proposals.map((p) => {
       const n = b.proposals!.find((x) => x.rule === p.rule);

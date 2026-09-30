@@ -90,7 +90,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       type_label: multi ? "큐레이션" : null,
       format: s.post.format === "reel" ? "reels" : "feed",
       posted_at: posted,
-      duration_sec: null,
+      duration_sec: rd?.post?.duration_sec ?? null,
       permalink: rd?.post?.permalink ?? s.post.permalink,
       // 게시물 사진: 인스타 썸네일(메타) 우선, 없으면 기획 커버
       // 스냅샷에 파일째 담긴 그림이 있으면 **그게 1순위**다 — 만료도 CORS 도 없다.
@@ -105,7 +105,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
     report: { day, measured_at: measured },
     metrics: {
       views: val("views"), reach: val("reach"), saved: val("saved"), shares: val("shares"), likes: val("likes"), comments: val("comments"),
-      profile_visits: val("profile_visits"), follows: val("follows"), avg_watch_sec: null,
+      profile_visits: val("profile_visits"), follows: val("follows"), avg_watch_sec: typeof rd?.metrics?.avg_watch_ms === "number" ? Math.round(rd.metrics.avg_watch_ms / 100) / 10 : null,
       interactions: val("total_interactions"),
     },
     app: { store_views: null },
