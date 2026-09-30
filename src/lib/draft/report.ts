@@ -100,14 +100,14 @@ export function josa(word: string, withBatchim: string, without: string): string
   return word + ((c - 0xac00) % 28 ? withBatchim : without);
 }
 
-type OwnerKey = "views" | "reach" | "saved" | "shares" | "likes" | "comments";
+type OwnerKey = "views" | "reach" | "saved" | "shares" | "likes" | "comments" | "avg_watch_ms" | "total_watch_ms";
 /**
  * 점주 문장이 쓰는 숫자 — 리포트 카드와 **같은 출처**다(reportTemplateData 의 val 과 같은 순서).
  * 백엔드 report-data(D+7/D+14 그 시점 값)가 있으면 그것, 없으면 스냅샷 지표. 카드는 14일차인데 문장은 7일차가 되지 않게.
  */
 export function ownerNumbers(s: ReportSnapshot): Partial<Record<OwnerKey, number>> {
   const out: Partial<Record<OwnerKey, number>> = {};
-  for (const k of ["views", "reach", "saved", "shares", "likes", "comments"] as const) {
+  for (const k of ["views", "reach", "saved", "shares", "likes", "comments", "avg_watch_ms", "total_watch_ms"] as const) {
     const v = s.report_data?.available ? s.report_data.metrics?.[k] : undefined;
     const m = v ?? s.metrics.find((x) => x.key === k)?.value;
     if (typeof m === "number") out[k] = m;
@@ -142,14 +142,20 @@ export function ownerStory(s: ReportSnapshot): string[] {
   const m = ownerNumbers(s), store = s.store.name;
   const n = (v: number) => v.toLocaleString();
   const ok = (v: number | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
-  const out = [`이번 ${store} 콘텐츠 성과를 정리해 전달드립니다.`];
+  // 릴스는 명사와 조회의 뜻만 바꾼다(0930). 피드 글은 기프트버거 글 그대로 — 기준 테스트.
+  const reel = isReel(s);
+  const what = reel ? "릴스" : "콘텐츠", thing = reel ? "릴스" : "게시물";
+  const seen = reel ? "릴스가 재생된 횟수" : "게시물이 화면에 나타난 횟수";
+  const out = [`이번 ${store} ${what} 성과를 정리해 전달드립니다.`];
   if (ok(m.reach)) {
-    out.push(`해당 콘텐츠는 총 ${n(m.reach)}명의 이용자에게 도달했${ok(m.views) ? `으며, 조회수는 ${n(m.views)}회를 기록했습니다.` : "습니다."}` +
-      " 도달은 게시물을 한 번 이상 본 계정의 수" + (ok(m.views) ? "이고, 조회는 게시물이 화면에 나타난 횟수를 모두 센 값입니다." : "입니다.") +
-      (ok(m.views) && m.views > m.reach ? " 조회수가 도달한 이용자 수를 넘어섰다는 것은, 게시물을 한 번 넘게 본 이용자가 있었다는 뜻입니다." : ""));
+    out.push(`해당 ${what}는 총 ${n(m.reach)}명의 이용자에게 도달했${ok(m.views) ? `으며, 조회수는 ${n(m.views)}회를 기록했습니다.` : "습니다."}` +
+      ` 도달은 ${josa(thing, "을", "를")} 한 번 이상 본 계정의 수` + (ok(m.views) ? `이고, 조회는 ${seen}를 모두 센 값입니다.` : "입니다.") +
+      (ok(m.views) && m.views > m.reach ? ` 조회수가 도달한 이용자 수를 넘어섰다는 것은, ${josa(thing, "을", "를")} 한 번 넘게 본 이용자가 있었다는 뜻입니다.` : ""));
   } else if (ok(m.views)) {
-    out.push(`해당 콘텐츠는 조회수 ${n(m.views)}회를 기록했습니다. 조회는 게시물이 화면에 나타난 횟수를 모두 센 값입니다.`);
+    out.push(`해당 ${what}는 조회수 ${n(m.views)}회를 기록했습니다. 조회는 ${seen}를 모두 센 값입니다.`);
   }
+  const watch = reel ? reelWatchLine(s) : null;
+  if (watch) out.push(watch);
   const order = (["shares", "saved", "likes", "comments"] as const).filter((k) => ok(m[k])).sort((a, b) => (m[b] as number) - (m[a] as number));
   const [first, second, ...rest] = order;
   const say = (k: (typeof order)[number]) => `${n(m[k] as number)}${REACTION[k].unit}`;
@@ -160,6 +166,44 @@ export function ownerStory(s: ReportSnapshot): string[] {
       (tail.length ? ` 이 밖에 ${tail.join(", ")}를 기록했습니다.` : ""));
   }
   return out;
+}
+
+const isReel = (s: ReportSnapshot) => (s.report_data?.available ? s.report_data.post?.format : s.post.format) === "reel";
+
+/**
+ * 릴스 시청 시간에서 문장에 쓰는 숫자 — 문장과 승인 가드(checkText)가 같이 쓴다(계산해서 나온 숫자도 스냅샷 값이다).
+ * avg: 초(소수 한 자리) · dur: 영상 길이(초, 올린 파일에서만) · totalMin: 총 시청 분
+ */
+export function reelWatchNumbers(s: ReportSnapshot): { avg: number | null; dur: number | null; totalMin: number | null } {
+  const m = ownerNumbers(s);
+  const dur = s.report_data?.available ? s.report_data.post?.duration_sec ?? null : null;
+  return {
+    avg: typeof m.avg_watch_ms === "number" ? Math.round(m.avg_watch_ms / 100) / 10 : null,
+    dur: typeof dur === "number" && dur > 0 ? dur : null,
+    totalMin: typeof m.total_watch_ms === "number" ? Math.floor(m.total_watch_ms / 60000) : null,
+  };
+}
+
+/**
+ * 릴스 시청 시간 문단 (0930) — 좋은 숫자만:
+ *   평균 시청 시간은 영상 길이의 절반 이상일 때만(길이를 모르면 10초 이상일 때만). 28초 릴스의 6.4초를 세우지 않는다.
+ *   총 시청 시간은 1분 이상일 때 "N시간 M분".
+ * 여러 가게 편은 「{가게}가 소개된 영상」 — 본 시간을 한 가게 몫으로 말하지 않는다.
+ */
+export function reelWatchLine(s: ReportSnapshot): string | null {
+  const { avg, dur, totalMin } = reelWatchNumbers(s);
+  const parts: string[] = [];
+  if (avg !== null && (dur !== null ? avg >= dur / 2 : avg >= MIN_OWNER_VALUE)) {
+    parts.push(`평균 시청 시간은 ${avg}초입니다. 평균 시청 시간은 릴스가 한 번 재생될 때 이용자가 머문 시간의 평균입니다.` +
+      (dur !== null ? ` ${dur}초 길이 영상의 절반 넘게 머물렀다는 뜻입니다.` : ""));
+  }
+  if (totalMin !== null && totalMin >= 1) {
+    const h = Math.floor(totalMin / 60), mm = totalMin % 60;
+    const t = h > 0 ? `${h}시간${mm ? ` ${mm}분` : ""}` : `${mm}분`;
+    const whose = s.post.co_stores > 1 ? `${josa(s.store.name, "이", "가")} 소개된` : s.store.name;
+    parts.push(`모든 재생을 합친 총 시청 시간은 ${t}입니다. 이용자들이 그만큼의 시간 동안 ${whose} 영상을 보았습니다.`);
+  }
+  return parts.length ? parts.join(" ") : null;
 }
 
 /** 점주 리포트 한 줄 요약 — 카톡 링크 미리보기(og:description)·사장님 리포트 목록에 쓴다. 리포트 카드 제목으로는 쓰지 않는다(0928). */
@@ -354,6 +398,11 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
   for (const m of s.metrics) { for (const v of [m.value, m.median, m.p10, m.p90]) if (v !== null) add(v); if (m.delta_pct !== null) add(Math.abs(m.delta_pct)); add(m.n); }
   // 리포트 카드와 해석 문단은 report-data(그 시점 값)를 먼저 쓴다 — 그 숫자도 스냅샷 값이다
   if (s.report_data?.available) for (const v of Object.values(s.report_data.metrics ?? {})) if (typeof v === "number") add(v);
+  // 릴스 시청 시간 문단의 숫자 — 밀리초에서 계산해 나온 초·시간·분도 스냅샷 값이다
+  { const w = reelWatchNumbers(s);
+    if (w.avg !== null) { add(Math.floor(w.avg)); add(Math.round((w.avg % 1) * 10)); }
+    if (w.dur !== null) add(w.dur);
+    if (w.totalMin !== null) { add(w.totalMin); add(Math.floor(w.totalMin / 60)); add(w.totalMin % 60); } }
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");

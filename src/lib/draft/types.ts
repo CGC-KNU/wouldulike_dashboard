@@ -504,7 +504,9 @@ export interface ReportProposal {
  * 스냅샷을 굳힐 때 같이 박아 둔다. 없으면(옛 스냅샷·권한 없음) 양식이 해당 칸을 숨긴다.
  */
 /** 백엔드 PostMetric 의 지표 이름 */
-export type ReportMetricKey = "views" | "reach" | "saved" | "likes" | "comments" | "shares" | "total_interactions" | "profile_visits" | "follows";
+export type ReportMetricKey = "views" | "reach" | "saved" | "likes" | "comments" | "shares" | "total_interactions" | "profile_visits" | "follows"
+  /** 릴스만 (백엔드 0930) — 밀리초. 피드·0930 이전 스냅샷은 null */
+  | "avg_watch_ms" | "total_watch_ms";
 /** 비교군 한 지표 — 없는 값은 양식이 그 줄을 숨긴다 */
 export interface ReportBenchmark { prev5_avg?: number; median?: number | null; p75?: number | null; rank?: number | null; rate_median?: number }
 
@@ -514,8 +516,9 @@ export interface ReportData {
   day?: number | null;
   window?: string;
   measured_at?: string;
-  post?: { posted_at: string | null; permalink: string; format: string; thumb_url: string; caption: string; card_count: number };
-  metrics?: Partial<Record<ReportMetricKey, number>>;
+  /** duration_sec — 릴스 길이. 세틀라이트로 올린 영상 파일에서만 안다(인스타 API 는 주지 않는다). 외부 발행·피드는 null */
+  post?: { posted_at: string | null; permalink: string; format: string; thumb_url: string; caption: string; card_count: number; duration_sec?: number | null };
+  metrics?: Partial<Record<ReportMetricKey, number | null>>;
   /**
    * 1일 · 7일 · 14일 중 **찍혀 있는 것만** (백엔드 `_series`). 없는 점은 오지 않는다 —
    * 0 으로 채우면 「1일 1,800 → 7일 0」처럼 줄어든 것으로 읽힌다.

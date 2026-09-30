@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, ownerHeadline, ownerParagraphs, ownerStory, propose, refreshText, verdict } from "../src/lib/draft/report";
+import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, verdict } from "../src/lib/draft/report";
 import { downloadBar } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
@@ -131,6 +131,61 @@ test("해석 문단의 숫자는 승인 가드를 통과한다 — report-data �
   const s = gift();
   const r = checkText(ownerStory(s).join("\n"), s);
   assert.ok(r.ok, r.problems.join(", "));
+});
+
+// ── 0930: 릴스 — 명사·조회의 뜻만 바꾸고 시청 시간 문단을 붙인다 ─────────────
+const reel = (metrics: Record<string, number | null>, duration: number | null = 28, co = 1) => ({
+  ...report().snapshot, store: { name: "통통", campus: null },
+  post: { ...report().snapshot.post, format: "reel", co_stores: co },
+  metrics: [],
+  report_data: { ...rd, post: { ...rd.post!, format: "reel", duration_sec: duration }, metrics },
+});
+const REEL = { views: 12400, reach: 8100, shares: 96, saved: 140, likes: 310, comments: 12, avg_watch_ms: 16400, total_watch_ms: 203_280_000 };
+
+test("릴스 글은 「릴스」로 말하고 조회는 「재생된 횟수」다", () => {
+  const out = ownerStory(reel(REEL));
+  assert.equal(out[0], "이번 통통 릴스 성과를 정리해 전달드립니다.");
+  assert.equal(out[1], "해당 릴스는 총 8,100명의 이용자에게 도달했으며, 조회수는 12,400회를 기록했습니다. 도달은 릴스를 한 번 이상 본 계정의 수이고, 조회는 릴스가 재생된 횟수를 모두 센 값입니다. 조회수가 도달한 이용자 수를 넘어섰다는 것은, 릴스를 한 번 넘게 본 이용자가 있었다는 뜻입니다.");
+  assert.equal(out[2], "평균 시청 시간은 16.4초입니다. 평균 시청 시간은 릴스가 한 번 재생될 때 이용자가 머문 시간의 평균입니다. 28초 길이 영상의 절반 넘게 머물렀다는 뜻입니다. 모든 재생을 합친 총 시청 시간은 56시간 28분입니다. 이용자들이 그만큼의 시간 동안 통통 영상을 보았습니다.");
+  assert.match(out[3], /^이용자 반응 가운데서는 좋아요가 310개로 가장 많았습니다\./);
+});
+
+test("평균 시청 시간은 영상 길이의 절반 이상일 때만 — 모르면 10초 이상일 때만", () => {
+  const short = reelWatchLine(reel({ ...REEL, avg_watch_ms: 6400 }, 28))!;
+  assert.doesNotMatch(short, /평균 시청 시간/, "28초 릴스의 6.4초는 세우지 않는다");
+  assert.match(short, /^모든 재생을 합친 총 시청 시간은/, "총 시청 시간은 남는다");
+  assert.doesNotMatch(reelWatchLine(reel({ ...REEL, avg_watch_ms: 6400 }, null)) ?? "", /평균 시청 시간/, "길이를 모르면 10초 미만은 쓰지 않는다");
+  const noDur = reelWatchLine(reel({ ...REEL, avg_watch_ms: 12300 }, null))!;
+  assert.match(noDur, /평균 시청 시간은 12\.3초입니다/);
+  assert.doesNotMatch(noDur, /길이 영상의 절반/, "길이를 모르면 길이 문장은 없다");
+});
+
+test("시청 시간이 없거나 1분 미만이면 문단이 없다 · 여러 가게 편은 「가게가 소개된 영상」", () => {
+  assert.equal(reelWatchLine(reel({ ...REEL, avg_watch_ms: null, total_watch_ms: null })), null, "0930 이전 스냅샷");
+  assert.equal(reelWatchLine(reel({ ...REEL, avg_watch_ms: 3000, total_watch_ms: 50_000 })), null);
+  assert.match(reelWatchLine(reel(REEL, 28, 4))!, /이용자들이 그만큼의 시간 동안 통통이 소개된 영상을 보았습니다\./);
+  assert.match(reelWatchLine(reel({ ...REEL, total_watch_ms: 25 * 60000 }))!, /총 시청 시간은 25분입니다/);
+});
+
+test("피드 글에는 시청 시간 문단이 없다", () => {
+  assert.ok(!ownerStory(gift()).some((t) => t.includes("시청 시간")));
+});
+
+test("릴스 글도 승인 가드를 통과하고 편집 한도(한 줄 300자 · 6줄) 안에 든다", () => {
+  const s = reel(REEL, 28, 4);
+  const out = ownerStory(s);
+  const r = checkText(out.join("\n"), s);
+  assert.ok(r.ok, r.problems.join(", "));
+  assert.ok(out.length <= 6, `${out.length}줄`);
+  for (const t of out) assert.ok(t.length <= 300, `${t.length}자: ${t.slice(0, 30)}…`);
+});
+
+test("릴스 평균 시청 시간·영상 길이를 양식 데이터로 넘긴다", () => {
+  const d = toTemplateData(report({}, reel(REEL))) as { post: { format: string; duration_sec: number | null }; metrics: { avg_watch_sec: number | null } };
+  assert.equal(d.post.format, "reels");
+  assert.equal(d.post.duration_sec, 28);
+  assert.equal(d.metrics.avg_watch_sec, 16.4);
+  assert.equal((toTemplateData(report()) as { metrics: { avg_watch_sec: number | null } }).metrics.avg_watch_sec, null, "피드는 null");
 });
 
 test("이미 만든 리포트의 자동 문장(9/25~9/28 짧은 문장)은 새 글로, 사람이 쓴 문장은 뒤에 남긴다", () => {
