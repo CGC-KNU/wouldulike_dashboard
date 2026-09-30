@@ -125,7 +125,7 @@ export async function GET() {
           title: "비활성 매장이 아직 기획전·배너에 걸려 있습니다",
           subject: r.name,
           detail: "제휴가 끝난 매장인데 활성 기획전 캠페인에 남아 있습니다. 앱에서 누르면 갈 곳이 없습니다.",
-          hint: "Aether → 배너 & 팝업에서 해당 기획전을 내리거나 매장을 교체하세요.",
+          hint: "Papillon → 배너/팝업에서 해당 기획전을 내리거나 매장을 교체하세요.",
           source: "restaurants.is_affiliate × featured_campaigns",
         }, r.restaurant_id);
       }

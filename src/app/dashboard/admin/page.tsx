@@ -13,7 +13,6 @@ import AppMetrics from "./probe/AppMetrics";
 import CastorHome from "./castor/CastorHome";
 import Atlas from "./atlas/Atlas";
 import Playroom from "./playroom/Playroom";
-import ContentTab from "./ContentTab";
 import DriveScreen from "./DriveScreen";
 import ImageUploader from "@/components/ImageUploader";
 import { BenefitCatalogSection, BenefitGlance, StampRuleSection } from "@/components/CouponCatalog";
@@ -57,6 +56,7 @@ type Tab =
   | "restaurants"
   | "content"
   | "notifications"
+  | "restaurant-notifications"
   | "satellite"
   | "settings"
   // Astro(영업) 확장 — 2026-08-07 요구사항 3종을 담는 화면들
@@ -114,41 +114,6 @@ interface AdminMe {
   permissions: Permissions;
 }
 
-interface CampaignApp {
-  id: number;
-  restaurant_id: number;
-  restaurant_name: string;
-  week_start: string;
-  week_end: string;
-  coupon_title: string;
-  coupon_subtitle: string | null;
-  coupon_notes: string | null;
-  benefit_type: string;
-  benefit_value: string | null;
-  benefit_label: string;
-  campaign_description: string | null;
-  status: string;
-  admin_notes: string | null;
-  created_at: string;
-  updated_at: string;
-  reviewed_at: string | null;
-}
-interface WeekGroup {
-  week_start: string;
-  week_end: string;
-  max_slots: number;
-  occupied_slots: number;
-  available_slots: number;
-  applications: CampaignApp[];
-}
-interface WeekConfig {
-  id: number;
-  week_start: string | null;
-  max_slots: number;
-  is_default: boolean;
-}
-type PlanLimits = { FREE: number; BOOST: number; CONTENT: number };
-
 /* ─── 상수 ─── */
 const TIER_ORDER: Record<string, number> = { CONTENT: 3, BOOST: 2, FREE: 1 };
 const TIER_STYLE: Record<string, string> = {
@@ -156,18 +121,6 @@ const TIER_STYLE: Record<string, string> = {
   BOOST: "bg-amber-100 text-amber-700",
   CONTENT: "bg-indigo-100 text-indigo-700",
 };
-const CAMP_STATUS_LABEL: Record<string, string> = {
-  PENDING: "검토 중", APPROVED: "승인", REJECTED: "반려",
-  REJECTED_HOLD: "반려(재신청)", CANCELLED: "취소",
-};
-const CAMP_STATUS_STYLE: Record<string, string> = {
-  PENDING: "bg-amber-100 text-amber-700",
-  APPROVED: "bg-green-100 text-green-700",
-  REJECTED: "bg-red-100 text-red-600",
-  REJECTED_HOLD: "bg-orange-100 text-orange-700",
-  CANCELLED: "bg-gray-100 text-gray-500",
-};
-
 /* ─── 유틸 ─── */
 function sortRestaurants(list: Restaurant[], key: SortKey, dir: SortDir) {
   return [...list].sort((a, b) => {
@@ -605,429 +558,6 @@ interface RestaurantSchedule {
 }
 
 const R_SLOT_LABEL: Record<string, string> = { noon: "정오 12:00", evening: "저녁 18:00" };
-/* ═══════════════════════════════════════════════════
-   캠페인 주 상세 드로어
-═══════════════════════════════════════════════════ */
-function WeekDetailDrawer({
-  week,
-  onClose,
-  onAction,
-}: {
-  week: WeekGroup;
-  onClose: () => void;
-  onAction: (id: number, action: string, notes: string) => Promise<void>;
-}) {
-  const [notes, setNotes] = useState<Record<number, string>>({});
-  const [acting, setActing] = useState<number | null>(null);
-
-  function getNote(id: number) { return notes[id] ?? ""; }
-  function setNote(id: number, v: string) { setNotes((prev) => ({ ...prev, [id]: v })); }
-
-  async function act(id: number, action: string) {
-    setActing(id);
-    await onAction(id, action, getNote(id));
-    setActing(null);
-  }
-
-  function fmtMD(dateStr: string) {
-    const d = new Date(dateStr + "T00:00:00");
-    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
-  }
-
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-xl max-h-[85vh] overflow-y-auto">
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-gray-200" />
-        </div>
-        <div className="px-5 pb-8 pt-2">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-bold text-navy">
-                {fmtMD(week.week_start)} ~ {fmtMD(week.week_end)}
-              </h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {week.occupied_slots}/{week.max_slots} 슬롯 · 신청 {week.applications.length}건
-              </p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
-          </div>
-
-          {week.applications.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">이 주의 캠페인 신청이 없습니다</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {week.applications.map((app) => (
-                <div key={app.id} className="border border-gray-100 rounded-xl p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1 min-w-0 mr-2">
-                      <p className="text-sm font-bold text-gray-800">{app.restaurant_name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 truncate">{app.coupon_title}</p>
-                      <p className="text-xs text-periwinkle mt-0.5">{app.benefit_label}</p>
-                    </div>
-                    <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold ${CAMP_STATUS_STYLE[app.status] ?? "bg-gray-100 text-gray-500"}`}>
-                      {CAMP_STATUS_LABEL[app.status] ?? app.status}
-                    </span>
-                  </div>
-
-                  {app.campaign_description && (
-                    <p className="text-xs text-gray-500 mb-2">{app.campaign_description}</p>
-                  )}
-                  {app.admin_notes && (
-                    <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 mb-2">
-                      관리자 메모: {app.admin_notes}
-                    </p>
-                  )}
-
-                  {app.status === "PENDING" && (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <textarea
-                        value={getNote(app.id)}
-                        onChange={(e) => setNote(app.id, e.target.value)}
-                        placeholder="관리자 메모 (선택)"
-                        rows={2}
-                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-periwinkle/40 resize-none"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => act(app.id, "approve")}
-                          disabled={acting === app.id}
-                          className="flex-1 py-2 rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 transition-colors disabled:opacity-60"
-                        >
-                          {acting === app.id ? "..." : "승인"}
-                        </button>
-                        <button
-                          onClick={() => act(app.id, "reject_hold")}
-                          disabled={acting === app.id}
-                          className="flex-1 py-2 rounded-lg bg-orange-400 text-white text-xs font-bold hover:bg-orange-500 transition-colors disabled:opacity-60"
-                        >
-                          {acting === app.id ? "..." : "반려(슬롯유지)"}
-                        </button>
-                        <button
-                          onClick={() => act(app.id, "reject")}
-                          disabled={acting === app.id}
-                          className="flex-1 py-2 rounded-lg bg-red-400 text-white text-xs font-bold hover:bg-red-500 transition-colors disabled:opacity-60"
-                        >
-                          {acting === app.id ? "..." : "반려"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   캠페인 캘린더 패널
-═══════════════════════════════════════════════════ */
-function CampaignCalendarPanel() {
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth() + 1);
-  const [weeks, setWeeks] = useState<WeekGroup[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedWeek, setSelectedWeek] = useState<WeekGroup | null>(null);
-
-  // 설정
-  const [defaultSlots, setDefaultSlots] = useState<number | null>(null);
-  const [editSlots, setEditSlots] = useState("");
-  const [planLimits, setPlanLimits] = useState<PlanLimits | null>(null);
-  const [editLimits, setEditLimits] = useState<PlanLimits>({ FREE: 0, BOOST: 0, CONTENT: 0 });
-  const [savingSlots, setSavingSlots] = useState(false);
-  const [savingLimits, setSavingLimits] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const loadWeeks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/admin/campaigns?year=${year}&month=${month}`);
-      if (res.ok) setWeeks(await res.json().catch(() => ({})));
-    } finally {
-      setLoading(false);
-    }
-  }, [year, month]);
-
-  useEffect(() => { loadWeeks(); }, [loadWeeks]);
-
-  useEffect(() => {
-    fetch("/api/dashboard/admin/campaigns/week-config")
-      .then((r) => r.json())
-      .then((configs: WeekConfig[]) => {
-        const def = configs.find((c) => c.is_default);
-        if (def) { setDefaultSlots(def.max_slots); setEditSlots(String(def.max_slots)); }
-      })
-      .catch(() => {});
-    fetch("/api/dashboard/admin/campaigns/plan-limits")
-      .then((r) => r.json())
-      .then((lim: PlanLimits) => { setPlanLimits(lim); setEditLimits(lim); })
-      .catch(() => {});
-  }, []);
-
-  async function handleAction(appId: number, action: string, adminNotes: string) {
-    const res = await fetch(`/api/dashboard/admin/campaigns/${appId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, admin_notes: adminNotes }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      alert(d?.detail ?? "처리 실패");
-      return;
-    }
-    const updated: CampaignApp = await res.json().catch(() => ({}));
-    setWeeks((prev) =>
-      prev.map((w) => ({
-        ...w,
-        applications: w.applications.map((a) => (a.id === updated.id ? updated : a)),
-      }))
-    );
-    setSelectedWeek((prev) =>
-      prev
-        ? { ...prev, applications: prev.applications.map((a) => (a.id === updated.id ? updated : a)) }
-        : null
-    );
-  }
-
-  async function saveSlots() {
-    setSavingSlots(true);
-    const res = await fetch("/api/dashboard/admin/campaigns/week-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ max_slots: Number(editSlots) }),
-    });
-    setSavingSlots(false);
-    if (res.ok) { setDefaultSlots(Number(editSlots)); alert("저장되었습니다."); }
-    else { const d = await res.json().catch(() => ({})); alert(d?.detail ?? "저장 실패"); }
-  }
-
-  async function saveLimits() {
-    setSavingLimits(true);
-    const res = await fetch("/api/dashboard/admin/campaigns/plan-limits", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editLimits),
-    });
-    setSavingLimits(false);
-    if (res.ok) { setPlanLimits(editLimits); alert("저장되었습니다."); }
-    else { const d = await res.json().catch(() => ({})); alert(d?.detail ?? "저장 실패"); }
-  }
-
-  function prevMonth() { if (month === 1) { setYear((y) => y - 1); setMonth(12); } else setMonth((m) => m - 1); }
-  function nextMonth() { if (month === 12) { setYear((y) => y + 1); setMonth(1); } else setMonth((m) => m + 1); }
-
-  function fmtMD(dateStr: string) {
-    const d = new Date(dateStr + "T00:00:00");
-    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
-  }
-
-  const todayStr = (() => {
-    const t = new Date();
-    return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`;
-  })();
-
-  // 월 캘린더 주 배열 빌드 (월요일 시작)
-  const calWeeks = (() => {
-    const firstDay = new Date(year, month - 1, 1);
-    const firstDayOfWeek = (firstDay.getDay() + 6) % 7;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const totalWeeks = Math.ceil((firstDayOfWeek + daysInMonth) / 7);
-    const calStart = new Date(year, month - 1, 1 - firstDayOfWeek);
-    const result: { date: Date; inMonth: boolean; dateStr: string }[][] = [];
-    for (let w = 0; w < totalWeeks; w++) {
-      const weekDays: { date: Date; inMonth: boolean; dateStr: string }[] = [];
-      for (let d = 0; d < 7; d++) {
-        const dt = new Date(calStart);
-        dt.setDate(calStart.getDate() + w * 7 + d);
-        const inMonth = dt.getMonth() + 1 === month && dt.getFullYear() === year;
-        const ds = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
-        weekDays.push({ date: dt, inMonth, dateStr: ds });
-      }
-      result.push(weekDays);
-    }
-    return result;
-  })();
-
-  return (
-    <div className="flex flex-col gap-4">
-      {/* 월간 캘린더 */}
-      <div className="bg-white rounded-2xl shadow-sm p-4">
-        <div className="flex items-center justify-between mb-3">
-          <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">‹</button>
-          <span className="text-sm font-bold text-gray-700">{year}년 {month}월 캠페인</span>
-          <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">›</button>
-        </div>
-
-        {/* 요일 헤더 (월~일) */}
-        <div className="grid grid-cols-7 mb-0.5">
-          {["월","화","수","목","금","토","일"].map((d) => (
-            <div key={d} className="text-[10px] text-center text-gray-400 py-1">{d}</div>
-          ))}
-        </div>
-
-        {loading ? (
-          <div className="flex justify-center py-6">
-            <Spinner size={16} />
-          </div>
-        ) : (
-          <div>
-            {calWeeks.map((weekDays, wi) => {
-              const weekStart = weekDays[0].dateStr;
-              const w = weeks.find((g) => g.week_start === weekStart);
-              const pendingCount = w?.applications.filter((a) => a.status === "PENDING").length ?? 0;
-              const approvedCount = w?.applications.filter((a) => a.status === "APPROVED").length ?? 0;
-              const isFull = w && w.available_slots === 0;
-
-              let barCls = "bg-gray-50 border-gray-100 text-gray-400";
-              if (pendingCount > 0) barCls = "bg-amber-50 border-amber-200 text-amber-700";
-              else if (approvedCount > 0) barCls = "bg-green-50 border-green-200 text-green-600";
-              else if (isFull) barCls = "bg-red-50 border-red-100 text-red-400";
-              else if (w) barCls = "bg-periwinkle/5 border-periwinkle/20 text-gray-500";
-
-              return (
-                <div key={wi} className="mb-1">
-                  {/* 날짜 셀 행 */}
-                  <div className="grid grid-cols-7">
-                    {weekDays.map(({ date, inMonth, dateStr }) => {
-                      const isToday = dateStr === todayStr;
-                      return (
-                        <div key={dateStr} className="flex items-center justify-center h-7">
-                          <span className={`text-[11px] w-6 h-6 flex items-center justify-center rounded-full ${
-                            isToday
-                              ? "bg-periwinkle text-white font-bold"
-                              : inMonth
-                              ? "text-gray-700"
-                              : "text-gray-300"
-                          }`}>
-                            {date.getDate()}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* 주 요약 바 */}
-                  {w ? (
-                    <button
-                      onClick={() => setSelectedWeek(w)}
-                      className={`w-full mb-2 rounded-lg px-2.5 py-1.5 text-left border flex items-center gap-2 hover:opacity-75 transition-opacity ${barCls}`}
-                    >
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        {Array.from({ length: w.max_slots }).map((_, i) => (
-                          <span
-                            key={i}
-                            className={`w-1.5 h-1.5 rounded-full ${i < w.occupied_slots ? "bg-current opacity-70" : "bg-current opacity-20"}`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-[10px] font-medium flex-1 truncate">
-                        {w.applications.length === 0
-                          ? `${w.available_slots}/${w.max_slots} 슬롯`
-                          : `신청 ${w.applications.length}건${pendingCount > 0 ? ` · 검토 ${pendingCount}` : ""}${approvedCount > 0 ? ` · 승인 ${approvedCount}` : ""} · ${w.occupied_slots}/${w.max_slots}슬롯`}
-                      </span>
-                      {w.applications.length > 0 && <span className="text-[10px] opacity-50 shrink-0">›</span>}
-                    </button>
-                  ) : (
-                    <div className="mb-2 h-7" />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 캠페인 설정 */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <button
-          onClick={() => setSettingsOpen((v) => !v)}
-          className="w-full px-4 py-3 flex items-center justify-between"
-        >
-          <span className="text-sm font-semibold text-gray-700">캠페인 설정</span>
-          <span className="text-gray-400 text-xs">{settingsOpen ? "▲" : "▼"}</span>
-        </button>
-        {settingsOpen && (
-          <div className="px-4 pb-4 flex flex-col gap-4 border-t border-gray-50">
-            {/* 기본 슬롯 수 */}
-            <div className="pt-4">
-              <p className="text-xs font-semibold text-gray-600 mb-2">주당 최대 슬롯 수 (기본값)</p>
-              <div className="flex gap-2 items-center">
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={editSlots}
-                  onChange={(e) => setEditSlots(e.target.value)}
-                  className="w-20 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
-                />
-                <span className="text-xs text-gray-400">슬롯 / 주</span>
-                <button
-                  onClick={saveSlots}
-                  disabled={savingSlots}
-                  className="ml-auto px-3 py-1.5 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
-                >
-                  {savingSlots ? "저장 중..." : "저장"}
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-400 mt-1">
-                현재: {defaultSlots !== null ? `${defaultSlots}슬롯` : "—"} · 진행 중인 주는 변경 불가
-              </p>
-            </div>
-
-            {/* 플랜별 월간 한도 */}
-            <div className="border-t border-gray-50 pt-4">
-              <p className="text-xs font-semibold text-gray-600 mb-2">플랜별 월간 캠페인 신청 한도</p>
-              <div className="flex flex-col gap-2">
-                {(["FREE", "BOOST", "CONTENT"] as const).map((plan) => (
-                  <div key={plan} className="flex items-center gap-2">
-                    <span className={`text-xs font-bold w-16 ${
-                      plan === "FREE" ? "text-gray-500" : plan === "BOOST" ? "text-amber-600" : "text-indigo-600"
-                    }`}>
-                      {plan}
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={12}
-                      value={editLimits[plan]}
-                      onChange={(e) => setEditLimits((prev) => ({ ...prev, [plan]: Number(e.target.value) }))}
-                      className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-periwinkle/40"
-                    />
-                    <span className="text-xs text-gray-400">건/월</span>
-                    {planLimits && planLimits[plan] !== editLimits[plan] && (
-                      <span className="text-[10px] text-amber-500">변경됨</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={saveLimits}
-                disabled={savingLimits}
-                className="mt-3 w-full py-2 bg-periwinkle text-white text-xs font-semibold rounded-lg hover:bg-navy transition-colors disabled:opacity-60"
-              >
-                {savingLimits ? "저장 중..." : "한도 저장"}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 주 상세 드로어 */}
-      {selectedWeek && (
-        <WeekDetailDrawer
-          week={selectedWeek}
-          onClose={() => setSelectedWeek(null)}
-          onAction={handleAction}
-        />
-      )}
-    </div>
-  );
-}
 
 const R_SLOT_DOT:   Record<string, string> = { noon: "bg-amber-400", evening: "bg-indigo-400" };
 const R_SLOT_BG:    Record<string, string> = { noon: "bg-amber-50 text-amber-700", evening: "bg-indigo-50 text-indigo-700" };
@@ -1184,10 +714,9 @@ function RestaurantCalendarPanel() {
 }
 
 /* ═══════════════════════════════════════════════════
-   탭: 알림 (푸시 알림 + 식당 알림 캘린더)
+   탭: 푸시알림
 ═══════════════════════════════════════════════════ */
 function MarketingTab() {
-  const [subTab, setSubTab] = useState<"campaign" | "restaurant" | "push">("campaign");
   const [notifications, setNotifications] = useState<PushNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -1341,33 +870,11 @@ function MarketingTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* 서브탭 */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-0.5">
-        {([
-          { key: "campaign", label: "캠페인 캘린더" },
-          { key: "restaurant", label: "식당 알림" },
-          { key: "push", label: "푸시 알림" },
-        ] as const).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setSubTab(key)}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              subTab === key ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {subTab === "restaurant" && <RestaurantCalendarPanel />}
-      {subTab === "campaign" && <CampaignCalendarPanel />}
-
-      {subTab === "push" && (!pushUnlocked ? (
+      {!pushUnlocked ? (
         <div className="bg-white rounded-2xl shadow-sm p-5 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <span className="text-base">🔒</span>
-            <p className="text-sm font-semibold text-gray-700">푸시 알림</p>
+            <p className="text-sm font-semibold text-gray-700">푸시알림</p>
           </div>
           <p className="text-xs text-gray-500">접근하려면 2차 비밀번호를 입력하세요.</p>
           {pushVerifyErr && <p className="text-xs text-red-500">{pushVerifyErr}</p>}
@@ -1389,7 +896,8 @@ function MarketingTab() {
             </button>
           </div>
         </div>
-      ) : <div className="flex flex-col gap-5">
+      ) : (
+      <div className="flex flex-col gap-5">
       {/* 알림 작성 폼 */}
       <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-gray-700">알림 예약</h2>
@@ -1539,7 +1047,8 @@ function MarketingTab() {
           </div>
         )}
       </div>
-      </div>)}
+      </div>
+      )}
     </div>
   );
 }
@@ -2571,7 +2080,8 @@ function Field({
 const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boolean }[] = [
   { key: "restaurants", label: "식당 관리", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
   { key: "content", label: "배너 & 팝업", icon: "▥", allow: (me) => me.permissions.can_content },
-  { key: "notifications", label: "마케팅", icon: "✉", allow: (me) => me.permissions.can_marketing },
+  { key: "notifications", label: "푸시알림", icon: "✉", allow: (me) => me.permissions.can_marketing },
+  { key: "restaurant-notifications", label: "식당알림", icon: "⌂", allow: (me) => me.permissions.can_marketing },
   { key: "satellite", label: "세틀라이트", icon: "▦", allow: (me) => me.permissions.can_satellite },
   { key: "settings", label: "관리자 설정", icon: "⚙", allow: (me) => me.is_superadmin },
 
@@ -2633,6 +2143,10 @@ const ASTRO_NAV_GROUPS: { key: string; label: string; items: string[] }[] = [
   { key: "astro-partners", label: "파트너 관리", items: ["astro-ops", "astro-contracts", "astro-leads"] },
   { key: "astro-finance", label: "정산", items: ["astro-billing", "astro-tax", "astro-quotes"] },
 ];
+/** Aether — 예전 마케팅 탭. 캠페인 캘린더는 빼고 푸시알림(기본)과 식당알림만 둔다. */
+const AETHER_NAV_GROUPS: { key: string; label: string; items: string[] }[] = [
+  { key: "aether-alerts", label: "알림", items: ["notifications", "restaurant-notifications"] },
+];
 function groupNav<T extends { key: string; label: string }>(items: T[], groups: { key: string; label: string; items: string[] }[]): (T & { children?: T[] })[] {
   if (!groups.length) return items;
   const byKey = new Map(items.map((i) => [i.key, i]));
@@ -2671,8 +2185,7 @@ const PRODUCTS: {
     subtitle: "영업 툴",
     description: "파트너 매장 · 파트너 후보 · 입금 · 계산서",
     /* 0913 민열님: 식당 관리에서 하던 일(사진·플랜·PIN·제휴·포스터/QR)이 파트너 매장 상세로 옮겨져
-       탭을 없앤다. 데이터 풀은 그대로 백엔드 매장 레코드다 — 화면만 하나로 합쳤다.
-       (식당 관리 화면 자체는 남아 있다. `?tab=restaurants` 로 열 수 있고, Aether 쪽에서도 쓴다.) */
+       탭을 없앤다. 데이터 풀은 그대로 백엔드 매장 레코드다 — 화면만 하나로 합쳤다. */
     tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-spots", "astro-leads", "astro-contracts", "astro-benefits", "astro-billing", "astro-tax", "astro-quotes", "astro-docs"],
     ready: true,
   },
@@ -2680,11 +2193,8 @@ const PRODUCTS: {
     key: "aether",
     name: "Aether",
     subtitle: "관리 및 운영",
-    description: "배너 & 팝업 · 마케팅 발송 · 관리자 설정",
-    // 0925: "restaurants" 가 TABS 에는 있는데 어느 제품의 tabs 에도 없어서 **닿을 수 없었다.**
-    // ?tab=restaurants 는 제품을 못 찾아 기본 화면으로 떨어지고, 명령 팔레트도 PRODUCTS 기준이라
-    // 검색이 안 됐다. 새 식당 등록과 두 단계 삭제에 입구가 아예 없었다. Aether 아래 둔다.
-    tabs: ["content", "notifications", "restaurants", "settings"],
+    description: "푸시알림 · 식당알림 · 관리자 설정",
+    tabs: ["notifications", "restaurant-notifications", "settings"],
     ready: true,
   },
   {
@@ -3002,14 +2512,14 @@ export default function AdminHomePage() {
       {activeTab && activeTab !== "satellite" && selectedProduct === "aether" && (
         <ProductShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
-          navItems={productTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon }))}
+          navItems={groupNav(productTabs.map((t) => ({ key: t.key, label: t.label, icon: t.icon })), AETHER_NAV_GROUPS)}
           activeKey={activeTab}
           onSelect={(key) => { setActiveTab(key as Tab); syncUrl(key); }}
           onBack={showProductPicker ? backToProducts : undefined}
           user={{ name: me.display_name || me.username, role: me.department_label }}
         >
-          {activeTab === "content" && <ContentTab />}
           {activeTab === "notifications" && <MarketingTab />}
+          {activeTab === "restaurant-notifications" && <RestaurantCalendarPanel />}
           {activeTab === "settings" && <SettingsTab />}
         </ProductShell>
       )}

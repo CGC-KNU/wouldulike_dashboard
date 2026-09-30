@@ -23,7 +23,7 @@ const SEV_TONE: Record<QualitySeverity, ChipTone> = { high: "red", medium: "ambe
 const FIX_TAB: Record<string, { tab: string; label: string }> = {
   TIER_MISSING: { tab: "restaurants", label: "식당 관리에서 플랜 지정" },
   PAID_NO_BENEFIT: { tab: "restaurants", label: "식당 관리에서 혜택 등록" },
-  INACTIVE_STILL_EXPOSED: { tab: "content", label: "배너 & 팝업에서 내리기" },
+  INACTIVE_STILL_EXPOSED: { tab: "satellite", label: "Papillon 배너/팝업에서 내리기" },
   INACTIVE_HAS_BENEFIT: { tab: "restaurants", label: "식당 관리에서 혜택 끄기" },
   OPS_ROW_MISSING: { tab: "astro-ops", label: "매장 현황에서 기록" },
   PAID_TIER_UNSETTLED: { tab: "astro-billing", label: "입금 현황에서 처리" },

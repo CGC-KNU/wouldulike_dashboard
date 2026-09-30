@@ -21,6 +21,7 @@ export interface ProductNavItem {
   label: string;
   icon?: string;
   sepBefore?: boolean;
+  children?: ProductNavItem[];
 }
 
 export default function ProductShell({
@@ -46,7 +47,12 @@ export default function ProductShell({
   return (
     <ToolShell
       product={product ?? { name: "세틀라이트", subtitle: "관리 도구" }}
-      navItems={navItems.map((n) => ({ key: n.key, label: n.label, sepBefore: n.sepBefore }))}
+      navItems={navItems.map((n) => ({
+        key: n.key,
+        label: n.label,
+        sepBefore: n.sepBefore,
+        children: n.children?.map((c) => ({ key: c.key, label: c.label })),
+      }))}
       activeKey={activeKey}
       onSelect={onSelect}
       onBack={onBack}
