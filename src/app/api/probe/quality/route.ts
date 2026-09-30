@@ -47,7 +47,7 @@ export async function GET() {
   if (deny) return deny;
   const [restaurantsRes, benefitsRes, featuredRes] = await Promise.all([
     fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/"),
-    fetchBackendJson<Benefit[] | { benefits?: Benefit[] }>("/api/dashboard/restaurant-benefits/"),
+    fetchBackendJson<Benefit[] | { benefits?: Benefit[] }>("/api/dashboard/restaurant-benefits/", "all=1"),
     fetchBackendJson<FeaturedCampaign[] | { results?: FeaturedCampaign[] }>(
       "/api/dashboard/admin/featured-campaigns/"
     ),
