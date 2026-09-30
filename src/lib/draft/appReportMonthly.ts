@@ -1,6 +1,7 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { SMALL_SAMPLE, couponMetrics, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
 import type { CouponFunnel, StoreToCoupon } from "@/lib/bigquery/couponFunnel";
+import type { Bucket } from "@/app/api/probe/insights/summary/route";
 
 /**
  * Probe · 앱 지표 **월간 보고서**의 데이터 변환 — 순수 함수만(가져오기는 appReport.ts).
@@ -49,6 +50,15 @@ export interface MonthlyReportInput {
   /** 쿠폰 발급→사용 (GA4). 스냅샷의 DB 칸과 달리 기간이 정확하다. */
   coupons?: CouponFunnel | null;
   couponsPrev?: CouponFunnel | null;
+  /**
+   * 그 달 인스타 성과 (백엔드 satellite — 우리가 올린 게시물의 합).
+   *
+   * 앱 지표와 **출처도 뜻도 다르다.** 앱은 「앱 안에서 일어난 일」이고 인스타는 「밖에서
+   * 얼마나 알려졌나」다. 두 숫자를 더하거나 비율로 엮지 않는다 — 도달한 사람과 앱을 켠
+   * 사람은 겹치는지조차 알 수 없다(계정을 잇지 않는다).
+   */
+  instagram?: Bucket | null;
+  instagramPrev?: Bucket | null;
 }
 
 const MONTH_LABEL = (p: string) => `${+p.slice(0, 4)}년 ${+p.slice(5, 7)}월`;
@@ -79,7 +89,7 @@ const UNIT: Record<string, string> = {
   mileage_exchanges: "건", push_sent: "건",
 };
 
-export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today, coupons, couponsPrev, storeToCoupon: s2c }: MonthlyReportInput): Json {
+export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today, coupons, couponsPrev, storeToCoupon: s2c, instagram: ig, instagramPrev: igPrev }: MonthlyReportInput): Json {
   const snap = snapshot?.current ?? null;
   const snapPrev = snapshot?.previous ?? null;
   const s = snap?.stats ?? null;
@@ -112,6 +122,24 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
         : {}),
     };
   };
+
+  /**
+   * 인스타 칸 — 출처가 백엔드(satellite)다. GA4 칸과 **섞어 읽으면 안 된다.**
+   * 앱 지표는 「앱 안에서 일어난 일」, 인스타는 「밖에서 얼마나 알려졌나」다.
+   *
+   * 그 달에 발행이 없으면 값이 없다 — 0 이 아니라 **셀 대상이 없음**(status "none")이다.
+   * 0 으로 그리면 "아무도 안 봤다"로 읽힌다.
+   */
+  const igMetric = (key: string, label: string, value: Num, prevValue: Num, unit: string, note: string): Metric => ({
+    key, label, value, unit, source: "instagram",
+    ...(prevValue !== null && value !== null ? { prev: prevValue } : {}),
+    ...(value === null
+      ? (ig === null || ig === undefined
+          ? { status: "none" as const, status_label: "발행 없음" }
+          : { status: "pending" as const })
+      : {}),
+    note,
+  });
 
   const newDev = g?.new_devices ?? null;
 
@@ -223,6 +251,25 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
         { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix", note: "앱에 노출 이벤트를 심었고(0927 머지) 스토어 릴리스를 기다리는 중입니다. 사용자 기기에 깔려야 home_banner_impression 이 들어옵니다 — 지금은 0건" },
       ] as Metric[],
     },
+    {
+      key: "instagram",
+      title: "인스타그램",
+      description: "우리가 올린 게시물이 가게를 얼마나 알렸는가.",
+      metrics: [
+        igMetric("ig_posts", "발행한 게시물", ig?.posts ?? null, igPrev?.posts ?? null, "건",
+          ig ? `${period.slice(5)}월에 올린 게시물 수입니다` : "그 달에 올린 게시물"),
+        igMetric("ig_reach", "본 사람", ig?.reach ?? null, igPrev?.reach ?? null, "명",
+          "게시물을 한 번이라도 본 계정 수입니다. 같은 사람은 한 번만 셉니다"),
+        igMetric("ig_views", "조회", ig?.views ?? null, igPrev?.views ?? null, "회",
+          "게시물이 화면에 펼쳐진 횟수입니다. 같은 사람이 여러 번 보면 그때마다 셉니다"),
+        igMetric("ig_saved", "저장", ig?.saved ?? null, igPrev?.saved ?? null, "회",
+          "「나중에 가봐야지」 하고 담아 둔 수입니다 — 방문 의향에 가장 가까운 신호로 봅니다"),
+        igMetric("ig_shares", "공유", ig?.shares ?? null, igPrev?.shares ?? null, "회",
+          "「여기 같이 가자」고 친구에게 보낸 수입니다"),
+        igMetric("ig_engagement", "반응 합계", ig?.engagement ?? null, igPrev?.engagement ?? null, "회",
+          "저장 + 공유 + 좋아요 + 댓글"),
+      ] as Metric[],
+    },
   ];
 
   // 퍼널 — 네 단계를 모두 세션 단위로 센다(주간과 같은 정의). 예전에는 뒤 두 단계를
@@ -284,6 +331,11 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
       { key: "push", label: "푸시 발송 기록", status: n("push_sent") !== null ? "connected" : "pending", hint: "발송 건수도 같은 스냅샷에서 옵니다. 열기 비율은 Firebase 칸" },
       { key: "ga4", label: "GA4", status: g ? "connected" : "pending", hint: g ? `BigQuery 확정 테이블 ${g.through} 까지. 배너 노출 1칸만 앱 이벤트가 없어 비어 있습니다` : "BigQuery 를 읽지 못했습니다" },
       { key: "firebase", label: "Firebase", status: g ? "connected" : "pending", hint: "자동 이벤트 — 푸시 수신·열기, first_open 코호트" },
+      // 인스타는 GA4 가 아니라 백엔드(satellite)에서 온다. 앱 지표와 출처가 달라 따로 적는다.
+      { key: "instagram", label: "인스타그램", status: ig ? "connected" : "pending",
+        hint: ig
+          ? `우리 계정 게시물 ${ig.posts}건의 합 — 메타에서 받아 우리 DB 에 쌓은 값입니다${ig.pending_d7 ? ` (아직 7일이 안 된 ${ig.pending_d7}건은 최신값으로 셌습니다)` : ""}`
+          : "인스타 성과를 읽지 못했거나 그 달에 발행이 없습니다" },
     ],
     // 스냅샷이 없으면 signups·coupon_redeem_rate 가 비어 타일 넷 중 둘이 「연결 전」이 된다 —
     // 보고서를 열자마자 보이는 줄이라 값이 있는 칸으로 채운다(양식은 headline 이 없으면 채워진 칸에서 고른다).
