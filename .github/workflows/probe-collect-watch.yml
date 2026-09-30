@@ -1,0 +1,64 @@
+# PROBE 인스타 수집 감시 — 오늘 일일 수집이 돌았는지 10:10 KST 에 본다 (0930).
+#
+#   0930 에 일일 수집(09:00 KST)이 기록도 없이 빠졌고, 릴스 시청 시간이 안 들어와서야 알았다.
+#   백엔드 collect-health(CGC-KNU/wouldulike_backend#98)가 ok 가 아니면 PROBE 가 #sat-probe 에 한 번 알리고,
+#   이 작업도 빨갛게 남긴다 — Actions 탭에서도 보이게.
+#
+# **이 저장소는 공개다.** 로그에는 ok 여부와 개수만 남긴다(백엔드도 오류 본문·게시물 id 를 주지 않는다).
+#
+# 필요한 것 (Settings → Secrets and variables → Actions):
+#   BACKEND_BASE_URL · CRON_SECRET_TOKEN · SLACK_PROBE_BOT_TOKEN (PROBE 는 #sat-probe 에 있다 — 주간 앱 보고서)
+name: PROBE 인스타 수집 감시
+
+on:
+  schedule:
+    - cron: "10 1 * * *"   # 10:10 KST — 일일 수집(09:00 KST) 뒤
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "슬랙에는 보내지 않고 보낼 문구만 로그에 찍는다"
+        type: boolean
+        default: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BACKEND: ${{ secrets.BACKEND_BASE_URL }}
+      CRON_TOKEN: ${{ secrets.CRON_SECRET_TOKEN }}
+      SLACK_TOKEN: ${{ secrets.SLACK_PROBE_BOT_TOKEN }}
+      CHANNEL: C0BPKGXDTPF   # #sat-probe
+      DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+    steps:
+      - name: 오늘 일일 수집 확인
+        run: |
+          set -euo pipefail
+          [ -n "$BACKEND" ] && [ -n "$CRON_TOKEN" ] || { echo "::error::BACKEND_BASE_URL · CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
+          CODE=$(curl -sS --max-time 30 -o h.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" \
+            "$BACKEND/api/satellite/internal/cron/collect-health/") || CODE=000
+          OK=false; RAN=unknown; FIN=unknown; TOUCHED=0; ERRS=0; ARCH=0; DATE=$(TZ=Asia/Seoul date +%F)
+          if [ "$CODE" = "200" ]; then
+            OK=$(jq -r '.ok' h.json); DATE=$(jq -r '.date' h.json)
+            RAN=$(jq -r 'if .daily == null then "false" else "true" end' h.json)
+            FIN=$(jq -r '.daily.finished // false' h.json)
+            TOUCHED=$(jq -r '.daily.posts_touched // 0' h.json)
+            ERRS=$(jq -r '.daily.errors // 0' h.json)
+            ARCH=$(jq -r '.daily.auto_archived // 0' h.json)
+          fi
+          echo "HTTP $CODE · ${DATE} · ok=$OK · 돌았음=$RAN · 끝남=$FIN · 게시물 ${TOUCHED}건 · 오류 ${ERRS}건 · 자동 보관 ${ARCH}건"
+          [ "$OK" = "true" ] && exit 0
+
+          if [ "$CODE" != "200" ]; then WHY="수집 상태 확인 주소가 응답하지 않았습니다(HTTP $CODE)."
+          elif [ "$RAN" = "false" ]; then WHY="오늘 일일 수집이 돌지 않았습니다 — 기록이 없습니다."
+          elif [ "$FIN" != "true" ]; then WHY="오늘 일일 수집이 시작됐지만 아직 끝나지 않았습니다."
+          else WHY="오늘 일일 수집에서 오류가 ${ERRS}건 났습니다(게시물 ${TOUCHED}건은 받았습니다)."; fi
+          TEXT=$(printf '⚠️ 인스타 일일 수집 확인 (%s)\n%s\nKoyeb Logs 에서 collect-daily 를 확인하거나, 콘솔에서 python manage.py collect_metrics --mode daily 를 돌려 주세요.' "$DATE" "$WHY")
+
+          if [ "$DRY_RUN" = "true" ]; then echo "[dry-run] 보낼 문구:"; echo "$TEXT"; exit 1; fi
+          [ -n "$SLACK_TOKEN" ] || { echo "::error::SLACK_PROBE_BOT_TOKEN 이 없습니다"; exit 1; }
+          RES=$(curl -sS --max-time 30 -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_TOKEN" -H "Content-Type: application/json; charset=utf-8" \
+            -d "$(jq -n --arg c "$CHANNEL" --arg t "$TEXT" '{channel: $c, text: $t}')") || RES='{"ok":false,"error":"curl"}'
+          echo "slack ok=$(echo "$RES" | jq -r '.ok') $(echo "$RES" | jq -r '.error // ""')"
+          exit 1   # 알렸어도 빨갛게 남긴다
