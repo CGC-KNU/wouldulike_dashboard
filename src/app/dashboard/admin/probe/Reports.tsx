@@ -22,7 +22,7 @@ import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, 
  */
 
 interface Post {
-  restaurant_id: number | null; store: string; matched_by: "marker" | "name"; plan_id: number; topic: string; posted_at: string | null; permalink: string | null;
+  restaurant_id: number | null; store: string; matched_by: "marker" | "name" | "sponsor"; plan_id: number; topic: string; posted_at: string | null; permalink: string | null;
   age_days: number | null; co_stores: number; checkpoint: "D2" | "D7" | "D14" | "done" | "waiting"; targets: { d7: boolean; d14: boolean }; due: boolean;
   available: boolean; reason?: string; metrics: ReportMetric[]; cohort_note: string | null; report: string | null;
   sent_report: { id: string; status: string; sent_at: string | null; views: number } | null;
@@ -91,7 +91,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   async function make(p: Post, force = false) {
     if (making) return; setMaking(postKey(p));
     try {
-      const res = await fetch("/api/probe/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: p.restaurant_id, plan_id: p.plan_id, force }) });
+      const res = await fetch("/api/probe/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: p.restaurant_id, store_name: p.restaurant_id === null ? p.store : undefined, plan_id: p.plan_id, force }) });
       const d = await res.json().catch(() => ({}));
       if (res.status === 409 && !force) { setAskForce(postKey(p)); return; }
       if (!res.ok) { setAskForce(null); alert(d.detail ?? "만들지 못했습니다."); return; }
@@ -119,7 +119,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개는 성과를 못 읽었습니다`}>제목에 「(매장 포함)」 표시가 있는 제휴식당 콘텐츠만 성과가 열려 있습니다(마케팅팀 합의 0920). 표시가 없는 콘텐츠는 수치가 비고 「리포트 만들 때」에 안 잡힙니다 — 마케팅팀에 제목 표시를 부탁하세요.</Notice></div>}
       {posts && !posts.papillon_reachable && <div className="mb-4"><Notice tone="red" title="Papillon 기획 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>홍보한 적 없음이 아닙니다.</strong> 백엔드 연결을 확인하세요.</Notice></div>}
 
-      <Card flush title="Papillon 에서 온 게시물" description={`제목에 "(매장 포함)" 표시가 있거나 제휴 매장 이름이 들어간 발행 게시물. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}
+      <Card flush title="Papillon 에서 온 게시물" description={`제목에 "(매장 포함)" 표시가 있거나 제휴 매장 · 협찬 매장 이름이 들어간 발행 게시물. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}
         actions={<FilterPills label="" value={pf} onChange={setPf} options={[{ key: "due", label: "만들 때", count: dueCount }, { key: "none", label: "리포트 없음", count: noneCount }, { key: "all", label: "전체", count: allPosts.length }]} />} className="mb-4">
         {postsLoading ? <Skeleton rows={4} cols={6} /> : visiblePosts.length === 0 ? (
           <Empty title={pf === "due" ? "지금 만들 때가 된 게시물이 없습니다" : "해당하는 게시물이 없습니다"} detail="Papillon 기획 제목 끝에 '(정든밤 포함)'처럼 적으면 발행 즉시 여기 잡힙니다. '전체'에서 시기와 상관없이 만들 수 있습니다." />
@@ -133,7 +133,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
                 const k = postKey(p);
                 return (
                   <tr key={k} className={rowClickable} onClick={() => setOpenPost(k)}>
-                    <Td><span className="font-semibold text-gray-900">{p.store}</span>{p.restaurant_id === null && <Chip tone="red">매장 미확인</Chip>}<span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{p.topic}{p.co_stores > 1 ? ` · ${p.co_stores}곳 함께` : ""}</span></Td>
+                    <Td><span className="font-semibold text-gray-900">{p.store}</span>{p.restaurant_id === null && (p.matched_by === "sponsor" ? <Chip tone="gray">앱 밖 협찬</Chip> : <Chip tone="red">매장 미확인</Chip>)}<span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{p.topic}{p.co_stores > 1 ? ` · ${p.co_stores}곳 함께` : ""}</span></Td>
                     <Td className="text-[12px] text-gray-600">{p.posted_at ? p.posted_at.slice(5, 10).replace("-", "/") : "-"}{p.age_days !== null && <span className="block text-[11px] text-gray-400">D+{p.age_days}</span>}</Td>
                     <Td><Chip tone={p.due ? "amber" : p.targets.d7 ? "gray" : "blue"} dot={p.due}>{dueLabel(p)}</Chip></Td>
                     <Td align="right">{cell("saved")}</Td><Td align="right">{cell("reach")}</Td><Td align="right">{cell("views")}</Td>
@@ -143,7 +143,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
                       ) : askForce === k ? (
                         <Button size="sm" variant="primary" onClick={() => make(p, true)} disabled={making === k}>갱신본 만들기</Button>
                       ) : (
-                        <Button size="sm" variant={p.due ? "primary" : "secondary"} icon={<IconFileDescription />} onClick={() => make(p)} disabled={!p.available || p.restaurant_id === null || making === k} title={p.available ? undefined : p.reason}>{making === k ? "만드는 중…" : "만들기"}</Button>
+                        <Button size="sm" variant={p.due ? "primary" : "secondary"} icon={<IconFileDescription />} onClick={() => make(p)} disabled={!p.available || making === k} title={p.available ? undefined : p.reason}>{making === k ? "만드는 중…" : "만들기"}</Button>
                       )}
                     </span></Td>
                   </tr>

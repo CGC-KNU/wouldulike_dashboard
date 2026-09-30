@@ -4,7 +4,8 @@ import { readDraft } from "@/lib/draft/store";
 import { ReportStoreError, createReport, listReports, reportsOnBackend } from "@/lib/draft/reportStore";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
-import { fetchPapillonMonths } from "@/lib/draft/papillon";
+import { fetchPapillonMonths, sponsorStores } from "@/lib/draft/papillon";
+import { normName } from "@/lib/draft/sheet";
 import { buildSnapshot } from "@/lib/draft/snapshot";
 import { cohortNote, ownerHeadline, ownerStory, propose } from "@/lib/draft/report";
 import { seedStoreOps } from "@/lib/draft/seed";
@@ -33,28 +34,44 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST { restaurant_id, plan_id } — 지금 값으로 스냅샷을 굳힌 리포트 초안을 만든다. 같은 게시물·매장에 살아 있는 리포트가 있으면 새로 만들지 않는다. */
+/**
+ * POST { restaurant_id, plan_id } — 지금 값으로 스냅샷을 굳힌 리포트 초안을 만든다. 같은 게시물·매장에 살아 있는 리포트가 있으면 새로 만들지 않는다.
+ * 앱에 없는 협찬 매장(1001)은 restaurant_id 대신 store_name — 그 게시물의 협찬 매장(`sponsorStores`)일 때만 받는다.
+ */
 export async function POST(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const body = (await req.json().catch(() => ({}))) as { restaurant_id?: number; plan_id?: number; force?: boolean };
-  if (!body.restaurant_id || !body.plan_id) return NextResponse.json({ detail: "restaurant_id 와 plan_id 가 필요합니다." }, { status: 400 });
+  const body = (await req.json().catch(() => ({}))) as { restaurant_id?: number | null; store_name?: string; plan_id?: number; force?: boolean };
+  const sponsorName = body.restaurant_id ? "" : (body.store_name ?? "").trim();
+  if (!body.plan_id || (!body.restaurant_id && !sponsorName)) return NextResponse.json({ detail: "plan_id 와 restaurant_id(앱에 없는 협찬 매장이면 store_name)가 필요합니다." }, { status: 400 });
 
   let mine: StoreReport[];
-  try { mine = await listReports({ restaurant_id: body.restaurant_id }); } catch (e) { return storeError(e) ?? NextResponse.json({ detail: "리포트를 읽지 못했습니다." }, { status: 502 }); }
+  try {
+    mine = body.restaurant_id
+      ? await listReports({ restaurant_id: body.restaurant_id })
+      : (await listReports()).filter((r) => r.restaurant_id === null && normName(r.snapshot?.store?.name ?? "") === normName(sponsorName));
+  } catch (e) { return storeError(e) ?? NextResponse.json({ detail: "리포트를 읽지 못했습니다." }, { status: 502 }); }
   const existing = mine.find((r) => r.plan_id === body.plan_id && r.status !== "REVOKED");
   if (existing && !body.force) return NextResponse.json({ detail: `이 게시물 리포트는 이미 있습니다 (${existing.status}). 갱신본을 만들려면 force 를 주세요.`, report: existing }, { status: 409 });
 
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
   const stores = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
-  const store = stores.find((s) => s.restaurant_id === body.restaurant_id);
-  if (!store) return NextResponse.json({ detail: "매장을 찾을 수 없습니다." }, { status: 404 });
   const pap = await fetchPapillonMonths(3);
   const plan = pap.plans.find((p) => p.id === body.plan_id);
   if (!plan) return NextResponse.json({ detail: "Papillon 기획을 찾을 수 없습니다 (백엔드 연결 확인)." }, { status: 404 });
+  let store: { restaurant_id: number | null; name: string; campus: StoreOps["campus"] | null };
+  if (body.restaurant_id) {
+    const found = stores.find((s) => s.restaurant_id === body.restaurant_id);
+    if (!found) return NextResponse.json({ detail: "매장을 찾을 수 없습니다." }, { status: 404 });
+    const ops = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).find((o) => o.id === found.restaurant_id);
+    store = { restaurant_id: found.restaurant_id, name: found.name, campus: ops?.campus ?? null };
+  } else {
+    const name = sponsorStores(plan.topic, pap.sponsorships).find((n) => normName(n) === normName(sponsorName));
+    if (!name) return NextResponse.json({ detail: "이 게시물의 협찬 매장이 아닙니다." }, { status: 404 });
+    store = { restaurant_id: null, name, campus: null };
+  }
 
-  const ops = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).find((o) => o.id === store.restaurant_id);
-  const snapshot = await buildSnapshot({ ...store, campus: ops?.campus ?? null }, plan, stores.filter((s) => s.is_affiliate !== false));
+  const snapshot = await buildSnapshot(store, plan, stores.filter((s) => s.is_affiliate !== false));
   snapshot.cohort_note = cohortNote(snapshot.metrics);
   const usedRules = mine.filter((r) => r.status === "SENT").flatMap((r) => r.proposals.filter((p) => p.approved).map((p) => p.rule));
   const actor = (await actorName()) ?? "unknown";

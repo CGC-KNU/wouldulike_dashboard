@@ -14,6 +14,10 @@ import type { Activity, BackendRestaurant, ReportProposal, StoreOps, StoreReport
 
 const storeError = (e: unknown) => NextResponse.json({ detail: e instanceof ReportStoreError ? e.message : "리포트 저장소 오류" }, { status: e instanceof ReportStoreError && e.status < 500 ? e.status : 502 });
 const draft = () => !reportsOnBackend();
+/** Astro 매장 활동 기록 — 앱에 없는 협찬 매장(restaurant_id null)은 Astro 에 매장이 없어 남기지 않는다. */
+const logStore = (cur: StoreReport, a: Omit<Activity, "id" | "target_type" | "target_id">) => {
+  if (cur.restaurant_id !== null) appendDraftItem<Activity>("astro_activities", () => [], { target_type: "store", target_id: String(cur.restaurant_id), ...a });
+};
 
 async function load(id: string): Promise<StoreReport | NextResponse> {
   try {
@@ -77,7 +81,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     return storeError(e);
   }
   const who = (await actorName()) ?? "unknown";
-  appendDraftItem<Activity>("astro_activities", () => [], { target_type: "store", target_id: String(cur.restaurant_id), kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 초안 삭제`, author: who, created_at: new Date().toISOString() });
+  logStore(cur, { kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 초안 삭제`, author: who, created_at: new Date().toISOString() });
   return new NextResponse(null, { status: 204 });
 }
 
@@ -97,10 +101,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // 초안만 — 보낸 리포트의 숫자가 나중에 바뀌면 "9/18 기준"이라고 적어 보낸 문장이 거짓이 된다.
     if (cur.status !== "DRAFT") return bad("초안만 수치를 다시 읽을 수 있습니다. 보낸 리포트는 갱신본을 만드세요.");
     const stores = (await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/"))?.restaurants ?? [];
-    const store = stores.find((s) => s.restaurant_id === cur.restaurant_id);
+    // 앱에 없는 협찬 매장은 매장 표에 없다 — 만들 때 굳힌 이름을 그대로 쓴다
+    const store = cur.restaurant_id === null ? { restaurant_id: null, name: cur.snapshot.store.name } : stores.find((s) => s.restaurant_id === cur.restaurant_id);
     const plan = (await fetchPapillonMonths(3)).plans.find((p) => p.id === cur.plan_id);
     if (!store || !plan) return bad("매장이나 Papillon 기획을 찾지 못했습니다 (백엔드 연결 확인).");
-    const ops = readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).find((o) => o.id === store.restaurant_id);
+    const ops = store.restaurant_id === null ? undefined : readDraft<StoreOps[]>("astro_store_ops", seedStoreOps).find((o) => o.id === store.restaurant_id);
     const snapshot = await buildSnapshot({ ...store, campus: ops?.campus ?? null }, plan, stores.filter((s) => s.is_affiliate !== false));
     snapshot.cohort_note = cohortNote(snapshot.metrics);
     // 손대지 않은 자동 문장은 새 숫자로 다시 쓰고, 사람이 고친 문장은 그대로 둔다(refreshText).
@@ -130,7 +135,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const token = randomBytes(20).toString("hex");
     const updated = await save(id, { token, status: "LINKED", linked_at: now, views: { count: 0, first_at: null, last_at: null } });
     if (updated instanceof NextResponse) return updated;
-    appendDraftItem<Activity>("astro_activities", () => [], { target_type: "store", target_id: String(cur.restaurant_id), kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 링크 발급 (/r/${token.slice(0, 6)}…)`, author: who, created_at: now });
+    logStore(cur, { kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 링크 발급 (/r/${token.slice(0, 6)}…)`, author: who, created_at: now });
     return NextResponse.json({ report: updated, url: `/r/${token}`, draft: draft() });
   }
   if (action === "sent") {
@@ -138,7 +143,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (cur.status !== "APPROVED" && cur.status !== "LINKED") return bad("승인한 리포트만 '보냈음'으로 표시할 수 있습니다.");
     const updated = await save(id, { status: "SENT", sent_at: now });
     if (updated instanceof NextResponse) return updated;
-    appendDraftItem<Activity>("astro_activities", () => [], { target_type: "store", target_id: String(cur.restaurant_id), kind: "카톡", body: `'${cur.snapshot.post.topic}' 게시물 리포트 ${cur.token ? "링크" : "파일"} 카톡 전송`, author: who, created_at: now });
+    logStore(cur, { kind: "카톡", body: `'${cur.snapshot.post.topic}' 게시물 리포트 ${cur.token ? "링크" : "파일"} 카톡 전송`, author: who, created_at: now });
     return NextResponse.json({ report: updated, draft: draft() });
   }
   if (action === "revoke") {

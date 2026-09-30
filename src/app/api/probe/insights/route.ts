@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
-import { fetchPapillonMonths, fetchPerformance, isPartnerContent, mentions, partnerNames } from "@/lib/draft/papillon";
+import { fetchPapillonMonths, fetchPerformance, isPartnerContent, mentions, partnerNames, sponsorStores } from "@/lib/draft/papillon";
+import { normName } from "@/lib/draft/sheet";
 import { listReports } from "@/lib/draft/reportStore";
 import { metricsOf } from "@/lib/draft/snapshot";
 import { buildReportText, cohortNote } from "@/lib/draft/report";
@@ -25,15 +26,17 @@ import type { PostPerformance } from "@/app/dashboard/admin/satellite/types";
  *    "7일 경과"가 울린 게시물이 여기에도 뜬다. 괄호 안 이름을 매장 표에서 못 찾아도 빼지 않고
  *    「매장 미확인」 줄로 둔다 — 조용히 빠지는 게 제일 나쁘다.
  *  - 괄호가 없던 예전 기획은 전처럼 제목에 매장 이름이 들어 있으면 잡는다.
+ *  - 앱 매장 표에 없는 **협찬 매장**(1001 — 「교동후추 협찬」 릴스)은 Papillon 협찬 기록의 이름으로 잡는다
+ *    (`sponsorStores`). 매장 번호가 없어도 리포트를 만들 수 있다 — 앱 지표만 없다.
  *  - 발행 여부는 기획 상태(published) 또는 실제 게시물(성과 API 의 post)로 본다.
  *  - 웹을 거치지 않은 외부 발행(기획 없는 Post)은 아직 못 잡는다 — 백엔드 알림도 같다.
  */
 
 export interface StoreInsight {
-  /** null = 괄호에 적힌 매장을 매장 표에서 못 찾음 — 리포트를 만들 수 없다 */
+  /** null = 앱 매장 표에 없음. matched_by 가 sponsor 면 협찬 매장(리포트 가능), 아니면 괄호의 이름을 못 찾은 것 */
   restaurant_id: number | null;
   store: string;
-  matched_by: "marker" | "name";
+  matched_by: "marker" | "name" | "sponsor";
   plan_id: number;
   topic: string;
   posted_at: string | null;
@@ -84,7 +87,12 @@ export async function GET(req: Request) {
 
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
   const restaurants = (backend?.restaurants ?? (isPreview() ? previewRestaurants() : [])).filter((r) => r.is_affiliate !== false);
-  const pap = await fetchPapillonMonths(2);
+  // 기획은 두 달치만 본다. 협찬 기록은 석 달 — 촬영이 발행 전달인 편(9/2 발행 · 8월 촬영)도 이름을 찾게.
+  // 리포트 만들기(POST)도 석 달을 읽어서 두 곳이 같은 협찬 매장 이름을 쓴다.
+  const pap3 = await fetchPapillonMonths(3);
+  const first = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+  const since = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, "0")}-01`;
+  const pap = { ...pap3, plans: pap3.plans.filter((p) => p.scheduled_date >= since) };
 
   if (!pap.reachable) {
     return NextResponse.json({ insights: [] as StoreInsight[], papillon_reachable: false, checked: { stores: restaurants.length, plans: 0 }, generated_at: new Date().toISOString(), draft: true, draft_note: "Papillon 기획 목록을 읽지 못했습니다. 비어 있어도 '홍보한 적 없음'이 아닙니다." });
@@ -101,7 +109,10 @@ export async function GET(req: Request) {
     const add = (r: BackendRestaurant, by: StoreInsight["matched_by"]) => { if (!seen.has(r.restaurant_id)) { seen.add(r.restaurant_id); candidates.push({ r, label: r.name, by, plan }); } };
     for (const r of restaurants) if (names.some((n) => same(n, r))) add(r, "marker");
     for (const r of restaurants) if (mentions(plan.topic, r.name)) add(r, marked ? "marker" : "name");
-    if (!marked) continue;
+    if (!marked) {
+      if (seen.size === 0) for (const n of sponsorStores(plan.topic, pap.sponsorships)) candidates.push({ r: null, label: n, by: "sponsor", plan });
+      continue;
+    }
     for (const n of names) if (!restaurants.some((r) => same(n, r))) candidates.push({ r: null, label: n, by: "marker", plan });
     if (names.length === 0 && seen.size === 0) candidates.push({ r: null, label: "제휴식당 (괄호에 이름 없음)", by: "marker", plan });
   }
@@ -147,8 +158,11 @@ export async function GET(req: Request) {
       as_of: new Date().toISOString(), basis: p?.basis ?? null, age_days: age, collecting: Boolean(p?.collecting), metrics, cohort_note: cohortNote(metrics),
       app: st ? { month, coupon_redeemed: st.coupon_redeemed_this_month ?? 0, stamp_earned: st.stamp_earned_this_month ?? 0, revisit: st.revisit_this_month ?? 0, loyal_total: st.loyal_total ?? 0 } : null,
     };
-    const sent = rid === null ? null : reports.find((x) => x.plan_id === plan.id && x.restaurant_id === rid && x.status !== "REVOKED") ?? null;
-    const reason = rid === null
+    const reportable = rid !== null || by === "sponsor";
+    const sent = !reportable ? null : reports.find((x) => x.plan_id === plan.id && x.status !== "REVOKED" && (rid !== null
+      ? x.restaurant_id === rid
+      : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(label))) ?? null;
+    const reason = !reportable
       ? "괄호에 적힌 매장을 매장 표에서 찾지 못했습니다 — 이름을 매장 표와 맞추면 리포트를 만들 수 있습니다"
       : denied.has(plan.id)
         ? "제목에 「(매장 포함)」 표시가 없어 성과를 못 봅니다 — 표시가 있는 제휴식당 콘텐츠만 열려 있습니다(마케팅팀 합의 0920)"
@@ -157,8 +171,8 @@ export async function GET(req: Request) {
       restaurant_id: rid, store: label, matched_by: by, plan_id: plan.id, topic: plan.topic,
       posted_at: snapshot.post.posted_at, permalink: snapshot.post.permalink, age_days: age, co_stores: snapshot.post.co_stores, checkpoint: cp,
       targets: { d7: age !== null && age >= 7, d14: age !== null && age >= 14 },
-      due: rid !== null && Boolean(p?.available) && age !== null && age >= 7 && !sent,
-      available: rid !== null && Boolean(p?.available), reason, metrics, cohort_note: snapshot.cohort_note,
+      due: reportable && Boolean(p?.available) && age !== null && age >= 7 && !sent,
+      available: reportable && Boolean(p?.available), reason, metrics, cohort_note: snapshot.cohort_note,
       report: p?.available ? buildReportText(snapshot, cp) : null,
       sent_report: sent && { id: sent.id, status: sent.status, sent_at: sent.sent_at, views: sent.views.count },
     };

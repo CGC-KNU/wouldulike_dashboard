@@ -87,6 +87,21 @@ export function isPartnerContent(topic: string | null | undefined): boolean {
   return new RegExp(PARTNER_RE.source).test(topic ?? "");
 }
 
+const SPONSOR_TITLE = /^\s*(.+?)\s*협찬\s*$/;
+
+/**
+ * 앱 매장 표에 없는 **협찬 매장**(1001 — 교동후추처럼 협찬만 하고 앱엔 안 들어온 곳).
+ * 제목에 Papillon 협찬 기록의 매장 이름이 들어 있으면 그 이름, 없으면 제목이 「<매장> 협찬」 꼴일 때 그 앞부분.
+ * 앱 매장과 맞는 게시물은 그쪽이 먼저라 이걸 부르지 않는다.
+ */
+export function sponsorStores(topic: string | null | undefined, sponsorships: Pick<Sponsorship, "store_name">[]): string[] {
+  const t = topic ?? "";
+  const named = [...new Set(sponsorships.map((s) => s.store_name.trim()).filter((n) => n && mentions(t, n)))];
+  if (named.length) return named;
+  const m = SPONSOR_TITLE.exec(t);
+  return m ? [m[1]] : [];
+}
+
 /** 괄호 안에서 읽은 매장 이름들. 못 읽으면 빈 목록 — 그래도 제휴식당 콘텐츠다. */
 export function partnerNames(topic: string | null | undefined): string[] {
   const out: string[] = [];
