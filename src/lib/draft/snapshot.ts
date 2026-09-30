@@ -28,12 +28,13 @@ export function metricsOf(p: PostPerformance | null): ReportMetric[] {
   });
 }
 
-export async function buildSnapshot(store: BackendRestaurant & { campus?: ReportSnapshot["store"]["campus"] }, plan: Pick<ContentPlan, "id" | "topic" | "owner_name">, allStores: BackendRestaurant[]): Promise<ReportSnapshot> {
+/** store.restaurant_id 가 null 이면 앱에 없는 협찬 매장이다 — 앱 지표를 부르지 않고 app 은 비운다. */
+export async function buildSnapshot(store: { restaurant_id: number | null; name: string; campus?: ReportSnapshot["store"]["campus"] }, plan: Pick<ContentPlan, "id" | "topic" | "owner_name">, allStores: BackendRestaurant[]): Promise<ReportSnapshot> {
   const [{ perf }, reportData, detail, env] = await Promise.all([
     fetchPerformance(plan.id),
     fetchReportData(plan.id),
     fetchBackendJson<PlanDetail>(`/api/satellite/plans/${plan.id}/detail/`),
-    fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${store.restaurant_id}`),
+    store.restaurant_id === null ? null : fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${store.restaurant_id}`),
   ]);
   // 주소는 10분이면 죽는다(presigned TTL 600초) — **지금** 받아서 스냅샷에 파일째 담는다.
   // 못 담으면 주소를 그대로 둔다. 리포트 만들기가 이미지 때문에 실패하면 안 된다.

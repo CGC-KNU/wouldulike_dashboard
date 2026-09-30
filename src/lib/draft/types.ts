@@ -546,7 +546,7 @@ export interface ReportSnapshot {
 export interface StoreReport {
   id: string;
   token: string | null; // 40자 hex — 링크 발급 때 생긴다. 재발급하면 바뀐다.
-  restaurant_id: number;
+  restaurant_id: number | null; // null = 앱에 없는 협찬 매장(1001) — 이름은 snapshot.store.name 에만 있다
   plan_id: number;
   kind: "post"; // 월간 리포트는 2차
   status: ReportStatus;
