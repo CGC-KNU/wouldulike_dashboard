@@ -355,7 +355,9 @@
   const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
   const need = (v, name) => { if (!has(v)) MISSING.push(name); return v; };
 
-  const SRC = {backend:"DB", push:"푸시", ga4:"GA4", firebase:"Firebase"};
+  // 인스타는 우리 DB 에 쌓지만 **앱 DB 가 아니다.** 같은 "DB" 배지를 달면
+  // 가입·쿠폰 같은 앱 숫자와 한 덩어리로 읽힌다 — 출처가 밖(메타)이라는 게 보여야 한다.
+  const SRC = {backend:"DB", push:"푸시", ga4:"GA4", firebase:"Firebase", instagram:"인스타"};
   const STATUS = {connected:"연결됨", app_fix:"앱 수정 대기", pending:"연결 전", undefined_:"정의 보류", none:"해당 없음"};
   const statusLabel = s => s === "undefined" ? STATUS.undefined_ : (STATUS[s] || "연결 전");
   // 칸마다 빈 칸의 말을 바꿀 수 있다(status_label) — 「해당 없음」보다 「발급 없음」이 뜻이 분명한 칸이 있다
