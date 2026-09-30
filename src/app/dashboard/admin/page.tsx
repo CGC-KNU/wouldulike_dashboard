@@ -1148,7 +1148,7 @@ function RestaurantCalendarPanel() {
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-700">{month}월 식당 알림 예약 ({schedules.length}건)</h3>
-          <button onClick={load} className="text-[10px] text-gray-400 hover:text-periwinkle">새로고침</button>
+          <button onClick={() => load()} className="text-[10px] text-gray-400 hover:text-periwinkle">새로고침</button>
         </div>
         {schedules.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-6">예약된 식당 알림이 없습니다</p>
@@ -1465,7 +1465,7 @@ function MarketingTab() {
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">예약 / 발송 내역</h2>
-          <button onClick={load} className="text-[10px] text-gray-400 hover:text-periwinkle">새로고침</button>
+          <button onClick={() => load()} className="text-[10px] text-gray-400 hover:text-periwinkle">새로고침</button>
         </div>
 
         {loading ? (
