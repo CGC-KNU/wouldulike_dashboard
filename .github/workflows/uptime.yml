@@ -1,0 +1,78 @@
+# 서버 살아 있나 — 5분마다 확인하고, 죽으면 #code-119 에 알린다 (0930 장애 후속).
+#
+# 0930 오전 Koyeb 서비스가 일시정지돼 앱이 "HTTP 404" 를 띄웠는데, 사용자가 먼저 알았다.
+# 앱 서버(Koyeb)와 세틀라이트(Vercel)를 공개 주소로 찔러 보고, 20초 뒤 한 번 더 실패해야 '다운'으로 본다(순간 튐 무시).
+# 상태는 캐시에 남겨 **바뀔 때만** 알린다 — 다운 1번, 복구 1번. 5분마다 같은 경보가 쌓이지 않게.
+# GitHub 예약 실행은 몇 분 늦을 수 있다. 분 단위 정밀 감시가 아니라 "사람보다 먼저 아는 것"이 목적.
+name: 서버 상태 감시
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 지난 상태 불러오기
+        uses: actions/cache/restore@v4
+        with:
+          path: .uptime
+          key: uptime-${{ github.run_id }}
+          restore-keys: uptime-
+
+      - name: 확인
+        id: probe
+        run: |
+          mkdir -p .uptime
+          check() {  # 이름 주소 → 두 번 다 실패하면 코드 출력
+            for i in 1 2; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$2" || echo 000)
+              [ "$code" = "200" ] && { echo 200; return; }
+              [ $i = 1 ] && sleep 20
+            done
+            echo "$code"
+          }
+          API=$(check api "https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/affiliate-restaurants/")
+          WEB=$(check web "https://app.wouldulike.kr/login")
+          echo "api=$API web=$WEB"
+          NOW="ok"; DOWN=""
+          [ "$API" != "200" ] && { NOW="down"; DOWN="$DOWN• 앱 서버(Koyeb) 응답 $API\n"; }
+          [ "$WEB" != "200" ] && { NOW="down"; DOWN="$DOWN• 세틀라이트(Vercel) 응답 $WEB\n"; }
+          PREV=$(cat .uptime/state 2>/dev/null || echo ok)
+          echo "$NOW" > .uptime/state
+          echo "now=$NOW" >> "$GITHUB_OUTPUT"
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          { echo "down<<EOF"; printf "%b" "$DOWN"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - name: 상태 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .uptime
+          key: uptime-${{ github.run_id }}
+
+      - name: 바뀌었으면 슬랙에 (#code-119)
+        if: steps.probe.outputs.now != steps.probe.outputs.prev
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          NOW: ${{ steps.probe.outputs.now }}
+          DOWN: ${{ steps.probe.outputs.down }}
+        run: |
+          [ -z "$SLACK_BOT_TOKEN" ] && { echo "토큰 없음 — 건너뜀"; exit 0; }
+          KST=$(TZ=Asia/Seoul date "+%Y-%m-%d %H:%M KST")
+          if [ "$NOW" = "down" ]; then
+            TEXT=$(printf '%s\n%s%s\n%s' "<!here> 🚨 *서버 응답 없음* · $KST" "$DOWN" "• Koyeb 이면 서비스가 Paused 인지 먼저 확인 (Overview → Active deployment)" "• 복구되면 여기로 다시 알립니다")
+          else
+            TEXT="✅ *서버 복구 확인* · $KST — 앱 서버·세틀라이트 모두 200"
+          fi
+          curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$(jq -n --arg c "C0BPSQGMLUU" --arg t "$TEXT" '{channel:$c, text:$t, unfurl_links:false}')" | jq -r '"slack ok=\(.ok) error=\(.error // "-")"'
