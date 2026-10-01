@@ -65,30 +65,51 @@ async function makeFiles(browser, id) {
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 1400 }, deviceScaleFactor: 1 });
   page.setDefaultTimeout(120_000);
+  // 실패하면 무엇이 막혔는지 남긴다 — 공개 로그라 **호스트와 상태만**(주소 전체는 안 찍는다)
+  const notes = [];
+  const host = (u) => { try { return new URL(u).host; } catch { return "?"; } };
+  page.on("requestfailed", (q) => notes.push(`요청 실패 ${q.resourceType()} ${host(q.url())} ${q.failure()?.errorText ?? ""}`));
+  page.on("response", (res) => { if (res.status() >= 400) notes.push(`HTTP ${res.status()} ${res.request().resourceType()} ${host(res.url())}`); });
   // 우리 도메인에서 연 것처럼 — 상대 주소(/api/img)가 DASH 로 간다
   const entry = `${DASH}/__probe_preview/${encodeURIComponent(id)}`;
   await page.route(entry, (r) => r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }));
   await page.route(`${DASH}/api/img?*`, async (r) => {
     try {
       const u = new URL(new URL(r.request().url()).searchParams.get("u") ?? "");
-      if (u.protocol !== "https:" || !allowed(u.hostname)) return r.abort();
+      if (u.protocol !== "https:" || !allowed(u.hostname)) { notes.push(`img 프록시: 허용 안 된 호스트 ${u.hostname}`); return r.abort(); }
       const img = await fetch(u, { redirect: "error" });
-      if (!img.ok) return r.abort();
+      if (!img.ok) { notes.push(`img 프록시: ${u.hostname} HTTP ${img.status}`); return r.abort(); }
       await r.fulfill({ status: 200, contentType: img.headers.get("content-type") ?? "image/jpeg", body: Buffer.from(await img.arrayBuffer()) });
-    } catch {
+    } catch (e) {
+      notes.push(`img 프록시: ${e instanceof Error ? e.message : e}`);
       await r.abort();
     }
   });
   await page.goto(entry, { waitUntil: "load" });
   await page.waitForFunction(() => Boolean(window.__reportFiles));
 
-  const png = await page.evaluate(async () => {
-    const toB64 = (b) => new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1]); f.onerror = no; f.readAsDataURL(b); });
-    const pages = await window.__reportFiles.pngPages();
-    const out = [];
-    for (const p of pages) out.push({ no: p.no, b64: await toB64(p.blob) });
-    return { pages: out, missed: window.__reportFiles.png.missed || 0 };
-  });
+  let png;
+  try {
+    png = await page.evaluate(async () => {
+      const toB64 = (b) => new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1]); f.onerror = no; f.readAsDataURL(b); });
+      let pages;
+      try {
+        pages = await window.__reportFiles.pngPages();
+      } catch (e) {
+        // 이미지 로드 실패는 Error 가 아니라 Event 로 온다 — 그대로 던지면 "Event" 한 단어뿐이다
+        const t = e && e.target, src = t && (t.currentSrc || t.src || (t.getAttribute && t.getAttribute("href")));
+        let where = "";
+        try { where = src ? (src.startsWith("data:") ? "data:" : new URL(src, location.href).host) : ""; } catch { where = "?"; }
+        throw new Error(e && e.message ? e.message : `${(t && t.tagName) || ""} ${e && e.type || "이벤트"} ${where}`.trim());
+      }
+      const out = [];
+      for (const p of pages) out.push({ no: p.no, b64: await toB64(p.blob) });
+      return { pages: out, missed: window.__reportFiles.png.missed || 0 };
+    });
+  } catch (e) {
+    await page.close();
+    throw new Error(`PNG 를 만들지 못했습니다 — ${e instanceof Error ? e.message.replace(/^page\.evaluate: (Error: )?/, "") : e}${notes.length ? ` | ${[...new Set(notes)].slice(0, 6).join(" · ")}` : ""}`);
+  }
   const staticHtml = await page.evaluate(() => window.__reportFiles.html());
   const htmlMissed = await page.evaluate(() => window.__reportFiles.html.missed || 0);
   await page.close();
