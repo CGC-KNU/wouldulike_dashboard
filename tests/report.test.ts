@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
 import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, verdict } from "../src/lib/draft/report";
-import { downloadBar } from "../src/lib/draft/reportDownload";
+import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
 
@@ -675,4 +675,14 @@ test("승인 전 리포트의 미리보기는 파일 받기가 잠겨 있다", (
 
 test("파일 이름 — 매장_성과리포트_며칠차_측정일", () => {
   assert.equal(reportFilename(report({}, { report_data: rd })), "라라더_성과리포트_14일차_20260918");
+});
+
+test("PNG 의 「못 불러온 이미지」 자리는 올바른 GIF 다 — 잘린 GIF 면 이미지 하나 때문에 PNG 전체가 죽는다(1001)", () => {
+  const bytes = Buffer.from(PLACEHOLDER_GIF.split(",")[1], "base64");
+  assert.equal(bytes.subarray(0, 6).toString("latin1"), "GIF89a");
+  assert.equal(bytes[bytes.length - 1], 0x3b, "GIF 끝 표시(;)가 없으면 브라우저가 디코드하지 못한다");
+  assert.ok(bytes.includes(0x2c), "이미지 구획(,)이 있어야 한다");
+  const bar = downloadBar({ filename: "f", canDownload: true, statusLabel: "승인됨" });
+  assert.ok(bar.includes(JSON.stringify(PLACEHOLDER_GIF)), "페이지 스크립트가 같은 값을 쓴다");
+  assert.ok(!bar.includes("R0lGODlhAQABAAAAACw="), "잘린 옛 값이 남아 있으면 안 된다");
 });
