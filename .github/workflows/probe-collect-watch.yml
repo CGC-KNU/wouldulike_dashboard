@@ -8,7 +8,7 @@
 #
 # 필요한 것 (Settings → Secrets and variables → Actions):
 #   BACKEND_BASE_URL · CRON_SECRET_TOKEN · SLACK_PROBE_BOT_TOKEN (PROBE 는 #sat-probe 에 있다 — 주간 앱 보고서)
-name: PROBE 인스타 수집 감시
+name: Probe 인스타 수집 감시
 
 on:
   schedule:
