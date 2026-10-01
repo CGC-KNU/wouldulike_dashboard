@@ -38,8 +38,9 @@ export async function buildSnapshot(store: { restaurant_id: number | null; name:
   ]);
   // 주소는 10분이면 죽는다(presigned TTL 600초) — **지금** 받아서 스냅샷에 파일째 담는다.
   // 못 담으면 주소를 그대로 둔다. 리포트 만들기가 이미지 때문에 실패하면 안 된다.
+  // 릴스는 기획에 이미지 자산이 없다 — 그때는 인스타 썸네일(백엔드가 방금 새로 받은 주소, 1001)을 담는다.
   const cover = await embedImage(
-    detail?.assets?.find((a) => a.kind === "image" && a.is_ready)?.preview_url ?? null
+    detail?.assets?.find((a) => a.kind === "image" && a.is_ready)?.preview_url ?? reportData?.post?.thumb_url ?? null
   );
   const stats = env?.stats ?? null;
   const now = new Date();
