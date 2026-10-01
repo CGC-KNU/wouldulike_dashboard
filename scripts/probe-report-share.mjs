@@ -88,6 +88,16 @@ async function makeFiles(browser, id) {
   await page.goto(entry, { waitUntil: "load" });
   await page.waitForFunction(() => Boolean(window.__reportFiles));
 
+  // 화면에서 이미 깨진 이미지·배경 — 종류만(공개 로그)
+  const broken = await page.evaluate(() => {
+    const kind = (u) => { if (!u) return "빈 주소"; if (u.startsWith("data:")) return u.slice(0, u.indexOf(";")) + ` ${Math.round(u.length / 1024)}KB`; try { const x = new URL(u, location.href); return x.origin === location.origin ? `같은 출처 ${x.pathname.split("/").slice(0, 3).join("/")}` : x.host; } catch { return "?"; } };
+    const imgs = [...document.images].filter((i) => !i.complete || i.naturalWidth === 0).map((i) => `img(${kind(i.getAttribute("src"))})`);
+    const bgs = [...document.querySelectorAll("*")].map((el) => getComputedStyle(el).backgroundImage).filter((b) => b && b !== "none" && b.includes("url(")).map((b) => `bg(${kind(b.replace(/^url\(["']?|["']?\)$/g, ""))})`);
+    return { imgs, bgs: [...new Set(bgs)], total: document.images.length };
+  });
+  if (broken.imgs.length) notes.push(`깨진 이미지 ${broken.imgs.length}/${broken.total}: ${broken.imgs.slice(0, 4).join(", ")}`);
+  if (broken.bgs.length) notes.push(`배경 이미지: ${broken.bgs.slice(0, 4).join(", ")}`);
+
   let png;
   try {
     png = await page.evaluate(async () => {
