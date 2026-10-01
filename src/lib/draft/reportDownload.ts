@@ -12,6 +12,12 @@
 
 const LIB = "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js";
 const FONT = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-";
+/**
+ * 못 불러온 이미지 자리에 넣는 1×1 투명 GIF. 예전 값은 끝이 잘린 GIF 라 크롬이 디코드를 못 했다(EncodingError) —
+ * 이미지 **한 장**만 403 이어도 PNG **전체**가 "IMG error" 로 죽었다(1001 교동서서 릴스: 만료된 메타 썸네일).
+ * 담당자 「PNG 저장」과 PROBE 러너가 같은 값을 쓴다.
+ */
+export const PLACEHOLDER_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const js = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
@@ -31,7 +37,7 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
 <script>
 (function () {
   var FN = ${js(opts.filename)}, CAN = ${opts.canDownload ? "true" : "false"};
-  var LIB = ${js(LIB)}, FONT = ${js(FONT)};
+  var LIB = ${js(LIB)}, FONT = ${js(FONT)}, PLACEHOLDER_GIF = ${js(PLACEHOLDER_GIF)};
   var FACES = [[400, "Regular"], [600, "SemiBold"], [700, "Bold"], [800, "ExtraBold"]];
   var bar = document.querySelector("[data-preview-bar]"), msg = bar.querySelector("[data-dl-msg]");
   function say(t) { msg.textContent = t; }
@@ -196,7 +202,8 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
           width: W, height: reportBottom(), pixelRatio: 2, backgroundColor: "#F1F2F7", fontEmbedCSS: r[1],
           // cacheBust 는 쓰지 않는다 — 붙이는 쿼리가 **서명된 URL을 깨뜨려** 403 이 난다.
           // 이미지는 우리 도메인(/api/img)을 거치고 거기서 짧게 캐시하므로 굳이 우회할 이유도 없다.
-          imagePlaceholder: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+          // 못 불러온 이미지 자리 — 그 자리만 비고 나머지는 그려진다(PLACEHOLDER_GIF 설명 참고)
+          imagePlaceholder: PLACEHOLDER_GIF,
           filter: function (n) { return !(n.hasAttribute && (n.hasAttribute("data-preview-bar") || n.hasAttribute("data-preview-style"))) && n.tagName !== "SCRIPT" && n.tagName !== "NOSCRIPT"; }
         });
       });
