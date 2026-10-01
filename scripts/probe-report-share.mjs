@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 /**
- * probe-report-share — 승인된 매장 리포트를 PROBE 가 #ops-partner 에 PNG·HTML 로 올린다 (민찬 0928).
+ * probe-report-share — 매장 리포트를 Probe 봇이 #ops-partner 에 올린다 (민찬 0928 · 두 단계 1002).
+ *
+ *   「승인」(초안 승인)   → **HTML 만**        — 팀이 문구를 확인하는 판 (stage review)
+ *   「최종 승인」         → **PNG 3장 + HTML** — 사장님께 나가는 판     (stage final)
  *
  *   .github/workflows/probe-report-share.yml 이 10분마다 부른다. 손으로:
  *   DASH=https://app.wouldulike.kr BACKEND=… CRON_TOKEN=… SLACK_TOKEN=… CHANNEL=C0BPSQ7F8LC \
  *   DRY_RUN=true node probe-report-share.mjs
  *
  * 한 건마다:
- *   1. 백엔드 slack-queue — 승인됐는데 그 승인을 아직 안 올린 것(백엔드 #79)
+ *   1. 백엔드 slack-queue?stages=review,final — 그 승인·그 단계를 아직 안 올린 것(백엔드 #79 · #103)
  *   2. 대시보드 cron-preview — 담당자 미리보기(/r/preview-<id>)와 **같은 HTML**
- *   3. 크롬(playwright-core)으로 열고, 담당자가 누르는 그 함수(window.__reportFiles)로 PNG 3장 · HTML 을 만든다
+ *   3. 크롬(playwright-core)으로 열고, 담당자가 누르는 그 함수(window.__reportFiles)로 HTML(· 최종이면 PNG 3장)을 만든다
  *      — 그래서 #ops-partner 파일이 사장님께 간 파일과 같다
  *   4. 슬랙 3단계 업로드(파일 여러 개 → 메시지 하나)
- *   5. 백엔드 slack-posted — 같은 승인은 두 번 안 올린다
+ *   5. 백엔드 slack-posted { approved_at, stage } — 같은 승인·같은 단계는 두 번 안 올린다
  *
  * 이미지: 양식은 바깥 이미지를 우리 도메인 /api/img 로 돌리는데, 그 창구는 로그인 쿠키가 없으면 /login 으로
  * 튄다(0928 확인). 러너에는 쿠키가 없으므로 /api/img 요청을 가로채 **같은 허용 호스트만** 직접 받아 준다.
@@ -57,7 +60,8 @@ async function backend(pathname, init = {}) {
 }
 
 // ── 파일 만들기 ────────────────────────────────────────────────────────
-async function makeFiles(browser, id) {
+/** `withPng` 가 거짓이면 HTML 만 만든다(초안 승인) — html-to-image·글꼴을 안 받아 빠르다. */
+async function makeFiles(browser, id, withPng) {
   const res = await fetch(`${DASH}/api/probe/reports/cron-preview?id=${encodeURIComponent(id)}`, { headers: { "X-CRON-TOKEN": CRON_TOKEN } });
   if (!res.ok) throw new Error(`미리보기 HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
   const html = await res.text();
@@ -101,8 +105,8 @@ async function makeFiles(browser, id) {
   if (broken.imgs.length) notes.push(`깨진 이미지 ${broken.imgs.length}/${broken.total}: ${broken.imgs.slice(0, 4).join(", ")}`);
   if (broken.bgs.length) notes.push(`CSS 그림: ${broken.bgs.slice(0, 4).join(", ")}`);
 
-  let png;
-  try {
+  let png = { pages: [], missed: 0 };
+  if (withPng) try {
     png = await page.evaluate(async () => {
       const toB64 = (b) => new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1]); f.onerror = no; f.readAsDataURL(b); });
       let pages;
@@ -150,11 +154,17 @@ const kst = (iso) => {
 
 function message(r, made) {
   const pngs = made.files.filter((f) => f.name.endsWith(".png")).length;
+  const final = stageOf(r) === "final";
+  const who = `${r.approved_by || "-"} · ${r.approved_at ? kst(r.approved_at) : "-"}`;
   return [
-    `:page_facing_up: *매장 리포트 승인* — ${r.store_name || "매장"}${r.revision ? " *(수정본)*" : ""}`,
+    final
+      ? `:white_check_mark: *매장 리포트 최종 승인* — ${r.store_name || "매장"}${r.revision ? " *(수정본)*" : ""}`
+      : `:memo: *매장 리포트 초안 승인* — ${r.store_name || "매장"}${r.revision ? " *(수정본)*" : ""}`,
     `• ${r.title || r.id}`,
-    `• 승인 ${r.approved_by || "-"} · ${r.approved_at ? kst(r.approved_at) : "-"}`,
-    `• 파일 PNG ${pngs}장 · HTML (담당자 미리보기에서 받는 것과 같습니다)`,
+    final ? `• 최종 승인 ${r.sent_at ? kst(r.sent_at) : "-"} (초안 승인 ${who})` : `• 승인 ${who}`,
+    final
+      ? `• 파일 PNG ${pngs}장 · HTML (담당자 미리보기에서 받는 것과 같습니다)`
+      : "• 파일 HTML — 검토용입니다. 확인한 뒤 대시보드에서 「최종 승인」을 누르면 PNG 까지 올라옵니다",
     ...(made.missed ? [`:warning: 이미지 ${made.missed}개를 파일에 넣지 못했습니다 — 미리보기에서 다시 받아 주세요`] : []),
     `<${DASH}/dashboard/admin?tab=probe-reports&plan=${r.plan_id}|리포트 열기>`,
   ].join("\n");
@@ -164,7 +174,7 @@ function message(r, made) {
 async function slack(method, init) {
   const res = await fetch(`https://slack.com/api/${method}`, { method: "POST", ...init, headers: { Authorization: `Bearer ${SLACK_TOKEN}`, ...(init.headers ?? {}) } });
   const d = await res.json().catch(() => ({ ok: false, error: `http_${res.status}` }));
-  if (!d.ok) throw new Error(`슬랙 ${method} 실패: ${d.error}${d.error === "not_in_channel" ? " — PROBE 가 채널에 초대돼 있는지 보세요" : ""}`);
+  if (!d.ok) throw new Error(`슬랙 ${method} 실패: ${d.error}${d.error === "not_in_channel" ? " — Probe 봇이 채널에 초대돼 있는지 보세요" : ""}`);
   return d;
 }
 
@@ -185,11 +195,15 @@ async function post(made, text) {
 }
 
 // ── 본체 ──────────────────────────────────────────────────────────────
-const queue = (await backend("/api/probe/reports/slack-queue/")).reports ?? [];
+/** 단계. 두 단계를 모르는 예전 백엔드는 stage 를 안 준다 — 그때는 예전처럼 PNG·HTML(final)로 다룬다. */
+function stageOf(r) { return r.stage === "review" ? "review" : "final"; }
+
+const queue = (await backend("/api/probe/reports/slack-queue/?stages=review,final")).reports ?? [];
 let todo = ONLY_ID ? queue.filter((r) => r.id === ONLY_ID) : queue;
 if (ONLY_ID && !todo.length) {
   if (!DRY_RUN) die(`${ONLY_ID} 는 큐에 없습니다(이미 올렸거나 승인 전) — 실제로 올리지 않습니다`);
-  todo = [{ id: ONLY_ID, store_name: "", title: "", approved_by: "", approved_at: null, plan_id: "", revision: false }];
+  // 큐에 없는 리포트를 만들어만 본다 — PNG 까지(final) 만들어야 확인이 된다
+  todo = [{ id: ONLY_ID, stage: "final", store_name: "", title: "", approved_by: "", approved_at: null, sent_at: null, plan_id: "", revision: false }];
 }
 console.log(`올릴 리포트 ${todo.length}건${DRY_RUN ? " (dry_run — 만들기만)" : ""}`);
 if (!todo.length) process.exit(0);
@@ -198,15 +212,16 @@ const browser = await chromium.launch({ channel: CHROME_CHANNEL });
 let failed = 0;
 for (const r of todo) {
   try {
-    const made = await makeFiles(browser, r.id);
+    const stage = stageOf(r);
+    const made = await makeFiles(browser, r.id, stage === "final");
     const text = message(r, made);
     const pngs = made.files.filter((f) => f.name.endsWith(".png"));
     const kb = (fs) => Math.round(fs.reduce((a, f) => a + f.buf.length, 0) / 1024);
-    console.log(`${r.id}${r.revision ? " (수정본)" : ""} — PNG ${pngs.length}장 ${kb(pngs)}KB · HTML ${kb(made.files.filter((f) => f.name.endsWith(".html")))}KB${made.missed ? ` · 이미지 ${made.missed}개 누락` : ""}`);
+    console.log(`${r.id} [${stage === "final" ? "최종 승인" : "초안 승인"}]${r.revision ? " (수정본)" : ""} — ${pngs.length ? `PNG ${pngs.length}장 ${kb(pngs)}KB · ` : ""}HTML ${kb(made.files.filter((f) => f.name.endsWith(".html")))}KB${made.missed ? ` · 이미지 ${made.missed}개 누락` : ""}`);
     if (SHOW_BODY) console.log(`${text}\n파일: ${made.files.map((f) => f.name).join(", ")}`);
     if (DRY_RUN) continue;
     await post(made, text);
-    await backend(`/api/probe/reports/${encodeURIComponent(r.id)}/slack-posted/`, { method: "POST", body: JSON.stringify({ approved_at: r.approved_at }) });
+    await backend(`/api/probe/reports/${encodeURIComponent(r.id)}/slack-posted/`, { method: "POST", body: JSON.stringify({ approved_at: r.approved_at, ...(r.stage ? { stage: r.stage } : {}) }) });
     console.log(`${r.id} — #ops-partner 에 올렸습니다`);
   } catch (e) {
     failed++;
