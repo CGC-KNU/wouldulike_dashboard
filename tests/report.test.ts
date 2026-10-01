@@ -652,6 +652,13 @@ test("성과 카드에 프로필 방문·팔로우가 없다 — 값이 와도",
   assert.doesNotMatch(out, /프로필 방문|팔로우/);
 });
 
+// ── 1002: 성과 카드의 강조는 조회수 한 줄 (전에는 저장) ─────────────
+test("성과 카드의 강조는 조회수에만 있다", () => {
+  const out = renderNodes(fillReportTemplate(report()))["r-metrics"].innerHTML;
+  const hl = [...out.matchAll(/<div class="kv hl"><div class="k">([^<]+)/g)].map((m) => m[1]);
+  assert.deepEqual(hl, ["조회수"]);
+});
+
 // ── 한 장 만들기 — 점주 링크 · 담당자 미리보기 · PROBE 크론이 같은 함수를 쓴다 (0928) ──────────
 const TOKEN = "a".repeat(40);
 test("미리보기(담당자·PROBE 크론)는 파일 받기 띠가 붙고, 점주 링크에는 없다", () => {
