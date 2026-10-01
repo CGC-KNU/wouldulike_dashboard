@@ -283,7 +283,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
-      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '카톡으로 보냈음'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "보냈음으로 표시했습니다." : "링크를 회수했습니다." }); onChanged();
+      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '최종 승인'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "최종 승인했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
   /** 초안 지우기 — 게시물 목록에서 다시 만들 수 있게 돌려놓는다. 보낸 리포트는 이 버튼이 없다. */
@@ -313,7 +313,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           {(r.status === "LINKED" || r.status === "SENT") && url && <Button variant={r.status === "SENT" ? "primary" : "secondary"} icon={<IconCopy />} onClick={() => copy(url)}>{copied ? "복사했습니다" : "링크 복사"}</Button>}
           {/* 0920: 사장님께는 링크 대신 파일(PNG·HTML)을 카톡으로 보낸다 — 승인 뒤 받기 → 보냈음 */}
           {(r.status === "APPROVED" || r.status === "LINKED" || r.status === "SENT") && !dirty && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer" title="미리보기 위 띠에서 PNG · HTML · 인쇄"><Button variant={r.status === "SENT" ? "secondary" : "primary"} icon={<IconDownload />}>PNG·HTML 받기</Button></a>}
-          {(r.status === "APPROVED" || r.status === "LINKED") && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>카톡으로 보냈음</Button>}
+          {(r.status === "APPROVED" || r.status === "LINKED") && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>최종 승인</Button>}
           {r.status === "DRAFT" && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>미리보기</Button></a>}
           {(r.status === "LINKED" || r.status === "SENT") && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
           {(r.status === "DRAFT" || r.status === "APPROVED") && !r.token && <Button variant="ghost" icon={<IconTrash />} onClick={remove} disabled={busy} title="초안을 지우고 게시물 목록에서 다시 만들 수 있게 합니다">초안 지우기</Button>}
@@ -359,7 +359,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         <PanelSection title="카톡으로 보내기">
           <ol className="list-decimal pl-4 text-[13px] text-gray-700 space-y-1">
             <li>「PNG·HTML 받기」 → 미리보기 위 띠에서 <b>PNG 저장</b>(사진으로 바로 보임) · 필요하면 <b>HTML 저장</b></li>
-            <li>카톡으로 파일 전송 후 「카톡으로 보냈음」</li>
+            <li>카톡으로 파일 전송 후 「최종 승인」</li>
           </ol>
           <p className="text-[12px] text-gray-500 mt-2">함께 보낼 인사말: &quot;사장님, 안녕하세요. 우주라이크입니다. 지난 게시물 성과를 정리해 보내 드립니다. 사진으로 보시면 되고, 파일로도 함께 드립니다.&quot;</p>
         </PanelSection>
