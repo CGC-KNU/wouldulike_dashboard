@@ -99,7 +99,8 @@ async function makeFiles(browser, id) {
         // 이미지 로드 실패는 Error 가 아니라 Event 로 온다 — 그대로 던지면 "Event" 한 단어뿐이다
         const t = e && e.target, src = t && (t.currentSrc || t.src || (t.getAttribute && t.getAttribute("href")));
         let where = "";
-        try { where = src ? (src.startsWith("data:") ? "data:" : new URL(src, location.href).host) : ""; } catch { where = "?"; }
+        // data: 면 형식과 크기만(내용은 안 찍는다) — 크롬이 못 읽는 형식(HEIC 등)이나 잘린 파일을 가려낸다
+        try { where = src ? (src.startsWith("data:") ? `${src.slice(0, Math.min(40, src.indexOf(",") + 1 || 40))} ${Math.round(src.length / 1024)}KB` : new URL(src, location.href).host) : ""; } catch { where = "?"; }
         throw new Error(e && e.message ? e.message : `${(t && t.tagName) || ""} ${e && e.type || "이벤트"} ${where}`.trim());
       }
       const out = [];
