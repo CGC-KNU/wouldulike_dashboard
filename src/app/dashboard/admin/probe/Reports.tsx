@@ -113,9 +113,9 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+7 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
-        <Kpi label="검토 대기" value={list ? counts.draft + counts.approved : "-"} tone="alert" hint="문구 확인 · 제안 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
-        <Kpi label="승인했는데 안 보냄" value={list ? counts.approved + counts.linked : "-"} tone="alert" hint="파일 받아 카톡 → '보냈음' 체크" />
-        <Kpi label="보낸 리포트" value={list ? counts.sent : "-"} tone="good" hint="카톡으로 보낸 것" onClick={() => setFilter("sent")} active={filter === "sent"} />
+        <Kpi label="1차 전송" value={list ? counts.draft + counts.approved : "-"} tone="alert" hint="문구 확인 · 제안 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
+        <Kpi label="최종 승인 대기" value={list ? counts.approved + counts.linked : "-"} tone="alert" hint="파일 받아 카톡 → '최종 승인'" />
+        <Kpi label="슬랙으로 보낸 리포트" value={list ? counts.sent : "-"} tone="good" hint="최종 승인한 것" onClick={() => setFilter("sent")} active={filter === "sent"} />
       </div>
 
       {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개는 성과를 못 읽었습니다`}>제목에 「(매장 포함)」 표시가 있는 제휴식당 콘텐츠만 성과가 열려 있습니다(마케팅팀 합의 0920). 표시가 없는 콘텐츠는 수치가 비고 「리포트 만들 때」에 안 잡힙니다 — 마케팅팀에 제목 표시를 부탁하세요.</Notice></div>}
