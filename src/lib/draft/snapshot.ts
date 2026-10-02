@@ -45,7 +45,7 @@ export async function buildSnapshot(store: { restaurant_id: number | null; name:
   const stats = env?.stats ?? null;
   const now = new Date();
   return {
-    store: { name: store.name, campus: store.campus ?? null },
+    store: { name: store.name, campus: store.campus ?? null, in_app: store.restaurant_id !== null },
     post: {
       plan_id: plan.id, topic: plan.topic,
       posted_at: perf?.post?.posted_at ?? null, permalink: perf?.post?.permalink ?? null, format: perf?.post?.format ?? null,

@@ -535,8 +535,11 @@ export interface ReportData {
  * 게시물별 연령은 항목 자체가 없다). 리포트 편집 화면에서 적고, 「수치 다시 읽기」에도 남는다.
  */
 export interface ReportManual {
-  /** 캐러셀 장별 좋아요(개) — thumb: 썸네일(첫) 장 · store: 이 가게가 실린 장. 리포트에는 store ÷ (전체 좋아요 − thumb) 로 쓴다 */
-  slide_likes?: { thumb: number; store: number } | null;
+  /**
+   * 캐러셀 장별 좋아요(개) — thumb: 썸네일(첫) 장 · store: 이 가게가 실린 장. 리포트에는 store ÷ (전체 좋아요 − thumb) 로 쓴다.
+   * top: 함께 소개된 가게 중 이 장이 좋아요 1위라고 사람이 확인했는가 — 그래야 "가장 높은 비중"이라고 쓴다(숫자 둘로는 알 수 없다).
+   */
+  slide_likes?: { thumb: number; store: number; top?: boolean } | null;
   /** 이 게시물을 본 사람의 연령 비중(%) — 18~24세 · 25~34세. 리포트에는 둘을 더한 18~34세 비중도 쓴다 */
   age?: { p18_24: number; p25_34: number } | null;
   /**
@@ -545,10 +548,16 @@ export interface ReportManual {
    * 비우면 "여러 곳"이라고 쓴다.
    */
   store_count?: number | null;
+  /**
+   * 연령 문장에 「대학가를 중심으로 한 {가게}의 핵심 타깃층」을 쓸 것인가 (1003 마케팅: 라라더처럼 대학가와 엮이기 싫어하거나
+   * 교동처럼 대학가가 아닌 매장은 문구를 바꾼다). 안 정했으면(null) 앱 제휴 매장일 때 쓴다 — report.ts campusTarget.
+   */
+  campus_target?: boolean | null;
 }
 
 export interface ReportSnapshot {
-  store: { name: string; campus: Campus | null };
+  /** in_app: 앱에 등록된 제휴 매장인가(1003 — 협찬만 한 매장은 false). 옛 스냅샷엔 없다 */
+  store: { name: string; campus: Campus | null; in_app?: boolean };
   post: { plan_id: number; topic: string; posted_at: string | null; permalink: string | null; format: string | null; caption: string | null; cover_url: string | null; owner_name: string | null; co_stores: number };
   as_of: string; // ISO — "○시 기준"
   basis: "D7" | "cumulative" | null;

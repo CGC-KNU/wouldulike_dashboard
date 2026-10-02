@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, curationIntro, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, verdict } from "../src/lib/draft/report";
+import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, curationIntro, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, verdict } from "../src/lib/draft/report";
 import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
@@ -101,8 +101,10 @@ const NEW_TEXT = `이번 기프트버거 콘텐츠 성과를 정리해 전달드
 이번 콘텐츠는 조회수 6,674회를 기록했습니다.
 그리고 이번 콘텐츠를 본 분들이 좋아요·저장·공유·댓글로 모두 241회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.`;
 
-test("1002 글: 인사 → 큐레이션 소개 → 조회수 → 반응 수 합계", () => {
-  assert.equal(ownerStory(fresh()).join("\n"), NEW_TEXT);
+test("1002~1003 새벽 글은 그대로 남아 있다 — 그때 만든 리포트의 자동 문장을 알아보는 기준", () => {
+  assert.equal(storyBefore1003(fresh()).join("\n"), NEW_TEXT);
+  // 그 글이 박힌 리포트는 그릴 때 지금 글(1003 마케팅 글)로 바뀐다
+  assert.deepEqual(ownerParagraphs([...storyBefore1003(fresh()), "사람이 쓴 줄"], fresh()), [...ownerStory(fresh()), "사람이 쓴 줄"]);
 });
 
 test("큐레이션 소개는 제목에 「(… 포함)」 표시가 있을 때만 — 협찬 단독은 큐레이션이 아니다", () => {
@@ -119,7 +121,7 @@ test("팔로워·도달·계정 전체 이야기를 하지 않는다 · 반응�
   const t = ownerStory(fresh()).join(" ");
   assert.doesNotMatch(t, /팔로워|팔로우|도달|본 사람|우주라이크 콘텐츠/);
   assert.doesNotMatch(t, /(좋아요|저장|공유|댓글)(는|은|이|가)? [\d,]+/);
-  assert.doesNotMatch(t, /가장 많았습니다|집계되었습니다/);
+  assert.doesNotMatch(t, /가장 많았습니다/);
   assert.doesNotMatch(t, CHANNEL);
 });
 
@@ -131,8 +133,8 @@ test("숫자는 리포트 카드와 같은 출처(report-data)를 쓴다", () =>
 
 test("반응 수 — total_interactions 가 없으면 넷을 더하고, 10 미만이면 문단이 없다", () => {
   const { total_interactions: _, ...four } = GIFT_M;
-  assert.match(ownerStory(fresh(four)).at(-1)!, /모두 241회 반응했습니다/);
-  assert.ok(!ownerStory(fresh({ ...GIFT_M, total_interactions: 7 })).some((t) => t.includes("반응했습니다")));
+  assert.match(ownerStory(fresh(four)).at(-1)!, /총반응 수는 241건으로 집계되었습니다/);
+  assert.ok(!ownerStory(fresh({ ...GIFT_M, total_interactions: 7 })).some((t) => t.includes("총반응 수")));
 });
 
 test("해석 문단은 승인 가드를 통과한다 — 넷을 더한 반응 수도 스냅샷 값이다", () => {
@@ -179,10 +181,10 @@ const REEL = { views: 12400, reach: 8100, shares: 96, saved: 140, likes: 310, co
 test("릴스 글은 「릴스」로 말한다 · 시청 시간은 글에 쓰지 않는다(세부 지표에 있다)", () => {
   const out = ownerStory(reel(REEL));
   assert.deepEqual(out, [
-    "이번 통통 릴스 성과를 정리해 전달드립니다.",
-    "이번 릴스는 대구 면 요리 맛집 여러 곳을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 통통이 대표적인 대구 면 요리 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.",
-    "이번 릴스는 조회수 12,400회를 기록했습니다.",
-    "그리고 이번 릴스를 본 분들이 좋아요·저장·공유·댓글로 모두 558회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.",
+    "이번 통통 큐레이션 릴스 성과를 분석해 전달드립니다.",
+    "이번 릴스는 면 요리 맛집으로 알려진 대구 지역 맛집 여러 곳을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 통통이 대구의 대표적인 면 요리 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.",
+    "해당 릴스는 총 12,400회의 조회수를 기록했습니다.",
+    "또한 좋아요, 댓글, 저장, 공유 등 이용자의 실제 행동을 나타내는 총반응 수는 558건으로 집계되었습니다. 이는 단순한 노출을 넘어 콘텐츠에 대한 관심과 참여를 이끌어냈으며, 향후 통통 방문을 고려하게 하는 계기를 마련했다는 점에서 의미 있는 성과라고 볼 수 있습니다.",
   ]);
 });
 
@@ -274,11 +276,11 @@ test("이미 만든 리포트의 옛 채널 비교 문장·약점 제안은 그�
   assert.doesNotMatch(all, /우리 채널|가운데 값|번째|평소|아직 없습니다/);
   assert.equal(d.insight.headline, null, "자동 요약은 카드 제목으로 쓰지 않는다(0928)");
   assert.ok(d.insight.paragraphs.includes("사장님 메뉴 사진이 특히 반응이 좋았습니다."), "사람이 쓴 줄은 남는다");
-  assert.equal(d.insight.paragraphs[0], "이번 라라더 콘텐츠 성과를 정리해 전달드립니다.", "옛 줄 자리에 지금 규칙의 글");
-  assert.ok(d.insight.paragraphs.some((t) => t.startsWith("그리고 이번 콘텐츠를 본 분들이 좋아요·저장·공유·댓글로 모두")), "반응 수 합계(1002 글)");
+  assert.equal(d.insight.paragraphs[0], "이번 라라더 큐레이션 콘텐츠 성과를 분석해 전달드립니다.", "옛 줄 자리에 지금 규칙의 글");
+  assert.ok(d.insight.paragraphs.some((t) => t.startsWith("또한 좋아요, 댓글, 저장, 공유 등 이용자의 실제 행동을 나타내는 총반응 수는")), "총반응 수(1003 글)");
   assert.ok(!d.insight.paragraphs.some((t) => t.includes("촬영 재진행")), "없앤 제안은 빠진다");
   assert.ok(d.insight.paragraphs.some((t) => t.includes("사람이 고친 공유 제안입니다.")), "고친 제안은 그대로");
-  assert.ok(d.insight.paragraphs.some((t) => t.includes("대구 면 요리 맛집 여러 곳을 함께 큐레이션")), "큐레이션 소개(1002)");
+  assert.ok(d.insight.paragraphs.some((t) => t.includes("대구 지역 맛집 여러 곳을 함께 큐레이션")), "큐레이션 소개");
   assert.equal(d.insight.limitation, null, "소개 문단이 이미 말했다 — 「N곳을 함께 소개한 큐레이션입니다」를 또 붙이지 않는다");
 });
 
@@ -290,8 +292,8 @@ test("카톡용 텍스트에 채널 비교·순위·작은 숫자가 없다", ()
   assert.doesNotMatch(t, /댓글 2/, "10 미만은 싣지 않는다");
   assert.doesNotMatch(t, /쿠폰 0장/, "앱도 0 은 싣지 않는다");
   assert.match(t, /스탬프 4개가 적립됐습니다\./);
-  assert.match(t, /이번 콘텐츠는 조회수 20,000회를 기록했습니다\./, "공개 리포트와 같은 글");
-  assert.doesNotMatch(t, /성과를 정리해 전달드립니다/, "첫 문장은 인사 줄이 대신한다");
+  assert.match(t, /해당 콘텐츠는 총 20,000회의 조회수를 기록했습니다\./, "공개 리포트와 같은 글");
+  assert.doesNotMatch(t, /성과를 (정리|분석)해 전달드립니다/, "첫 문장은 인사 줄이 대신한다");
   assert.match(t, /'대구 면 요리 맛집' 게시물에 라라더를 소개해/, "내부 표시 「(… 포함)」을 떼고 조사를 맞춘다");
 });
 

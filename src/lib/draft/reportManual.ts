@@ -13,9 +13,10 @@ import type { ReportManual } from "./types";
  */
 
 export interface ManualInput {
-  slide_likes?: { thumb?: unknown; store?: unknown } | null;
+  slide_likes?: { thumb?: unknown; store?: unknown; top?: unknown } | null;
   age?: { p18_24?: unknown; p25_34?: unknown } | null;
   store_count?: unknown;
+  campus_target?: unknown;
 }
 
 /** 검사에 쓰는 스냅샷 값 — likes: 전체 좋아요(API) · carousel: 여러 장짜리인가 · curation: 제목에 「(… 포함)」 표시 · cards: 카드 장수 */
@@ -39,7 +40,7 @@ export function parseManual(input: ManualInput | null | undefined, ctx: ManualCo
     else if (ctx.likes === null) errors.push("이 리포트에 전체 좋아요 수가 없어 비중을 계산할 수 없습니다. 수치를 다시 읽은 뒤 적어 주세요.");
     else if (thumb + store > ctx.likes) errors.push(`썸네일 장(${thumb}) + 가게 장(${store}) 좋아요가 전체 좋아요 ${ctx.likes}개보다 많습니다. 숫자를 다시 확인해 주세요.`);
     else if (ctx.likes - thumb <= 0) errors.push("썸네일 장을 뺀 좋아요가 0 이라 비중을 계산할 수 없습니다.");
-    else out.slide_likes = { thumb, store };
+    else out.slide_likes = { thumb, store, ...(sl.top === true ? { top: true } : {}) };
   }
 
   const ag = input?.age;
@@ -59,7 +60,10 @@ export function parseManual(input: ManualInput | null | undefined, ctx: ManualCo
     else out.store_count = c;
   }
 
-  return { manual: out.slide_likes || out.age || out.store_count ? out : null, errors };
+  // 문구 선택(대학가 문구를 쓸지) — 숫자가 아니라 검사할 게 없다
+  if (typeof input?.campus_target === "boolean") out.campus_target = input.campus_target;
+
+  return { manual: out.slide_likes || out.age || out.store_count || typeof out.campus_target === "boolean" ? out : null, errors };
 }
 
 /** 가게 장 좋아요 비중(%) — 가게 장 ÷ (전체 좋아요 − 썸네일 장). 계산할 수 없으면 null */
@@ -69,6 +73,17 @@ export function slideShare(manual: ReportManual | null | undefined, likes: numbe
   const rest = likes - sl.thumb;
   if (rest <= 0 || sl.store > rest) return null;
   return one((sl.store / rest) * 100);
+}
+
+/**
+ * 가게 장이 함께 소개된 가게 중 좋아요 1위인가 — 사람이 확인했거나(top), 남은 좋아요를 한 가게가 다 받아도 못 넘을 때.
+ * 숫자 둘(썸네일 장 · 가게 장)만으로는 다른 가게들이 어떻게 나눠 가졌는지 모른다. 그래서 확인 없이 "가장 높은"이라고 쓰지 않는다.
+ */
+export function slideTop(manual: ReportManual | null | undefined, likes: number | null | undefined): boolean {
+  const sl = manual?.slide_likes;
+  if (!sl || typeof likes !== "number") return false;
+  if (sl.top === true) return true;
+  return sl.store > likes - sl.thumb - sl.store;
 }
 
 /** 18~24세 · 25~34세 · 둘의 합(18~34세) */

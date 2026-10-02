@@ -1,5 +1,5 @@
 import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, VerdictTone } from "./types";
-import { ageShare, slideShare } from "./reportManual";
+import { ageShare, slideShare, slideTop } from "./reportManual";
 
 /**
  * 매장 리포트의 순수 함수들 — 비교(벤치마크) · 해석 문장 · 제안 · 금지 표현.
@@ -184,7 +184,8 @@ export function interactionsOf(s: ReportSnapshot): number | null {
 export const hasCurationMarker = (topic: string) => /[(（][^()（）]*포함\s*[)）]/.test(topic);
 
 /**
- * 큐레이션 소개 문단 (1002 마케팅: "최소한 서두에 이 내용은 들어가면 좋겠습니다").
+ * **1002~1003 새벽의** 큐레이션 소개 문단 — 지금은 아래 curationIntro. 그때 만든 리포트의 자동 문장을 알아보는 데만 쓴다.
+ * (1002 마케팅: "최소한 서두에 이 내용은 들어가면 좋겠습니다").
  *
  *   마케팅 원문: 이번 콘텐츠는 [수제버거 맛집으로 알려진 대구 지역 맛집 7곳]을 함께 큐레이션하는 방식으로 제작되었습니다.
  *   이를 통해 [기프트버거가 대구의 대표적인 수제버거] 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고
@@ -195,7 +196,7 @@ export const hasCurationMarker = (topic: string) => /[(（][^()（）]*포함\s*
  * 편집 화면에서 사람이 적으면(manual.store_count) "N곳", 비어 있으면 지어내지 않고 "여러 곳"이라고 쓴다.
  * 표시가 없는 콘텐츠(협찬 단독 등)는 큐레이션이 아니라 이 문단이 없다.
  */
-export function curationIntro(s: ReportSnapshot): string | null {
+function curationIntroBefore1003(s: ReportSnapshot): string | null {
   if (!hasCurationMarker(s.post.topic)) return null;
   const theme = stripMarker(s.post.topic);
   if (!theme) return null;
@@ -206,7 +207,10 @@ export function curationIntro(s: ReportSnapshot): string | null {
 }
 
 /**
- * 점주 해석 문단 (1002 — 마케팅 피드백: 세부 지표보다 **새로운 사람에게 노출되고 있다**, 조회수와 반응 수 중심).
+ * **1002~1003 새벽의** 점주 해석 문단 — 1003 부터는 쓰지 않는다(아래 ownerStory). 그때 만든 리포트에 이 글이 박혀 있어
+ * 자동 문장으로 알아보는 데만 쓴다(isAutoLine).
+ *
+ * (1002 — 마케팅 피드백: 세부 지표보다 **새로운 사람에게 노출되고 있다**, 조회수와 반응 수 중심).
  *
  *   ① "이번 {가게} {콘텐츠|릴스} 성과를 정리해 전달드립니다."
  *   ② 큐레이션 소개(제목에 「(… 포함)」 표시가 있을 때) — curationIntro
@@ -223,14 +227,14 @@ export function curationIntro(s: ReportSnapshot): string | null {
  * 세부 지표(도달·저장·공유·좋아요·댓글·시청 시간)는 문장에 하나씩 쓰지 않는다 — 리포트의 「세부 지표 보기」에 있다.
  * 없는 숫자는 문장째 뺀다. 10 미만은 쓰지 않는다.
  */
-export function ownerStory(s: ReportSnapshot): string[] {
+export function storyBefore1003(s: ReportSnapshot): string[] {
   const m = ownerNumbers(s), store = s.store.name;
   const n = (v: number) => v.toLocaleString();
   const ok = (v: number | null | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
   const reel = isReel(s);
   const what = reel ? "릴스" : "콘텐츠";
   const out = [`이번 ${store} ${what} 성과를 정리해 전달드립니다.`];
-  const intro = curationIntro(s);
+  const intro = curationIntroBefore1003(s);
   if (intro) out.push(intro);
   if (ok(m.views)) out.push(`이번 ${what}는 조회수 ${n(m.views)}회를 기록했습니다.`);
   const age = ageShare(s.manual);
@@ -239,6 +243,111 @@ export function ownerStory(s: ReportSnapshot): string[] {
   if (ok(reacted)) out.push(`그리고 이번 ${josa(what, "을", "를")} 본 분들이 좋아요·저장·공유·댓글로 모두 ${n(reacted)}회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.`);
   const share = isCarousel(s) ? slideShare(s.manual, m.likes) : null;
   if (share !== null) out.push(`함께 소개된 가게들 가운데 ${josa(store, "이", "가")} 실린 장이 좋아요의 ${share}%를 받았습니다(표지 장 제외).`);
+  return out;
+}
+
+/**
+ * 큐레이션 소개 문단 (1003 — 마케팅이 준 글 그대로. 대괄호 자리만 제목에서 채운다).
+ *
+ *   이번 콘텐츠는 [수제버거 맛집으로 알려진 대구 지역 맛집 7곳]을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해
+ *   [기프트버거가 대구의 대표적인 수제버거] 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고
+ *   긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.
+ *
+ * 제목이 「<지역> <주제> <맛집|술집|카페|식당>」 꼴이면(「대구 수제버거 맛집」) 그 글과 같은 모양으로 쓴다.
+ * 그 꼴이 아니면(「다이어터를 위한 맛집 추천」) 억지로 끼워 넣지 않고 「제목」을 주제로 썼다고 말한다.
+ * 곳 수는 사람이 적은 값(manual.store_count), 없으면 "여러 곳". 제목에 「(… 포함)」 표시가 없으면 큐레이션이 아니라 문단이 없다.
+ */
+export function curationIntro(s: ReportSnapshot): string | null {
+  if (!hasCurationMarker(s.post.topic)) return null;
+  const theme = stripMarker(s.post.topic);
+  if (!theme) return null;
+  const what = isReel(s) ? "릴스" : "콘텐츠", store = s.store.name;
+  const count = s.manual?.store_count;
+  const many = typeof count === "number" ? `${count}곳` : "여러 곳";
+  const tail = "타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.";
+  const m = /^(대구|경산)\s+(.+?)\s*(맛집|술집|카페|식당)$/.exec(theme);
+  if (m) {
+    const [, region, kind, noun] = m;
+    return `이번 ${what}는 ${josa(`${kind} ${noun}`, "으로", "로")} 알려진 ${region} 지역 ${noun} ${many}을 함께 큐레이션하는 방식으로 제작되었습니다. ` +
+      `이를 통해 ${josa(store, "이", "가")} ${region}의 대표적인 ${kind} ${noun} 중 하나로 자연스럽게 소개되었으며, ${tail}`;
+  }
+  return `이번 ${what}는 「${theme}」${josa(theme, "을", "를").slice(theme.length)} 주제로 ${many}을 함께 큐레이션하는 방식으로 제작되었습니다. ` +
+    `이를 통해 ${josa(store, "이", "가")} 추천 가게 중 하나로 자연스럽게 소개되었으며, ${tail}`;
+}
+
+/**
+ * 연령 문장에 「대학가를 중심으로 한 {가게}의 핵심 타깃층」을 쓸 매장인가.
+ * 편집 화면에서 정했으면 그대로. 안 정했으면 앱 제휴 매장(우주라이크 제휴는 대학가 상권이다)이거나 이름에 대학 지점 표시가 있을 때.
+ * 협찬만 한 매장(교동 등)은 기본이 아니다. 라라더처럼 대학가와 엮이기 싫어하는 곳은 편집 화면에서 끈다(마케팅 1003).
+ */
+export function campusTarget(s: ReportSnapshot): boolean {
+  const picked = s.manual?.campus_target;
+  if (typeof picked === "boolean") return picked;
+  return Boolean(s.store.campus) || s.store.in_app === true || /경대|경북대|영남대|계명대/.test(s.store.name);
+}
+
+/** 조회수가 아직 늘고 있는가 — 1·7·14일 추이의 마지막 두 점이 늘었을 때만 "꾸준한 증가세"라고 쓴다 */
+function viewsStillGrowing(s: ReportSnapshot): boolean {
+  const pts = (s.report_data?.available ? s.report_data.series ?? [] : []).filter((p) => typeof p.views === "number");
+  return pts.length >= 2 && (pts[pts.length - 1].views as number) > (pts[pts.length - 2].views as number);
+}
+
+/**
+ * 슬라이드(장)별 반응 문단 — 손으로 넣은 장별 좋아요가 있고 캐러셀일 때.
+ *   · "가장 높은 비중"은 1위가 확인됐을 때만(slideTop).
+ *   · 1위가 아니어도 가게 수로 고르게 나눈 것(1/N)보다 높으면 그렇게 말한다.
+ *   · 가게 수를 아는데 1/N 이하면 **문단을 넣지 않는다** — 약점을 세우지 않는다(0925).
+ */
+export function slideParagraph(s: ReportSnapshot): string | null {
+  if (!isCarousel(s)) return null;
+  const share = slideShare(s.manual, ownerNumbers(s).likes);
+  if (share === null) return null;
+  const store = s.store.name;
+  const count = typeof s.manual?.store_count === "number" ? s.manual.store_count : null;
+  const top = slideTop(s.manual, ownerNumbers(s).likes);
+  if (!top && count !== null && share <= 100 / count) return null;
+  const first = `슬라이드별 반응을 살펴보면, 썸네일을 제외했을 때 전체 좋아요 수의 ${share}%가 ${store} 슬라이드에서 발생했습니다.`;
+  if (top) return `${first} 이는 함께 소개된 ${count !== null ? `${count}개 ` : ""}매장 중 가장 높은 비중으로, 콘텐츠를 본 이용자들의 관심과 호응이 ${store}에 집중되었다는 점을 보여줍니다.`;
+  if (count !== null) return `${first} 이는 함께 소개된 ${count}개 매장이 고르게 나눠 가졌을 때보다 높은 비중으로, 콘텐츠를 본 이용자들의 관심과 호응이 ${store}에 모였다는 점을 보여줍니다.`;
+  return first;
+}
+
+/**
+ * 점주 해석 문단 (1003 — 마케팅이 준 글. 대괄호 자리를 숫자·가게 이름으로 채운다).
+ *
+ *   ① 이번 [가게] 큐레이션 콘텐츠 성과를 분석해 전달드립니다.            (큐레이션이 아니면 "큐레이션"을 뺀다 · 릴스는 "릴스")
+ *   ② 큐레이션 소개 — curationIntro                                      (제목에 「(… 포함)」 표시가 있을 때)
+ *   ③ 해당 콘텐츠는 총 [N]회의 조회수를 기록했으며, 현재까지도 꾸준한 증가세를 보이고 있습니다.
+ *      또한 도달한 이용자의 [N]%가 18~34세로, 대학가를 중심으로 한 [가게]의 핵심 타깃층과 높은 연관성을 보였습니다.
+ *   ④ 슬라이드별 반응 — slideParagraph
+ *   ⑤ 또한 좋아요, 댓글, 저장, 공유 등 … 총반응 수는 [N]건으로 집계되었습니다. 이는 단순한 노출을 넘어 …
+ *
+ * 글은 마케팅 것 그대로 두되, **근거가 있을 때만** 붙는 구절이 셋이다:
+ *   · "꾸준한 증가세" — 추이의 마지막 두 점에서 조회수가 늘었을 때만(viewsStillGrowing)
+ *   · "대학가를 중심으로 한 … 핵심 타깃층" — campusTarget. 아니면 "젊은 고객층을 중심으로 노출되었습니다"
+ *   · "가장 높은 비중" — 1위가 확인됐을 때만(slideParagraph)
+ * 연령·슬라이드 문장은 인스타 앱에서 손으로 옮긴 값이 있을 때만 나온다. 10 미만은 쓰지 않는다.
+ * 팔로워·비팔로워·계정 전체 숫자는 쓰지 않는다(1002 결정 — storyBefore1003 머리말).
+ */
+export function ownerStory(s: ReportSnapshot): string[] {
+  const m = ownerNumbers(s), store = s.store.name;
+  const n = (v: number) => v.toLocaleString();
+  const ok = (v: number | null | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
+  const what = isReel(s) ? "릴스" : "콘텐츠";
+  const intro = curationIntro(s);
+  const out = [`이번 ${store} ${intro ? "큐레이션 " : ""}${what} 성과를 분석해 전달드립니다.`];
+  if (intro) out.push(intro);
+  const reach: string[] = [];
+  if (ok(m.views)) reach.push(`해당 ${what}는 총 ${n(m.views)}회의 조회수를 기록했${viewsStillGrowing(s) ? "으며, 현재까지도 꾸준한 증가세를 보이고 있습니다." : "습니다."}`);
+  const age = ageShare(s.manual);
+  if (age) reach.push(`${reach.length ? "또한 " : ""}도달한 이용자의 ${age.sum}%가 18~34세로, ` +
+    (campusTarget(s) ? `대학가를 중심으로 한 ${store}의 핵심 타깃층과 높은 연관성을 보였습니다.` : "젊은 고객층을 중심으로 노출되었습니다."));
+  if (reach.length) out.push(reach.join(" "));
+  const slide = slideParagraph(s);
+  if (slide) out.push(slide);
+  const reacted = interactionsOf(s);
+  if (ok(reacted)) out.push(`${out.length > 1 ? "또한 " : ""}좋아요, 댓글, 저장, 공유 등 이용자의 실제 행동을 나타내는 총반응 수는 ${n(reacted)}건으로 집계되었습니다. ` +
+    `이는 단순한 노출을 넘어 콘텐츠에 대한 관심과 참여를 이끌어냈으며, 향후 ${store} 방문을 고려하게 하는 계기를 마련했다는 점에서 의미 있는 성과라고 볼 수 있습니다.`);
   return out;
 }
 
@@ -296,7 +405,7 @@ export const isLegacyChannelLine = (t: string) => LEGACY_CHANNEL_LINE.test(t);
 /** 0925~0928 에 자동으로 넣던 짧은 문장("저장이 644번 모였습니다. …") — 사람이 쓴 게 아니므로 새 글로 갈아 끼운다 */
 const OLD_AUTO_LINE = /^(저장이 [\d,]+번 모였습니다|[\d,]+회 조회됐습니다|[\d,]+번 공유됐습니다|[\d,]+명에게 닿았습니다)\./;
 const isAutoLine = (t: string, s: ReportSnapshot) =>
-  isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t) || storyBefore1002(s).includes(t);
+  isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t) || storyBefore1003(s).includes(t) || storyBefore1002(s).includes(t);
 
 /**
  * 리포트에 실을 해석 문단 — 자동으로 들어갔던 문장(옛 채널 비교 · 옛 짧은 문장 · 지금 규칙의 글)은 **지금 규칙의 글**로,
@@ -341,7 +450,7 @@ export function cohortNote(metrics: ReportMetric[]): string | null {
 
 /**
  * 사장님 보고글(카톡 본문). 구조는 라라더 건 그대로 — 인사 · 어떤 게시물 · 해석 · 앱 · 맺음.
- * 해석은 공개 리포트와 같은 ownerStory(0928) — 첫 문장("성과를 정리해 전달드립니다")은 인사 줄이 대신해 뺀다.
+ * 해석은 공개 리포트와 같은 ownerStory — 첫 문장("…성과를 분석해 전달드립니다")은 인사 줄이 대신해 뺀다.
  * 채널 비교·순위 근거 줄은 싣지 않는다(0925).
  * 체크포인트마다 맺음이 다르다.
  */
