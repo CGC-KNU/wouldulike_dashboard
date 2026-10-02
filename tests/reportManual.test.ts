@@ -58,22 +58,19 @@ test("둘 다 비우면 값이 없다 — 오류도 아니다", () => {
 
 const BOTH: ReportManual = { slide_likes: { thumb: 12, store: 21 }, age: { p18_24: 51.2, p25_34: 32.4 } };
 
-test("값을 넣으면 해석 글에 문장이 붙는다 — 연령은 조회수 다음, 가게 장은 반응 수 다음", () => {
-  assert.deepEqual(ownerStory(snap(BOTH)), [
-    "이번 기프트버거 콘텐츠 성과를 정리해 전달드립니다.",
-    "이번 콘텐츠는 대구 수제버거 맛집 여러 곳을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 기프트버거가 대표적인 대구 수제버거 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.",
-    "이번 콘텐츠는 조회수 6,674회를 기록했습니다.",
-    "이번 콘텐츠를 본 분들 가운데 83.6%가 18~34세였습니다(18~24세 51.2% · 25~34세 32.4%).",
-    "그리고 이번 콘텐츠를 본 분들이 좋아요·저장·공유·댓글로 모두 241회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.",
-    "함께 소개된 가게들 가운데 기프트버거가 실린 장이 좋아요의 38.9%를 받았습니다(표지 장 제외).",
-  ]);
+test("값을 넣으면 해석 글에 문장이 붙는다 — 연령은 조회수 문단에, 슬라이드는 그다음 문단으로", () => {
+  const out = ownerStory(snap(BOTH));
+  assert.equal(out.length, 5, "인사 · 큐레이션 소개 · 조회수+연령 · 슬라이드 · 총반응 수");
+  assert.equal(out[2], "해당 콘텐츠는 총 6,674회의 조회수를 기록했습니다. 또한 도달한 이용자의 83.6%가 18~34세로, 젊은 고객층을 중심으로 노출되었습니다.");
+  assert.equal(out[3], "슬라이드별 반응을 살펴보면, 썸네일을 제외했을 때 전체 좋아요 수의 38.9%가 기프트버거 슬라이드에서 발생했습니다.");
+  assert.match(out[4], /^또한 좋아요, 댓글, 저장, 공유 등 이용자의 실제 행동을 나타내는 총반응 수는 241건으로 집계되었습니다\./);
 });
 
-test("값이 없으면 그 문장은 없다 · 릴스에는 가게 장 문장이 없다", () => {
-  assert.ok(!ownerStory(snap(null)).some((t) => /18~34세|실린 장/.test(t)));
+test("값이 없으면 그 문장은 없다 · 릴스에는 슬라이드 문단이 없다", () => {
+  assert.ok(!ownerStory(snap(null)).some((t) => /18~34세|슬라이드/.test(t)));
   const reel = ownerStory(snap(BOTH, "reel", "교동후추 협찬"));
-  assert.ok(reel.some((t) => t.includes("이번 릴스를 본 분들 가운데 83.6%가 18~34세였습니다")));
-  assert.ok(!reel.some((t) => t.includes("실린 장")), "릴스는 장이 없다");
+  assert.ok(reel.some((t) => t.includes("도달한 이용자의 83.6%가 18~34세로")));
+  assert.ok(!reel.some((t) => t.includes("슬라이드")), "릴스는 장이 없다");
 });
 
 test("손으로 넣은 값의 숫자는 승인 가드를 통과하고, 다른 숫자를 적으면 막힌다", () => {
@@ -104,8 +101,8 @@ test("가게 수를 적으면 소개 문단이 「N곳」, 비우면 「여러 �
   const { manual, errors } = parseManual({ store_count: "7" }, CURATION);
   assert.deepEqual(errors, []);
   assert.deepEqual(manual, { store_count: 7 });
-  assert.match(ownerStory(snap(manual))[1], /^이번 콘텐츠는 대구 수제버거 맛집 7곳을 함께 큐레이션하는 방식으로 제작되었습니다\./);
-  assert.match(ownerStory(snap(null))[1], /대구 수제버거 맛집 여러 곳을 함께 큐레이션/);
+  assert.match(ownerStory(snap(manual))[1], /^이번 콘텐츠는 수제버거 맛집으로 알려진 대구 지역 맛집 7곳을 함께 큐레이션하는 방식으로 제작되었습니다\./);
+  assert.match(ownerStory(snap(null))[1], /대구 지역 맛집 여러 곳을 함께 큐레이션/);
   const s = snap(manual);
   const guard = checkText(ownerStory(s).join("\n"), s);
   assert.ok(guard.ok, guard.problems.join(", "));

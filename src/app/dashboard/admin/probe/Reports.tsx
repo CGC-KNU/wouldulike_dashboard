@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, hasCurationMarker, ownerNumbers, reportAllText, verdict } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, checkText, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph, verdict } from "@/lib/draft/report";
 import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
@@ -271,6 +271,8 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     thumb: String(x.snapshot.manual?.slide_likes?.thumb ?? ""), store: String(x.snapshot.manual?.slide_likes?.store ?? ""),
     a18: String(x.snapshot.manual?.age?.p18_24 ?? ""), a25: String(x.snapshot.manual?.age?.p25_34 ?? ""),
     count: String(x.snapshot.manual?.store_count ?? ""),
+    top: x.snapshot.manual?.slide_likes?.top === true,
+    campus: campusTarget(x.snapshot), // 안 정했으면 기본값(앱 제휴 매장이면 켬)을 그대로 보여 준다
   });
   const [manual, setManual] = useState(manualOf(r));
   useEffect(() => { setTitle(r.title); setSummary(r.summary); setInterp(r.interpretation.join("\n")); setProps(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved }))); setManual(manualOf(r)); setMsg(null); }, [r]);
@@ -284,9 +286,11 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const likes = ownerNumbers(r.snapshot).likes ?? null;
   const curation = hasCurationMarker(r.snapshot.post.topic);
   const cards = r.snapshot.report_data?.post?.card_count ?? null;
-  const manualInput = { slide_likes: carousel ? { thumb: manual.thumb, store: manual.store } : null, age: { p18_24: manual.a18, p25_34: manual.a25 }, store_count: curation ? manual.count : null };
+  const manualInput = { slide_likes: carousel ? { thumb: manual.thumb, store: manual.store, top: manual.top } : null, age: { p18_24: manual.a18, p25_34: manual.a25 }, store_count: curation ? manual.count : null, campus_target: manual.campus };
   const manualCheck = parseManual(manualInput, { likes, carousel, curation, cards });
   const sharePct = slideShare(manualCheck.manual, likes), agePct = ageShare(manualCheck.manual);
+  // 비중은 나왔는데 글에는 안 들어가는 경우(가게 수로 고르게 나눈 것보다 낮다)를 미리 알려 준다
+  const slideHidden = sharePct !== null && slideParagraph({ ...r.snapshot, manual: manualCheck.manual }) === null;
   const insta = r.snapshot.report_data?.post?.permalink || r.snapshot.post.permalink;
   // 저장 전에도 클라이언트에서 같은 검사를 돌려 미리 보여준다 (최종 판정은 서버)
   const precheck = useMemo(() => {
@@ -378,12 +382,17 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
             <p className="col-span-2 text-[12px] text-gray-600 -mt-1">{sharePct !== null && manualCheck.manual?.slide_likes
               ? <>가게 장 비중 <b className="text-gray-900">{sharePct}%</b> = {manualCheck.manual.slide_likes.store} ÷ (전체 좋아요 {likes} − 썸네일 장 {manualCheck.manual.slide_likes.thumb})</>
               : `전체 좋아요 ${likes ?? "?"}개(인스타 API) 기준으로 계산합니다 — 가게 장 ÷ (전체 − 썸네일 장)`}</p>
+            <label className="col-span-2 flex items-start gap-2 text-[12px] text-gray-700"><input type="checkbox" className="mt-0.5" checked={manual.top} onChange={(e) => setManual({ ...manual, top: e.target.checked })} disabled={!editable} />
+              <span>이 가게 장이 함께 소개된 가게 중 <b>좋아요 1위</b>입니다 — 체크해야 글에 「가장 높은 비중」이라고 씁니다(숫자 두 개로는 1위인지 알 수 없습니다).</span></label>
+            {slideHidden && <p className="col-span-2 text-[12px] text-amber-700">가게 수로 고르게 나눈 것보다 높지 않아 슬라이드 문단은 글에 넣지 않습니다(약점은 세우지 않습니다). 1위가 맞으면 위에 체크해 주세요.</p>}
           </div>
         )}
         <div className="grid grid-cols-2 gap-2 mt-2">
           <Field label="18~24세 비중 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.a18} onChange={(e) => setManual({ ...manual, a18: e.target.value })} disabled={!editable} placeholder="예: 51.2" /></Field>
           <Field label="25~34세 비중 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.a25} onChange={(e) => setManual({ ...manual, a25: e.target.value })} disabled={!editable} placeholder="예: 32.4" /></Field>
           <p className="col-span-2 text-[12px] text-gray-600 -mt-1">{agePct ? <>18~34세 비중 <b className="text-gray-900">{agePct.sum}%</b> = {agePct.p18_24} + {agePct.p25_34}</> : "두 비중을 더한 18~34세 비중을 글에 씁니다"}</p>
+          <label className="col-span-2 flex items-start gap-2 text-[12px] text-gray-700"><input type="checkbox" className="mt-0.5" checked={manual.campus} onChange={(e) => setManual({ ...manual, campus: e.target.checked })} disabled={!editable} />
+            <span><b>대학가 매장</b> 문구를 씁니다 — 「대학가를 중심으로 한 {s.store.name}의 핵심 타깃층과 높은 연관성」. 끄면 「젊은 고객층을 중심으로 노출」 (대학가와 엮이기 싫어하거나 대학가가 아닌 매장).</span></label>
         </div>
         {manualDirty && manualCheck.errors.length > 0 && <ul className="list-disc pl-4 mt-1 text-[12px] text-red-600">{manualCheck.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
         {manualDirty && manualCheck.errors.length === 0 && <p className="text-[12px] text-blue-700 mt-1">「저장」을 누르면 해석 글의 자동 문장이 이 값으로 다시 쓰입니다(손으로 고친 문장은 그대로).</p>}
@@ -392,7 +401,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title="문구">
         <Field label="제목"><Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!editable} /></Field>
         <Field label="한 줄 요약 (카톡 미리보기에 보입니다)"><Textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!editable} /></Field>
-        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(인사 → 큐레이션 소개 → 조회수 → 반응 수 · 위에서 넣은 값이 있으면 연령·가게 장 문장). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
+        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(인사 → 큐레이션 소개 → 조회수·연령 → 슬라이드별 반응 → 총반응 수 · 연령·슬라이드는 위에서 값을 넣었을 때). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
       </PanelSection>
 
       <PanelSection title={`다음 제안 (${props.filter((p) => p.approved).length} 승인 / ${props.length})`}>
