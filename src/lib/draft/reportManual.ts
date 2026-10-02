@@ -3,9 +3,10 @@ import type { ReportManual } from "./types";
 /**
  * 인스타 앱에서 손으로 옮기는 값 (1003) — 입력 검사와 계산.
  *
- * 넣는 숫자는 두 쌍, 네 개다(마케팅이 정한 목록):
+ * 넣는 숫자는 두 쌍과 하나다(마케팅이 정한 목록 + 곳 수):
  *   · 썸네일 장 좋아요 수 / 가게가 실린 장 좋아요 수  → 가게 장 ÷ (전체 좋아요 − 썸네일 장)
  *   · 18~24세 비중 / 25~34세 비중                      → 둘을 더한 18~34세 비중
+ *   · 큐레이션에 함께 소개한 가게 수(곳)               → 소개 문단의 "…맛집 N곳을 함께 큐레이션" (비우면 "여러 곳")
  *
  * 전체 좋아요 수는 인스타 API 값(스냅샷)이다 — 사람이 적지 않는다. 한 쌍은 둘 다 적거나 둘 다 비운다.
  * 숫자를 지어내지 않게, 앞뒤가 안 맞는 값(가게 장 좋아요가 남은 좋아요보다 많다 · 비중 합이 100 을 넘는다)은 저장하지 않는다.
@@ -14,14 +15,18 @@ import type { ReportManual } from "./types";
 export interface ManualInput {
   slide_likes?: { thumb?: unknown; store?: unknown } | null;
   age?: { p18_24?: unknown; p25_34?: unknown } | null;
+  store_count?: unknown;
 }
+
+/** 검사에 쓰는 스냅샷 값 — likes: 전체 좋아요(API) · carousel: 여러 장짜리인가 · curation: 제목에 「(… 포함)」 표시 · cards: 카드 장수 */
+export interface ManualContext { likes: number | null; carousel: boolean; curation?: boolean; cards?: number | null }
 
 const blank = (v: unknown) => v === null || v === undefined || v === "";
 const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN);
 /** 소수 한 자리까지 */
 const one = (v: number) => Math.round(v * 10) / 10;
 
-export function parseManual(input: ManualInput | null | undefined, ctx: { likes: number | null; carousel: boolean }): { manual: ReportManual | null; errors: string[] } {
+export function parseManual(input: ManualInput | null | undefined, ctx: ManualContext): { manual: ReportManual | null; errors: string[] } {
   const errors: string[] = [];
   const out: ReportManual = {};
 
@@ -46,7 +51,15 @@ export function parseManual(input: ManualInput | null | undefined, ctx: { likes:
     else out.age = { p18_24: one(a), p25_34: one(b) };
   }
 
-  return { manual: out.slide_likes || out.age ? out : null, errors };
+  if (!blank(input?.store_count)) {
+    const c = num(input?.store_count);
+    if (!ctx.curation) errors.push("가게 수는 큐레이션 콘텐츠(제목에 「(… 포함)」 표시)에서만 적습니다.");
+    else if (!Number.isInteger(c) || c < 2 || c > 30) errors.push("함께 소개한 가게 수는 2~30 사이의 정수로 적어 주세요.");
+    else if (ctx.carousel && typeof ctx.cards === "number" && ctx.cards > 0 && c > ctx.cards) errors.push(`가게 수(${c}곳)가 카드 장수(${ctx.cards}장)보다 많습니다. 숫자를 다시 확인해 주세요.`);
+    else out.store_count = c;
+  }
+
+  return { manual: out.slide_likes || out.age || out.store_count ? out : null, errors };
 }
 
 /** 가게 장 좋아요 비중(%) — 가게 장 ÷ (전체 좋아요 − 썸네일 장). 계산할 수 없으면 null */

@@ -181,7 +181,7 @@ export function interactionsOf(s: ReportSnapshot): number | null {
 }
 
 /** 제목에 「(… 포함)」 표시가 있는가 — 마케팅 약속(0916)으로 그 표시가 있는 콘텐츠가 제휴식당 **큐레이션**이다 */
-const hasCurationMarker = (topic: string) => /[(（][^()（）]*포함\s*[)）]/.test(topic);
+export const hasCurationMarker = (topic: string) => /[(（][^()（）]*포함\s*[)）]/.test(topic);
 
 /**
  * 큐레이션 소개 문단 (1002 마케팅: "최소한 서두에 이 내용은 들어가면 좋겠습니다").
@@ -191,7 +191,8 @@ const hasCurationMarker = (topic: string) => /[(（][^()（）]*포함\s*[)）]/
  *   긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.
  *
  * 대괄호 자리는 제목에서 온다 — 「대구 수제버거 맛집 (기프트버거 경대점 포함)」 → "대구 수제버거 맛집".
- * **몇 곳인지는 우리 데이터에 없다**(제목 괄호에는 이 가게 이름만 있다) — 지어내지 않고 "여러 곳"이라고 쓴다.
+ * **몇 곳인지는 우리 데이터에 없다**(제목 괄호에는 이 가게 이름만, 캡션에도 목록이 없다 — 1003 운영 조회).
+ * 편집 화면에서 사람이 적으면(manual.store_count) "N곳", 비어 있으면 지어내지 않고 "여러 곳"이라고 쓴다.
  * 표시가 없는 콘텐츠(협찬 단독 등)는 큐레이션이 아니라 이 문단이 없다.
  */
 export function curationIntro(s: ReportSnapshot): string | null {
@@ -199,7 +200,8 @@ export function curationIntro(s: ReportSnapshot): string | null {
   const theme = stripMarker(s.post.topic);
   if (!theme) return null;
   const what = isReel(s) ? "릴스" : "콘텐츠";
-  return `이번 ${what}는 ${theme} 여러 곳을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 ${josa(s.store.name, "이", "가")} 대표적인 ${theme} 중 하나로 자연스럽게 소개되었으며, ` +
+  const count = s.manual?.store_count;
+  return `이번 ${what}는 ${theme} ${typeof count === "number" ? `${count}곳` : "여러 곳"}을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 ${josa(s.store.name, "이", "가")} 대표적인 ${theme} 중 하나로 자연스럽게 소개되었으며, ` +
     "타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.";
 }
 
@@ -486,7 +488,8 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
     if (age) { for (const v of [age.p18_24, age.p25_34, age.sum]) dec(v); for (const y of [18, 24, 25, 34]) add(y); }
     const share = slideShare(s.manual, ownerNumbers(s).likes);
     if (share !== null) dec(share);
-    if (s.manual?.slide_likes) { add(s.manual.slide_likes.thumb); add(s.manual.slide_likes.store); } }
+    if (s.manual?.slide_likes) { add(s.manual.slide_likes.thumb); add(s.manual.slide_likes.store); }
+    if (typeof s.manual?.store_count === "number") add(s.manual.store_count); }
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
   /**

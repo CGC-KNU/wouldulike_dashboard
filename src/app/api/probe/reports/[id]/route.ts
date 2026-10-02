@@ -4,7 +4,7 @@ import { actorName, requireTool } from "@/lib/draft/guard";
 import { isPreview } from "@/lib/draft/previewStores";
 import { appendDraftItem, readDraft } from "@/lib/draft/store";
 import { ReportStoreError, deleteReport, getReport, patchReport, reportStorePersistent, reportsOnBackend } from "@/lib/draft/reportStore";
-import { checkText, cohortNote, ownerNumbers, refreshText, reportAllText } from "@/lib/draft/report";
+import { checkText, cohortNote, hasCurationMarker, ownerNumbers, refreshText, reportAllText } from "@/lib/draft/report";
 import { parseManual, type ManualInput } from "@/lib/draft/reportManual";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { fetchPapillonMonths } from "@/lib/draft/papillon";
@@ -60,7 +60,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (b.manual !== undefined) {
     // 사장님이 보는 글이 바뀌므로 문구와 같이 승인을 무효로 한다(위 patch.status).
     const fmt = cur.snapshot.report_data?.available ? cur.snapshot.report_data.post?.format : cur.snapshot.post.format;
-    const { manual, errors } = parseManual(b.manual, { likes: ownerNumbers(cur.snapshot).likes ?? null, carousel: fmt === "carousel" });
+    const { manual, errors } = parseManual(b.manual, {
+      likes: ownerNumbers(cur.snapshot).likes ?? null, carousel: fmt === "carousel",
+      curation: hasCurationMarker(cur.snapshot.post.topic), cards: cur.snapshot.report_data?.post?.card_count ?? null,
+    });
     if (errors.length) return NextResponse.json({ detail: errors.join(" ") }, { status: 400 });
     const snapshot = { ...cur.snapshot, manual };
     patch.snapshot = snapshot;

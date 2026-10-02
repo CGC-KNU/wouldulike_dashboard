@@ -96,3 +96,33 @@ test("값을 넣거나 고치면 손대지 않은 자동 문장만 새 값으로
   assert.ok(!again.interpretation!.some((t) => t.includes("83.6%")));
   assert.deepEqual(ownerParagraphs([...ownerStory(after), kept], after), [...ownerStory(after), kept]);
 });
+
+// ── 큐레이션에 함께 소개한 가게 수 — 데이터에 없어 사람이 적는다 (1003) ─────────────
+const CURATION = { likes: 66, carousel: true, curation: true, cards: 9 };
+
+test("가게 수를 적으면 소개 문단이 「N곳」, 비우면 「여러 곳」", () => {
+  const { manual, errors } = parseManual({ store_count: "7" }, CURATION);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(manual, { store_count: 7 });
+  assert.match(ownerStory(snap(manual))[1], /^이번 콘텐츠는 대구 수제버거 맛집 7곳을 함께 큐레이션하는 방식으로 제작되었습니다\./);
+  assert.match(ownerStory(snap(null))[1], /대구 수제버거 맛집 여러 곳을 함께 큐레이션/);
+  const s = snap(manual);
+  const guard = checkText(ownerStory(s).join("\n"), s);
+  assert.ok(guard.ok, guard.problems.join(", "));
+});
+
+test("가게 수 — 큐레이션이 아니면 받지 않고, 카드 장수보다 많거나 2곳 미만이면 저장하지 않는다", () => {
+  const bad = (v: unknown, ctx = CURATION) => parseManual({ store_count: v }, ctx).errors.join(" ");
+  assert.match(bad(7, { ...CURATION, curation: false }), /큐레이션 콘텐츠/);
+  assert.match(bad(10), /카드 장수\(9장\)보다 많습니다/);
+  assert.match(bad(1), /2~30/);
+  assert.match(bad(3.5), /2~30/);
+  assert.equal(bad(""), "", "비우는 건 오류가 아니다");
+  assert.equal(bad(12, { ...CURATION, carousel: false, cards: 0 }), "", "릴스 큐레이션은 카드 장수와 견주지 않는다");
+});
+
+test("가게 수를 나중에 넣어도 손대지 않은 소개 문단이 그 숫자로 다시 쓰인다", () => {
+  const before = snap(null), after = snap({ store_count: 7 });
+  const out = refreshText({ summary: "", interpretation: ownerStory(before), snapshot: before }, after);
+  assert.deepEqual(out.interpretation, ownerStory(after));
+});

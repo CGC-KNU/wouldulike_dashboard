@@ -539,6 +539,12 @@ export interface ReportManual {
   slide_likes?: { thumb: number; store: number } | null;
   /** 이 게시물을 본 사람의 연령 비중(%) — 18~24세 · 25~34세. 리포트에는 둘을 더한 18~34세 비중도 쓴다 */
   age?: { p18_24: number; p25_34: number } | null;
+  /**
+   * 큐레이션에 함께 소개한 가게 수(곳) — 큐레이션 소개 문단의 "…맛집 N곳을 함께 큐레이션". 우리 데이터 어디에도 없다
+   * (1003 운영 조회: 캡션엔 파트너 매장 한 곳만, 대체 텍스트는 비어 있고, 카드 장수는 표지·마무리 장이 섞여 못 믿는다).
+   * 비우면 "여러 곳"이라고 쓴다.
+   */
+  store_count?: number | null;
 }
 
 export interface ReportSnapshot {

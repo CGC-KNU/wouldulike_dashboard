@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, ownerNumbers, reportAllText, verdict } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, hasCurationMarker, ownerNumbers, reportAllText, verdict } from "@/lib/draft/report";
 import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
@@ -270,6 +270,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const manualOf = (x: StoreReport) => ({
     thumb: String(x.snapshot.manual?.slide_likes?.thumb ?? ""), store: String(x.snapshot.manual?.slide_likes?.store ?? ""),
     a18: String(x.snapshot.manual?.age?.p18_24 ?? ""), a25: String(x.snapshot.manual?.age?.p25_34 ?? ""),
+    count: String(x.snapshot.manual?.store_count ?? ""),
   });
   const [manual, setManual] = useState(manualOf(r));
   useEffect(() => { setTitle(r.title); setSummary(r.summary); setInterp(r.interpretation.join("\n")); setProps(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved }))); setManual(manualOf(r)); setMsg(null); }, [r]);
@@ -281,8 +282,10 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const fmt = r.snapshot.report_data?.available ? r.snapshot.report_data.post?.format : r.snapshot.post.format;
   const carousel = fmt === "carousel";
   const likes = ownerNumbers(r.snapshot).likes ?? null;
-  const manualInput = { slide_likes: carousel ? { thumb: manual.thumb, store: manual.store } : null, age: { p18_24: manual.a18, p25_34: manual.a25 } };
-  const manualCheck = parseManual(manualInput, { likes, carousel });
+  const curation = hasCurationMarker(r.snapshot.post.topic);
+  const cards = r.snapshot.report_data?.post?.card_count ?? null;
+  const manualInput = { slide_likes: carousel ? { thumb: manual.thumb, store: manual.store } : null, age: { p18_24: manual.a18, p25_34: manual.a25 }, store_count: curation ? manual.count : null };
+  const manualCheck = parseManual(manualInput, { likes, carousel, curation, cards });
   const sharePct = slideShare(manualCheck.manual, likes), agePct = ageShare(manualCheck.manual);
   const insta = r.snapshot.report_data?.post?.permalink || r.snapshot.post.permalink;
   // 저장 전에도 클라이언트에서 같은 검사를 돌려 미리 보여준다 (최종 판정은 서버)
@@ -362,6 +365,12 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title="인스타그램에서 확인해 넣는 값 (손으로)">
         <p className="text-[12px] text-gray-500 mb-2">인스타 API 가 게시물 단위로 주지 않는 숫자입니다. 게시물의 「인사이트 보기」에서 확인해 적으면 해석 글에 문장이 붙습니다. 비워 두면 그 문장 없이 나갑니다.</p>
         {insta && <a href={insta} target="_blank" rel="noreferrer" className="inline-flex mb-3"><Button icon={<IconBrandInstagram />}>인스타그램에서 게시물 열기</Button></a>}
+        {curation && (
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <Field label="함께 소개한 가게 수 (곳)"><Input type="number" inputMode="numeric" min={2} max={30} value={manual.count} onChange={(e) => setManual({ ...manual, count: e.target.value })} disabled={!editable} placeholder="예: 7" /></Field>
+            <p className="self-end pb-2 text-[12px] text-gray-600">{carousel && cards ? `카드 ${cards}장짜리 게시물입니다(표지·마무리 장 포함). ` : ""}비우면 소개 문단에 「여러 곳」이라고 나갑니다.</p>
+          </div>
+        )}
         {carousel && (
           <div className="grid grid-cols-2 gap-2">
             <Field label="썸네일(첫) 장 좋아요 수"><Input type="number" inputMode="numeric" min={0} value={manual.thumb} onChange={(e) => setManual({ ...manual, thumb: e.target.value })} disabled={!editable} placeholder="예: 12" /></Field>
