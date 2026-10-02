@@ -37,7 +37,7 @@ jobs:
           [ -n "$BACKEND" ] && [ -n "$CRON_TOKEN" ] || { echo "::error::BACKEND_BASE_URL · CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
           CODE=$(curl -sS --max-time 30 -o h.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" \
             "$BACKEND/api/satellite/internal/cron/collect-health/") || CODE=000
-          OK=false; RAN=unknown; FIN=unknown; TOUCHED=0; ERRS=0; ARCH=0; DATE=$(TZ=Asia/Seoul date +%F)
+          OK=false; RAN=unknown; FIN=unknown; TOUCHED=0; ERRS=0; ARCH=0; UNS=0; DATE=$(TZ=Asia/Seoul date +%F)
           if [ "$CODE" = "200" ]; then
             OK=$(jq -r '.ok' h.json); DATE=$(jq -r '.date' h.json)
             RAN=$(jq -r 'if .daily == null then "false" else "true" end' h.json)
@@ -45,15 +45,18 @@ jobs:
             TOUCHED=$(jq -r '.daily.posts_touched // 0' h.json)
             ERRS=$(jq -r '.daily.errors // 0' h.json)
             ARCH=$(jq -r '.daily.auto_archived // 0' h.json)
+            UNS=$(jq -r '.daily.unsupported // 0' h.json)
           fi
-          echo "HTTP $CODE · ${DATE} · ok=$OK · 돌았음=$RAN · 끝남=$FIN · 게시물 ${TOUCHED}건 · 오류 ${ERRS}건 · 자동 보관 ${ARCH}건"
+          echo "HTTP $CODE · ${DATE} · ok=$OK · 돌았음=$RAN · 끝남=$FIN · 게시물 ${TOUCHED}건 · 오류 ${ERRS}건 · 자동 보관 ${ARCH}건 · 지표 못 받는 게시물 ${UNS}건"
           [ "$OK" = "true" ] && exit 0
 
           if [ "$CODE" != "200" ]; then WHY="수집 상태 확인 주소가 응답하지 않았습니다(HTTP $CODE)."
           elif [ "$RAN" = "false" ]; then WHY="오늘 일일 수집이 돌지 않았습니다 — 기록이 없습니다."
           elif [ "$FIN" != "true" ]; then WHY="오늘 일일 수집이 시작됐지만 아직 끝나지 않았습니다."
           else WHY="오늘 일일 수집에서 오류가 ${ERRS}건 났습니다(게시물 ${TOUCHED}건은 받았습니다)."; fi
-          TEXT=$(printf '⚠️ 인스타 일일 수집 확인 (%s)\n%s\n백엔드 저장소 Actions 의 「인스타 수집 실행」(daily)을 눌러 다시 돌리고, Koyeb Logs 에서 collect-daily 를 확인해 주세요. 콘솔에서 돌리면 중간에 끊깁니다.' "$DATE" "$WHY")
+          # 남의 계정·삭제·미지원 형식 게시물은 오류가 아니라 따로 센다(백엔드 #109) — 알림에는 참고로만 붙인다
+          NOTE=""; [ "$UNS" -gt 0 ] && NOTE=$(printf '\n참고: 지표를 못 받는 게시물 %s건(다른 계정·삭제·미지원 형식)은 오류에서 뺐습니다.' "$UNS")
+          TEXT=$(printf '⚠️ 인스타 일일 수집 확인 (%s)\n%s%s\n백엔드 저장소 Actions 의 「인스타 수집 실행」(daily)을 눌러 다시 돌리고, Koyeb Logs 에서 collect-daily 를 확인해 주세요. 콘솔에서 돌리면 중간에 끊깁니다.' "$DATE" "$WHY" "$NOTE")
 
           if [ "$DRY_RUN" = "true" ]; then echo "[dry-run] 보낼 문구:"; echo "$TEXT"; exit 1; fi
           [ -n "$SLACK_TOKEN" ] || { echo "::error::SLACK_PROBE_BOT_TOKEN 이 없습니다"; exit 1; }
