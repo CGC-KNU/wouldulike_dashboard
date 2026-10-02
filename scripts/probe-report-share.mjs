@@ -2,7 +2,7 @@
 /**
  * probe-report-share — 매장 리포트를 Probe 봇이 #ops-partner 에 올린다 (민찬 0928 · 두 단계 1002).
  *
- *   「승인」(초안 승인)   → **HTML 만**        — 팀이 문구를 확인하는 판 (stage review)
+ *   「승인」(초안 승인)   → **메시지만** — 「인스타 지표 입력을 진행해 주세요」 + 세틀라이트 리포트 링크 + 인스타 링크 (stage review, 1003)
  *   「최종 승인」         → **PNG 2장 + HTML** — 사장님께 나가는 판     (stage final)
  *
  *   .github/workflows/probe-report-share.yml 이 10분마다 부른다. 손으로:
@@ -60,14 +60,20 @@ async function backend(pathname, init = {}) {
 }
 
 // ── 파일 만들기 ────────────────────────────────────────────────────────
-/** `withPng` 가 거짓이면 HTML 만 만든다(초안 승인) — html-to-image·글꼴을 안 받아 빠르다. */
-async function makeFiles(browser, id, withPng) {
+/** 담당자 미리보기와 같은 HTML · 파일 이름 · 인스타 게시물 주소. 로그에는 주소를 안 찍는다(공개 저장소). */
+async function fetchPreview(id) {
   const res = await fetch(`${DASH}/api/probe/reports/cron-preview?id=${encodeURIComponent(id)}`, { headers: { "X-CRON-TOKEN": CRON_TOKEN } });
   if (!res.ok) throw new Error(`미리보기 HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
-  const html = await res.text();
-  const name = decodeURIComponent(res.headers.get("x-report-filename") ?? id);
-  // 인스타 게시물 주소 — 초안 승인 메시지에 링크로 붙인다. 로그에는 안 찍는다(공개 저장소).
-  const permalink = decodeURIComponent(res.headers.get("x-report-permalink") ?? "");
+  return {
+    html: await res.text(),
+    name: decodeURIComponent(res.headers.get("x-report-filename") ?? id),
+    permalink: decodeURIComponent(res.headers.get("x-report-permalink") ?? ""),
+  };
+}
+
+/** 최종 승인용 파일 — PNG 3장 + HTML. 초안 승인은 파일을 올리지 않는다(메시지만). */
+async function makeFiles(browser, id, preview) {
+  const { html, name, permalink } = preview;
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 1400 }, deviceScaleFactor: 1 });
   page.setDefaultTimeout(120_000);
@@ -108,7 +114,7 @@ async function makeFiles(browser, id, withPng) {
   if (broken.bgs.length) notes.push(`CSS 그림: ${broken.bgs.slice(0, 4).join(", ")}`);
 
   let png = { pages: [], missed: 0 };
-  if (withPng) try {
+  try {
     png = await page.evaluate(async () => {
       const toB64 = (b) => new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(",")[1]); f.onerror = no; f.readAsDataURL(b); });
       let pages;
@@ -154,22 +160,28 @@ const kst = (iso) => {
   return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 };
 
-function message(r, made) {
-  const pngs = made.files.filter((f) => f.name.endsWith(".png")).length;
-  const final = stageOf(r) === "final";
+/** 초안 승인(1차) — 파일 없이 메시지만. 입력해야 할 사람이 바로 리포트와 게시물을 열 수 있게 링크 둘을 준다. */
+function draftMessage(r, permalink) {
   const who = `${r.approved_by || "-"} · ${r.approved_at ? kst(r.approved_at) : "-"}`;
   return [
-    final
-      ? `:white_check_mark: *매장 리포트 최종 승인* — ${r.store_name || "매장"}${r.revision ? " *(수정본)*" : ""}`
-      : `:memo: *매장 리포트 초안 승인* — ${r.store_name || "매장"}${r.revision ? " *(수정본)*" : ""}`,
+    `:memo: *매장 리포트 초안* — ${r.store_name || "매장"}${r.revision ? " *(수정본)*" : ""}`,
     `• ${r.title || r.id}`,
-    final ? `• 최종 승인 ${r.sent_at ? kst(r.sent_at) : "-"} (초안 승인 ${who})` : `• 승인 ${who}`,
-    final
-      ? `• 파일 PNG ${pngs}장 · HTML (담당자 미리보기에서 받는 것과 같습니다)`
-      : "• 파일 HTML — 검토용입니다. 확인한 뒤 대시보드에서 「최종 승인」을 누르면 PNG 까지 올라옵니다",
+    `• 승인 ${who}`,
+    "*초안에 인스타 지표 입력을 진행해 주세요.*",
+    ...(permalink ? [`• 인스타 게시물 <${permalink}|인스타그램에서 보기>`] : []),
+    `• 세틀라이트 리포트 <${DASH}/dashboard/admin?tab=probe-reports&open=${encodeURIComponent(r.id)}|리포트 열기>`,
+  ].join("\n");
+}
+
+function message(r, made) {
+  const pngs = made.files.filter((f) => f.name.endsWith(".png")).length;
+  const who = `${r.approved_by || "-"} · ${r.approved_at ? kst(r.approved_at) : "-"}`;
+  return [
+    `:white_check_mark: *매장 리포트 최종 승인* — ${r.store_name || "매장"}${r.revision ? " *(수정본)*" : ""}`,
+    `• ${r.title || r.id}`,
+    `• 최종 승인 ${r.sent_at ? kst(r.sent_at) : "-"} (초안 승인 ${who})`,
+    `• 파일 PNG ${pngs}장 · HTML (담당자 미리보기에서 받는 것과 같습니다)`,
     ...(made.missed ? [`:warning: 이미지 ${made.missed}개를 파일에 넣지 못했습니다 — 미리보기에서 다시 받아 주세요`] : []),
-    // 초안 승인(1차)에는 검토할 게시물을 바로 열 수 있게 인스타 링크를 붙인다(민찬 1003)
-    ...(!final && made.permalink ? [`• 인스타 게시물 <${made.permalink}|인스타그램에서 보기>`] : []),
     `<${DASH}/dashboard/admin?tab=probe-reports&plan=${r.plan_id}|리포트 열기>`,
   ].join("\n");
 }
@@ -180,6 +192,14 @@ async function slack(method, init) {
   const d = await res.json().catch(() => ({ ok: false, error: `http_${res.status}` }));
   if (!d.ok) throw new Error(`슬랙 ${method} 실패: ${d.error}${d.error === "not_in_channel" ? " — Probe 봇이 채널에 초대돼 있는지 보세요" : ""}`);
   return d;
+}
+
+/** 파일 없이 메시지만 — chat:write 로 충분하다 */
+async function postText(text) {
+  await slack("chat.postMessage", {
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ channel: CHANNEL, text, unfurl_links: false }),
+  });
 }
 
 async function post(made, text) {
@@ -212,19 +232,30 @@ if (ONLY_ID && !todo.length) {
 console.log(`올릴 리포트 ${todo.length}건${DRY_RUN ? " (dry_run — 만들기만)" : ""}`);
 if (!todo.length) process.exit(0);
 
-const browser = await chromium.launch({ channel: CHROME_CHANNEL });
+// 브라우저는 최종 승인이 있을 때만 띄운다 — 초안 승인은 메시지뿐이다
+let browser = null;
 let failed = 0;
 for (const r of todo) {
   try {
     const stage = stageOf(r);
-    const made = await makeFiles(browser, r.id, stage === "final");
-    const text = message(r, made);
-    const pngs = made.files.filter((f) => f.name.endsWith(".png"));
-    const kb = (fs) => Math.round(fs.reduce((a, f) => a + f.buf.length, 0) / 1024);
-    console.log(`${r.id} [${stage === "final" ? "최종 승인" : "초안 승인"}]${r.revision ? " (수정본)" : ""} — ${pngs.length ? `PNG ${pngs.length}장 ${kb(pngs)}KB · ` : ""}HTML ${kb(made.files.filter((f) => f.name.endsWith(".html")))}KB${made.missed ? ` · 이미지 ${made.missed}개 누락` : ""}`);
-    if (SHOW_BODY) console.log(`${text}\n파일: ${made.files.map((f) => f.name).join(", ")}`);
-    if (DRY_RUN) continue;
-    await post(made, text);
+    const preview = await fetchPreview(r.id);
+    if (stage === "review") {
+      const text = draftMessage(r, preview.permalink);
+      console.log(`${r.id} [초안 승인]${r.revision ? " (수정본)" : ""} — 메시지만(파일 없음)`);
+      if (SHOW_BODY) console.log(text);
+      if (DRY_RUN) continue;
+      await postText(text);
+    } else {
+      browser ??= await chromium.launch({ channel: CHROME_CHANNEL });
+      const made = await makeFiles(browser, r.id, preview);
+      const text = message(r, made);
+      const pngs = made.files.filter((f) => f.name.endsWith(".png"));
+      const kb = (fs) => Math.round(fs.reduce((a, f) => a + f.buf.length, 0) / 1024);
+      console.log(`${r.id} [최종 승인]${r.revision ? " (수정본)" : ""} — PNG ${pngs.length}장 ${kb(pngs)}KB · HTML ${kb(made.files.filter((f) => f.name.endsWith(".html")))}KB${made.missed ? ` · 이미지 ${made.missed}개 누락` : ""}`);
+      if (SHOW_BODY) console.log(`${text}\n파일: ${made.files.map((f) => f.name).join(", ")}`);
+      if (DRY_RUN) continue;
+      await post(made, text);
+    }
     await backend(`/api/probe/reports/${encodeURIComponent(r.id)}/slack-posted/`, { method: "POST", body: JSON.stringify({ approved_at: r.approved_at, ...(r.stage ? { stage: r.stage } : {}) }) });
     console.log(`${r.id} — #ops-partner 에 올렸습니다`);
   } catch (e) {
@@ -232,5 +263,5 @@ for (const r of todo) {
     console.error(`::error::${r.id} — ${e instanceof Error ? e.message : e}`);
   }
 }
-await browser.close();
+if (browser) await browser.close();
 process.exit(failed ? 1 : 0);
