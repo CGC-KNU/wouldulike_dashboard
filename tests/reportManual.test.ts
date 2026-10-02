@@ -22,7 +22,7 @@ const snap = (manual: ReportManual | null, format = "carousel", topic = "대구 
   report_data: rd(format, { views: 6674, reach: 3482, shares: 105, saved: 67, likes: 66, comments: 3, total_interactions: 241 }),
   manual,
 });
-const CAROUSEL = { likes: 66, carousel: true };
+const CAROUSEL: { likes: number | null; carousel: boolean } = { likes: 66, carousel: true };
 
 test("가게 장 비중 = 가게 장 ÷ (전체 좋아요 − 썸네일 장)", () => {
   const { manual, errors } = parseManual({ slide_likes: { thumb: "12", store: "21" } }, CAROUSEL);
