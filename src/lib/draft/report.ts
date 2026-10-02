@@ -288,7 +288,9 @@ export function soloIntro(s: ReportSnapshot): string | null {
 }
 
 /**
- * 총 시청 시간 문단 (1003 — 릴스. "시청 시간은 모든 사람들의 시간으로만" — 평균은 쓰지 않는다). 1분 이상일 때만.
+ * 총 시청 시간 문단 — **글에 넣지 않는다**(1003 민찬: "너무 없어 보이니 빼자"). 몇 분 동안 운영에 나갔던 문장이라
+ * 그때 만든 리포트의 자동 문장을 알아보는 데만 쓴다(isAutoLine). 시청 시간은 세부 지표(평균)에 있다.
+ * (1003 — 릴스. "시청 시간은 모든 사람들의 시간으로만" — 평균은 쓰지 않는다). 1분 이상일 때만.
  * 여러 가게 편이면 「{가게}가 소개된 영상」 — 본 시간을 한 가게 몫으로 말하지 않는다.
  */
 export function watchParagraph(s: ReportSnapshot): string | null {
@@ -358,7 +360,7 @@ export function slideParagraph(s: ReportSnapshot): string | null {
  *   ③ 해당 콘텐츠는 총 [N]회의 조회수를 기록했으며, 현재까지도 꾸준한 증가세를 보이고 있습니다.
  *      또한 도달한 이용자의 [N]%가 18~34세로, 대학가를 중심으로 한 [가게]의 핵심 타깃층과 높은 연관성을 보였습니다.
  *   ③' 팔로워가 아닌 사람 비율 — nonFollowerParagraph                     (손으로 넣었고 절반 이상, 1003)
- *   ③'' 총 시청 시간 — watchParagraph                                     (릴스 · 1분 이상, 1003)
+ *   (총 시청 시간 문단은 1003 에 넣었다가 뺐다 — watchParagraph 머리말)
  *   ④ 슬라이드별 반응 — slideParagraph
  *   ⑤ 또한 좋아요, 댓글, 저장, 공유 등 … 총반응 수는 [N]건으로 집계되었습니다. 이는 단순한 노출을 넘어 …
  *
@@ -386,8 +388,6 @@ export function ownerStory(s: ReportSnapshot): string[] {
   if (reach.length) out.push(reach.join(" "));
   const fresh = nonFollowerParagraph(s);
   if (fresh) out.push(fresh);
-  const watch = watchParagraph(s);
-  if (watch) out.push(watch);
   const slide = slideParagraph(s);
   if (slide) out.push(slide);
   const reacted = interactionsOf(s);
@@ -450,7 +450,8 @@ export const isLegacyChannelLine = (t: string) => LEGACY_CHANNEL_LINE.test(t);
 /** 0925~0928 에 자동으로 넣던 짧은 문장("저장이 644번 모였습니다. …") — 사람이 쓴 게 아니므로 새 글로 갈아 끼운다 */
 const OLD_AUTO_LINE = /^(저장이 [\d,]+번 모였습니다|[\d,]+회 조회됐습니다|[\d,]+번 공유됐습니다|[\d,]+명에게 닿았습니다)\./;
 const isAutoLine = (t: string, s: ReportSnapshot) =>
-  isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t) || storyBefore1003(s).includes(t) || storyBefore1002(s).includes(t);
+  isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t) || storyBefore1003(s).includes(t) || storyBefore1002(s).includes(t) ||
+  t === watchParagraph(s); // 1003 에 몇 분 나갔다 뺀 총 시청 시간 문단
 
 /**
  * 리포트에 실을 해석 문단 — 자동으로 들어갔던 문장(옛 채널 비교 · 옛 짧은 문장 · 지금 규칙의 글)은 **지금 규칙의 글**로,
