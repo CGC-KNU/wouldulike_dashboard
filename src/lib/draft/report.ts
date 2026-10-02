@@ -1,4 +1,5 @@
 import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, VerdictTone } from "./types";
+import { ageShare, slideShare } from "./reportManual";
 
 /**
  * 매장 리포트의 순수 함수들 — 비교(벤치마크) · 해석 문장 · 제안 · 금지 표현.
@@ -208,7 +209,9 @@ export function curationIntro(s: ReportSnapshot): string | null {
  *   ① "이번 {가게} {콘텐츠|릴스} 성과를 정리해 전달드립니다."
  *   ② 큐레이션 소개(제목에 「(… 포함)」 표시가 있을 때) — curationIntro
  *   ③ 조회수
+ *   ③' (손으로 넣었을 때) 본 사람의 18~34세 비중 — 인스타 앱에서 옮긴 18~24세 · 25~34세 비중 (1003)
  *   ④ 반응 수 합계 — 하나하나(좋아요 몇, 공유 몇)보다 "그냥 지나치지 않았다"를 말한다.
+ *   ④' (손으로 넣었을 때 · 캐러셀) 이 가게가 실린 장의 좋아요 비중 = 가게 장 ÷ (전체 좋아요 − 썸네일 장) (1003)
  *
  * **팔로워·비팔로워는 말하지 않는다 (1002 결정).** 마케팅이 원한 건 「이 콘텐츠를 본 사람 중 비팔로워 비율」인데 인스타가
  * 게시물 단위로는 주지 않는다(운영 호출: `(#100) Incompatible breakdowns (follow_type)` — 릴스·피드, 조회·도달 모두).
@@ -228,11 +231,16 @@ export function ownerStory(s: ReportSnapshot): string[] {
   const intro = curationIntro(s);
   if (intro) out.push(intro);
   if (ok(m.views)) out.push(`이번 ${what}는 조회수 ${n(m.views)}회를 기록했습니다.`);
+  const age = ageShare(s.manual);
+  if (age) out.push(`이번 ${josa(what, "을", "를")} 본 분들 가운데 ${age.sum}%가 18~34세였습니다(18~24세 ${age.p18_24}% · 25~34세 ${age.p25_34}%).`);
   const reacted = interactionsOf(s);
   if (ok(reacted)) out.push(`그리고 이번 ${josa(what, "을", "를")} 본 분들이 좋아요·저장·공유·댓글로 모두 ${n(reacted)}회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.`);
+  const share = isCarousel(s) ? slideShare(s.manual, m.likes) : null;
+  if (share !== null) out.push(`함께 소개된 가게들 가운데 ${josa(store, "이", "가")} 실린 장이 좋아요의 ${share}%를 받았습니다(표지 장 제외).`);
   return out;
 }
 
+const isCarousel = (s: ReportSnapshot) => (s.report_data?.available ? s.report_data.post?.format : s.post.format) === "carousel";
 const isReel = (s: ReportSnapshot) => (s.report_data?.available ? s.report_data.post?.format : s.post.format) === "reel";
 
 /**
@@ -472,6 +480,13 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
   // 반응 수 합계(1002) — 넷을 더해 나온 값도 스냅샷 값이다
   { const r = interactionsOf(s); if (r !== null) add(r); }
+  // 인스타 앱에서 손으로 옮긴 값과 거기서 계산한 비중(1003) — 소수는 정수부·소수부로 나뉘어 읽힌다
+  { const dec = (v: number) => { add(Math.floor(v)); add(Math.round((v % 1) * 10)); };
+    const age = ageShare(s.manual);
+    if (age) { for (const v of [age.p18_24, age.p25_34, age.sum]) dec(v); for (const y of [18, 24, 25, 34]) add(y); }
+    const share = slideShare(s.manual, ownerNumbers(s).likes);
+    if (share !== null) dec(share);
+    if (s.manual?.slide_likes) { add(s.manual.slide_likes.thumb); add(s.manual.slide_likes.store); } }
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
   /**
