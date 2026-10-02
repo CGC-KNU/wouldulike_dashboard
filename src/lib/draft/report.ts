@@ -276,6 +276,43 @@ export function curationIntro(s: ReportSnapshot): string | null {
 }
 
 /**
+ * 단독 소개 서두 (1003 — 릴스도 큐레이션처럼 "어떻게 만든 콘텐츠인지"로 시작한다). 제목에 「(… 포함)」 표시가 없는 릴스
+ * (협찬 단독 — 「교동후추 협찬」)일 때만. 제목에 제휴 매장이 여럿이면(co_stores > 1) 단독이 아니라 붙이지 않는다.
+ * 큐레이션 소개 문단의 끝맺음과 같은 결로 썼다 — 마케팅 확인 대상.
+ */
+export function soloIntro(s: ReportSnapshot): string | null {
+  if (!isReel(s) || hasCurationMarker(s.post.topic) || s.post.co_stores > 1) return null;
+  const store = s.store.name;
+  return `이번 릴스는 ${store} 한 곳만을 단독으로 담은 영상으로 제작되었습니다. 영상 전체가 ${store}에 집중되어 있어, ` +
+    `이를 본 이용자들에게 ${josa(store, "을", "를")} 또렷하게 알리고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.`;
+}
+
+/**
+ * 총 시청 시간 문단 (1003 — 릴스. "시청 시간은 모든 사람들의 시간으로만" — 평균은 쓰지 않는다). 1분 이상일 때만.
+ * 여러 가게 편이면 「{가게}가 소개된 영상」 — 본 시간을 한 가게 몫으로 말하지 않는다.
+ */
+export function watchParagraph(s: ReportSnapshot): string | null {
+  if (!isReel(s)) return null;
+  const { totalMin } = reelWatchNumbers(s);
+  if (totalMin === null || totalMin < 1) return null;
+  const h = Math.floor(totalMin / 60), mm = totalMin % 60;
+  const t = h > 0 ? `${h}시간${mm ? ` ${mm}분` : ""}` : `${mm}분`;
+  const store = s.store.name;
+  const whose = hasCurationMarker(s.post.topic) || s.post.co_stores > 1 ? `${josa(store, "이", "가")} 소개된 영상이` : `${store}의 모습이`;
+  return `이용자들이 이 영상을 시청한 시간은 모두 합쳐 ${t}에 이릅니다. 그만큼의 시간 동안 ${whose} 이용자들의 화면에 머물렀습니다.`;
+}
+
+/**
+ * 팔로워가 아닌 사람 비율 문단 (1003 — 인스타 인사이트 「조회」의 '팔로워 아님'을 손으로). 절반 이상일 때만 — 좋은 숫자만 쓴다.
+ * 계정 전체가 아니라 **이 콘텐츠의** 숫자다(1002 에 마케팅이 원했던 것).
+ */
+export function nonFollowerParagraph(s: ReportSnapshot): string | null {
+  const v = s.manual?.non_follower_pct;
+  if (typeof v !== "number" || v < 50) return null;
+  return `조회의 ${v}%는 우주라이크를 팔로우하지 않는 이용자에게서 나왔습니다. 기존 팔로워를 넘어 새로운 고객에게 ${josa(s.store.name, "을", "를")} 알렸다는 뜻입니다.`;
+}
+
+/**
  * 연령 문장에 「대학가를 중심으로 한 {가게}의 핵심 타깃층」을 쓸 매장인가.
  * 편집 화면에서 정했으면 그대로. 안 정했으면 앱 제휴 매장(우주라이크 제휴는 대학가 상권이다)이거나 이름에 대학 지점 표시가 있을 때.
  * 협찬만 한 매장(교동 등)은 기본이 아니다. 라라더처럼 대학가와 엮이기 싫어하는 곳은 편집 화면에서 끈다(마케팅 1003).
@@ -317,8 +354,11 @@ export function slideParagraph(s: ReportSnapshot): string | null {
  *
  *   ① 이번 [가게] 큐레이션 콘텐츠 성과를 분석해 전달드립니다.            (큐레이션이 아니면 "큐레이션"을 뺀다 · 릴스는 "릴스")
  *   ② 큐레이션 소개 — curationIntro                                      (제목에 「(… 포함)」 표시가 있을 때)
+ *      단독 소개 — soloIntro                                              (표시가 없는 단독 릴스, 1003)
  *   ③ 해당 콘텐츠는 총 [N]회의 조회수를 기록했으며, 현재까지도 꾸준한 증가세를 보이고 있습니다.
  *      또한 도달한 이용자의 [N]%가 18~34세로, 대학가를 중심으로 한 [가게]의 핵심 타깃층과 높은 연관성을 보였습니다.
+ *   ③' 팔로워가 아닌 사람 비율 — nonFollowerParagraph                     (손으로 넣었고 절반 이상, 1003)
+ *   ③'' 총 시청 시간 — watchParagraph                                     (릴스 · 1분 이상, 1003)
  *   ④ 슬라이드별 반응 — slideParagraph
  *   ⑤ 또한 좋아요, 댓글, 저장, 공유 등 … 총반응 수는 [N]건으로 집계되었습니다. 이는 단순한 노출을 넘어 …
  *
@@ -336,13 +376,18 @@ export function ownerStory(s: ReportSnapshot): string[] {
   const what = isReel(s) ? "릴스" : "콘텐츠";
   const intro = curationIntro(s);
   const out = [`이번 ${store} ${intro ? "큐레이션 " : ""}${what} 성과를 분석해 전달드립니다.`];
-  if (intro) out.push(intro);
+  const opening = intro ?? soloIntro(s);
+  if (opening) out.push(opening);
   const reach: string[] = [];
   if (ok(m.views)) reach.push(`해당 ${what}는 총 ${n(m.views)}회의 조회수를 기록했${viewsStillGrowing(s) ? "으며, 현재까지도 꾸준한 증가세를 보이고 있습니다." : "습니다."}`);
   const age = ageShare(s.manual);
   if (age) reach.push(`${reach.length ? "또한 " : ""}도달한 이용자의 ${age.sum}%가 18~34세로, ` +
     (campusTarget(s) ? `대학가를 중심으로 한 ${store}의 핵심 타깃층과 높은 연관성을 보였습니다.` : "젊은 고객층을 중심으로 노출되었습니다."));
   if (reach.length) out.push(reach.join(" "));
+  const fresh = nonFollowerParagraph(s);
+  if (fresh) out.push(fresh);
+  const watch = watchParagraph(s);
+  if (watch) out.push(watch);
   const slide = slideParagraph(s);
   if (slide) out.push(slide);
   const reacted = interactionsOf(s);
@@ -598,7 +643,8 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
     const share = slideShare(s.manual, ownerNumbers(s).likes);
     if (share !== null) dec(share);
     if (s.manual?.slide_likes) { add(s.manual.slide_likes.thumb); add(s.manual.slide_likes.store); }
-    if (typeof s.manual?.store_count === "number") add(s.manual.store_count); }
+    if (typeof s.manual?.store_count === "number") add(s.manual.store_count);
+    if (typeof s.manual?.non_follower_pct === "number") dec(s.manual.non_follower_pct); }
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
   /**

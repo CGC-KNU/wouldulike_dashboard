@@ -273,6 +273,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     count: String(x.snapshot.manual?.store_count ?? ""),
     top: x.snapshot.manual?.slide_likes?.top === true,
     campus: campusTarget(x.snapshot), // 안 정했으면 기본값(앱 제휴 매장이면 켬)을 그대로 보여 준다
+    nf: String(x.snapshot.manual?.non_follower_pct ?? ""),
   });
   const [manual, setManual] = useState(manualOf(r));
   useEffect(() => { setTitle(r.title); setSummary(r.summary); setInterp(r.interpretation.join("\n")); setProps(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved }))); setManual(manualOf(r)); setMsg(null); }, [r]);
@@ -286,7 +287,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const likes = ownerNumbers(r.snapshot).likes ?? null;
   const curation = hasCurationMarker(r.snapshot.post.topic);
   const cards = r.snapshot.report_data?.post?.card_count ?? null;
-  const manualInput = { slide_likes: carousel ? { thumb: manual.thumb, store: manual.store, top: manual.top } : null, age: { p18_24: manual.a18, p25_34: manual.a25 }, store_count: curation ? manual.count : null, campus_target: manual.campus };
+  const manualInput = { slide_likes: carousel ? { thumb: manual.thumb, store: manual.store, top: manual.top } : null, age: { p18_24: manual.a18, p25_34: manual.a25 }, store_count: curation ? manual.count : null, campus_target: manual.campus, non_follower_pct: manual.nf };
   const manualCheck = parseManual(manualInput, { likes, carousel, curation, cards });
   const sharePct = slideShare(manualCheck.manual, likes), agePct = ageShare(manualCheck.manual);
   // 비중은 나왔는데 글에는 안 들어가는 경우(가게 수로 고르게 나눈 것보다 낮다)를 미리 알려 준다
@@ -394,6 +395,12 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           <label className="col-span-2 flex items-start gap-2 text-[12px] text-gray-700"><input type="checkbox" className="mt-0.5" checked={manual.campus} onChange={(e) => setManual({ ...manual, campus: e.target.checked })} disabled={!editable} />
             <span><b>대학가 매장</b> 문구를 씁니다 — 「대학가를 중심으로 한 {s.store.name}의 핵심 타깃층과 높은 연관성」. 끄면 「젊은 고객층을 중심으로 노출」 (대학가와 엮이기 싫어하거나 대학가가 아닌 매장).</span></label>
         </div>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <Field label="팔로워가 아닌 사람 비율 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.nf} onChange={(e) => setManual({ ...manual, nf: e.target.value })} disabled={!editable} placeholder="예: 76.4" /></Field>
+          <p className="self-end pb-2 text-[12px] text-gray-600">인사이트 「조회」의 <b>팔로워 아님</b> 비율. {manualCheck.manual?.non_follower_pct !== undefined && (manualCheck.manual?.non_follower_pct ?? 0) < 50
+            ? <span className="text-amber-700">절반 미만이라 글에 넣지 않습니다.</span>
+            : "절반 이상일 때 「새로운 고객에게 알렸다」 문장이 붙습니다."}</p>
+        </div>
         {manualDirty && manualCheck.errors.length > 0 && <ul className="list-disc pl-4 mt-1 text-[12px] text-red-600">{manualCheck.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
         {manualDirty && manualCheck.errors.length === 0 && <p className="text-[12px] text-blue-700 mt-1">「저장」을 누르면 해석 글의 자동 문장이 이 값으로 다시 쓰입니다(손으로 고친 문장은 그대로).</p>}
       </PanelSection>
@@ -401,7 +408,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title="문구">
         <Field label="제목"><Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!editable} /></Field>
         <Field label="한 줄 요약 (카톡 미리보기에 보입니다)"><Textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!editable} /></Field>
-        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(인사 → 큐레이션 소개 → 조회수·연령 → 슬라이드별 반응 → 총반응 수 · 연령·슬라이드는 위에서 값을 넣었을 때). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
+        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(인사 → 큐레이션·단독 소개 → 조회수·연령 → 팔로워 아님 → 총 시청 시간(릴스) → 슬라이드별 반응 → 총반응 수 · 연령·팔로워 아님·슬라이드는 위에서 값을 넣었을 때). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
       </PanelSection>
 
       <PanelSection title={`다음 제안 (${props.filter((p) => p.approved).length} 승인 / ${props.length})`}>

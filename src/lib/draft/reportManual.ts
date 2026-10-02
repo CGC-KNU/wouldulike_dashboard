@@ -17,6 +17,7 @@ export interface ManualInput {
   age?: { p18_24?: unknown; p25_34?: unknown } | null;
   store_count?: unknown;
   campus_target?: unknown;
+  non_follower_pct?: unknown;
 }
 
 /** 검사에 쓰는 스냅샷 값 — likes: 전체 좋아요(API) · carousel: 여러 장짜리인가 · curation: 제목에 「(… 포함)」 표시 · cards: 카드 장수 */
@@ -60,10 +61,17 @@ export function parseManual(input: ManualInput | null | undefined, ctx: ManualCo
     else out.store_count = c;
   }
 
+  if (!blank(input?.non_follower_pct)) {
+    const v = num(input?.non_follower_pct);
+    if (!Number.isFinite(v) || v < 0 || v > 100) errors.push("팔로워가 아닌 사람 비율은 0~100 사이의 숫자(%)로 적어 주세요.");
+    else out.non_follower_pct = one(v);
+  }
+
   // 문구 선택(대학가 문구를 쓸지) — 숫자가 아니라 검사할 게 없다
   if (typeof input?.campus_target === "boolean") out.campus_target = input.campus_target;
 
-  return { manual: out.slide_likes || out.age || out.store_count || typeof out.campus_target === "boolean" ? out : null, errors };
+  const any = out.slide_likes || out.age || out.store_count || typeof out.campus_target === "boolean" || typeof out.non_follower_pct === "number";
+  return { manual: any ? out : null, errors };
 }
 
 /** 가게 장 좋아요 비중(%) — 가게 장 ÷ (전체 좋아요 − 썸네일 장). 계산할 수 없으면 null */

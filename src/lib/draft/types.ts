@@ -553,6 +553,11 @@ export interface ReportManual {
    * 교동처럼 대학가가 아닌 매장은 문구를 바꾼다). 안 정했으면(null) 앱 제휴 매장일 때 쓴다 — report.ts campusTarget.
    */
   campus_target?: boolean | null;
+  /**
+   * 조회 가운데 우주라이크를 팔로우하지 않는 사람에게서 나온 비율(%) — 인스타 인사이트 「조회」의 '팔로워 아님'.
+   * 마케팅이 처음(1002)에 원했던 숫자인데 API 가 게시물 단위로 주지 않는다(`Incompatible breakdowns (follow_type)`). 1003 손으로.
+   */
+  non_follower_pct?: number | null;
 }
 
 export interface ReportSnapshot {
