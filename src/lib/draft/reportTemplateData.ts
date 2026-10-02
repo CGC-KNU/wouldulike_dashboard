@@ -109,6 +109,8 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       interactions: val("total_interactions"),
     },
     app: { store_views: null },
+    // 우주라이크 계정 전체(1002) — 1장 핵심 숫자 카드가 「본 사람이 팔로워보다 많다」를 쓸 때만 본다
+    audience: rd?.audience ?? null,
     /**
      * 「시간이 지나며 쌓인 숫자」 — 1일 · 7일 · 14일 중 **찍혀 있는 것만**.
      *

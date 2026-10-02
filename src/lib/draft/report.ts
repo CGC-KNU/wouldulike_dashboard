@@ -100,14 +100,14 @@ export function josa(word: string, withBatchim: string, without: string): string
   return word + ((c - 0xac00) % 28 ? withBatchim : without);
 }
 
-type OwnerKey = "views" | "reach" | "saved" | "shares" | "likes" | "comments" | "avg_watch_ms" | "total_watch_ms";
+type OwnerKey = "views" | "reach" | "saved" | "shares" | "likes" | "comments" | "total_interactions" | "avg_watch_ms" | "total_watch_ms";
 /**
  * 점주 문장이 쓰는 숫자 — 리포트 카드와 **같은 출처**다(reportTemplateData 의 val 과 같은 순서).
  * 백엔드 report-data(D+7/D+14 그 시점 값)가 있으면 그것, 없으면 스냅샷 지표. 카드는 14일차인데 문장은 7일차가 되지 않게.
  */
 export function ownerNumbers(s: ReportSnapshot): Partial<Record<OwnerKey, number>> {
   const out: Partial<Record<OwnerKey, number>> = {};
-  for (const k of ["views", "reach", "saved", "shares", "likes", "comments", "avg_watch_ms", "total_watch_ms"] as const) {
+  for (const k of ["views", "reach", "saved", "shares", "likes", "comments", "total_interactions", "avg_watch_ms", "total_watch_ms"] as const) {
     const v = s.report_data?.available ? s.report_data.metrics?.[k] : undefined;
     const m = v ?? s.metrics.find((x) => x.key === k)?.value;
     if (typeof m === "number") out[k] = m;
@@ -128,7 +128,10 @@ const REACTION: Record<"shares" | "saved" | "likes" | "comments", { label: strin
 };
 
 /**
- * 점주 해석 문단 (0928 — 마케팅이 쓴 기프트버거 글을 규칙으로 옮겼다. 그 글과 글자까지 같게 나온다: 테스트 참고).
+ * **0928~1001 의** 점주 해석 문단 — 1002 부터는 쓰지 않는다(아래 ownerStory). 이미 만든 리포트에 이 글이 박혀 있어서
+ * 그 문장을 자동 문장으로 알아보는 데만 쓴다(isAutoLine) — 알아봐야 새 글로 갈아 끼운다.
+ *
+ * (0928 — 마케팅이 쓴 기프트버거 글을 규칙으로 옮겼다. 그 글과 글자까지 같게 나온다: 테스트 참고).
  *
  *   ① "이번 {가게} 콘텐츠 성과를 정리해 전달드립니다."
  *   ② 도달·조회 + 두 지표의 뜻. 조회가 도달보다 클 때만 "한 번 넘게 본 이용자가 있었다".
@@ -138,7 +141,7 @@ const REACTION: Record<"shares" | "saved" | "likes" | "comments", { label: strin
  * 비교는 **이 게시물 안에서만**(조회 vs 도달, 반응끼리 순위) — 우리 채널과 견주지 않는다. 10 미만은 문장에 쓰지 않는다.
  * 같은 값이면 공유 > 저장 > 좋아요 > 댓글. 편집 화면 PATCH 한도(한 줄 300자 · 4줄) 안에 든다.
  */
-export function ownerStory(s: ReportSnapshot): string[] {
+export function storyBefore1002(s: ReportSnapshot): string[] {
   const m = ownerNumbers(s), store = s.store.name;
   const n = (v: number) => v.toLocaleString();
   const ok = (v: number | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
@@ -165,6 +168,75 @@ export function ownerStory(s: ReportSnapshot): string[] {
     out.push(`${josa(REACTION[second].label, "은", "는")} ${say(second)}로 집계되었습니다. ${REACTION[second].def} ${REACTION[second].did(n(m[second] as number), store)}` +
       (tail.length ? ` 이 밖에 ${tail.join(", ")}를 기록했습니다.` : ""));
   }
+  return out;
+}
+
+/**
+ * 「새로운 사람」 문단이 쓰는 우주라이크 **계정 전체** 숫자 (1002) — 문장과 승인 가드(checkText)가 같이 쓴다.
+ *   ratio: 최근 days 일 계정 도달 ÷ 팔로워(반올림) — **2배가 안 되면 null**(1.7배를 「약 2배」로 세우지 않는다)
+ *   share: 그중 팔로워가 아닌 비중(%) — 도달로 나눌 수 있으면 도달, 아니면 조회.
+ */
+export function audienceNumbers(s: ReportSnapshot): { followers: number | null; days: number | null; reach: number | null; ratio: number | null; share: number | null; shareBasis: "reach" | "views" | null } {
+  const a = s.report_data?.available ? s.report_data.audience ?? null : null;
+  const pos = (v: number | null | undefined): v is number => typeof v === "number" && v > 0;
+  const followers = pos(a?.followers) ? a!.followers : null;
+  const reach = pos(a?.reach) ? a!.reach : null;
+  const shareOf = (non: number | null | undefined, ...rest: (number | null | undefined)[]) => {
+    if (!pos(non)) return null;
+    const all = [non, ...rest].reduce<number>((t, v) => t + (typeof v === "number" ? v : 0), 0);
+    return all > 0 ? Math.round((non / all) * 100) : null;
+  };
+  const byReach = a ? shareOf(a.reach_non_follower, a.reach_follower, a.reach_unknown) : null;
+  const byViews = a ? shareOf(a.views_non_follower, a.views_follower, a.views_unknown) : null;
+  return {
+    followers, days: a?.days ?? null, reach,
+    ratio: followers && reach && reach / followers >= 2 ? Math.round(reach / followers) : null,
+    share: byReach ?? byViews, shareBasis: byReach !== null ? "reach" : byViews !== null ? "views" : null,
+  };
+}
+
+/** 반응 수 — 인스타의 total_interactions(좋아요·저장·공유·댓글 합), 없으면 넷을 더한다. 양식의 「반응 수」와 같은 값 */
+export function interactionsOf(s: ReportSnapshot): number | null {
+  const m = ownerNumbers(s);
+  if (typeof m.total_interactions === "number") return m.total_interactions;
+  const four = [m.likes, m.saved, m.shares, m.comments];
+  return four.every((v) => typeof v === "number") ? (four as number[]).reduce((a, b) => a + b, 0) : null;
+}
+
+/**
+ * 점주 해석 문단 (1002 — 마케팅 피드백: 세부 지표보다 **새로운 사람에게 노출되고 있다**, 조회수와 반응 수 중심).
+ *
+ *   ① "이번 {가게} {콘텐츠|릴스} 성과를 정리해 전달드립니다."
+ *   ② 조회수. 이 게시물을 본 사람(도달)이 우주라이크 팔로워보다 많으면 그 사실 — 팔로워가 아닌 분들께도 닿았다는 뜻.
+ *   ③ 우주라이크 **계정 전체** 최근 N일: 본 사람 = 팔로워의 몇 배, 그중 팔로워가 아닌 비중.
+ *      인스타가 게시물 단위로는 팔로워/비팔로워를 안 줘서 계정 숫자다 — 문장에 「우주라이크 콘텐츠」라고 밝힌다.
+ *   ④ 반응 수 합계 — 하나하나(좋아요 몇, 공유 몇)보다 "그냥 지나치지 않았다"를 말한다.
+ *
+ * 세부 지표(도달·저장·공유·좋아요·댓글·시청 시간)는 문장에 하나씩 쓰지 않는다 — 리포트의 「세부 지표 보기」에 있다.
+ * 없는 숫자는 문장째 뺀다. 10 미만은 쓰지 않는다.
+ */
+export function ownerStory(s: ReportSnapshot): string[] {
+  const m = ownerNumbers(s), store = s.store.name;
+  const n = (v: number) => v.toLocaleString();
+  const ok = (v: number | null | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
+  const reel = isReel(s);
+  const what = reel ? "릴스" : "콘텐츠", thing = reel ? "릴스" : "게시물";
+  const out = [`이번 ${store} ${what} 성과를 정리해 전달드립니다.`];
+  const a = audienceNumbers(s);
+  if (ok(m.views)) {
+    out.push(`이번 ${what}는 조회수 ${n(m.views)}회를 기록했습니다.` +
+      (a.followers !== null && ok(m.reach) && m.reach > a.followers
+        ? ` ${josa(thing, "을", "를")} 본 사람은 ${n(m.reach)}명으로, 우주라이크 팔로워 ${n(a.followers)}명보다 많습니다. 팔로워가 아닌 분들께도 ${josa(what, "이", "가")} 닿았다는 뜻입니다.`
+        : ""));
+  }
+  if (a.followers !== null && a.reach !== null && a.days !== null && a.ratio !== null) {
+    out.push(`우주라이크는 팔로워를 넘어 새로운 분들께 콘텐츠가 노출되는 계정입니다. 최근 ${a.days}일 동안 우주라이크 콘텐츠를 본 사람은 ${n(a.reach)}명으로, 팔로워 수의 약 ${a.ratio}배입니다.` +
+      (a.share !== null && a.share >= 50
+        ? a.shareBasis === "reach" ? ` 이 가운데 ${a.share}%가 우주라이크를 팔로우하지 않는 분들이었습니다.` : ` 조회의 ${a.share}%도 우주라이크를 팔로우하지 않는 분들에게서 나왔습니다.`
+        : ""));
+  }
+  const reacted = interactionsOf(s);
+  if (ok(reacted)) out.push(`그리고 이번 ${josa(what, "을", "를")} 본 분들이 좋아요·저장·공유·댓글로 모두 ${n(reacted)}회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.`);
   return out;
 }
 
@@ -220,7 +292,8 @@ export const isLegacyChannelLine = (t: string) => LEGACY_CHANNEL_LINE.test(t);
 
 /** 0925~0928 에 자동으로 넣던 짧은 문장("저장이 644번 모였습니다. …") — 사람이 쓴 게 아니므로 새 글로 갈아 끼운다 */
 const OLD_AUTO_LINE = /^(저장이 [\d,]+번 모였습니다|[\d,]+회 조회됐습니다|[\d,]+번 공유됐습니다|[\d,]+명에게 닿았습니다)\./;
-const isAutoLine = (t: string, s: ReportSnapshot) => isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t);
+const isAutoLine = (t: string, s: ReportSnapshot) =>
+  isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t) || storyBefore1002(s).includes(t);
 
 /**
  * 리포트에 실을 해석 문단 — 자동으로 들어갔던 문장(옛 채널 비교 · 옛 짧은 문장 · 지금 규칙의 글)은 **지금 규칙의 글**로,
@@ -404,6 +477,10 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
     if (w.dur !== null) add(w.dur);
     if (w.totalMin !== null) { add(w.totalMin); add(Math.floor(w.totalMin / 60)); add(w.totalMin % 60); } }
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
+  // 「새로운 사람」 문단 — 계정 전체 숫자와 거기서 계산한 배수·비중(1002), 반응 수 합계
+  { const a = audienceNumbers(s);
+    for (const v of [a.followers, a.days, a.reach, a.ratio, a.share]) if (v !== null) add(v);
+    const r = interactionsOf(s); if (r !== null) add(r); }
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
   /**
