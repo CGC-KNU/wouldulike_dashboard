@@ -408,7 +408,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title="문구">
         <Field label="제목"><Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!editable} /></Field>
         <Field label="한 줄 요약 (카톡 미리보기에 보입니다)"><Textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!editable} /></Field>
-        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(인사 → 큐레이션·단독 소개 → 조회수·연령 → 팔로워 아님 → 총 시청 시간(릴스) → 슬라이드별 반응 → 총반응 수 · 연령·팔로워 아님·슬라이드는 위에서 값을 넣었을 때). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
+        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(인사 → 큐레이션·단독 소개 → 조회수·연령 → 팔로워 아님 → 슬라이드별 반응 → 총반응 수 · 연령·팔로워 아님·슬라이드는 위에서 값을 넣었을 때). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
       </PanelSection>
 
       <PanelSection title={`다음 제안 (${props.filter((p) => p.approved).length} 승인 / ${props.length})`}>
