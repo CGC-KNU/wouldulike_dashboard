@@ -126,6 +126,9 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       measured_at: p.measured_at,
       reach: p.reach ?? null,
       views: p.views ?? null,
+      // 1002: 추이의 두 번째 막대 — 반응 수(total_interactions, 없으면 좋아요·저장·공유·댓글이 다 있을 때 합)
+      interactions: p.total_interactions ?? ([p.likes, p.saved, p.shares, p.comments].every((v) => typeof v === "number")
+        ? (p.likes as number) + (p.saved as number) + (p.shares as number) + (p.comments as number) : null),
     })),
     // 지난 보고(7일차) 값 — 14일차 보고일 때만 온다. 양식은 앱 카드의 "지난 보고에서 N회 더" 문장에만 쓴다(표는 0925 에 뺐다)
     previous: rd?.previous ?? null,

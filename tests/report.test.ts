@@ -606,19 +606,19 @@ function renderNodes(html: string): Record<string, { textContent?: string; inner
 }
 const renderChange = (html: string) => renderNodes(html)["r-change"].innerHTML;
 
-const withSeries = (series: { day: number; measured_at: string; reach?: number; views?: number }[]) =>
+const withSeries = (series: ({ day: number; measured_at: string } & Partial<Record<"reach" | "views" | "total_interactions" | "likes" | "saved" | "shares" | "comments", number>>)[]) =>
   fillReportTemplate(report({}, { report_data: { ...rd, series } }));
 
 test("시계열이 두 점 이상이면 막대를 그리고, 마지막 점을 진하게 한다", () => {
   const html = withSeries([
-    { day: 1, measured_at: "2026-09-05", reach: 1200, views: 1800 },
-    { day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500 },
-    { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000 },
+    { day: 1, measured_at: "2026-09-05", reach: 1200, total_interactions: 180 },
+    { day: 7, measured_at: "2026-09-11", reach: 3000, total_interactions: 450 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800, total_interactions: 600 },
   ]);
   const out = renderChange(html);
   assert.match(out, /시간이 지나며 쌓인 숫자/);
   assert.match(out, /조회한 사람 \(명\)/);
-  assert.match(out, /조회 \(회\)/);
+  assert.match(out, /반응 수 \(회\)/);
   // 진한 막대(.me)는 마지막 점 하나뿐이어야 한다 — 기준일이 둘이면 어느 게 지금인지 모른다
   assert.equal((out.match(/class="row me"/g) ?? []).length, 2, "두 지표 각각의 마지막 줄만");
   // 마지막 줄이 14일인가
@@ -629,7 +629,7 @@ test("시계열이 두 점 이상이면 막대를 그리고, 마지막 점을 �
 });
 
 test("점이 하나면 그리지 않는다 — 한 점은 추이가 아니다", () => {
-  const out = renderChange(withSeries([{ day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500 }]));
+  const out = renderChange(withSeries([{ day: 7, measured_at: "2026-09-11", reach: 3000, total_interactions: 450 }]));
   assert.equal(out, "", "위 카드가 이미 말하는 값을 두 번 쓰지 않는다");
 });
 
@@ -641,8 +641,8 @@ test("series 가 없으면 그 자리는 빈다 — 0 으로 채우지 않는다
 test("빠진 점은 건너뛰고 있는 점만 그린다", () => {
   // D+1 을 놓친 옛 게시물 — 7일·14일 두 점으로 그린다
   const out = renderChange(withSeries([
-    { day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500 },
-    { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000 },
+    { day: 7, measured_at: "2026-09-11", reach: 3000, total_interactions: 450 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800, total_interactions: 600 },
   ]));
   assert.match(out, /시간이 지나며 쌓인 숫자/);
   const days = [...out.matchAll(/class="lb">(\d+)일/g)].map((m) => m[1]);
@@ -651,14 +651,14 @@ test("빠진 점은 건너뛰고 있는 점만 그린다", () => {
 });
 
 test("한 점에서 한 지표만 빠지면 그 칸은 0 이 아니라 「–」", () => {
-  // 7일엔 reach 가 없고 views 만 있는 경우. 0 으로 채우면 "1,200 → 0 → 3,800" 으로
+  // 7일엔 reach 가 없고 반응 수만 있는 경우. 0 으로 채우면 "1,200 → 0 → 3,800" 으로
   // 중간에 폭락한 것처럼 읽힌다. 모르는 값은 모른다고 적는다.
   const out = renderChange(withSeries([
-    { day: 1, measured_at: "2026-09-05", reach: 1200, views: 1800 },
-    { day: 7, measured_at: "2026-09-11", views: 4500 },
-    { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000 },
+    { day: 1, measured_at: "2026-09-05", reach: 1200, total_interactions: 180 },
+    { day: 7, measured_at: "2026-09-11", total_interactions: 450 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800, total_interactions: 600 },
   ]));
-  const reachBlock = out.slice(out.indexOf("조회한 사람"), out.indexOf("조회 (회)"));
+  const reachBlock = out.slice(out.indexOf("조회한 사람"), out.indexOf("반응 수 (회)"));
   assert.match(reachBlock, /<div class="nm">\u2013<\/div>/, "빠진 값은 – 로");
   assert.doesNotMatch(reachBlock, /<div class="nm">0<\/div>/, "0 으로 채우면 폭락으로 읽힌다");
   assert.match(reachBlock, /width:0%/, "막대도 그리지 않는다");
@@ -670,7 +670,19 @@ test("한 지표만 있으면 그 지표만 그린다", () => {
     { day: 14, measured_at: "2026-09-18", reach: 3800 },
   ]));
   assert.match(out, /조회한 사람 \(명\)/);
-  assert.doesNotMatch(out, /조회 \(회\)/, "값이 없는 지표 칸은 만들지 않는다");
+  assert.doesNotMatch(out, /반응 수 \(회\)/, "값이 없는 지표 칸은 만들지 않는다");
+});
+
+test("추이 두 번째 막대는 반응 수 — total_interactions 가 없으면 넷을 더하고, 조회는 그리지 않는다 (1002)", () => {
+  const out = renderChange(withSeries([
+    { day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500, likes: 100, saved: 20, shares: 30, comments: 5 },
+    { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000, total_interactions: 241 },
+  ]));
+  assert.match(out, /반응 수 \(회\)/);
+  assert.doesNotMatch(out, /조회 \(회\)|4,500|6,000/, "조회 막대는 없다");
+  const react = out.slice(out.indexOf("반응 수 (회)"));
+  assert.match(react, /<div class="nm">155<\/div>/, "100+20+30+5");
+  assert.match(react, /<div class="nm">241<\/div>/);
 });
 
 test("시계열은 PNG 2쪽에 들어간다 — 자리가 빠지면 사장님이 못 본다 · 세부 지표는 PNG 에 안 들어간다", () => {
