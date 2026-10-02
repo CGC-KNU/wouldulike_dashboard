@@ -58,6 +58,14 @@ jobs:
           echo "큐 ${N}건: $(jq -r '[.reports[] | "\(.id)[\(.stage // "-")]"] | join(", ")' q.json)"
           if [ "$N" = "0" ] && [ -z "$ONLY_ID" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
 
+      # 손으로 돌릴 때만 — 승인 순간 이 워크플로를 깨우는 길(백엔드 GITHUB_DISPATCH_TOKEN)이 열려 있는지 한 줄.
+      # 값은 안 나온다(종류·길이·상태만). 공개 저장소 로그에 남아도 되는 내용이다.
+      - name: 즉시 게시 진단
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          CODE=$(curl -sS --max-time 30 -o w.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" "$BACKEND/api/probe/reports/wake-check/") || CODE=000
+          echo "wake-check HTTP $CODE: $(jq -c . w.json 2>/dev/null || head -c 200 w.json)"
+
       - uses: actions/checkout@v4
         if: steps.queue.outputs.run == 'true'
 
