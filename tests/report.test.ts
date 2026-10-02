@@ -4,7 +4,7 @@ import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplate
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
 import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, curationIntro, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, verdict } from "../src/lib/draft/report";
 import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
-import { DOWNLOADABLE, reportFilename, reportPageHtml } from "../src/lib/draft/reportPage";
+import { DOWNLOADABLE, reportFilename, reportPageHtml, reportPermalink } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
 
 const metric = (key: string, value: number, median: number | null = null, n = 0) =>
@@ -762,4 +762,12 @@ test("PNG 의 「못 불러온 이미지」 자리는 올바른 GIF 다 — 잘�
   const bar = downloadBar({ filename: "f", canDownload: true, statusLabel: "승인됨" });
   assert.ok(bar.includes(JSON.stringify(PLACEHOLDER_GIF)), "페이지 스크립트가 같은 값을 쓴다");
   assert.ok(!bar.includes("R0lGODlhAQABAAAAACw="), "잘린 옛 값이 남아 있으면 안 된다");
+});
+
+test("슬랙에 붙일 인스타 게시물 주소 — 리포트 화면과 같은 우선순위, http(s) 만", () => {
+  assert.equal(reportPermalink(report()), "https://ig/p/x", "스냅샷의 주소");
+  const rd2: ReportData = { ...rd, post: { ...rd.post!, permalink: "https://www.instagram.com/reel/NEW/" } as ReportData["post"] };
+  assert.equal(reportPermalink(report({}, { report_data: rd2 })), "https://www.instagram.com/reel/NEW/", "수치를 다시 읽었으면 그 주소");
+  assert.equal(reportPermalink(report({}, { post: { ...report().snapshot.post, permalink: "" } })), null);
+  assert.equal(reportPermalink(report({}, { post: { ...report().snapshot.post, permalink: "javascript:alert(1)" } })), null, "슬랙 링크로 쓰므로 http(s) 가 아니면 버린다");
 });

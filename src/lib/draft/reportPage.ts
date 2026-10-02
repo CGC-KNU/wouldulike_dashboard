@@ -56,6 +56,17 @@ export function reportFilename(r: StoreReport): string {
   return `${r.snapshot.store.name}_성과리포트${day.day != null ? `_${day.day}일차` : ""}_${day.measured_at.replace(/-/g, "")}`.replace(/[\\/:*?"<>|\s]+/g, "_");
 }
 
+/**
+ * 이 리포트가 다루는 인스타 게시물 주소 — 리포트 화면이 쓰는 것과 같은 우선순위(수치를 다시 읽은 report-data → 스냅샷).
+ * 슬랙에 링크로 올리므로 http(s) 가 아니면 없는 것으로 본다.
+ */
+export function reportPermalink(r: StoreReport): string | null {
+  const snap = r.snapshot;
+  const rd = snap.report_data?.available ? snap.report_data : null;
+  const url = (rd?.post?.permalink ?? snap.post.permalink ?? "").trim();
+  return /^https?:\/\//i.test(url) ? url : null;
+}
+
 /** 승인된 뒤의 상태 — 파일을 받을 수 있다(미리보기 띠) · PROBE 가 올릴 수 있다 */
 export const DOWNLOADABLE: StoreReport["status"][] = ["APPROVED", "LINKED", "SENT"];
 
