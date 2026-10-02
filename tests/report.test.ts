@@ -617,25 +617,25 @@ const withSeries = (series: ({ day: number; measured_at: string } & Partial<Reco
 
 test("시계열이 두 점 이상이면 막대를 그리고, 마지막 점을 진하게 한다", () => {
   const html = withSeries([
-    { day: 1, measured_at: "2026-09-05", reach: 1200, total_interactions: 180 },
-    { day: 7, measured_at: "2026-09-11", reach: 3000, total_interactions: 450 },
-    { day: 14, measured_at: "2026-09-18", reach: 3800, total_interactions: 600 },
+    { day: 1, measured_at: "2026-09-05", views: 1200, total_interactions: 180 },
+    { day: 7, measured_at: "2026-09-11", views: 3000, total_interactions: 450 },
+    { day: 14, measured_at: "2026-09-18", views: 3800, total_interactions: 600 },
   ]);
   const out = renderChange(html);
   assert.match(out, /시간이 지나며 쌓인 숫자/);
-  assert.match(out, /조회한 사람 \(명\)/);
+  assert.match(out, /조회수 \(회\)/);
   assert.match(out, /반응 수 \(회\)/);
   // 진한 막대(.me)는 마지막 점 하나뿐이어야 한다 — 기준일이 둘이면 어느 게 지금인지 모른다
   assert.equal((out.match(/class="row me"/g) ?? []).length, 2, "두 지표 각각의 마지막 줄만");
   // 마지막 줄이 14일인가
   const rows = [...out.matchAll(/class="row( me)?"><div class="lb">(\d+)일/g)].map((m) => [m[2], !!m[1]]);
   assert.deepEqual(rows, [["1", false], ["7", false], ["14", true], ["1", false], ["7", false], ["14", true]]);
-  assert.match(out, /게시 후 1일 <b>1,200명<\/b>에서 14일 <b>3,800명<\/b>이 되었습니다/);
+  assert.match(out, /게시 후 1일 <b>1,200회<\/b>에서 14일 <b>3,800회<\/b>가 되었습니다/);
   assert.match(out, /진한 막대가 14일 기준값입니다/);
 });
 
 test("점이 하나면 그리지 않는다 — 한 점은 추이가 아니다", () => {
-  const out = renderChange(withSeries([{ day: 7, measured_at: "2026-09-11", reach: 3000, total_interactions: 450 }]));
+  const out = renderChange(withSeries([{ day: 7, measured_at: "2026-09-11", views: 3000, total_interactions: 450 }]));
   assert.equal(out, "", "위 카드가 이미 말하는 값을 두 번 쓰지 않는다");
 });
 
@@ -647,45 +647,46 @@ test("series 가 없으면 그 자리는 빈다 — 0 으로 채우지 않는다
 test("빠진 점은 건너뛰고 있는 점만 그린다", () => {
   // D+1 을 놓친 옛 게시물 — 7일·14일 두 점으로 그린다
   const out = renderChange(withSeries([
-    { day: 7, measured_at: "2026-09-11", reach: 3000, total_interactions: 450 },
-    { day: 14, measured_at: "2026-09-18", reach: 3800, total_interactions: 600 },
+    { day: 7, measured_at: "2026-09-11", views: 3000, total_interactions: 450 },
+    { day: 14, measured_at: "2026-09-18", views: 3800, total_interactions: 600 },
   ]));
   assert.match(out, /시간이 지나며 쌓인 숫자/);
   const days = [...out.matchAll(/class="lb">(\d+)일/g)].map((m) => m[1]);
   assert.deepEqual(days, ["7", "14", "7", "14"], "1일 칸을 0 으로 만들지 않는다");
-  assert.match(out, /게시 후 7일 <b>3,000명<\/b>에서 14일 <b>3,800명<\/b>/);
+  assert.match(out, /게시 후 7일 <b>3,000회<\/b>에서 14일 <b>3,800회<\/b>/);
 });
 
 test("한 점에서 한 지표만 빠지면 그 칸은 0 이 아니라 「–」", () => {
-  // 7일엔 reach 가 없고 반응 수만 있는 경우. 0 으로 채우면 "1,200 → 0 → 3,800" 으로
+  // 7일엔 조회수가 없고 반응 수만 있는 경우. 0 으로 채우면 "1,200 → 0 → 3,800" 으로
   // 중간에 폭락한 것처럼 읽힌다. 모르는 값은 모른다고 적는다.
   const out = renderChange(withSeries([
-    { day: 1, measured_at: "2026-09-05", reach: 1200, total_interactions: 180 },
+    { day: 1, measured_at: "2026-09-05", views: 1200, total_interactions: 180 },
     { day: 7, measured_at: "2026-09-11", total_interactions: 450 },
-    { day: 14, measured_at: "2026-09-18", reach: 3800, total_interactions: 600 },
+    { day: 14, measured_at: "2026-09-18", views: 3800, total_interactions: 600 },
   ]));
-  const reachBlock = out.slice(out.indexOf("조회한 사람"), out.indexOf("반응 수 (회)"));
-  assert.match(reachBlock, /<div class="nm">\u2013<\/div>/, "빠진 값은 – 로");
-  assert.doesNotMatch(reachBlock, /<div class="nm">0<\/div>/, "0 으로 채우면 폭락으로 읽힌다");
-  assert.match(reachBlock, /width:0%/, "막대도 그리지 않는다");
+  const viewBlock = out.slice(out.indexOf("조회수 (회)"), out.indexOf("반응 수 (회)"));
+  assert.match(viewBlock, /<div class="nm">\u2013<\/div>/, "빠진 값은 – 로");
+  assert.doesNotMatch(viewBlock, /<div class="nm">0<\/div>/, "0 으로 채우면 폭락으로 읽힌다");
+  assert.match(viewBlock, /width:0%/, "막대도 그리지 않는다");
 });
 
 test("한 지표만 있으면 그 지표만 그린다", () => {
   const out = renderChange(withSeries([
-    { day: 7, measured_at: "2026-09-11", reach: 3000 },
-    { day: 14, measured_at: "2026-09-18", reach: 3800 },
+    { day: 7, measured_at: "2026-09-11", views: 3000 },
+    { day: 14, measured_at: "2026-09-18", views: 3800 },
   ]));
-  assert.match(out, /조회한 사람 \(명\)/);
+  assert.match(out, /조회수 \(회\)/);
   assert.doesNotMatch(out, /반응 수 \(회\)/, "값이 없는 지표 칸은 만들지 않는다");
 });
 
-test("추이 두 번째 막대는 반응 수 — total_interactions 가 없으면 넷을 더하고, 조회는 그리지 않는다 (1002)", () => {
+test("추이 막대는 조회수 · 반응 수 — total_interactions 가 없으면 넷을 더하고, 본 사람 수(도달)는 그리지 않는다 (1002)", () => {
   const out = renderChange(withSeries([
     { day: 7, measured_at: "2026-09-11", reach: 3000, views: 4500, likes: 100, saved: 20, shares: 30, comments: 5 },
     { day: 14, measured_at: "2026-09-18", reach: 3800, views: 6000, total_interactions: 241 },
   ]));
-  assert.match(out, /반응 수 \(회\)/);
-  assert.doesNotMatch(out, /조회 \(회\)|4,500|6,000/, "조회 막대는 없다");
+  assert.match(out, /조회수 \(회\)[\s\S]*반응 수 \(회\)/, "조회수가 먼저, 반응 수가 다음");
+  assert.doesNotMatch(out, /조회한 사람|3,000|3,800|명<\/b>/, "도달은 추이에 없다");
+  assert.match(out, /조회수는 게시 후 7일 <b>4,500회<\/b>에서 14일 <b>6,000회<\/b>가 되었습니다\./);
   const react = out.slice(out.indexOf("반응 수 (회)"));
   assert.match(react, /<div class="nm">155<\/div>/, "100+20+30+5");
   assert.match(react, /<div class="nm">241<\/div>/);

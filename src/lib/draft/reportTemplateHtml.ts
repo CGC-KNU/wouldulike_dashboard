@@ -17,7 +17,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
 <title>매장 성과 리포트</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <!--
-  ▣ 우주라이크 매장 성과 리포트 양식 v0.10 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제 · 0927: 「시간이 지나며 쌓인 숫자」 · 0928: 「프로필 방문 · 팔로우」 줄 삭제 · 1002: 두 장 — 1장 게시물(사진·썸네일), 2장 게시물 성과(조회수 · 반응 수) + 설명, 추이 두 번째 막대는 반응 수, 세부 지표는 「세부 지표 보기」로 접음)
+  ▣ 우주라이크 매장 성과 리포트 양식 v0.10 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제 · 0927: 「시간이 지나며 쌓인 숫자」 · 0928: 「프로필 방문 · 팔로우」 줄 삭제 · 1002: 두 장 — 1장 게시물(사진·썸네일), 2장 게시물 성과(조회수 · 반응 수) + 설명, 추이 막대는 조회수 · 반응 수, 세부 지표는 「세부 지표 보기」로 접음)
   ──────────────────────────────────────────────
   사용법: 자동화 툴은 아래 id="report-data" 인 JSON 스크립트 블록의 **내용(JSON)만** 교체한다.
           나머지(HTML·CSS·JS)는 건드리지 않는다. 결과물은 파일 하나 — 카톡 링크/첨부로 보내 폰에서 연다.
@@ -423,8 +423,9 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   // 없는 점은 백엔드가 아예 안 보낸다. 여기서도 0 으로 채우지 않는다 — 채우면
   // "1일 1,200 → 7일 0" 처럼 줄어든 것으로 읽힌다.
   // **점이 하나면 그리지 않는다.** 한 점은 추이가 아니라 그냥 지금 값이고, 위 카드가 이미 말한다.
-  // 1002: 두 번째 막대는 조회 → 반응 수(좋아요·저장·공유·댓글 합) — 민찬. 리포트가 조회수·반응 수 중심이 되면서.
-  var SER = (D.series || []).filter(function (x) { return x && (has(x.reach) || has(x.interactions)); });
+  // 1002: 막대는 **조회수 · 반응 수** 둘 — 성과 카드와 같은 두 숫자다(민찬). 전에는 조회한 사람(도달) · 조회였다.
+  // 리포트가 조회수·반응 수 중심이 되면서 「본 사람 수」는 세부 지표로만 둔다.
+  var SER = (D.series || []).filter(function (x) { return x && (has(x.views) || has(x.interactions)); });
   if (SER.length >= 2) {
     // 진한 막대(.me)는 **마지막 점** = 이 보고의 기준일이다. "지금 얼마인지"를 먼저 찾게 한다.
     function serRows(key) {
@@ -441,16 +442,16 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
       }).join("");
     }
     var sBlocks = [];
-    var reachRows = serRows("reach");
+    var viewRows = serRows("views");
     var reactRows = serRows("interactions");
-    if (reachRows) sBlocks.push('<div class="cmp"><div class="hd"><span>조회한 사람 (명)</span></div>' + reachRows + '</div>');
+    if (viewRows) sBlocks.push('<div class="cmp"><div class="hd"><span>조회수 (회)</span></div>' + viewRows + '</div>');
     if (reactRows) sBlocks.push('<div class="cmp"><div class="hd"><span>반응 수 (회)</span></div>' + reactRows + '</div>');
     if (sBlocks.length) {
       var sFirst = SER[0], sLast = SER[SER.length - 1];
       var sLine = "";
-      if (has(sFirst.reach) && has(sLast.reach)) {
-        sLine = "조회한 사람은 게시 후 " + sFirst.day + "일 <b>" + n(sFirst.reach) + "명</b>에서 " +
-          sLast.day + "일 <b>" + n(sLast.reach) + "명</b>이 되었습니다.";
+      if (has(sFirst.views) && has(sLast.views)) {
+        sLine = "조회수는 게시 후 " + sFirst.day + "일 <b>" + n(sFirst.views) + "회</b>에서 " +
+          sLast.day + "일 <b>" + n(sLast.views) + "회</b>가 되었습니다.";
       }
       put("r-change",
         '<div class="card"><div class="pad"><h2>시간이 지나며 쌓인 숫자</h2>' +
