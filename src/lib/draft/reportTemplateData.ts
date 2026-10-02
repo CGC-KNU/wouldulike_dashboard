@@ -1,4 +1,4 @@
-import { isAutoSummary, josa, ownerParagraphs, ownerProposalText, stripMarker } from "./report";
+import { curationIntro, isAutoSummary, josa, ownerParagraphs, ownerProposalText, stripMarker } from "./report";
 import { isEmbedded } from "./coverImage";
 import type { StoreReport } from "./types";
 
@@ -79,6 +79,9 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
     .filter((t): t is string => t !== null);
   // 해석 문단(0928 ownerStory) — 자동으로 들어갔던 문장은 지금 규칙의 글로, 사람이 고친 문장은 그대로
   const paragraphs = ownerParagraphs(r.interpretation, s);
+  // 큐레이션 소개 문단(1002)이 글에 들어가 있으면 「N곳을 함께 소개한 큐레이션입니다」를 또 붙이지 않는다 — 같은 말이다
+  const intro = curationIntro(s);
+  const introShown = intro !== null && paragraphs.includes(intro);
   // 자동 요약은 카톡 미리보기용이다 — 카드 제목으로는 사람이 직접 쓴 요약만 올린다
   const headline = isAutoSummary(r.summary, s) ? null : r.summary;
 
@@ -99,8 +102,9 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
         ? (s.post.cover_url as string)
         : viaProxy(rd?.post?.thumb_url || s.post.cover_url || "", opts.origin),
       caption: excerpt(s.post.caption),
-      store_count: multi ? s.post.co_stores : null,
-      multi_store: multi,
+      // 양식은 이 둘로 「혼자 받은 숫자가 아닙니다」 문단을 붙인다 — 소개 문단이 이미 말했으면 붙이지 않게 끈다
+      store_count: multi && !introShown ? s.post.co_stores : null,
+      multi_store: multi && !introShown,
     },
     report: { day, measured_at: measured },
     metrics: {
@@ -124,6 +128,9 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       measured_at: p.measured_at,
       reach: p.reach ?? null,
       views: p.views ?? null,
+      // 1002: 추이의 두 번째 막대 — 반응 수(total_interactions, 없으면 좋아요·저장·공유·댓글이 다 있을 때 합)
+      interactions: p.total_interactions ?? ([p.likes, p.saved, p.shares, p.comments].every((v) => typeof v === "number")
+        ? (p.likes as number) + (p.saved as number) + (p.shares as number) + (p.comments as number) : null),
     })),
     // 지난 보고(7일차) 값 — 14일차 보고일 때만 온다. 양식은 앱 카드의 "지난 보고에서 N회 더" 문장에만 쓴다(표는 0925 에 뺐다)
     previous: rd?.previous ?? null,
@@ -135,7 +142,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       paragraphs: [...paragraphs, ...proposals],
       // 여러 가게를 함께 실은 편이면 양식이 "이번 도달은 {store} 혼자 받은 숫자가 아닙니다" 를 붙인다.
       // 큐레이션이라는 사실은 그대로 밝히되, 약점으로 말하지 않는다(0925).
-      limitation: multi
+      limitation: multi && !introShown
         ? `이번 편은 「${stripMarker(s.post.topic)}」 주제로 ${s.post.co_stores}곳을 함께 소개한 큐레이션입니다. ${josa(s.store.name, "이", "가")} 추천 가게 중 한 곳으로 실렸습니다.`
         : null,
     },

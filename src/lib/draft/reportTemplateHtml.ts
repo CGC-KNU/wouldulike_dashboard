@@ -1,5 +1,5 @@
 /**
- * 우주라이크 매장 성과 리포트 양식 v0.9.2 (마케팅_퍼포먼스/인스타그램_게시물_보고서_양식.html, 1002) — 원문 그대로.
+ * 우주라이크 매장 성과 리포트 양식 v0.10 (마케팅_퍼포먼스/인스타그램_게시물_보고서_양식.html, 1002 — 두 장) — 원문 그대로.
  *
  * 다음 판(v1.0, 0925 마케팅 피드백)은 같은 폴더의 `인스타그램_게시물_보고서_양식_v1.0_검토중.html` 에서 검토 중이다.
  * 검토가 끝나 붙여 넣을 때 0927 의 「시간이 지나며 쌓인 숫자」(r-change)를 v1.0 에도 옮겨야 한다 — 지금 v1.0 초안엔 없다.
@@ -17,7 +17,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
 <title>매장 성과 리포트</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <!--
-  ▣ 우주라이크 매장 성과 리포트 양식 v0.9.2 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제 · 0927: 「시간이 지나며 쌓인 숫자」 · 0928: 「프로필 방문 · 팔로우」 줄 삭제 · 1002: 강조를 저장 → 조회수)
+  ▣ 우주라이크 매장 성과 리포트 양식 v0.10 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제 · 0927: 「시간이 지나며 쌓인 숫자」 · 0928: 「프로필 방문 · 팔로우」 줄 삭제 · 1002: 두 장 — 1장 게시물(사진·썸네일), 2장 게시물 성과(조회수 · 반응 수) + 설명, 추이 막대는 조회수 · 반응 수, 세부 지표는 「세부 지표 보기」로 접음)
   ──────────────────────────────────────────────
   사용법: 자동화 툴은 아래 id="report-data" 인 JSON 스크립트 블록의 **내용(JSON)만** 교체한다.
           나머지(HTML·CSS·JS)는 건드리지 않는다. 결과물은 파일 하나 — 카톡 링크/첨부로 보내 폰에서 연다.
@@ -125,6 +125,25 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   .kv.hl .k{font-weight:700;color:var(--ink)}
   .kv.hl .v{color:var(--me)}
 
+  /* 핵심 숫자 (1002 — 조회수 · 반응 수) */
+  .keys{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .key{background:var(--soft2);border-radius:12px;padding:14px 14px 12px}
+  .key .k{font-size:13px;font-weight:700;color:var(--tx)}
+  .key .v{margin-top:4px;font-size:28px;font-weight:800;letter-spacing:-.8px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .key .v small{font-size:14px;font-weight:600;color:var(--sub);margin-left:2px;letter-spacing:0}
+  .key .s{margin-top:2px;font-size:11.5px;color:var(--sub);line-height:1.5}
+  .key.hl{background:var(--soft)}
+  .key.hl .v{color:var(--me)}
+
+  /* 세부 지표 — 필요할 때만 펼친다. PNG 에는 들어가지 않는다 */
+  details.more{margin-bottom:12px}
+  details.more>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;
+    border-radius:12px;background:#fff;font-size:13.5px;font-weight:700;color:var(--tx)}
+  details.more>summary::-webkit-details-marker{display:none}
+  details.more>summary::after{content:"▾";color:var(--sub)}
+  details.more[open]>summary::after{content:"▴"}
+  details.more>.card{margin-top:8px}
+
   /* 앱 카드 */
   .app{background:var(--pri);color:var(--peri2)}
   .app h2{color:var(--peri)}
@@ -204,6 +223,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
     .pad{padding:18px 16px}
     h1{font-size:19px}
     .kv .v{font-size:20px}
+    .key .v{font-size:24px}
     .row{grid-template-columns:78px 1fr 54px;gap:8px}
     table{font-size:13px}
   }
@@ -221,6 +241,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   <div id="r-errors" class="errbox" hidden></div>
   <div class="head" id="r-head"></div>
   <div id="r-post"></div>
+  <div id="r-key"></div>
   <div id="r-metrics"></div>
   <div id="r-app"></div>
   <div id="r-change"></div>
@@ -365,17 +386,25 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
     (has(P.caption) ? '<div class="cap">' + md(P.caption) + '<br><span class="more">… 본문 더보기</span></div>' : "") +
     '<a class="go" href="' + url(P.permalink) + '">↗ Instagram에서 보기</a></div>');
 
-  // ── 게시물 성과 ──
+  // ── 게시물 성과 — 핵심 숫자 두 개 (1002 마케팅 피드백: 조회수와 반응 수 중심) ──
+  // 반응 수 = 좋아요·저장·공유·댓글을 하나로. 사장님께는 "좋아요가 몇, 공유가 몇"보다 "그냥 지나치지 않고 반응했다"가 중요하다.
+  // 팔로워·비팔로워는 말하지 않는다(1002) — 게시물 단위 비팔로워 비율은 인스타가 주지 않고, 팔로워 수와 견주는 줄은 마케팅 의견으로 뺐다.
+  put("r-key", '<div class="card"><div class="pad"><h2>게시물 성과</h2><div class="keys">' +
+    '<div class="key hl"><div class="k">조회수</div><div class="v">' + n(M.views) + "<small>회</small></div>" +
+      '<div class="s">' + (isReels ? "릴스가 재생된 횟수" : "게시물이 화면에 나타난 횟수") + "</div></div>" +
+    '<div class="key"><div class="k">반응 수</div><div class="v">' + n(interactions) + "<small>회</small></div>" +
+      '<div class="s">좋아요 · 저장 · 공유 · 댓글을 합친 수</div></div></div>' +
+    '<div class="note">' + d(R.measured_at) + " 기준 인스타그램 수치예요.</div></div></div>");
+
+  // ── 세부 지표 — 필요할 때만 펼친다 (1002). PNG 에는 넣지 않는다(reportDownload 의 PNG_SKIP) ──
   function kv(k, v, hl, sub) {
     return '<div class="kv' + (hl ? " hl" : "") + '"><div class="k">' + k + (sub ? "<small>" + sub + "</small>" : "") + '</div><div class="v">' + v + "</div></div>";
   }
-  // 1002: 강조는 조회수에 둔다(전에는 저장) — 민찬 1차 수정
-  var rows = kv("조회수", n(M.views), true) + kv("도달", n(M.reach), false, isReels ? "영상을 본 사람 수" : "게시물을 본 사람 수") +
+  var rows = kv("도달", n(M.reach), false, isReels ? "영상을 본 사람 수" : "게시물을 본 사람 수") +
     kv("저장", n(M.saved)) + kv("공유", n(M.shares)) + kv("좋아요", n(M.likes)) + kv("댓글", n(M.comments));
   // 0928: 「프로필 방문 · 팔로우」 줄은 뺐다 — 우주라이크 계정에 대한 숫자라 가게 성과가 아니다(민찬 결정)
   if (isReels && has(M.avg_watch_sec)) rows += kv("평균 시청 시간", (Math.round(M.avg_watch_sec * 10) / 10) + "<small>초</small>");
-  put("r-metrics", '<div class="card"><div class="pad"><h2>게시물 성과</h2>' + rows +
-    '<div class="note">' + d(R.measured_at) + " 기준 인스타그램 수치예요.</div></div></div>");
+  put("r-metrics", '<details class="more"><summary>세부 지표 보기</summary><div class="card"><div class="pad">' + rows + "</div></div></details>");
 
   // ── 앱 카드 (값이 있을 때만) ──
   if (has(appViews)) {
@@ -394,7 +423,9 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   // 없는 점은 백엔드가 아예 안 보낸다. 여기서도 0 으로 채우지 않는다 — 채우면
   // "1일 1,200 → 7일 0" 처럼 줄어든 것으로 읽힌다.
   // **점이 하나면 그리지 않는다.** 한 점은 추이가 아니라 그냥 지금 값이고, 위 카드가 이미 말한다.
-  var SER = (D.series || []).filter(function (x) { return x && (has(x.reach) || has(x.views)); });
+  // 1002: 막대는 **조회수 · 반응 수** 둘 — 성과 카드와 같은 두 숫자다(민찬). 전에는 조회한 사람(도달) · 조회였다.
+  // 리포트가 조회수·반응 수 중심이 되면서 「본 사람 수」는 세부 지표로만 둔다.
+  var SER = (D.series || []).filter(function (x) { return x && (has(x.views) || has(x.interactions)); });
   if (SER.length >= 2) {
     // 진한 막대(.me)는 **마지막 점** = 이 보고의 기준일이다. "지금 얼마인지"를 먼저 찾게 한다.
     function serRows(key) {
@@ -411,16 +442,16 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
       }).join("");
     }
     var sBlocks = [];
-    var reachRows = serRows("reach");
     var viewRows = serRows("views");
-    if (reachRows) sBlocks.push('<div class="cmp"><div class="hd"><span>조회한 사람 (명)</span></div>' + reachRows + '</div>');
-    if (viewRows) sBlocks.push('<div class="cmp"><div class="hd"><span>조회 (회)</span></div>' + viewRows + '</div>');
+    var reactRows = serRows("interactions");
+    if (viewRows) sBlocks.push('<div class="cmp"><div class="hd"><span>조회수 (회)</span></div>' + viewRows + '</div>');
+    if (reactRows) sBlocks.push('<div class="cmp"><div class="hd"><span>반응 수 (회)</span></div>' + reactRows + '</div>');
     if (sBlocks.length) {
       var sFirst = SER[0], sLast = SER[SER.length - 1];
       var sLine = "";
-      if (has(sFirst.reach) && has(sLast.reach)) {
-        sLine = "조회한 사람은 게시 후 " + sFirst.day + "일 <b>" + n(sFirst.reach) + "명</b>에서 " +
-          sLast.day + "일 <b>" + n(sLast.reach) + "명</b>이 되었습니다.";
+      if (has(sFirst.views) && has(sLast.views)) {
+        sLine = "조회수는 게시 후 " + sFirst.day + "일 <b>" + n(sFirst.views) + "회</b>에서 " +
+          sLast.day + "일 <b>" + n(sLast.views) + "회</b>가 되었습니다.";
       }
       put("r-change",
         '<div class="card"><div class="pad"><h2>시간이 지나며 쌓인 숫자</h2>' +

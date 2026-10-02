@@ -4,7 +4,8 @@ import { actorName, requireTool } from "@/lib/draft/guard";
 import { isPreview } from "@/lib/draft/previewStores";
 import { appendDraftItem, readDraft } from "@/lib/draft/store";
 import { ReportStoreError, deleteReport, getReport, patchReport, reportStorePersistent, reportsOnBackend } from "@/lib/draft/reportStore";
-import { checkText, cohortNote, refreshText, reportAllText } from "@/lib/draft/report";
+import { checkText, cohortNote, hasCurationMarker, ownerNumbers, refreshText, reportAllText } from "@/lib/draft/report";
+import { parseManual, type ManualInput } from "@/lib/draft/reportManual";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { fetchPapillonMonths } from "@/lib/draft/papillon";
 import { buildSnapshot } from "@/lib/draft/snapshot";
@@ -32,7 +33,7 @@ async function save(id: string, patch: Partial<StoreReport>): Promise<StoreRepor
   } catch (e) { return storeError(e); }
 }
 
-/** PATCH — 문구만 고친다. 스냅샷 숫자는 읽기 전용. */
+/** PATCH — 문구와, 인스타 앱에서 손으로 옮기는 값(1003 — 장별 좋아요 · 연령 비중)을 고친다. 인스타 API 숫자는 읽기 전용. */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -40,13 +41,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const cur = await load(id);
   if (cur instanceof NextResponse) return cur;
   if (cur.status === "LINKED" || cur.status === "SENT" || cur.status === "REVOKED") return NextResponse.json({ detail: "링크가 나간 리포트는 고칠 수 없습니다. 갱신본을 만드세요." }, { status: 409 });
-  const b = (await req.json().catch(() => ({}))) as { title?: string; summary?: string; interpretation?: string[]; proposals?: Pick<ReportProposal, "rule" | "text" | "approved">[] };
+  const b = (await req.json().catch(() => ({}))) as { title?: string; summary?: string; interpretation?: string[]; proposals?: Pick<ReportProposal, "rule" | "text" | "approved">[]; manual?: ManualInput | null };
   const who = (await actorName()) ?? "unknown";
   const now = new Date().toISOString();
   const patch: Partial<StoreReport> = { status: "DRAFT", approved_by: null, approved_at: null }; // 문구가 바뀌면 승인은 무효
   if (typeof b.title === "string") patch.title = b.title.trim().slice(0, 80);
   if (typeof b.summary === "string") patch.summary = b.summary.trim().slice(0, 300);
-  if (Array.isArray(b.interpretation)) patch.interpretation = b.interpretation.map((s) => String(s).trim().slice(0, 300)).filter(Boolean).slice(0, 6); // 릴스 글은 시청 시간 문단까지 다섯 줄
+  if (Array.isArray(b.interpretation)) patch.interpretation = b.interpretation.map((s) => String(s).trim().slice(0, 300)).filter(Boolean).slice(0, 8); // 자동 글은 최대 여섯 줄(인사·큐레이션·조회·연령·반응·가게 장) + 사람이 덧붙인 줄
   if (Array.isArray(b.proposals)) {
     patch.proposals = cur.proposals.map((p) => {
       const n = b.proposals!.find((x) => x.rule === p.rule);
@@ -55,6 +56,20 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       const changed = text !== p.text;
       return { ...p, text, approved: Boolean(n.approved), edited_by: changed ? who : p.edited_by, edited_at: changed ? now : p.edited_at };
     });
+  }
+  if (b.manual !== undefined) {
+    // 사장님이 보는 글이 바뀌므로 문구와 같이 승인을 무효로 한다(위 patch.status).
+    const fmt = cur.snapshot.report_data?.available ? cur.snapshot.report_data.post?.format : cur.snapshot.post.format;
+    const { manual, errors } = parseManual(b.manual, {
+      likes: ownerNumbers(cur.snapshot).likes ?? null, carousel: fmt === "carousel",
+      curation: hasCurationMarker(cur.snapshot.post.topic), cards: cur.snapshot.report_data?.post?.card_count ?? null,
+    });
+    if (errors.length) return NextResponse.json({ detail: errors.join(" ") }, { status: 400 });
+    const snapshot = { ...cur.snapshot, manual };
+    patch.snapshot = snapshot;
+    // 그 값으로 쓰는 문장(연령 · 가게 장 좋아요)은 자동 문장이다 — 손대지 않은 자동 문장만 새 값으로 다시 쓴다.
+    const text = refreshText({ summary: patch.summary ?? cur.summary, interpretation: patch.interpretation ?? cur.interpretation, snapshot: cur.snapshot }, snapshot);
+    if (text.interpretation) patch.interpretation = text.interpretation.slice(0, 8);
   }
   const updated = await save(id, patch);
   if (updated instanceof NextResponse) return updated;
@@ -109,6 +124,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const snapshot = await buildSnapshot({ ...store, campus: ops?.campus ?? null }, plan, stores.filter((s) => s.is_affiliate !== false));
     snapshot.cohort_note = cohortNote(snapshot.metrics);
     // 손대지 않은 자동 문장은 새 숫자로 다시 쓰고, 사람이 고친 문장은 그대로 둔다(refreshText).
+    // 손으로 옮긴 값은 인스타 API 에서 다시 못 읽는다 — 새 스냅샷으로 옮겨 둔다(1003)
+    snapshot.manual = cur.snapshot.manual ?? null;
     const updated = await save(id, { snapshot, ...refreshText(cur, snapshot) });
     if (updated instanceof NextResponse) return updated;
     return NextResponse.json({ report: updated, draft: draft() });

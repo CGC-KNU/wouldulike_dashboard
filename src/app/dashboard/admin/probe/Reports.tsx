@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, reportAllText, verdict } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, checkText, hasCurationMarker, ownerNumbers, reportAllText, verdict } from "@/lib/draft/report";
+import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import InsightsSummary from "./InsightsSummary";
@@ -92,13 +93,21 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   const [askForce, setAskForce] = useState<string | null>(null);
   async function make(p: Post, force = false) {
     if (making) return; setMaking(postKey(p));
+    // 1003: 만들기 → 인스타 API 숫자를 굳힌 뒤 → **인스타그램 게시물을 연다.** 거기서 인사이트를 보고 손으로 옮길 값
+    // (장별 좋아요 · 연령 비중)을 편집 화면에 적는다. 팝업 차단을 피하려면 누른 그 순간에 탭을 열어야 해서,
+    // 빈 탭을 먼저 열고 리포트가 만들어지면 그 탭을 인스타그램으로 보낸다. 못 만들면 탭을 닫는다.
+    const insta = p.permalink && /^https:\/\/(www\.)?instagram\.com\//.test(p.permalink) ? p.permalink : null;
+    const tab = insta ? window.open("", "_blank") : null;
+    try { tab?.document.write('<p style="font:15px/1.6 -apple-system,sans-serif;padding:32px;color:#4E5968">리포트를 만드는 중입니다… 곧 인스타그램 게시물로 이동합니다.<br>인사이트에서 숫자를 확인한 뒤 Probe 탭으로 돌아와 적어 주세요.</p>'); } catch { /* 무시 */ }
+    let opened = false;
     try {
       const res = await fetch("/api/probe/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: p.restaurant_id, store_name: p.restaurant_id === null ? p.store : undefined, plan_id: p.plan_id, force }) });
       const d = await res.json().catch(() => ({}));
       if (res.status === 409 && !force) { setAskForce(postKey(p)); return; }
       if (!res.ok) { setAskForce(null); alert(d.detail ?? "만들지 못했습니다."); return; }
       setAskForce(null); setOpenPost(null); load(); setOpenId(d.report?.id ?? null);
-    } finally { setMaking(null); }
+      if (tab && insta) { try { tab.opener = null; } catch { /* 무시 */ } tab.location.href = insta; opened = true; }
+    } finally { setMaking(null); if (tab && !opened) tab.close(); }
   }
 
   const dueLabel = (p: Post) => {
@@ -257,10 +266,28 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "blue" | "red" | "green"; text: string; problems?: string[] } | null>(null);
   const [copied, setCopied] = useState(false);
-  useEffect(() => { setTitle(r.title); setSummary(r.summary); setInterp(r.interpretation.join("\n")); setProps(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved }))); setMsg(null); }, [r]);
+  // 인스타 앱에서 손으로 옮기는 값 (1003) — 글자 그대로 들고 있다가 저장할 때 서버가 검사한다
+  const manualOf = (x: StoreReport) => ({
+    thumb: String(x.snapshot.manual?.slide_likes?.thumb ?? ""), store: String(x.snapshot.manual?.slide_likes?.store ?? ""),
+    a18: String(x.snapshot.manual?.age?.p18_24 ?? ""), a25: String(x.snapshot.manual?.age?.p25_34 ?? ""),
+    count: String(x.snapshot.manual?.store_count ?? ""),
+  });
+  const [manual, setManual] = useState(manualOf(r));
+  useEffect(() => { setTitle(r.title); setSummary(r.summary); setInterp(r.interpretation.join("\n")); setProps(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved }))); setManual(manualOf(r)); setMsg(null); }, [r]);
 
   const editable = r.status === "DRAFT" || r.status === "APPROVED";
-  const dirty = title !== r.title || summary !== r.summary || interp !== r.interpretation.join("\n") || JSON.stringify(props) !== JSON.stringify(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved })));
+  const manualDirty = JSON.stringify(manual) !== JSON.stringify(manualOf(r));
+  const dirty = manualDirty || title !== r.title || summary !== r.summary || interp !== r.interpretation.join("\n") || JSON.stringify(props) !== JSON.stringify(r.proposals.map((p) => ({ rule: p.rule, title: p.title, text: p.text, approved: p.approved })));
+  // 적는 대로 계산해 보여 준다 — 저장 때 서버가 같은 검사를 한 번 더 한다
+  const fmt = r.snapshot.report_data?.available ? r.snapshot.report_data.post?.format : r.snapshot.post.format;
+  const carousel = fmt === "carousel";
+  const likes = ownerNumbers(r.snapshot).likes ?? null;
+  const curation = hasCurationMarker(r.snapshot.post.topic);
+  const cards = r.snapshot.report_data?.post?.card_count ?? null;
+  const manualInput = { slide_likes: carousel ? { thumb: manual.thumb, store: manual.store } : null, age: { p18_24: manual.a18, p25_34: manual.a25 }, store_count: curation ? manual.count : null };
+  const manualCheck = parseManual(manualInput, { likes, carousel, curation, cards });
+  const sharePct = slideShare(manualCheck.manual, likes), agePct = ageShare(manualCheck.manual);
+  const insta = r.snapshot.report_data?.post?.permalink || r.snapshot.post.permalink;
   // 저장 전에도 클라이언트에서 같은 검사를 돌려 미리 보여준다 (최종 판정은 서버)
   const precheck = useMemo(() => {
     const t = checkText(reportAllText({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props.map((p) => ({ ...p, generated_text: "", edited_by: null, edited_at: null })) }), r.snapshot);
@@ -273,7 +300,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   async function save() {
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch(`/api/probe/reports/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props }) });
+      const res = await fetch(`/api/probe/reports/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, summary, interpretation: interp.split("\n").filter(Boolean), proposals: props, ...(manualDirty ? { manual: manualInput } : {}) }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail }); return; }
       setMsg({ tone: "blue", text: "저장했습니다. 승인은 다시 받아야 합니다." }); onChanged();
     } finally { setBusy(false); }
@@ -306,7 +333,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     <SlideOver open onClose={onClose} title={s.store.name} subtitle={`'${s.post.topic}' · ${new Date(s.as_of).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 기준 스냅샷`} badge={<Chip tone={S_TONE[r.status]}>{S_LABEL[r.status]}</Chip>} width="lg"
       footer={
         <>
-          {editable && dirty && <Button variant="primary" onClick={save} disabled={busy}>문구 저장</Button>}
+          {editable && dirty && <Button variant="primary" onClick={save} disabled={busy || (manualDirty && manualCheck.errors.length > 0)}>{manualDirty ? "저장" : "문구 저장"}</Button>}
           {/* 스냅샷은 만든 순간으로 굳는다. 초안일 때만 지금 수치로 다시 읽는다 — 보낸 리포트는 갱신본을 만든다. */}
           {r.status === "DRAFT" && !dirty && <Button icon={<IconRefresh />} onClick={() => act("refresh")} disabled={busy}>수치 다시 읽기</Button>}
           {r.status === "DRAFT" && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("approve")} disabled={busy || !precheck.ok}>승인</Button>}
@@ -335,10 +362,37 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         {s.post.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{s.post.co_stores}곳을 함께 소개한 게시물입니다. 수치는 게시물 전체 것이고, 공개 페이지는 「N곳을 함께 소개한 큐레이션」이라고 밝힙니다.</p>}
       </PanelSection>
 
+      <PanelSection title="인스타그램에서 확인해 넣는 값 (손으로)">
+        <p className="text-[12px] text-gray-500 mb-2">인스타 API 가 게시물 단위로 주지 않는 숫자입니다. 게시물의 「인사이트 보기」에서 확인해 적으면 해석 글에 문장이 붙습니다. 비워 두면 그 문장 없이 나갑니다.</p>
+        {insta && <a href={insta} target="_blank" rel="noreferrer" className="inline-flex mb-3"><Button icon={<IconBrandInstagram />}>인스타그램에서 게시물 열기</Button></a>}
+        {curation && (
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <Field label="함께 소개한 가게 수 (곳)"><Input type="number" inputMode="numeric" min={2} max={30} value={manual.count} onChange={(e) => setManual({ ...manual, count: e.target.value })} disabled={!editable} placeholder="예: 7" /></Field>
+            <p className="self-end pb-2 text-[12px] text-gray-600">{carousel && cards ? `카드 ${cards}장짜리 게시물입니다(표지·마무리 장 포함). ` : ""}비우면 소개 문단에 「여러 곳」이라고 나갑니다.</p>
+          </div>
+        )}
+        {carousel && (
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="썸네일(첫) 장 좋아요 수"><Input type="number" inputMode="numeric" min={0} value={manual.thumb} onChange={(e) => setManual({ ...manual, thumb: e.target.value })} disabled={!editable} placeholder="예: 12" /></Field>
+            <Field label="이 가게가 실린 장 좋아요 수"><Input type="number" inputMode="numeric" min={0} value={manual.store} onChange={(e) => setManual({ ...manual, store: e.target.value })} disabled={!editable} placeholder="예: 21" /></Field>
+            <p className="col-span-2 text-[12px] text-gray-600 -mt-1">{sharePct !== null && manualCheck.manual?.slide_likes
+              ? <>가게 장 비중 <b className="text-gray-900">{sharePct}%</b> = {manualCheck.manual.slide_likes.store} ÷ (전체 좋아요 {likes} − 썸네일 장 {manualCheck.manual.slide_likes.thumb})</>
+              : `전체 좋아요 ${likes ?? "?"}개(인스타 API) 기준으로 계산합니다 — 가게 장 ÷ (전체 − 썸네일 장)`}</p>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <Field label="18~24세 비중 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.a18} onChange={(e) => setManual({ ...manual, a18: e.target.value })} disabled={!editable} placeholder="예: 51.2" /></Field>
+          <Field label="25~34세 비중 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.a25} onChange={(e) => setManual({ ...manual, a25: e.target.value })} disabled={!editable} placeholder="예: 32.4" /></Field>
+          <p className="col-span-2 text-[12px] text-gray-600 -mt-1">{agePct ? <>18~34세 비중 <b className="text-gray-900">{agePct.sum}%</b> = {agePct.p18_24} + {agePct.p25_34}</> : "두 비중을 더한 18~34세 비중을 글에 씁니다"}</p>
+        </div>
+        {manualDirty && manualCheck.errors.length > 0 && <ul className="list-disc pl-4 mt-1 text-[12px] text-red-600">{manualCheck.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
+        {manualDirty && manualCheck.errors.length === 0 && <p className="text-[12px] text-blue-700 mt-1">「저장」을 누르면 해석 글의 자동 문장이 이 값으로 다시 쓰입니다(손으로 고친 문장은 그대로).</p>}
+      </PanelSection>
+
       <PanelSection title="문구">
         <Field label="제목"><Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!editable} /></Field>
         <Field label="한 줄 요약 (카톡 미리보기에 보입니다)"><Textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!editable} /></Field>
-        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(도달·조회 → 가장 많은 반응 → 두 번째 반응). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
+        <Field label="해석 (줄마다 한 문단 · 리포트 「이번 편이 알려준 것」에 그대로 나갑니다)" hint="처음엔 자동으로 씁니다(인사 → 큐레이션 소개 → 조회수 → 반응 수 · 위에서 넣은 값이 있으면 연령·가게 장 문장). 스냅샷에 없는 숫자, 금지 표현('보장' '상위권' '덕분에' 등)은 승인이 막힙니다."><Textarea rows={8} value={interp} onChange={(e) => setInterp(e.target.value)} disabled={!editable} /></Field>
       </PanelSection>
 
       <PanelSection title={`다음 제안 (${props.filter((p) => p.approved).length} 승인 / ${props.length})`}>

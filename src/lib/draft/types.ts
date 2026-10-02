@@ -529,6 +529,24 @@ export interface ReportData {
   benchmarks?: { window?: string; total_posts?: number; prev_dates?: string[] } & Partial<Record<ReportMetricKey, ReportBenchmark>>;
 }
 
+/**
+ * 인스타 앱에서 보고 **손으로 옮기는 값** (1003 — 마케팅·민열·민찬 합의: "3초 들여 숫자 두 쌍만").
+ * 둘 다 인스타가 API 로는 주지 않는다(장별 좋아요 `(#100) Field is not available for Carousel children media`,
+ * 게시물별 연령은 항목 자체가 없다). 리포트 편집 화면에서 적고, 「수치 다시 읽기」에도 남는다.
+ */
+export interface ReportManual {
+  /** 캐러셀 장별 좋아요(개) — thumb: 썸네일(첫) 장 · store: 이 가게가 실린 장. 리포트에는 store ÷ (전체 좋아요 − thumb) 로 쓴다 */
+  slide_likes?: { thumb: number; store: number } | null;
+  /** 이 게시물을 본 사람의 연령 비중(%) — 18~24세 · 25~34세. 리포트에는 둘을 더한 18~34세 비중도 쓴다 */
+  age?: { p18_24: number; p25_34: number } | null;
+  /**
+   * 큐레이션에 함께 소개한 가게 수(곳) — 큐레이션 소개 문단의 "…맛집 N곳을 함께 큐레이션". 우리 데이터 어디에도 없다
+   * (1003 운영 조회: 캡션엔 파트너 매장 한 곳만, 대체 텍스트는 비어 있고, 카드 장수는 표지·마무리 장이 섞여 못 믿는다).
+   * 비우면 "여러 곳"이라고 쓴다.
+   */
+  store_count?: number | null;
+}
+
 export interface ReportSnapshot {
   store: { name: string; campus: Campus | null };
   post: { plan_id: number; topic: string; posted_at: string | null; permalink: string | null; format: string | null; caption: string | null; cover_url: string | null; owner_name: string | null; co_stores: number };
@@ -541,6 +559,8 @@ export interface ReportSnapshot {
   app: { month: string; coupon_redeemed: number; stamp_earned: number; revisit: number; loyal_total: number } | null;
   /** 양식이 쓰는 원본 한 벌 (0920) — 0919 이전 스냅샷엔 없다 */
   report_data?: ReportData | null;
+  /** 인스타 앱에서 손으로 옮긴 값 (1003) — 없으면 그 문장은 리포트에 안 나온다 */
+  manual?: ReportManual | null;
 }
 
 export interface StoreReport {

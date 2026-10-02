@@ -3,7 +3,7 @@
  * probe-report-share — 매장 리포트를 Probe 봇이 #ops-partner 에 올린다 (민찬 0928 · 두 단계 1002).
  *
  *   「승인」(초안 승인)   → **HTML 만**        — 팀이 문구를 확인하는 판 (stage review)
- *   「최종 승인」         → **PNG 3장 + HTML** — 사장님께 나가는 판     (stage final)
+ *   「최종 승인」         → **PNG 2장 + HTML** — 사장님께 나가는 판     (stage final)
  *
  *   .github/workflows/probe-report-share.yml 이 10분마다 부른다. 손으로:
  *   DASH=https://app.wouldulike.kr BACKEND=… CRON_TOKEN=… SLACK_TOKEN=… CHANNEL=C0BPSQ7F8LC \
@@ -12,7 +12,7 @@
  * 한 건마다:
  *   1. 백엔드 slack-queue?stages=review,final — 그 승인·그 단계를 아직 안 올린 것(백엔드 #79 · #103)
  *   2. 대시보드 cron-preview — 담당자 미리보기(/r/preview-<id>)와 **같은 HTML**
- *   3. 크롬(playwright-core)으로 열고, 담당자가 누르는 그 함수(window.__reportFiles)로 HTML(· 최종이면 PNG 3장)을 만든다
+ *   3. 크롬(playwright-core)으로 열고, 담당자가 누르는 그 함수(window.__reportFiles)로 HTML(· 최종이면 PNG 2장)을 만든다
  *      — 그래서 #ops-partner 파일이 사장님께 간 파일과 같다
  *   4. 슬랙 3단계 업로드(파일 여러 개 → 메시지 하나)
  *   5. 백엔드 slack-posted { approved_at, stage } — 같은 승인·같은 단계는 두 번 안 올린다

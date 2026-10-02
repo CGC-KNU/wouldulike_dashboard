@@ -1,4 +1,5 @@
 import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, VerdictTone } from "./types";
+import { ageShare, slideShare } from "./reportManual";
 
 /**
  * 매장 리포트의 순수 함수들 — 비교(벤치마크) · 해석 문장 · 제안 · 금지 표현.
@@ -100,14 +101,14 @@ export function josa(word: string, withBatchim: string, without: string): string
   return word + ((c - 0xac00) % 28 ? withBatchim : without);
 }
 
-type OwnerKey = "views" | "reach" | "saved" | "shares" | "likes" | "comments" | "avg_watch_ms" | "total_watch_ms";
+type OwnerKey = "views" | "reach" | "saved" | "shares" | "likes" | "comments" | "total_interactions" | "avg_watch_ms" | "total_watch_ms";
 /**
  * 점주 문장이 쓰는 숫자 — 리포트 카드와 **같은 출처**다(reportTemplateData 의 val 과 같은 순서).
  * 백엔드 report-data(D+7/D+14 그 시점 값)가 있으면 그것, 없으면 스냅샷 지표. 카드는 14일차인데 문장은 7일차가 되지 않게.
  */
 export function ownerNumbers(s: ReportSnapshot): Partial<Record<OwnerKey, number>> {
   const out: Partial<Record<OwnerKey, number>> = {};
-  for (const k of ["views", "reach", "saved", "shares", "likes", "comments", "avg_watch_ms", "total_watch_ms"] as const) {
+  for (const k of ["views", "reach", "saved", "shares", "likes", "comments", "total_interactions", "avg_watch_ms", "total_watch_ms"] as const) {
     const v = s.report_data?.available ? s.report_data.metrics?.[k] : undefined;
     const m = v ?? s.metrics.find((x) => x.key === k)?.value;
     if (typeof m === "number") out[k] = m;
@@ -128,7 +129,10 @@ const REACTION: Record<"shares" | "saved" | "likes" | "comments", { label: strin
 };
 
 /**
- * 점주 해석 문단 (0928 — 마케팅이 쓴 기프트버거 글을 규칙으로 옮겼다. 그 글과 글자까지 같게 나온다: 테스트 참고).
+ * **0928~1001 의** 점주 해석 문단 — 1002 부터는 쓰지 않는다(아래 ownerStory). 이미 만든 리포트에 이 글이 박혀 있어서
+ * 그 문장을 자동 문장으로 알아보는 데만 쓴다(isAutoLine) — 알아봐야 새 글로 갈아 끼운다.
+ *
+ * (0928 — 마케팅이 쓴 기프트버거 글을 규칙으로 옮겼다. 그 글과 글자까지 같게 나온다: 테스트 참고).
  *
  *   ① "이번 {가게} 콘텐츠 성과를 정리해 전달드립니다."
  *   ② 도달·조회 + 두 지표의 뜻. 조회가 도달보다 클 때만 "한 번 넘게 본 이용자가 있었다".
@@ -138,7 +142,7 @@ const REACTION: Record<"shares" | "saved" | "likes" | "comments", { label: strin
  * 비교는 **이 게시물 안에서만**(조회 vs 도달, 반응끼리 순위) — 우리 채널과 견주지 않는다. 10 미만은 문장에 쓰지 않는다.
  * 같은 값이면 공유 > 저장 > 좋아요 > 댓글. 편집 화면 PATCH 한도(한 줄 300자 · 4줄) 안에 든다.
  */
-export function ownerStory(s: ReportSnapshot): string[] {
+export function storyBefore1002(s: ReportSnapshot): string[] {
   const m = ownerNumbers(s), store = s.store.name;
   const n = (v: number) => v.toLocaleString();
   const ok = (v: number | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
@@ -168,6 +172,77 @@ export function ownerStory(s: ReportSnapshot): string[] {
   return out;
 }
 
+/** 반응 수 — 인스타의 total_interactions(좋아요·저장·공유·댓글 합), 없으면 넷을 더한다. 양식의 「반응 수」와 같은 값 */
+export function interactionsOf(s: ReportSnapshot): number | null {
+  const m = ownerNumbers(s);
+  if (typeof m.total_interactions === "number") return m.total_interactions;
+  const four = [m.likes, m.saved, m.shares, m.comments];
+  return four.every((v) => typeof v === "number") ? (four as number[]).reduce((a, b) => a + b, 0) : null;
+}
+
+/** 제목에 「(… 포함)」 표시가 있는가 — 마케팅 약속(0916)으로 그 표시가 있는 콘텐츠가 제휴식당 **큐레이션**이다 */
+export const hasCurationMarker = (topic: string) => /[(（][^()（）]*포함\s*[)）]/.test(topic);
+
+/**
+ * 큐레이션 소개 문단 (1002 마케팅: "최소한 서두에 이 내용은 들어가면 좋겠습니다").
+ *
+ *   마케팅 원문: 이번 콘텐츠는 [수제버거 맛집으로 알려진 대구 지역 맛집 7곳]을 함께 큐레이션하는 방식으로 제작되었습니다.
+ *   이를 통해 [기프트버거가 대구의 대표적인 수제버거] 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고
+ *   긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.
+ *
+ * 대괄호 자리는 제목에서 온다 — 「대구 수제버거 맛집 (기프트버거 경대점 포함)」 → "대구 수제버거 맛집".
+ * **몇 곳인지는 우리 데이터에 없다**(제목 괄호에는 이 가게 이름만, 캡션에도 목록이 없다 — 1003 운영 조회).
+ * 편집 화면에서 사람이 적으면(manual.store_count) "N곳", 비어 있으면 지어내지 않고 "여러 곳"이라고 쓴다.
+ * 표시가 없는 콘텐츠(협찬 단독 등)는 큐레이션이 아니라 이 문단이 없다.
+ */
+export function curationIntro(s: ReportSnapshot): string | null {
+  if (!hasCurationMarker(s.post.topic)) return null;
+  const theme = stripMarker(s.post.topic);
+  if (!theme) return null;
+  const what = isReel(s) ? "릴스" : "콘텐츠";
+  const count = s.manual?.store_count;
+  return `이번 ${what}는 ${theme} ${typeof count === "number" ? `${count}곳` : "여러 곳"}을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 ${josa(s.store.name, "이", "가")} 대표적인 ${theme} 중 하나로 자연스럽게 소개되었으며, ` +
+    "타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.";
+}
+
+/**
+ * 점주 해석 문단 (1002 — 마케팅 피드백: 세부 지표보다 **새로운 사람에게 노출되고 있다**, 조회수와 반응 수 중심).
+ *
+ *   ① "이번 {가게} {콘텐츠|릴스} 성과를 정리해 전달드립니다."
+ *   ② 큐레이션 소개(제목에 「(… 포함)」 표시가 있을 때) — curationIntro
+ *   ③ 조회수
+ *   ③' (손으로 넣었을 때) 본 사람의 18~34세 비중 — 인스타 앱에서 옮긴 18~24세 · 25~34세 비중 (1003)
+ *   ④ 반응 수 합계 — 하나하나(좋아요 몇, 공유 몇)보다 "그냥 지나치지 않았다"를 말한다.
+ *   ④' (손으로 넣었을 때 · 캐러셀) 이 가게가 실린 장의 좋아요 비중 = 가게 장 ÷ (전체 좋아요 − 썸네일 장) (1003)
+ *
+ * **팔로워·비팔로워는 말하지 않는다 (1002 결정).** 마케팅이 원한 건 「이 콘텐츠를 본 사람 중 비팔로워 비율」인데 인스타가
+ * 게시물 단위로는 주지 않는다(운영 호출: `(#100) Incompatible breakdowns (follow_type)` — 릴스·피드, 조회·도달 모두).
+ * 계정 전체 숫자(최근 28일 도달 = 팔로워의 60배)는 "이 콘텐츠와 관련 없는 이야기"라, 팔로워 수와 견주는 문장은
+ * "팔로워 수 언급보다…"라는 의견으로 뺐다. 다시 넣으려면 그 숫자를 받을 길부터 생겨야 한다.
+ *
+ * 세부 지표(도달·저장·공유·좋아요·댓글·시청 시간)는 문장에 하나씩 쓰지 않는다 — 리포트의 「세부 지표 보기」에 있다.
+ * 없는 숫자는 문장째 뺀다. 10 미만은 쓰지 않는다.
+ */
+export function ownerStory(s: ReportSnapshot): string[] {
+  const m = ownerNumbers(s), store = s.store.name;
+  const n = (v: number) => v.toLocaleString();
+  const ok = (v: number | null | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
+  const reel = isReel(s);
+  const what = reel ? "릴스" : "콘텐츠";
+  const out = [`이번 ${store} ${what} 성과를 정리해 전달드립니다.`];
+  const intro = curationIntro(s);
+  if (intro) out.push(intro);
+  if (ok(m.views)) out.push(`이번 ${what}는 조회수 ${n(m.views)}회를 기록했습니다.`);
+  const age = ageShare(s.manual);
+  if (age) out.push(`이번 ${josa(what, "을", "를")} 본 분들 가운데 ${age.sum}%가 18~34세였습니다(18~24세 ${age.p18_24}% · 25~34세 ${age.p25_34}%).`);
+  const reacted = interactionsOf(s);
+  if (ok(reacted)) out.push(`그리고 이번 ${josa(what, "을", "를")} 본 분들이 좋아요·저장·공유·댓글로 모두 ${n(reacted)}회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.`);
+  const share = isCarousel(s) ? slideShare(s.manual, m.likes) : null;
+  if (share !== null) out.push(`함께 소개된 가게들 가운데 ${josa(store, "이", "가")} 실린 장이 좋아요의 ${share}%를 받았습니다(표지 장 제외).`);
+  return out;
+}
+
+const isCarousel = (s: ReportSnapshot) => (s.report_data?.available ? s.report_data.post?.format : s.post.format) === "carousel";
 const isReel = (s: ReportSnapshot) => (s.report_data?.available ? s.report_data.post?.format : s.post.format) === "reel";
 
 /**
@@ -220,7 +295,8 @@ export const isLegacyChannelLine = (t: string) => LEGACY_CHANNEL_LINE.test(t);
 
 /** 0925~0928 에 자동으로 넣던 짧은 문장("저장이 644번 모였습니다. …") — 사람이 쓴 게 아니므로 새 글로 갈아 끼운다 */
 const OLD_AUTO_LINE = /^(저장이 [\d,]+번 모였습니다|[\d,]+회 조회됐습니다|[\d,]+번 공유됐습니다|[\d,]+명에게 닿았습니다)\./;
-const isAutoLine = (t: string, s: ReportSnapshot) => isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t);
+const isAutoLine = (t: string, s: ReportSnapshot) =>
+  isLegacyChannelLine(t) || OLD_AUTO_LINE.test(t) || ownerStory(s).includes(t) || storyBefore1002(s).includes(t);
 
 /**
  * 리포트에 실을 해석 문단 — 자동으로 들어갔던 문장(옛 채널 비교 · 옛 짧은 문장 · 지금 규칙의 글)은 **지금 규칙의 글**로,
@@ -404,6 +480,16 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
     if (w.dur !== null) add(w.dur);
     if (w.totalMin !== null) { add(w.totalMin); add(Math.floor(w.totalMin / 60)); add(w.totalMin % 60); } }
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
+  // 반응 수 합계(1002) — 넷을 더해 나온 값도 스냅샷 값이다
+  { const r = interactionsOf(s); if (r !== null) add(r); }
+  // 인스타 앱에서 손으로 옮긴 값과 거기서 계산한 비중(1003) — 소수는 정수부·소수부로 나뉘어 읽힌다
+  { const dec = (v: number) => { add(Math.floor(v)); add(Math.round((v % 1) * 10)); };
+    const age = ageShare(s.manual);
+    if (age) { for (const v of [age.p18_24, age.p25_34, age.sum]) dec(v); for (const y of [18, 24, 25, 34]) add(y); }
+    const share = slideShare(s.manual, ownerNumbers(s).likes);
+    if (share !== null) dec(share);
+    if (s.manual?.slide_likes) { add(s.manual.slide_likes.thumb); add(s.manual.slide_likes.store); }
+    if (typeof s.manual?.store_count === "number") add(s.manual.store_count); }
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
   /**
