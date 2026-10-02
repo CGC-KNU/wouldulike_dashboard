@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { campusTarget, checkText, curationIntro, ownerStory, slideParagraph } from "../src/lib/draft/report";
+import { campusTarget, checkText, curationIntro, nonFollowerParagraph, ownerStory, slideParagraph, soloIntro, watchParagraph } from "../src/lib/draft/report";
 import { parseManual, slideTop } from "../src/lib/draft/reportManual";
 import type { ReportData, ReportManual, ReportSnapshot } from "../src/lib/draft/types";
 
@@ -66,7 +66,7 @@ test("「대학가를 중심으로 한 … 핵심 타깃층」은 대학가 매�
   // 앱에 없는 협찬 매장(교동) — 기본이 대학가 문구가 아니다
   const gyodong = snap({ store: { name: "교동서서", campus: null, in_app: false }, topic: "교동 서서 협찬", format: "reel", manual: { age: FULL.age } });
   assert.equal(campusTarget(gyodong), false);
-  assert.match(ownerStory(gyodong)[1], /또한 도달한 이용자의 83\.6%가 18~34세로, 젊은 고객층을 중심으로 노출되었습니다\.$/);
+  assert.ok(ownerStory(gyodong).some((t) => /또한 도달한 이용자의 83\.6%가 18~34세로, 젊은 고객층을 중심으로 노출되었습니다\.$/.test(t)));
   // 라라더처럼 대학가와 엮이기 싫어하는 제휴 매장 — 편집 화면에서 끈다
   assert.doesNotMatch(age(snap({ manual: { ...FULL, campus_target: false } })), /대학가/);
   // 반대로 협찬 매장도 켤 수 있다
@@ -121,11 +121,66 @@ test("제목이 「지역 주제 맛집」 꼴이 아니면 억지로 끼워 넣
 test("큐레이션이 아니면(협찬 단독) 「큐레이션」을 말하지 않는다 · 릴스는 「릴스」", () => {
   const solo = ownerStory(snap({ topic: "교동후추 협찬", format: "reel", store: { name: "교동후추", campus: null, in_app: false }, manual: null }));
   assert.equal(solo[0], "이번 교동후추 릴스 성과를 분석해 전달드립니다.");
-  assert.match(solo[1], /^해당 릴스는 총 6,904회의 조회수를 기록했으며/);
+  assert.match(solo[1], /^이번 릴스는 교동후추 한 곳만을 단독으로 담은 영상으로 제작되었습니다\./, "단독 소개 서두(1003)");
+  assert.match(solo[2], /^해당 릴스는 총 6,904회의 조회수를 기록했으며/);
   assert.doesNotMatch(solo.join(" "), /큐레이션|슬라이드/);
 });
 
 test("편집 화면 한도(한 줄 300자) 안에 든다", () => {
   for (const t of ownerStory(snap({ store: { name: "아주아주긴가게이름수제버거본점", campus: null, in_app: true }, topic: "대구 경북대 북문 수제버거 브런치 맛집 (아주아주긴가게이름수제버거본점 포함)" })))
     assert.ok(t.length <= 300, `${t.length}자: ${t.slice(0, 30)}…`);
+});
+
+// ── 1003 릴스 보강: 단독 소개 서두 · 총 시청 시간 · 팔로워가 아닌 사람 비율 ─────────────
+const soloReel = (manual: ReportManual | null, metrics: Record<string, number> = { ...METRICS, total_watch_ms: 2_532_000 }) =>
+  snap({ topic: "교동 서서 협찬", format: "reel", store: { name: "교동서서", campus: null, in_app: false }, manual, metrics });
+
+test("단독 릴스 글: 인사 → 단독 소개 → 조회수 → 팔로워 아님 → 총 시청 시간 → 총반응 수", () => {
+  assert.deepEqual(ownerStory(soloReel({ non_follower_pct: 76.4 })), [
+    "이번 교동서서 릴스 성과를 분석해 전달드립니다.",
+    "이번 릴스는 교동서서 한 곳만을 단독으로 담은 영상으로 제작되었습니다. 영상 전체가 교동서서에 집중되어 있어, 이를 본 이용자들에게 교동서서를 또렷하게 알리고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.",
+    "해당 릴스는 총 6,904회의 조회수를 기록했으며, 현재까지도 꾸준한 증가세를 보이고 있습니다.",
+    "조회의 76.4%는 우주라이크를 팔로우하지 않는 이용자에게서 나왔습니다. 기존 팔로워를 넘어 새로운 고객에게 교동서서를 알렸다는 뜻입니다.",
+    "이용자들이 이 영상을 시청한 시간은 모두 합쳐 42분에 이릅니다. 그만큼의 시간 동안 교동서서의 모습이 이용자들의 화면에 머물렀습니다.",
+    "또한 좋아요, 댓글, 저장, 공유 등 이용자의 실제 행동을 나타내는 총반응 수는 253건으로 집계되었습니다. 이는 단순한 노출을 넘어 콘텐츠에 대한 관심과 참여를 이끌어냈으며, 향후 교동서서 방문을 고려하게 하는 계기를 마련했다는 점에서 의미 있는 성과라고 볼 수 있습니다.",
+  ]);
+});
+
+test("단독 소개는 표시 없는 릴스만 — 큐레이션 릴스·피드·여러 가게 편엔 없다", () => {
+  assert.ok(soloIntro(soloReel(null)));
+  assert.equal(soloIntro(snap({ format: "reel" })), null, "큐레이션 릴스는 큐레이션 소개");
+  assert.equal(soloIntro(snap({ topic: "통통주먹구이 협찬" })), null, "피드는 1003 요청 범위 밖");
+  const many = soloReel(null); many.post.co_stores = 2;
+  assert.equal(soloIntro(many), null);
+});
+
+test("시청 시간은 모든 사람의 시간만 — 평균은 글에 없다 · 1분 미만이면 없다 · 시간 단위", () => {
+  assert.doesNotMatch(ownerStory(soloReel(null, { ...METRICS, total_watch_ms: 2_532_000, avg_watch_ms: 16400 })).join(" "), /평균/);
+  assert.equal(watchParagraph(soloReel(null, { ...METRICS, total_watch_ms: 50_000 })), null);
+  assert.match(watchParagraph(soloReel(null, { ...METRICS, total_watch_ms: 203_280_000 }))!, /모두 합쳐 56시간 28분에 이릅니다/);
+  assert.match(watchParagraph(soloReel(null, { ...METRICS, total_watch_ms: 2 * 3_600_000 }))!, /모두 합쳐 2시간에 이릅니다/);
+  assert.equal(watchParagraph(snap()), null, "피드에는 없다");
+  assert.equal(watchParagraph(soloReel(null, METRICS)), null, "0930 이전 스냅샷 — 시청 시간이 없다");
+});
+
+test("팔로워가 아닌 사람 비율 — 절반 이상일 때만 쓰고, 피드에도 쓴다", () => {
+  assert.equal(nonFollowerParagraph(soloReel({ non_follower_pct: 42 })), null, "절반 미만은 쓰지 않는다");
+  assert.match(nonFollowerParagraph(snap({ manual: { non_follower_pct: 81 } }))!, /^조회의 81%는 우주라이크를 팔로우하지 않는 이용자에게서 나왔습니다\. 기존 팔로워를 넘어 새로운 고객에게 기프트버거를 알렸다는 뜻입니다\.$/);
+  const ctx = { likes: 80, carousel: false };
+  assert.deepEqual(parseManual({ non_follower_pct: "76.44" }, ctx).manual, { non_follower_pct: 76.4 });
+  assert.match(parseManual({ non_follower_pct: 140 }, ctx).errors.join(" "), /0~100/);
+});
+
+test("새 문단의 숫자도 승인 가드를 통과한다 — 다른 비율을 적으면 막힌다", () => {
+  const s = soloReel({ non_follower_pct: 76.4 });
+  const ok = checkText(ownerStory(s).join("\n"), s);
+  assert.ok(ok.ok, ok.problems.join(", "));
+  assert.ok(!checkText("조회의 91%는 우주라이크를 팔로우하지 않는 이용자에게서 나왔습니다.", s).ok);
+  assert.ok(!checkText("이용자들이 이 영상을 시청한 시간은 모두 합쳐 13시간에 이릅니다.", s).ok, "42분인데 13시간이라 적으면 막힌다(한 자리 수는 가드가 서수로 보고 넘긴다)");
+});
+
+test("편집 화면 한도 — 단독 릴스 글은 일곱 줄을 넘지 않고 한 줄 300자 안", () => {
+  const out = ownerStory(soloReel({ non_follower_pct: 76.4, age: { p18_24: 51.2, p25_34: 32.4 } }));
+  assert.ok(out.length <= 7, `${out.length}줄`);
+  for (const t of out) assert.ok(t.length <= 300, `${t.length}자`);
 });
