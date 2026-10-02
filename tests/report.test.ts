@@ -2,10 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, verdict } from "../src/lib/draft/report";
+import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, curationIntro, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, verdict } from "../src/lib/draft/report";
 import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml } from "../src/lib/draft/reportPage";
-import type { ReportAudience, ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
+import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
 
 const metric = (key: string, value: number, median: number | null = null, n = 0) =>
   ({ key, value, median, p10: null, p90: null, n, window_days: 90, hidden: n < 5, delta_pct: null, source: "graph" as const });
@@ -39,7 +39,8 @@ test("제목의 「(… 포함)」 표시는 점주에게 안 보인다", () => 
   const d = toTemplateData(report()) as { post: { title: string; type_label: string | null; store_count: number | null } };
   assert.equal(d.post.title, "대구 면 요리 맛집");
   assert.equal(d.post.type_label, "큐레이션"); // 여러 매장이 함께 실린 편
-  assert.equal(d.post.store_count, 3);
+  // 1002: 큐레이션 소개 문단이 글에 들어가면 양식의 「혼자 받은 숫자가 아닙니다」 스위치(store_count)는 끈다
+  assert.equal(d.post.store_count, null);
 });
 
 test("report-data 가 있으면 그 수치와 며칠차를 쓴다", () => {
@@ -89,25 +90,34 @@ test("0928~1001 글은 기프트버거 숫자를 넣으면 마케팅이 쓴 글�
   assert.equal(storyBefore1002(gift()).join("\n"), GIFT_TEXT);
 });
 
-// ── 1002: 해석 문단 — 새로운 사람에게 노출 · 조회수와 반응 수 중심 (마케팅 피드백) ─────────────
-/** 1002 운영 콘솔 값(팔로워 1,739 · 조회 나눔)에 도달 나눔을 붙인 것 — 계정 전체 숫자다 */
-const AUD: ReportAudience = { days: 28, until: "2026-10-02", followers: 1739, reach: 104275, reach_follower: 1700, reach_non_follower: 102575, reach_unknown: 0,
-  views: 203603, views_follower: 31960, views_non_follower: 171620, views_unknown: 23 };
+// ── 1002: 해석 문단 — 큐레이션 소개 · 조회수 · 반응 수 (마케팅 피드백) ─────────────
 const GIFT_M = { views: 6674, reach: 3482, shares: 105, saved: 67, likes: 66, comments: 3, total_interactions: 241 };
-const fresh = (metrics: Record<string, number | null> = GIFT_M, audience: ReportAudience | null = AUD) =>
-  ({ ...gift(), report_data: { ...rd, metrics, audience } });
+/** 기프트버거 편 — 제목에 「(… 포함)」 표시가 있는 큐레이션 */
+const fresh = (metrics: Record<string, number | null> = GIFT_M, topic = "대구 수제버거 맛집 (기프트버거 포함)") =>
+  ({ ...gift(), post: { ...gift().post, topic, co_stores: 1 }, report_data: { ...rd, metrics } });
 
 const NEW_TEXT = `이번 기프트버거 콘텐츠 성과를 정리해 전달드립니다.
-이번 콘텐츠는 조회수 6,674회를 기록했습니다. 게시물을 본 사람은 3,482명으로, 우주라이크 팔로워 1,739명보다 많습니다. 팔로워가 아닌 분들께도 콘텐츠가 닿았다는 뜻입니다.
-우주라이크는 팔로워를 넘어 새로운 분들께 콘텐츠가 노출되는 계정입니다. 최근 28일 동안 우주라이크 콘텐츠를 본 사람은 104,275명으로, 팔로워 수의 약 60배입니다. 이 가운데 98%가 우주라이크를 팔로우하지 않는 분들이었습니다.
+이번 콘텐츠는 대구 수제버거 맛집 여러 곳을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 기프트버거가 대표적인 대구 수제버거 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.
+이번 콘텐츠는 조회수 6,674회를 기록했습니다.
 그리고 이번 콘텐츠를 본 분들이 좋아요·저장·공유·댓글로 모두 241회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.`;
 
-test("1002 글: 조회수 → 팔로워보다 많이 봤다 → 계정 전체 새로운 분들 → 반응 수 합계", () => {
+test("1002 글: 인사 → 큐레이션 소개 → 조회수 → 반응 수 합계", () => {
   assert.equal(ownerStory(fresh()).join("\n"), NEW_TEXT);
 });
 
-test("반응을 하나씩 세우지 않는다 — 좋아요 몇, 공유 몇 대신 합계 한 번", () => {
+test("큐레이션 소개는 제목에 「(… 포함)」 표시가 있을 때만 — 협찬 단독은 큐레이션이 아니다", () => {
+  assert.equal(curationIntro(fresh(GIFT_M, "교동후추 협찬")), null);
+  const solo = ownerStory(fresh(GIFT_M, "교동후추 협찬"));
+  assert.equal(solo.length, 3, "인사 · 조회수 · 반응 수");
+  assert.doesNotMatch(solo.join(" "), /큐레이션/);
+  // 몇 곳인지는 데이터에 없다 — 숫자를 지어내지 않는다
+  assert.match(curationIntro(fresh())!, /여러 곳을 함께 큐레이션/);
+  assert.doesNotMatch(curationIntro(fresh())!, /\d/);
+});
+
+test("팔로워·도달·계정 전체 이야기를 하지 않는다 · 반응을 하나씩 세우지 않는다", () => {
   const t = ownerStory(fresh()).join(" ");
+  assert.doesNotMatch(t, /팔로워|팔로우|도달|본 사람|우주라이크 콘텐츠/);
   assert.doesNotMatch(t, /(좋아요|저장|공유|댓글)(는|은|이|가)? [\d,]+/);
   assert.doesNotMatch(t, /가장 많았습니다|집계되었습니다/);
   assert.doesNotMatch(t, CHANNEL);
@@ -119,40 +129,22 @@ test("숫자는 리포트 카드와 같은 출처(report-data)를 쓴다", () =>
   assert.doesNotMatch(t, /1,000회|900명/);
 });
 
-test("이 게시물을 본 사람이 팔로워보다 적으면 그 문장을 쓰지 않는다", () => {
-  const out = ownerStory(fresh({ ...GIFT_M, reach: 1500 }));
-  assert.equal(out[1], "이번 콘텐츠는 조회수 6,674회를 기록했습니다.");
-});
-
-test("계정 숫자가 없는 옛 스냅샷은 인사 · 조회수 · 반응 수만", () => {
-  const out = ownerStory(fresh(GIFT_M, null));
-  assert.equal(out.length, 3);
-  assert.doesNotMatch(out.join(" "), /팔로워/);
-});
-
-test("계정 문단 — 팔로워의 2배가 안 되면 쓰지 않는다 · 비중이 절반 미만이면 비중 문장만 뺀다 · 도달 나눔이 없으면 조회로", () => {
-  assert.ok(!ownerStory(fresh(GIFT_M, { ...AUD, reach: 3000 })).some((t) => t.startsWith("우주라이크는")));
-  const low = ownerStory(fresh(GIFT_M, { ...AUD, reach_non_follower: 40, reach_follower: 60 })).find((t) => t.startsWith("우주라이크는"))!;
-  assert.match(low, /약 60배입니다\.$/);
-  const byViews = ownerStory(fresh(GIFT_M, { ...AUD, reach_non_follower: null, reach_follower: null, reach_unknown: null })).find((t) => t.startsWith("우주라이크는"))!;
-  assert.match(byViews, / 조회의 84%도 우주라이크를 팔로우하지 않는 분들에게서 나왔습니다\.$/);
-});
-
 test("반응 수 — total_interactions 가 없으면 넷을 더하고, 10 미만이면 문단이 없다", () => {
   const { total_interactions: _, ...four } = GIFT_M;
   assert.match(ownerStory(fresh(four)).at(-1)!, /모두 241회 반응했습니다/);
   assert.ok(!ownerStory(fresh({ ...GIFT_M, total_interactions: 7 })).some((t) => t.includes("반응했습니다")));
 });
 
-test("해석 문단의 숫자는 승인 가드를 통과한다 — 계정 숫자와 거기서 계산한 배수·비중도 스냅샷 값이다", () => {
-  const s = fresh();
-  const r = checkText(ownerStory(s).join("\n"), s);
-  assert.ok(r.ok, r.problems.join(", "));
+test("해석 문단은 승인 가드를 통과한다 — 넷을 더한 반응 수도 스냅샷 값이다", () => {
+  for (const s of [fresh(), fresh((({ total_interactions: _, ...four }) => four)(GIFT_M))]) {
+    const r = checkText(ownerStory(s).join("\n"), s);
+    assert.ok(r.ok, r.problems.join(", "));
+  }
 });
 
 test("편집 화면 한도(한 줄 300자 · 6줄) 안에 든다 — 가장 긴 경우", () => {
   const s = { ...fresh({ views: 1234567, reach: 987654, saved: 123456, shares: 234567, likes: 345678, comments: 45678, total_interactions: 749379 },
-    { ...AUD, reach: 98765432 }), store: { name: "아주아주긴가게이름수제버거본점", campus: null } };
+    "대구 경북대 북문 수제버거 브런치 맛집 (아주아주긴가게이름수제버거본점 포함)"), store: { name: "아주아주긴가게이름수제버거본점", campus: null } };
   const out = ownerStory(s);
   assert.ok(out.length <= 6);
   for (const t of out) assert.ok(t.length <= 300, `${t.length}자: ${t.slice(0, 30)}…`);
@@ -162,6 +154,17 @@ test("이미 만든 리포트의 0928~1001 글은 그릴 때 1002 글로 갈아 
   const s = fresh();
   const out = ownerParagraphs([...storyBefore1002(s), "사장님 메뉴가 특히 반응이 좋았습니다."], s);
   assert.deepEqual(out, [...ownerStory(s), "사장님 메뉴가 특히 반응이 좋았습니다."]);
+});
+
+test("소개 문단이 들어가면 「N곳을 함께 소개한 큐레이션입니다」를 또 붙이지 않는다 — 사람이 글을 다 고쳤으면 그대로 붙는다", () => {
+  type D = { insight: { paragraphs: string[]; limitation: string | null }; post: { multi_store: boolean; store_count: number | null } };
+  const auto = toTemplateData(report()) as D; // 라라더 편 — 표시가 있고 co_stores 3
+  assert.ok(auto.insight.paragraphs.some((t) => t.includes("여러 곳을 함께 큐레이션")));
+  assert.equal(auto.insight.limitation, null);
+  assert.equal(auto.post.multi_store, false, "양식이 「혼자 받은 숫자가 아닙니다」를 붙이지 않게");
+  const human = toTemplateData(report({ interpretation: ["사람이 다 고쳐 쓴 문단입니다."] })) as D;
+  assert.match(human.insight.limitation!, /3곳을 함께 소개한 큐레이션입니다/);
+  assert.equal(human.post.multi_store, true);
 });
 
 // ── 0930: 릴스 — 명사·조회의 뜻만 바꾸고 시청 시간 문단을 붙인다 ─────────────
@@ -174,11 +177,13 @@ const reel = (metrics: Record<string, number | null>, duration: number | null = 
 const REEL = { views: 12400, reach: 8100, shares: 96, saved: 140, likes: 310, comments: 12, avg_watch_ms: 16400, total_watch_ms: 203_280_000 };
 
 test("릴스 글은 「릴스」로 말한다 · 시청 시간은 글에 쓰지 않는다(세부 지표에 있다)", () => {
-  const out = ownerStory({ ...reel(REEL), report_data: { ...reel(REEL).report_data, audience: AUD } });
-  assert.equal(out[0], "이번 통통 릴스 성과를 정리해 전달드립니다.");
-  assert.equal(out[1], "이번 릴스는 조회수 12,400회를 기록했습니다. 릴스를 본 사람은 8,100명으로, 우주라이크 팔로워 1,739명보다 많습니다. 팔로워가 아닌 분들께도 릴스가 닿았다는 뜻입니다.");
-  assert.match(out.at(-1)!, /^그리고 이번 릴스를 본 분들이 좋아요·저장·공유·댓글로 모두 558회 반응했습니다\./);
-  assert.ok(!out.some((t) => t.includes("시청 시간")));
+  const out = ownerStory(reel(REEL));
+  assert.deepEqual(out, [
+    "이번 통통 릴스 성과를 정리해 전달드립니다.",
+    "이번 릴스는 대구 면 요리 맛집 여러 곳을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 통통이 대표적인 대구 면 요리 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.",
+    "이번 릴스는 조회수 12,400회를 기록했습니다.",
+    "그리고 이번 릴스를 본 분들이 좋아요·저장·공유·댓글로 모두 558회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.",
+  ]);
 });
 
 test("평균 시청 시간은 영상 길이의 절반 이상일 때만 — 모르면 10초 이상일 때만", () => {
@@ -273,7 +278,8 @@ test("이미 만든 리포트의 옛 채널 비교 문장·약점 제안은 그�
   assert.ok(d.insight.paragraphs.some((t) => t.startsWith("그리고 이번 콘텐츠를 본 분들이 좋아요·저장·공유·댓글로 모두")), "반응 수 합계(1002 글)");
   assert.ok(!d.insight.paragraphs.some((t) => t.includes("촬영 재진행")), "없앤 제안은 빠진다");
   assert.ok(d.insight.paragraphs.some((t) => t.includes("사람이 고친 공유 제안입니다.")), "고친 제안은 그대로");
-  assert.match(d.insight.limitation!, /3곳을 함께 소개한 큐레이션입니다\. 라라더가 추천 가게 중 한 곳으로 실렸습니다/, "「혼자 받은 숫자 아님」 대신");
+  assert.ok(d.insight.paragraphs.some((t) => t.includes("대구 면 요리 맛집 여러 곳을 함께 큐레이션")), "큐레이션 소개(1002)");
+  assert.equal(d.insight.limitation, null, "소개 문단이 이미 말했다 — 「N곳을 함께 소개한 큐레이션입니다」를 또 붙이지 않는다");
 });
 
 test("카톡용 텍스트에 채널 비교·순위·작은 숫자가 없다", () => {
@@ -709,11 +715,9 @@ test("핵심 숫자 카드 — 조회수(강조)와 반응 수(좋아요·저장
   assert.match(out, /좋아요 · 저장 · 공유 · 댓글을 합친 수/);
 });
 
-test("본 사람이 팔로워보다 많을 때만 핵심 숫자 카드에 그 한 줄", () => {
-  const withAud = (followers: number) => renderNodes(fillReportTemplate(report({}, { report_data: { ...rd, audience: { ...AUD, followers } } })))["r-key"].innerHTML;
-  assert.match(withAud(1739), /게시물을 본 사람 <b>18,702명<\/b> — 우주라이크 팔로워 1,739명보다 많습니다\./);
-  assert.doesNotMatch(withAud(20000), /팔로워/);
-  assert.doesNotMatch(renderNodes(fillReportTemplate(report({}, { report_data: rd })))["r-key"].innerHTML, /팔로워/, "계정 숫자가 없으면 없다");
+test("핵심 숫자 카드는 팔로워·본 사람 수를 말하지 않는다 (1002 결정)", () => {
+  const out = renderNodes(fillReportTemplate(report({}, { report_data: rd })))["r-key"].innerHTML;
+  assert.doesNotMatch(out, /팔로워|본 사람/);
 });
 
 test("세부 지표는 접혀 있고(「세부 지표 보기」) 조회수는 거기 다시 안 나온다 · 강조 없음", () => {

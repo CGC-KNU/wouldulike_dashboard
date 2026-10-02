@@ -63,8 +63,6 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
                          「이번 편이 알려준 것」. limitation 이 있으면 자동 「혼자 받은 숫자 아님」 문단 대신 사용.
   upsell.enabled / upsell.formats[] {title, subtitle, image, stats:[{k,v}], body, link, link_label} / upsell.close
   contact.url            있으면 「담당자에게 문의하기」 버튼
-  audience.followers     (1002) 우주라이크 계정 팔로워 수. 이 게시물을 본 사람(metrics.reach)이 더 많으면 핵심 숫자 카드에
-                         「팔로워보다 많습니다」 한 줄. 계정 전체 숫자라 해석 문단(insight)이 그렇게 밝혀서 쓴다.
   문장 필드 문법: **굵게**, ==강조색==, 줄바꿈 
 , {store}. 그 외 HTML은 이스케이프된다.
 
@@ -136,8 +134,6 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
   .key .s{margin-top:2px;font-size:11.5px;color:var(--sub);line-height:1.5}
   .key.hl{background:var(--soft)}
   .key.hl .v{color:var(--me)}
-  .keys + .d{margin-top:12px;font-size:13.5px;color:var(--tx);line-height:1.6}
-  .keys + .d b{color:var(--ink)}
 
   /* 세부 지표 — 필요할 때만 펼친다. PNG 에는 들어가지 않는다 */
   details.more{margin-bottom:12px}
@@ -392,16 +388,12 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
 
   // ── 게시물 성과 — 핵심 숫자 두 개 (1002 마케팅 피드백: 조회수와 반응 수 중심) ──
   // 반응 수 = 좋아요·저장·공유·댓글을 하나로. 사장님께는 "좋아요가 몇, 공유가 몇"보다 "그냥 지나치지 않고 반응했다"가 중요하다.
-  // 이 게시물을 본 사람(도달)이 우주라이크 팔로워보다 많으면 한 줄 — 팔로워가 아닌 분들께도 닿았다는 근거다.
-  var AU = D.audience || {};
+  // 팔로워·비팔로워는 말하지 않는다(1002) — 게시물 단위 비팔로워 비율은 인스타가 주지 않고, 팔로워 수와 견주는 줄은 마케팅 의견으로 뺐다.
   put("r-key", '<div class="card"><div class="pad"><h2>게시물 성과</h2><div class="keys">' +
     '<div class="key hl"><div class="k">조회수</div><div class="v">' + n(M.views) + "<small>회</small></div>" +
       '<div class="s">' + (isReels ? "릴스가 재생된 횟수" : "게시물이 화면에 나타난 횟수") + "</div></div>" +
     '<div class="key"><div class="k">반응 수</div><div class="v">' + n(interactions) + "<small>회</small></div>" +
       '<div class="s">좋아요 · 저장 · 공유 · 댓글을 합친 수</div></div></div>' +
-    (has(AU.followers) && AU.followers > 0 && M.reach > AU.followers
-      ? '<div class="d">' + (isReels ? "릴스를" : "게시물을") + " 본 사람 <b>" + n(M.reach) + "명</b> — 우주라이크 팔로워 " + n(AU.followers) + "명보다 많습니다.</div>"
-      : "") +
     '<div class="note">' + d(R.measured_at) + " 기준 인스타그램 수치예요.</div></div></div>");
 
   // ── 세부 지표 — 필요할 때만 펼친다 (1002). PNG 에는 넣지 않는다(reportDownload 의 PNG_SKIP) ──

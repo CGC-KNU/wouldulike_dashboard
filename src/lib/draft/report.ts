@@ -171,30 +171,6 @@ export function storyBefore1002(s: ReportSnapshot): string[] {
   return out;
 }
 
-/**
- * 「새로운 사람」 문단이 쓰는 우주라이크 **계정 전체** 숫자 (1002) — 문장과 승인 가드(checkText)가 같이 쓴다.
- *   ratio: 최근 days 일 계정 도달 ÷ 팔로워(반올림) — **2배가 안 되면 null**(1.7배를 「약 2배」로 세우지 않는다)
- *   share: 그중 팔로워가 아닌 비중(%) — 도달로 나눌 수 있으면 도달, 아니면 조회.
- */
-export function audienceNumbers(s: ReportSnapshot): { followers: number | null; days: number | null; reach: number | null; ratio: number | null; share: number | null; shareBasis: "reach" | "views" | null } {
-  const a = s.report_data?.available ? s.report_data.audience ?? null : null;
-  const pos = (v: number | null | undefined): v is number => typeof v === "number" && v > 0;
-  const followers = pos(a?.followers) ? a!.followers : null;
-  const reach = pos(a?.reach) ? a!.reach : null;
-  const shareOf = (non: number | null | undefined, ...rest: (number | null | undefined)[]) => {
-    if (!pos(non)) return null;
-    const all = [non, ...rest].reduce<number>((t, v) => t + (typeof v === "number" ? v : 0), 0);
-    return all > 0 ? Math.round((non / all) * 100) : null;
-  };
-  const byReach = a ? shareOf(a.reach_non_follower, a.reach_follower, a.reach_unknown) : null;
-  const byViews = a ? shareOf(a.views_non_follower, a.views_follower, a.views_unknown) : null;
-  return {
-    followers, days: a?.days ?? null, reach,
-    ratio: followers && reach && reach / followers >= 2 ? Math.round(reach / followers) : null,
-    share: byReach ?? byViews, shareBasis: byReach !== null ? "reach" : byViews !== null ? "views" : null,
-  };
-}
-
 /** 반응 수 — 인스타의 total_interactions(좋아요·저장·공유·댓글 합), 없으면 넷을 더한다. 양식의 「반응 수」와 같은 값 */
 export function interactionsOf(s: ReportSnapshot): number | null {
   const m = ownerNumbers(s);
@@ -203,14 +179,41 @@ export function interactionsOf(s: ReportSnapshot): number | null {
   return four.every((v) => typeof v === "number") ? (four as number[]).reduce((a, b) => a + b, 0) : null;
 }
 
+/** 제목에 「(… 포함)」 표시가 있는가 — 마케팅 약속(0916)으로 그 표시가 있는 콘텐츠가 제휴식당 **큐레이션**이다 */
+const hasCurationMarker = (topic: string) => /[(（][^()（）]*포함\s*[)）]/.test(topic);
+
+/**
+ * 큐레이션 소개 문단 (1002 마케팅: "최소한 서두에 이 내용은 들어가면 좋겠습니다").
+ *
+ *   마케팅 원문: 이번 콘텐츠는 [수제버거 맛집으로 알려진 대구 지역 맛집 7곳]을 함께 큐레이션하는 방식으로 제작되었습니다.
+ *   이를 통해 [기프트버거가 대구의 대표적인 수제버거] 맛집 중 하나로 자연스럽게 소개되었으며, 타깃 고객층에게 브랜드 인지도를 높이고
+ *   긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.
+ *
+ * 대괄호 자리는 제목에서 온다 — 「대구 수제버거 맛집 (기프트버거 경대점 포함)」 → "대구 수제버거 맛집".
+ * **몇 곳인지는 우리 데이터에 없다**(제목 괄호에는 이 가게 이름만 있다) — 지어내지 않고 "여러 곳"이라고 쓴다.
+ * 표시가 없는 콘텐츠(협찬 단독 등)는 큐레이션이 아니라 이 문단이 없다.
+ */
+export function curationIntro(s: ReportSnapshot): string | null {
+  if (!hasCurationMarker(s.post.topic)) return null;
+  const theme = stripMarker(s.post.topic);
+  if (!theme) return null;
+  const what = isReel(s) ? "릴스" : "콘텐츠";
+  return `이번 ${what}는 ${theme} 여러 곳을 함께 큐레이션하는 방식으로 제작되었습니다. 이를 통해 ${josa(s.store.name, "이", "가")} 대표적인 ${theme} 중 하나로 자연스럽게 소개되었으며, ` +
+    "타깃 고객층에게 브랜드 인지도를 높이고 긍정적인 이미지를 형성하는 데 도움이 되었을 것으로 보입니다.";
+}
+
 /**
  * 점주 해석 문단 (1002 — 마케팅 피드백: 세부 지표보다 **새로운 사람에게 노출되고 있다**, 조회수와 반응 수 중심).
  *
  *   ① "이번 {가게} {콘텐츠|릴스} 성과를 정리해 전달드립니다."
- *   ② 조회수. 이 게시물을 본 사람(도달)이 우주라이크 팔로워보다 많으면 그 사실 — 팔로워가 아닌 분들께도 닿았다는 뜻.
- *   ③ 우주라이크 **계정 전체** 최근 N일: 본 사람 = 팔로워의 몇 배, 그중 팔로워가 아닌 비중.
- *      인스타가 게시물 단위로는 팔로워/비팔로워를 안 줘서 계정 숫자다 — 문장에 「우주라이크 콘텐츠」라고 밝힌다.
+ *   ② 큐레이션 소개(제목에 「(… 포함)」 표시가 있을 때) — curationIntro
+ *   ③ 조회수
  *   ④ 반응 수 합계 — 하나하나(좋아요 몇, 공유 몇)보다 "그냥 지나치지 않았다"를 말한다.
+ *
+ * **팔로워·비팔로워는 말하지 않는다 (1002 결정).** 마케팅이 원한 건 「이 콘텐츠를 본 사람 중 비팔로워 비율」인데 인스타가
+ * 게시물 단위로는 주지 않는다(운영 호출: `(#100) Incompatible breakdowns (follow_type)` — 릴스·피드, 조회·도달 모두).
+ * 계정 전체 숫자(최근 28일 도달 = 팔로워의 60배)는 "이 콘텐츠와 관련 없는 이야기"라, 팔로워 수와 견주는 문장은
+ * "팔로워 수 언급보다…"라는 의견으로 뺐다. 다시 넣으려면 그 숫자를 받을 길부터 생겨야 한다.
  *
  * 세부 지표(도달·저장·공유·좋아요·댓글·시청 시간)는 문장에 하나씩 쓰지 않는다 — 리포트의 「세부 지표 보기」에 있다.
  * 없는 숫자는 문장째 뺀다. 10 미만은 쓰지 않는다.
@@ -220,21 +223,11 @@ export function ownerStory(s: ReportSnapshot): string[] {
   const n = (v: number) => v.toLocaleString();
   const ok = (v: number | null | undefined): v is number => typeof v === "number" && v >= MIN_OWNER_VALUE;
   const reel = isReel(s);
-  const what = reel ? "릴스" : "콘텐츠", thing = reel ? "릴스" : "게시물";
+  const what = reel ? "릴스" : "콘텐츠";
   const out = [`이번 ${store} ${what} 성과를 정리해 전달드립니다.`];
-  const a = audienceNumbers(s);
-  if (ok(m.views)) {
-    out.push(`이번 ${what}는 조회수 ${n(m.views)}회를 기록했습니다.` +
-      (a.followers !== null && ok(m.reach) && m.reach > a.followers
-        ? ` ${josa(thing, "을", "를")} 본 사람은 ${n(m.reach)}명으로, 우주라이크 팔로워 ${n(a.followers)}명보다 많습니다. 팔로워가 아닌 분들께도 ${josa(what, "이", "가")} 닿았다는 뜻입니다.`
-        : ""));
-  }
-  if (a.followers !== null && a.reach !== null && a.days !== null && a.ratio !== null) {
-    out.push(`우주라이크는 팔로워를 넘어 새로운 분들께 콘텐츠가 노출되는 계정입니다. 최근 ${a.days}일 동안 우주라이크 콘텐츠를 본 사람은 ${n(a.reach)}명으로, 팔로워 수의 약 ${a.ratio}배입니다.` +
-      (a.share !== null && a.share >= 50
-        ? a.shareBasis === "reach" ? ` 이 가운데 ${a.share}%가 우주라이크를 팔로우하지 않는 분들이었습니다.` : ` 조회의 ${a.share}%도 우주라이크를 팔로우하지 않는 분들에게서 나왔습니다.`
-        : ""));
-  }
+  const intro = curationIntro(s);
+  if (intro) out.push(intro);
+  if (ok(m.views)) out.push(`이번 ${what}는 조회수 ${n(m.views)}회를 기록했습니다.`);
   const reacted = interactionsOf(s);
   if (ok(reacted)) out.push(`그리고 이번 ${josa(what, "을", "를")} 본 분들이 좋아요·저장·공유·댓글로 모두 ${n(reacted)}회 반응했습니다. 그냥 지나치지 않고 어떤 형태로든 반응을 남겼다는 뜻입니다.`);
   return out;
@@ -477,10 +470,8 @@ export function checkText(text: string, s: ReportSnapshot): { ok: boolean; probl
     if (w.dur !== null) add(w.dur);
     if (w.totalMin !== null) { add(w.totalMin); add(Math.floor(w.totalMin / 60)); add(w.totalMin % 60); } }
   if (s.app) for (const v of Object.values(s.app)) if (typeof v === "number") add(v);
-  // 「새로운 사람」 문단 — 계정 전체 숫자와 거기서 계산한 배수·비중(1002), 반응 수 합계
-  { const a = audienceNumbers(s);
-    for (const v of [a.followers, a.days, a.reach, a.ratio, a.share]) if (v !== null) add(v);
-    const r = interactionsOf(s); if (r !== null) add(r); }
+  // 반응 수 합계(1002) — 넷을 더해 나온 값도 스냅샷 값이다
+  { const r = interactionsOf(s); if (r !== null) add(r); }
   add(s.post.co_stores);
   const masked = text.replace(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/g, " ").replace(/\d{4}년|\d{1,2}월|\d{1,2}일|\d{1,2}:\d{2}/g, " ").replace(/20\d{2}/g, " ");
   /**

@@ -527,16 +527,6 @@ export interface ReportData {
   series?: ({ day: number; measured_at: string } & Partial<Record<ReportMetricKey, number>>)[];
   previous?: ({ day: number; measured_at: string } & Partial<Record<ReportMetricKey, number>>) | null;
   benchmarks?: { window?: string; total_posts?: number; prev_dates?: string[] } & Partial<Record<ReportMetricKey, ReportBenchmark>>;
-  /** 우주라이크 **계정 전체**(이 게시물 숫자 아님) — 팔로워 수와 최근 days 일 도달·조회의 팔로워/비팔로워 나눔 (1002). 못 받은 칸은 null */
-  audience?: ReportAudience | null;
-}
-
-export interface ReportAudience {
-  days: number;
-  until: string;
-  followers: number | null;
-  reach: number | null; reach_follower: number | null; reach_non_follower: number | null; reach_unknown: number | null;
-  views: number | null; views_follower: number | null; views_non_follower: number | null; views_unknown: number | null;
 }
 
 export interface ReportSnapshot {
