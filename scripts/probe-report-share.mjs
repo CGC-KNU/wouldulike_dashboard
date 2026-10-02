@@ -66,6 +66,8 @@ async function makeFiles(browser, id, withPng) {
   if (!res.ok) throw new Error(`미리보기 HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
   const html = await res.text();
   const name = decodeURIComponent(res.headers.get("x-report-filename") ?? id);
+  // 인스타 게시물 주소 — 초안 승인 메시지에 링크로 붙인다. 로그에는 안 찍는다(공개 저장소).
+  const permalink = decodeURIComponent(res.headers.get("x-report-permalink") ?? "");
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 1400 }, deviceScaleFactor: 1 });
   page.setDefaultTimeout(120_000);
@@ -142,7 +144,7 @@ async function makeFiles(browser, id, withPng) {
   const h = { name: `${name}.html`, buf: Buffer.from(staticHtml, "utf8") };
   await writeFile(path.join(OUT_DIR, h.name), h.buf);
   files.push(h);
-  return { files, missed: Math.max(png.missed, htmlMissed) };
+  return { files, missed: Math.max(png.missed, htmlMissed), permalink };
 }
 
 // ── 메시지 ────────────────────────────────────────────────────────────
@@ -166,6 +168,8 @@ function message(r, made) {
       ? `• 파일 PNG ${pngs}장 · HTML (담당자 미리보기에서 받는 것과 같습니다)`
       : "• 파일 HTML — 검토용입니다. 확인한 뒤 대시보드에서 「최종 승인」을 누르면 PNG 까지 올라옵니다",
     ...(made.missed ? [`:warning: 이미지 ${made.missed}개를 파일에 넣지 못했습니다 — 미리보기에서 다시 받아 주세요`] : []),
+    // 초안 승인(1차)에는 검토할 게시물을 바로 열 수 있게 인스타 링크를 붙인다(민찬 1003)
+    ...(!final && made.permalink ? [`• 인스타 게시물 <${made.permalink}|인스타그램에서 보기>`] : []),
     `<${DASH}/dashboard/admin?tab=probe-reports&plan=${r.plan_id}|리포트 열기>`,
   ].join("\n");
 }

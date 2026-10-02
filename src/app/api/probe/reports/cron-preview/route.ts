@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
-import { DOWNLOADABLE, originOf, reportFilename, reportPageHtml } from "@/lib/draft/reportPage";
+import { DOWNLOADABLE, originOf, reportFilename, reportPageHtml, reportPermalink } from "@/lib/draft/reportPage";
 import { getReportAsCron, ReportStoreError } from "@/lib/draft/reportStore";
 
 /**
@@ -14,6 +14,7 @@ import { getReportAsCron, ReportStoreError } from "@/lib/draft/reportStore";
  *
  * 토큰 판정은 백엔드가 한다(cronAuth.ts). 승인 전 리포트는 409 — 파일 받기 띠가 잠겨 있다.
  * 파일 이름(확장자 없음)은 `X-Report-Filename` 헤더(URL 인코딩)로 같이 준다.
+ * 인스타 게시물 주소는 `X-Report-Permalink` 헤더(URL 인코딩, 없으면 빈 값) — 초안 승인 메시지에 링크로 붙인다.
  */
 
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
@@ -45,6 +46,7 @@ export async function GET(req: Request) {
       "Cache-Control": "no-store",
       "X-Robots-Tag": "noindex, nofollow",
       "X-Report-Filename": encodeURIComponent(reportFilename(r)),
+      "X-Report-Permalink": encodeURIComponent(reportPermalink(r) ?? ""),
     },
   });
 }
