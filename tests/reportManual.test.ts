@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ageShare, parseManual, slideShare } from "../src/lib/draft/reportManual";
 import { checkText, ownerParagraphs, ownerStory, refreshText } from "../src/lib/draft/report";
+import { toTemplateData } from "../src/lib/draft/reportTemplateData";
+import type { StoreReport } from "../src/lib/draft/types";
 import type { ReportData, ReportManual, ReportSnapshot } from "../src/lib/draft/types";
 
 /**
@@ -122,4 +124,15 @@ test("가게 수를 나중에 넣어도 손대지 않은 소개 문단이 그 �
   const before = snap(null), after = snap({ store_count: 7 });
   const out = refreshText({ summary: "", interpretation: ownerStory(before), snapshot: before }, after);
   assert.deepEqual(out.interpretation, ownerStory(after));
+});
+
+test("글을 통째로 고쳐 소개 문단이 빠졌을 때의 안내 문장도 손으로 넣은 가게 수를 먼저 쓴다", () => {
+  const base = snap({ store_count: 7 });
+  const r = { id: "r", token: null, restaurant_id: 1, plan_id: 1, kind: "post", status: "DRAFT", title: "t", summary: "", proposals: [],
+    interpretation: ["사람이 다 고쳐 쓴 문단입니다."], snapshot: { ...base, post: { ...base.post, co_stores: 3 } },
+    created_by: "", created_at: "", approved_by: null, approved_at: null, linked_at: null, sent_at: null, revoked_at: null,
+    views: { count: 0, first_at: null, last_at: null } } as StoreReport;
+  const d = toTemplateData(r) as { insight: { limitation: string | null }; post: { store_count: number | null } };
+  assert.match(d.insight.limitation!, /주제로 7곳을 함께 소개한 큐레이션입니다/, "제목에서 센 3곳이 아니라 적은 7곳");
+  assert.equal(d.post.store_count, 7);
 });
