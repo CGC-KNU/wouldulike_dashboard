@@ -74,6 +74,8 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
   const measured = rd?.measured_at ?? (d7 && posted ? addDays(posted, 7) : kstDate(s.as_of));
 
   const multi = s.post.co_stores > 1;
+  // 큐레이션에 함께 실린 가게 수 — 사람이 적은 값(1003)이 먼저. 제목에서 센 수(co_stores)는 제목에 이름이 적힌 제휴 매장만 센다.
+  const storeCount = s.manual?.store_count ?? s.post.co_stores;
   const proposals = r.proposals.filter((p) => p.approved)
     .map((p) => { const t = ownerProposalText(p, s); return t ? `**${p.title}** ${t}` : null; })
     .filter((t): t is string => t !== null);
@@ -103,7 +105,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
         : viaProxy(rd?.post?.thumb_url || s.post.cover_url || "", opts.origin),
       caption: excerpt(s.post.caption),
       // 양식은 이 둘로 「혼자 받은 숫자가 아닙니다」 문단을 붙인다 — 소개 문단이 이미 말했으면 붙이지 않게 끈다
-      store_count: multi && !introShown ? s.post.co_stores : null,
+      store_count: multi && !introShown ? storeCount : null,
       multi_store: multi && !introShown,
     },
     report: { day, measured_at: measured },
@@ -143,7 +145,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       // 여러 가게를 함께 실은 편이면 양식이 "이번 도달은 {store} 혼자 받은 숫자가 아닙니다" 를 붙인다.
       // 큐레이션이라는 사실은 그대로 밝히되, 약점으로 말하지 않는다(0925).
       limitation: multi && !introShown
-        ? `이번 편은 「${stripMarker(s.post.topic)}」 주제로 ${s.post.co_stores}곳을 함께 소개한 큐레이션입니다. ${josa(s.store.name, "이", "가")} 추천 가게 중 한 곳으로 실렸습니다.`
+        ? `이번 편은 「${stripMarker(s.post.topic)}」 주제로 ${storeCount}곳을 함께 소개한 큐레이션입니다. ${josa(s.store.name, "이", "가")} 추천 가게 중 한 곳으로 실렸습니다.`
         : null,
     },
     upsell: { enabled: false },
