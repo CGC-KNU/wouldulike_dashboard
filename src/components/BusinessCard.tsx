@@ -240,7 +240,7 @@ function Back({ card }: { card: Card }) {
 
       {/* 코끼리 마크 — 흰 바탕 PNG 라 multiply 로 얹고 연보라로 */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/elephant.png" alt="" aria-hidden="true" style={{ position: "absolute", left: "5.4%", bottom: "8.5%", width: "14.5%", mixBlendMode: "multiply", filter: "opacity(0.5) saturate(0.6)" }} />
+      <img src="/brand/elephant.png" alt="" aria-hidden="true" style={{ position: "absolute", left: "5.4%", bottom: "8.5%", width: "14.5%", mixBlendMode: "multiply", opacity: 0.4 }} />
     </div>
   );
 }
