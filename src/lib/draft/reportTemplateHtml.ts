@@ -17,7 +17,7 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
 <title>매장 성과 리포트</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <!--
-  ▣ 우주라이크 매장 성과 리포트 양식 v0.10 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제 · 0927: 「시간이 지나며 쌓인 숫자」 · 0928: 「프로필 방문 · 팔로우」 줄 삭제 · 1002: 두 장 — 1장 맨 위에 핵심 숫자(조회수 · 반응 수), 세부 지표는 「세부 지표 보기」로 접음)
+  ▣ 우주라이크 매장 성과 리포트 양식 v0.10 — 자동화용 (0925: 「지난 보고 이후」 표 · 「게시물 전체의 숫자」 문장 삭제 · 0927: 「시간이 지나며 쌓인 숫자」 · 0928: 「프로필 방문 · 팔로우」 줄 삭제 · 1002: 두 장 — 1장 게시물(사진·썸네일), 2장 게시물 성과(조회수 · 반응 수) + 설명, 세부 지표는 「세부 지표 보기」로 접음)
   ──────────────────────────────────────────────
   사용법: 자동화 툴은 아래 id="report-data" 인 JSON 스크립트 블록의 **내용(JSON)만** 교체한다.
           나머지(HTML·CSS·JS)는 건드리지 않는다. 결과물은 파일 하나 — 카톡 링크/첨부로 보내 폰에서 연다.
@@ -244,8 +244,8 @@ const REPORT_TEMPLATE_HTML = String.raw`<!DOCTYPE html>
 <div class="wrap">
   <div id="r-errors" class="errbox" hidden></div>
   <div class="head" id="r-head"></div>
-  <div id="r-key"></div>
   <div id="r-post"></div>
+  <div id="r-key"></div>
   <div id="r-metrics"></div>
   <div id="r-app"></div>
   <div id="r-change"></div>

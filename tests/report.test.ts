@@ -675,8 +675,8 @@ test("한 지표만 있으면 그 지표만 그린다", () => {
 
 test("시계열은 PNG 2쪽에 들어간다 — 자리가 빠지면 사장님이 못 본다 · 세부 지표는 PNG 에 안 들어간다", () => {
   const bar = downloadBar({ filename: "r", canDownload: true, statusLabel: "승인됨" });
-  assert.match(bar, /\{ no: 2, ids: \["r-insight", "r-change"/, "r-change 가 PNG 2쪽 목록에 있어야 한다");
-  assert.match(bar, /\{ no: 1, ids: \["r-head", "r-key", "r-post"\] \}/, "핵심 숫자는 1쪽, 게시물보다 위");
+  assert.match(bar, /\{ no: 2, ids: \["r-key", "r-insight", "r-change"/, "2쪽 = 게시물 성과 + 설명 + 추이");
+  assert.match(bar, /\{ no: 1, ids: \["r-head", "r-post"\] \}/, "1쪽 = 게시물(사진·썸네일)");
   assert.match(bar, /var PNG_SKIP = \["r-metrics"\]/);
 });
 
