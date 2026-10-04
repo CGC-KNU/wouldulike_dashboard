@@ -87,12 +87,9 @@ export async function GET(req: Request) {
 
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
   const restaurants = (backend?.restaurants ?? (isPreview() ? previewRestaurants() : [])).filter((r) => r.is_affiliate !== false);
-  // 기획은 두 달치만 본다. 협찬 기록은 석 달 — 촬영이 발행 전달인 편(9/2 발행 · 8월 촬영)도 이름을 찾게.
-  // 리포트 만들기(POST)도 석 달을 읽어서 두 곳이 같은 협찬 매장 이름을 쓴다.
-  const pap3 = await fetchPapillonMonths(3);
-  const first = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
-  const since = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, "0")}-01`;
-  const pap = { ...pap3, plans: pap3.plans.filter((p) => p.scheduled_date >= since) };
+  // 기획·협찬 기록 모두 석 달 — 리포트 만들기(POST)도 석 달을 읽어서 목록에 뜬 게시물은 다 만들 수 있다.
+  // 두 달이던 때(~1005)는 10월이 되자 8/31 큐레이션 게시물이 목록에서 빠졌다. 협찬은 촬영이 발행 전달인 편(9/2 발행 · 8월 촬영)도 이름을 찾게.
+  const pap = await fetchPapillonMonths(3);
 
   if (!pap.reachable) {
     return NextResponse.json({ insights: [] as StoreInsight[], papillon_reachable: false, checked: { stores: restaurants.length, plans: 0 }, generated_at: new Date().toISOString(), draft: true, draft_note: "Papillon 기획 목록을 읽지 못했습니다. 비어 있어도 '홍보한 적 없음'이 아닙니다." });
