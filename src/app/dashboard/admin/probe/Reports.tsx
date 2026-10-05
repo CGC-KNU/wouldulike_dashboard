@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, hasCurationMarker, ownerNumbers, rankedValueLine, reportAllText, slideParagraph, verdict } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, day7Line, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph } from "@/lib/draft/report";
 import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
@@ -140,7 +140,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
             <tbody>
               {visiblePosts.map((p) => {
                 const m = (k: string) => p.metrics.find((x) => x.key === k);
-                // 숫자만 — 「하위권 (10건 중 10위)」 같은 판정은 목록에서 뺐다(1005 민찬). 패널 · 편집에는 남아 있다.
+                // 숫자만 — 「하위권 (10건 중 10위)」 같은 판정은 목록 · 게시물 패널 · 편집 카드 모두에서 뺐다(1005 민찬).
                 const cell = (k: string) => { const x = m(k); return x ? <span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span> : <span className="text-gray-300">-</span>; };
                 const k = postKey(p);
                 return (
@@ -209,12 +209,6 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   );
 }
 
-/** 지표 판정 한 마디 — 패널 · 편집이 같은 함수·같은 말 (목록은 숫자만, 1005). lead 는 순위를 매긴 다른 날 숫자(「7일차 1,234」) */
-function Verdict({ m, lead }: { m: ReportMetric; lead?: string | null }) {
-  const v = verdict(m);
-  return <span className={`block text-[11px] ${VERDICT_CLASS[v.tone]}`}>{lead && <span className="text-gray-500 tabular-nums">{lead} · </span>}{v.text}</span>;
-}
-
 /** 제안 근거 — 서버가 만든 읽기 전용 칸(승인 가드 대상 밖). 정합성 점검 항목 아랫줄과 같은 모양. */
 function ProposalBasis({ p }: { p?: StoreReport["proposals"][number] }) {
   if (!p || !(p.signal || p.reading)) return null;
@@ -243,12 +237,10 @@ function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: 
               <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2">
                 <p className="text-[11px] text-gray-500">{M_LABEL[m.key] ?? m.key}</p>
                 <p className="text-[18px] font-bold tabular-nums text-gray-900 leading-tight">{m.value.toLocaleString()}</p>
-                <Verdict m={m} />
               </div>
             ))}
           </div>
         )}
-        {p.cohort_note && <p className="text-[12px] text-gray-500 mt-2">근거: {p.cohort_note}</p>}
         {p.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{p.co_stores}곳을 함께 소개한 게시물 — 수치는 게시물 전체 것입니다. 카톡 텍스트는 큐레이션이라고 밝힙니다.</p>}
       </PanelSection>
       <PanelSection title="카톡용 텍스트 (링크 대신 글로 보낼 때)">
@@ -334,8 +326,8 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   async function copy(text: string) { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
 
   const s = r.snapshot;
-  // 카드는 해석 글 · 사장님 리포트와 같은 날의 숫자(report-data — 14일차 우선)를 크게 보인다(1005). 순위는 7일차 값으로 매긴 것이라
-  // 14일차 카드에는 그 7일차 숫자를 순위 옆 작은 줄로 같이 둔다(rankedValueLine).
+  // 카드는 해석 글 · 사장님 리포트와 같은 날의 숫자(report-data — 14일차 우선)를 크게 보인다(1005).
+  // 14일차 카드에는 7일차 숫자를 아래 작은 줄로 같이 둔다(day7Line — 민찬 1005: 둘 다, 증가분은 빼고).
   const at = measuredPoint(s);
   const atLabel = at.day !== null ? ` · ${at.day}일차 ${Number(at.date.slice(5, 7))}/${Number(at.date.slice(8, 10))}` : "";
   const staleHours = Math.floor((Date.now() - new Date(s.as_of).getTime()) / 3600000);
@@ -364,7 +356,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title={`스냅샷 (읽기 전용)${atLabel}`}>
         <div className="grid grid-cols-3 gap-2">
           {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
-            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p><Verdict m={m} lead={rankedValueLine(s, m)} /></div>
+            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
           ))}
           {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
         </div>

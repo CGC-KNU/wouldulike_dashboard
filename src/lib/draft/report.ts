@@ -64,7 +64,8 @@ function rankVerdict(m: ReportMetric): { tone: VerdictTone; text: string } | nul
 }
 
 /**
- * 지표 판정 한 마디 — 게시물 패널 · 리포트 편집이 같이 부른다(따로 쓰면 같은 상태를 다른 말로 부른다). 목록에는 안 찍는다(1005).
+ * 지표 판정 한 마디 — **1005 부터 Probe 화면 어디에도 안 찍는다**(민찬: 목록 · 게시물 패널 · 편집 카드의 상위권 · 가운데 · 하위권을 모두 뺐다).
+ * 다시 쓸 때 같은 상태를 다른 말로 부르지 않게 규칙은 여기 하나로 남겨 둔다.
  *
  * **순위로 말한다.** 「최근 10건 중 3위」는 분포가 어떻든 뜻이 같고 분모가 눈에 보인다.
  * 「평소 범위 안」은 이 계정에서 80% 의 게시물에 붙어 아무 말도 안 했다(0923 민찬).
@@ -125,11 +126,11 @@ export function cardValue(s: ReportSnapshot, m: ReportMetric): number {
 }
 
 /**
- * 카드 아래 작은 줄 — 순위를 매긴 7일차 숫자(1005 민찬: 7일차 · 14일차 둘 다 보이게, 증가분은 빼고).
- * 순위(baskets)는 Papillon 성과 API 가 7일차 값으로 매긴다. 카드가 14일차를 보이면 그 숫자를 순위 옆에 둬
- * 「7일차 1,234 · 가운데 (10건 중 6위)」로 읽힌다. 카드와 같은 날이면 null — 순위만 나온다.
+ * 카드 아래 작은 회색 줄 — 7일차 숫자(1005 민찬: 7일차 · 14일차 둘 다 보이게, 증가분은 빼고).
+ * 카드 큰 숫자가 14일차(report-data)일 때만 「7일차 1,234」. 7일차 값은 스냅샷 metrics(Papillon 성과 — 7일차 우선)에 원래 있다.
+ * 카드와 같은 날이면 null. 순위(baskets)도 이 7일차 값으로 매긴 것이다 — 판정을 카드에 다시 올리면 이 줄 옆에 둔다.
  */
-export function rankedValueLine(s: ReportSnapshot, m: ReportMetric): string | null {
+export function day7Line(s: ReportSnapshot, m: ReportMetric): string | null {
   const otherDay = s.basis === "D7" && s.report_data?.available && typeof s.report_data.day === "number" && s.report_data.day !== 7;
   return otherDay ? `7일차 ${m.value.toLocaleString()}` : null;
 }
