@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, hasCurationMarker, ownerNumbers, rankBasisLabel, reportAllText, slideParagraph, verdict } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, hasCurationMarker, ownerNumbers, rankedValueLine, reportAllText, slideParagraph, verdict } from "@/lib/draft/report";
 import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
@@ -209,10 +209,10 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   );
 }
 
-/** 지표 판정 한 마디 — 패널 · 편집이 같은 함수·같은 말 (목록은 숫자만, 1005). basis 는 순위가 카드 숫자와 다른 날 것일 때(「7일차 기준」) */
-function Verdict({ m, basis }: { m: ReportMetric; basis?: string | null }) {
+/** 지표 판정 한 마디 — 패널 · 편집이 같은 함수·같은 말 (목록은 숫자만, 1005). lead 는 순위를 매긴 다른 날 숫자(「7일차 1,234」) */
+function Verdict({ m, lead }: { m: ReportMetric; lead?: string | null }) {
   const v = verdict(m);
-  return <span className={`block text-[11px] ${VERDICT_CLASS[v.tone]}`}>{basis ? `${basis} ${v.text}` : v.text}</span>;
+  return <span className={`block text-[11px] ${VERDICT_CLASS[v.tone]}`}>{lead && <span className="text-gray-500 tabular-nums">{lead} · </span>}{v.text}</span>;
 }
 
 /** 제안 근거 — 서버가 만든 읽기 전용 칸(승인 가드 대상 밖). 정합성 점검 항목 아랫줄과 같은 모양. */
@@ -334,8 +334,9 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   async function copy(text: string) { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
 
   const s = r.snapshot;
-  // 카드는 해석 글 · 사장님 리포트와 같은 날의 숫자(report-data — 14일차 우선)를 보인다(1005). 순위만 7일차 값으로 매긴 것.
-  const at = measuredPoint(s), rankBasis = rankBasisLabel(s);
+  // 카드는 해석 글 · 사장님 리포트와 같은 날의 숫자(report-data — 14일차 우선)를 크게 보인다(1005). 순위는 7일차 값으로 매긴 것이라
+  // 14일차 카드에는 그 7일차 숫자를 순위 옆 작은 줄로 같이 둔다(rankedValueLine).
+  const at = measuredPoint(s);
   const atLabel = at.day !== null ? ` · ${at.day}일차 ${Number(at.date.slice(5, 7))}/${Number(at.date.slice(8, 10))}` : "";
   const staleHours = Math.floor((Date.now() - new Date(s.as_of).getTime()) / 3600000);
   return (
@@ -363,7 +364,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title={`스냅샷 (읽기 전용)${atLabel}`}>
         <div className="grid grid-cols-3 gap-2">
           {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
-            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p><Verdict m={m} basis={rankBasis} /></div>
+            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p><Verdict m={m} lead={rankedValueLine(s, m)} /></div>
           ))}
           {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
         </div>
