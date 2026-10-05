@@ -62,16 +62,24 @@ function viaProxy(url: string, origin?: string): string {
   return `${origin.replace(/\/$/, "")}/api/img?u=${encodeURIComponent(url)}`;
 }
 
+/**
+ * 리포트 숫자가 며칠차 · 어느 날 값인가 — report-data 가 말해 준다. 없으면 예전 규칙(D+7 이 있으면 7일차, 아니면 누적).
+ * 양식과 편집 화면 「스냅샷」 머리(1005)가 같이 쓴다.
+ */
+export function measuredPoint(s: StoreReport["snapshot"]): { day: number | null; date: string } {
+  const rd = s.report_data?.available ? s.report_data : null;
+  const posted = rd?.post?.posted_at ?? (s.post.posted_at ? kstDate(s.post.posted_at) : null);
+  const d7 = s.basis === "D7";
+  return { day: rd?.day ?? (d7 ? 7 : s.age_days), date: rd?.measured_at ?? (d7 && posted ? addDays(posted, 7) : kstDate(s.as_of)) };
+}
+
 export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): Json {
   const s = r.snapshot;
   const rd = s.report_data?.available ? s.report_data : null;
   const val = (k: string) => rd?.metrics?.[k as keyof NonNullable<typeof rd.metrics>] ?? s.metrics.find((m) => m.key === k)?.value ?? null;
   const posted = rd?.post?.posted_at ?? (s.post.posted_at ? kstDate(s.post.posted_at) : null);
 
-  // 며칠차 수치인가 — report-data 가 말해 준다. 없으면 예전 규칙(D+7 이 있으면 7일차, 아니면 누적).
-  const d7 = s.basis === "D7";
-  const day = rd?.day ?? (d7 ? 7 : s.age_days);
-  const measured = rd?.measured_at ?? (d7 && posted ? addDays(posted, 7) : kstDate(s.as_of));
+  const { day, date: measured } = measuredPoint(s);
 
   const multi = s.post.co_stores > 1;
   // 큐레이션에 함께 실린 가게 수 — 사람이 적은 값(1003)이 먼저. 제목에서 센 수(co_stores)는 제목에 이름이 적힌 제휴 매장만 센다.

@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
+import { measuredPoint, toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { VERDICT_FRACTION, buildReportText, checkText, cohortNote, curationIntro, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, verdict } from "../src/lib/draft/report";
+import { VERDICT_FRACTION, buildReportText, cardValue, ownerNumbers, rankBasisLabel, checkText, cohortNote, curationIntro, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, verdict } from "../src/lib/draft/report";
 import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml, reportPermalink } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
@@ -772,4 +772,24 @@ test("슬랙에 붙일 인스타 게시물 주소 — 리포트 화면과 같은
   assert.equal(reportPermalink(report({}, { report_data: rd2 })), "https://www.instagram.com/reel/NEW/", "수치를 다시 읽었으면 그 주소");
   assert.equal(reportPermalink(report({}, { post: { ...report().snapshot.post, permalink: "" } })), null);
   assert.equal(reportPermalink(report({}, { post: { ...report().snapshot.post, permalink: "javascript:alert(1)" } })), null, "슬랙 링크로 쓰므로 http(s) 가 아니면 버린다");
+});
+
+test("편집 화면 카드는 해석 글과 같은 날의 숫자 — 순위는 7일차 기준이라고 밝힌다 (1005)", () => {
+  // 기프트버거 경대점: 카드가 Papillon 성과(D+7 6,674)를, 글이 report-data(D+14 7,359)를 읽어 한 화면에 둘 다 떴다
+  const s = report({}, { report_data: rd }).snapshot;
+  const views = s.metrics.find((m) => m.key === "views")!;
+  assert.equal(cardValue(s, views), 32657, "스냅샷 지표(D+7 20000)가 아니라 report-data 의 D+14");
+  assert.equal(cardValue(s, views), ownerNumbers(s).views, "해석 글이 쓰는 숫자와 같다");
+  assert.equal(rankBasisLabel(s), "7일차 기준");
+  assert.deepEqual(measuredPoint(s), { day: 14, date: "2026-09-18" });
+
+  // report-data 도 7일차면 카드 · 순위가 같은 날이라 붙일 말이 없다
+  const s7 = report({}, { report_data: { ...rd, day: 7, window: "D7", measured_at: "2026-09-11" } }).snapshot;
+  assert.equal(rankBasisLabel(s7), null);
+
+  // report-data 가 없는 옛 스냅샷은 스냅샷 지표 그대로
+  const old = report().snapshot;
+  assert.equal(cardValue(old, old.metrics.find((m) => m.key === "views")!), 20000);
+  assert.equal(rankBasisLabel(old), null);
+  assert.deepEqual(measuredPoint(old), { day: 7, date: "2026-09-11" });
 });
