@@ -570,14 +570,22 @@ export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D1
 
 type Basis = Required<Pick<ReportProposal, "signal" | "reading" | "tone">>;
 
-/** 근거 줄의 "지표 값 · 평소 가운데 값" 조각. 비교군만 "약". */
+/**
+ * 근거 줄의 "지표 값" 조각. (1005 민찬) 「평소 가운데 값 …」 · 「가운데 값의 1.2배 이상 (n=45)」 같은 채널 비교는 화면에서 뺐다 —
+ * 상위권 · 하위권 판정을 지운 것과 같은 이유. 규칙이 **언제** 걸리는지(when)는 여전히 가운데 값으로 고른다.
+ */
 function sig(s: ReportSnapshot, key: string): string {
   const m = s.metrics.find((x) => x.key === key);
-  if (!m) return "";
-  return `${METRIC_LABEL[key] ?? key} ${m.value.toLocaleString()}${m.median !== null ? ` · 평소 가운데 값 ${approx(m.median)}` : ""}`;
+  return m ? `${METRIC_LABEL[key] ?? key} ${m.value.toLocaleString()}` : "";
 }
-/** 해석은 규칙이 실제로 본 기준(가운데 값의 배수)으로 말한다 — verdict()의 p10·p90 경계와 섞으면 "범위 안 · 1.3배 이상" 처럼 서로 어긋난다. */
-const above = (s: ReportSnapshot, key: string, x: number) => { const m = s.metrics.find((v) => v.key === key); return m ? `${METRIC_LABEL[key] ?? key} 가운데 값의 ${x}배 이상 (n=${m.n})` : ""; };
+
+/** ~1005 에 만든 리포트의 근거 줄에 박힌 채널 비교 조각을 걷어낸다 — 화면(ProposalBasis)이 부른다. */
+export function stripChannelCompare(t: string | null | undefined): string {
+  return (t ?? "")
+    .replace(/ · 평소 가운데 값 (약 )?[\d,]+/g, "")
+    .replace(/[가-힣]+ 가운데 값의 [\d.]+배 이상 \(n=\d+\)( · )?/g, "")
+    .trim();
+}
 
 const RULES: { rule: string; title: string; when: (s: ReportSnapshot) => boolean; text: (s: ReportSnapshot) => string; basis: (s: ReportSnapshot) => Basis }[] = [
   {
@@ -586,13 +594,13 @@ const RULES: { rule: string; title: string; when: (s: ReportSnapshot) => boolean
     // 인스타 지표와 앱 지표를 한 문장에서 잇지 않는다(인과 금지). 문장을 끊는다.
     // 0925: "평소보다 많았습니다" · "쿠폰 사용은 아직 없습니다" 를 뺐다 — 채널 비교도, 약점도 점주 문장에 쓰지 않는다.
     text: (s) => `이번 게시물은 저장이 ${(s.metrics.find((x) => x.key === "saved")?.value ?? 0).toLocaleString()}번 모였습니다. 가게에 오신 분들이 앱 쿠폰을 바로 쓰실 수 있게, 계산대 QR 안내물 위치를 한 번 봐 주시면 좋겠습니다.`,
-    basis: (s) => ({ signal: `${sig(s, "saved")} / 이번 달 쿠폰 사용 ${s.app?.coupon_redeemed ?? 0}`, reading: `${above(s, "saved", 1.2)} · 앱 쿠폰 사용 없음 (병렬 서술, 인과 아님)`, tone: "good" }),
+    basis: (s) => ({ signal: `${sig(s, "saved")} / 이번 달 쿠폰 사용 ${s.app?.coupon_redeemed ?? 0}`, reading: "앱 쿠폰 사용 없음 (병렬 서술, 인과 아님)", tone: "good" }),
   },
   {
     rule: "P3", title: "모임·단체 소구",
     when: (s) => { const m = s.metrics.find((x) => x.key === "shares"); return Boolean(m && comparable(m) && m.value >= (m.median as number) * 1.3); },
     text: () => "공유는 '여기 가자'고 친구에게 보낸 수입니다. 3~4인 세트 메뉴를 한정 쿠폰으로 걸면 이 흐름을 받을 수 있습니다.",
-    basis: (s) => ({ signal: sig(s, "shares"), reading: above(s, "shares", 1.3), tone: "good" }),
+    basis: (s) => ({ signal: sig(s, "shares"), reading: "", tone: "good" }),
   },
   {
     rule: "P6", title: "스탬프 목표 개수 조정",

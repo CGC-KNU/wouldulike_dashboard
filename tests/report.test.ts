@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { measuredPoint, toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { DEFAULT_SUMMARY, VERDICT_FRACTION, buildReportText, cardValue, checkText, cohortNote, curationIntro, day7Line, headlineBefore1005, isAutoSummary, ownerHeadline, ownerNumbers, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, verdict } from "../src/lib/draft/report";
+import { DEFAULT_SUMMARY, VERDICT_FRACTION, buildReportText, cardValue, checkText, cohortNote, curationIntro, day7Line, headlineBefore1005, isAutoSummary, ownerHeadline, ownerNumbers, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, stripChannelCompare, verdict } from "../src/lib/draft/report";
 import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml, reportPermalink } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
@@ -282,6 +282,21 @@ test("약점을 말하던 제안(P2·P4)은 더 생기지 않고, P1 은 평소�
   assert.ok(p1, "저장이 많고 쿠폰 사용이 없으면 QR 안내물 제안");
   assert.doesNotMatch(p1!.text, /평소|아직 없습니다/);
   assert.ok(!strong.some((p) => p.rule === "P2"));
+});
+
+test("제안 근거 줄에 채널 비교(가운데 값)를 쓰지 않고, 옛 리포트에 박힌 비교 조각은 화면에서 걷어낸다 (1005)", () => {
+  const strong = propose({ ...report().snapshot, metrics: [metric("saved", 600, 200, 45), metric("shares", 400, 100, 45)],
+    app: { month: "2026-09", coupon_redeemed: 0, stamp_earned: 0, revisit: 0, loyal_total: 0 } });
+  assert.deepEqual(strong.map((p) => p.rule), ["P1", "P3"]);
+  for (const p of strong) assert.doesNotMatch(`${p.signal} ${p.reading}`, /가운데|평소|n=/);
+  assert.equal(strong[0].signal, "저장 600 / 이번 달 쿠폰 사용 0");
+  assert.equal(strong[0].reading, "앱 쿠폰 사용 없음 (병렬 서술, 인과 아님)");
+  // ~1005 에 저장된 근거 줄
+  assert.equal(stripChannelCompare("저장 45 · 평소 가운데 값 약 240 / 이번 달 쿠폰 사용 0"), "저장 45 / 이번 달 쿠폰 사용 0");
+  assert.equal(stripChannelCompare("저장 가운데 값의 1.2배 이상 (n=45) · 앱 쿠폰 사용 없음 (병렬 서술, 인과 아님)"), "앱 쿠폰 사용 없음 (병렬 서술, 인과 아님)");
+  assert.equal(stripChannelCompare("공유 가운데 값의 1.3배 이상 (n=45)"), "");
+  assert.equal(stripChannelCompare("공유 77 · 평소 가운데 값 52"), "공유 77");
+  assert.equal(stripChannelCompare("스탬프는 쌓이는데 재방문 0"), "스탬프는 쌓이는데 재방문 0");
 });
 
 test("이미 만든 리포트의 옛 채널 비교 문장·약점 제안은 그릴 때 갈아 끼운다 — 사람이 고친 문장은 그대로", () => {
