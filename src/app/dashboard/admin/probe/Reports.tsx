@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, day7Line, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph } from "@/lib/draft/report";
 import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
@@ -326,7 +326,8 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   async function copy(text: string) { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
 
   const s = r.snapshot;
-  // 카드는 해석 글 · 사장님 리포트와 같은 날의 숫자(report-data — 14일차 우선)를 보인다(1005). 순위만 7일차 값으로 매긴 것.
+  // 카드는 해석 글 · 사장님 리포트와 같은 날의 숫자(report-data — 14일차 우선)를 크게 보인다(1005).
+  // 14일차 카드에는 7일차 숫자를 아래 작은 줄로 같이 둔다(day7Line — 민찬 1005: 둘 다, 증가분은 빼고).
   const at = measuredPoint(s);
   const atLabel = at.day !== null ? ` · ${at.day}일차 ${Number(at.date.slice(5, 7))}/${Number(at.date.slice(8, 10))}` : "";
   const staleHours = Math.floor((Date.now() - new Date(s.as_of).getTime()) / 3600000);
@@ -355,7 +356,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title={`스냅샷 (읽기 전용)${atLabel}`}>
         <div className="grid grid-cols-3 gap-2">
           {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
-            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p></div>
+            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
           ))}
           {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
         </div>

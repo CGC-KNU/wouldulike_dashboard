@@ -126,12 +126,13 @@ export function cardValue(s: ReportSnapshot, m: ReportMetric): number {
 }
 
 /**
- * 카드 아래 순위가 카드 숫자와 다른 날 것일 때 앞에 붙이는 말. 순위(baskets)는 Papillon 성과 API 가
- * 7일차 값으로 매긴다 — 카드가 14일차를 보이면 「10건 중 6위」가 어느 숫자의 순위인지 밝힌다.
- * (1005 — 카드 아래 순위를 지워 지금은 화면에서 안 쓴다. verdict 와 같이 다시 쓸 때를 위해 남긴다.)
+ * 카드 아래 작은 회색 줄 — 7일차 숫자(1005 민찬: 7일차 · 14일차 둘 다 보이게, 증가분은 빼고).
+ * 카드 큰 숫자가 14일차(report-data)일 때만 「7일차 1,234」. 7일차 값은 스냅샷 metrics(Papillon 성과 — 7일차 우선)에 원래 있다.
+ * 카드와 같은 날이면 null. 순위(baskets)도 이 7일차 값으로 매긴 것이다 — 판정을 카드에 다시 올리면 이 줄 옆에 둔다.
  */
-export function rankBasisLabel(s: ReportSnapshot): string | null {
-  return s.basis === "D7" && s.report_data?.available && typeof s.report_data.day === "number" && s.report_data.day !== 7 ? "7일차 기준" : null;
+export function day7Line(s: ReportSnapshot, m: ReportMetric): string | null {
+  const otherDay = s.basis === "D7" && s.report_data?.available && typeof s.report_data.day === "number" && s.report_data.day !== 7;
+  return otherDay ? `7일차 ${m.value.toLocaleString()}` : null;
 }
 
 /** 반응 지표마다 — 무엇인지(정의) 한 문장 + 이번 콘텐츠에서 한 일 한 문장. 좋아요·댓글 문장은 0928 민찬 확인. */
