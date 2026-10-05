@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, day7Line, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph } from "@/lib/draft/report";
+import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, day7Line, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph, stripChannelCompare } from "@/lib/draft/report";
 import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
@@ -194,7 +194,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       </Card>
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-        비교는 우리 채널 평소 게시물의 <b>가운데 값</b> 기준이고 표본이 5건 미만이면 비교하지 않습니다. 평소 게시물의 아래 10%·위 10% 선을 넘으면 「평소보다 낮음·높음」, 그 사이면 「평소 범위 안」이라고 씁니다. 링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
+        숫자는 인스타그램 수치 그대로이고, 우리 채널의 다른 게시물과 견준 순위·판정은 보이지 않습니다. 링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
         {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-navy font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
       </p>
 
@@ -209,10 +209,11 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   );
 }
 
-/** 제안 근거 — 서버가 만든 읽기 전용 칸(승인 가드 대상 밖). 정합성 점검 항목 아랫줄과 같은 모양. */
+/** 제안 근거 — 서버가 만든 읽기 전용 칸(승인 가드 대상 밖). 정합성 점검 항목 아랫줄과 같은 모양. 채널 비교(가운데 값)는 걷어내고 보인다(1005). */
 function ProposalBasis({ p }: { p?: StoreReport["proposals"][number] }) {
-  if (!p || !(p.signal || p.reading)) return null;
-  return <p className={`text-[12px] mt-1.5 ${VERDICT_CLASS[p.tone ?? "gray"]}`}>신호: {p.signal || "—"}{p.reading ? ` · 해석: ${p.reading}` : ""}</p>;
+  const signal = stripChannelCompare(p?.signal), reading = stripChannelCompare(p?.reading);
+  if (!p || !(signal || reading)) return null;
+  return <p className={`text-[12px] mt-1.5 ${VERDICT_CLASS[p.tone ?? "gray"]}`}>신호: {signal || "—"}{reading ? ` · 해석: ${reading}` : ""}</p>;
 }
 
 /** 게시물 상세 — 지표 · 카톡용 텍스트(링크 대신 문자로 보낼 때) · 만들기 */
@@ -245,7 +246,7 @@ function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: 
       </PanelSection>
       <PanelSection title="카톡용 텍스트 (링크 대신 글로 보낼 때)">
         {p.report ? <pre className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800 bg-gray-50 rounded-lg p-3 font-[inherit]">{p.report}</pre> : <p className="text-[13px] text-gray-500">지표가 모이면 자동으로 문장이 만들어집니다.</p>}
-        <p className="text-[12px] text-gray-500 mt-2">헤드라인은 저장 → 도달 → 조회 고정, 비교는 가운데 값·표본 수를 밝히고, 근거가 없으면 없다고 씁니다. 리포트를 만들면 이 텍스트 대신 게시물 카드 · 비교 막대 · 다음 제안이 한 페이지로 나갑니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
+        <p className="text-[12px] text-gray-500 mt-2">리포트 해석 글과 같은 문장이고, 우리 채널의 다른 게시물과 견주지 않습니다. 리포트를 만들면 이 텍스트 대신 사진 · 게시물 성과 · 해석 글이 PNG 두 장으로 나갑니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
       </PanelSection>
     </SlideOver>
   );
