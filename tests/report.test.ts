@@ -775,7 +775,7 @@ test("슬랙에 붙일 인스타 게시물 주소 — 리포트 화면과 같은
 });
 
 test("편집 화면 카드는 해석 글과 같은 날의 숫자 — 순위는 7일차 기준이라고 밝힌다 (1005)", () => {
-  // 기프트버거 경대점: 카드가 Papillon 성과(D+7 6,674)를, 글이 report-data(D+14 7,359)를 읽어 한 화면에 둘 다 떴다
+  // 카드가 Papillon 성과(D+7)를, 글이 report-data(D+14)를 읽어 한 화면에 조회수가 둘 떴다
   const s = report({}, { report_data: rd }).snapshot;
   const views = s.metrics.find((m) => m.key === "views")!;
   assert.equal(cardValue(s, views), 32657, "스냅샷 지표(D+7 20000)가 아니라 report-data 의 D+14");

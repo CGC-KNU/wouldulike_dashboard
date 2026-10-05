@@ -118,7 +118,7 @@ export function ownerNumbers(s: ReportSnapshot): Partial<Record<OwnerKey, number
 
 /**
  * 편집 화면 「스냅샷」 카드의 숫자 — 해석 글 · 사장님 리포트와 같은 숫자(ownerNumbers)다(1005).
- * 카드가 Papillon 성과(7일차 우선)를, 글이 report-data(14일차 우선)를 읽어 한 화면에 6,674 와 7,359 가 같이 떴다.
+ * 카드가 Papillon 성과(7일차 우선)를, 글이 report-data(14일차 우선)를 읽어 한 화면에 조회수가 둘 떴다.
  */
 export function cardValue(s: ReportSnapshot, m: ReportMetric): number {
   return ownerNumbers(s)[m.key as OwnerKey] ?? m.value;
