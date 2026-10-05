@@ -116,6 +116,22 @@ export function ownerNumbers(s: ReportSnapshot): Partial<Record<OwnerKey, number
   return out;
 }
 
+/**
+ * 편집 화면 「스냅샷」 카드의 숫자 — 해석 글 · 사장님 리포트와 같은 숫자(ownerNumbers)다(1005).
+ * 카드가 Papillon 성과(7일차 우선)를, 글이 report-data(14일차 우선)를 읽어 한 화면에 조회수가 둘 떴다.
+ */
+export function cardValue(s: ReportSnapshot, m: ReportMetric): number {
+  return ownerNumbers(s)[m.key as OwnerKey] ?? m.value;
+}
+
+/**
+ * 카드 아래 순위가 카드 숫자와 다른 날 것일 때 앞에 붙이는 말. 순위(baskets)는 Papillon 성과 API 가
+ * 7일차 값으로 매긴다 — 카드가 14일차를 보이면 「10건 중 6위」가 어느 숫자의 순위인지 밝힌다.
+ */
+export function rankBasisLabel(s: ReportSnapshot): string | null {
+  return s.basis === "D7" && s.report_data?.available && typeof s.report_data.day === "number" && s.report_data.day !== 7 ? "7일차 기준" : null;
+}
+
 /** 반응 지표마다 — 무엇인지(정의) 한 문장 + 이번 콘텐츠에서 한 일 한 문장. 좋아요·댓글 문장은 0928 민찬 확인. */
 const REACTION: Record<"shares" | "saved" | "likes" | "comments", { label: string; unit: string; def: string; did: (v: string, store: string) => string }> = {
   shares: { label: "공유", unit: "회", def: "공유는 게시물을 다른 사람에게 직접 보내는 행동입니다.",
