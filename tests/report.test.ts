@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { measuredPoint, toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { VERDICT_FRACTION, buildReportText, cardValue, ownerNumbers, rankBasisLabel, checkText, cohortNote, curationIntro, ownerHeadline, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, verdict } from "../src/lib/draft/report";
+import { DEFAULT_SUMMARY, VERDICT_FRACTION, buildReportText, cardValue, checkText, cohortNote, curationIntro, headlineBefore1005, isAutoSummary, ownerHeadline, ownerNumbers, ownerParagraphs, ownerStory, propose, rankBasisLabel, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, verdict } from "../src/lib/draft/report";
 import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml, reportPermalink } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
@@ -242,6 +242,33 @@ test("「수치 다시 읽기」는 손대지 않은 자동 문장만 새 숫자
   assert.equal(untouched.summary, ownerHeadline(next));
   const edited = refreshText({ summary: "사람이 쓴 요약", interpretation: ["사람이 다 고쳐 쓴 문단입니다."], snapshot: old }, next);
   assert.deepEqual(edited, {}, "사람이 고친 것은 건드리지 않는다");
+});
+
+// ── 1005: 한 줄 요약 — 도달 대신 조회수 · 총반응 수 (마케팅) ─────────────
+test("한 줄 요약은 도달이 아니라 조회수와 총반응 수 — 첫 문단과 같은 이름으로 부른다", () => {
+  const s = gift();
+  assert.equal(ownerHeadline(s), "이번 기프트버거 큐레이션 콘텐츠는 조회수 6,674회, 총반응 수 241건을 기록했습니다.");
+  assert.ok(!/도달|닿았/.test(ownerHeadline(s)));
+  const guard = checkText(ownerHeadline(s), s);
+  assert.ok(guard.ok, guard.problems.join(", "));
+  const solo = { ...reel(REEL), post: { ...reel(REEL).post, topic: "통통 협찬" } };
+  assert.equal(ownerHeadline(solo), "이번 통통 릴스는 조회수 12,400회, 총반응 수 558건을 기록했습니다.");
+});
+
+test("한 줄 요약 — 반응이 작으면 조회수만, 조회수가 작으면 기본 문장", () => {
+  const few = { ...gift(), report_data: { ...rd, metrics: { views: 820, reach: 600, shares: 1, saved: 2, likes: 3, comments: 0 } } };
+  assert.equal(ownerHeadline(few), "이번 기프트버거 큐레이션 콘텐츠는 조회수 820회를 기록했습니다.");
+  const none = { ...gift(), report_data: { ...rd, metrics: { views: 4, reach: 3 } } };
+  assert.equal(ownerHeadline(none), DEFAULT_SUMMARY);
+});
+
+test("이미 만든 리포트의 도달 요약(~1005)은 자동 요약으로 알아보고, 「수치 다시 읽기」에서 새 요약으로 바꾼다", () => {
+  const s = gift();
+  assert.equal(headlineBefore1005(s), "기프트버거 등 3곳을 소개한 이번 콘텐츠가 3,482명에게 닿았습니다.");
+  assert.ok(isAutoSummary(headlineBefore1005(s), s));
+  const out = refreshText({ summary: headlineBefore1005(s), interpretation: ownerStory(s), snapshot: s }, s);
+  assert.equal(out.summary, ownerHeadline(s));
+  assert.equal(refreshText({ summary: "사람이 쓴 요약", interpretation: ownerStory(s), snapshot: s }, s).summary, undefined, "사람이 쓴 요약은 그대로");
 });
 
 test("약점을 말하던 제안(P2·P4)은 더 생기지 않고, P1 은 평소·부족을 말하지 않는다", () => {

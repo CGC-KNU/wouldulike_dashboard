@@ -451,8 +451,22 @@ export function reelWatchLine(s: ReportSnapshot): string | null {
   return parts.length ? parts.join(" ") : null;
 }
 
-/** 점주 리포트 한 줄 요약 — 카톡 링크 미리보기(og:description)·사장님 리포트 목록에 쓴다. 리포트 카드 제목으로는 쓰지 않는다(0928). */
+/**
+ * 점주 리포트 한 줄 요약 — 카톡 링크 미리보기(og:description)·사장님 리포트 목록에 쓴다. 리포트 카드 제목으로는 쓰지 않는다(0928).
+ * (1005 — 마케팅: 도달 문장 말고 다른 내용으로) 2장 핵심 카드와 같은 **조회수 · 총반응 수**. 첫 문단과 같은 이름으로 부른다.
+ */
 export function ownerHeadline(s: ReportSnapshot): string {
+  const views = ownerNumbers(s).views, acts = interactionsOf(s);
+  if (views === undefined || views < MIN_OWNER_VALUE) return DEFAULT_SUMMARY;
+  const what = `${curationIntro(s) ? "큐레이션 " : ""}${isReel(s) ? "릴스" : "콘텐츠"}`;
+  const tail = acts !== null && acts >= MIN_OWNER_VALUE
+    ? `조회수 ${views.toLocaleString()}회, 총반응 수 ${acts.toLocaleString()}건을`
+    : `조회수 ${views.toLocaleString()}회를`;
+  return `이번 ${s.store.name} ${what}는 ${tail} 기록했습니다.`;
+}
+
+/** **~1005 의** 한 줄 요약(도달) — 그때 만든 리포트에 박혀 있어 자동 요약으로 알아보는 데만 쓴다(isAutoSummary). */
+export function headlineBefore1005(s: ReportSnapshot): string {
   const r = ownerNumbers(s).reach;
   if (r === undefined || r < MIN_OWNER_VALUE) return DEFAULT_SUMMARY;
   const who = s.post.co_stores > 1 ? `${s.store.name} 등 ${s.post.co_stores}곳을 소개한 이번 콘텐츠가` : `이번 ${s.store.name} 콘텐츠가`;
@@ -481,7 +495,7 @@ export function ownerParagraphs(interpretation: string[], s: ReportSnapshot): st
 
 /** 요약이 자동으로 들어간 것인가 — 자동이면 리포트 카드 제목으로 쓰지 않는다 */
 export const isAutoSummary = (summary: string, s: ReportSnapshot) =>
-  !summary || summary === DEFAULT_SUMMARY || summary === ownerHeadline(s) || isLegacyChannelLine(summary);
+  !summary || summary === DEFAULT_SUMMARY || summary === ownerHeadline(s) || summary === headlineBefore1005(s) || isLegacyChannelLine(summary);
 
 /**
  * 「수치 다시 읽기」 — 손대지 않은 자동 문장은 **새 숫자로 다시 쓴다.** 그대로 두면 옛 숫자가 남아
