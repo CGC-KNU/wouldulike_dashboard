@@ -140,7 +140,8 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
             <tbody>
               {visiblePosts.map((p) => {
                 const m = (k: string) => p.metrics.find((x) => x.key === k);
-                const cell = (k: string) => { const x = m(k); return x ? <><span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span><Verdict m={x} /></> : <span className="text-gray-300">-</span>; };
+                // 숫자만 — 「하위권 (10건 중 10위)」 같은 판정은 목록에서 뺐다(1005 민찬). 패널 · 편집에는 남아 있다.
+                const cell = (k: string) => { const x = m(k); return x ? <span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span> : <span className="text-gray-300">-</span>; };
                 const k = postKey(p);
                 return (
                   <tr key={k} className={rowClickable} onClick={() => setOpenPost(k)}>
@@ -208,7 +209,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   );
 }
 
-/** 지표 판정 한 마디 — 목록 · 패널 · 편집이 같은 함수·같은 말 */
+/** 지표 판정 한 마디 — 패널 · 편집이 같은 함수·같은 말 (목록은 숫자만, 1005) */
 function Verdict({ m }: { m: ReportMetric }) {
   const v = verdict(m);
   return <span className={`block text-[11px] ${VERDICT_CLASS[v.tone]}`}>{v.text}</span>;
