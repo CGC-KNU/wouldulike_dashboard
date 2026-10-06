@@ -344,6 +344,10 @@ export interface ChannelStats {
 export interface MomentumStats {
   available: boolean;
   n: number;
+  /** 포맷마다 이 건수부터 낸다(백엔드 MOMENTUM_MIN_N) */
+  min_n?: number;
+  /** 1006 부터 포맷별 — 카드뉴스 · 릴스를 섞지 않는다 */
+  format?: MediaType;
   metric?: string;
   older_median?: number;
   recent_median?: number;
@@ -363,7 +367,10 @@ export interface LeaderboardRow {
 
 export interface OverviewPerformance {
   channel: ChannelStats;
+  /** 옛 응답용 한 줄. 1006 백엔드부터는 카드뉴스 것과 같다 */
   momentum: MomentumStats;
+  /** 카드뉴스 · 릴스 각각 — 1006 백엔드부터 */
+  momentum_by_format?: MomentumStats[];
   leaderboard: LeaderboardRow[];
 }
 

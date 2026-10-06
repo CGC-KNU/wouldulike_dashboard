@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ContentPlan,
   LeaderboardBadge,
+  MEDIA_META,
+  MomentumStats,
   OverviewPerformance,
   PlansResponse,
   SatelliteMember,
@@ -179,27 +181,44 @@ function MetricCard({ label, stats }: { label: string; stats: TrimmedStats }) {
   );
 }
 
-function MomentumCard({ momentum }: { momentum: OverviewPerformance["momentum"] }) {
-  if (!momentum.available) {
-    return (
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
-        <p className="text-[10px] text-gray-400 font-semibold">모멘텀</p>
-        <p className="text-xs text-gray-300 mt-1.5">집계 중 (표본 n={momentum.n})</p>
-      </div>
-    );
-  }
-  const dir = momentum.direction;
-  const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "▬";
-  const cls = dir === "up" ? "text-green-600" : dir === "down" ? "text-red-500" : "text-gray-500";
+/**
+ * 모멘텀 — 포맷마다 한 줄(1006). 릴스와 카드뉴스는 조회 자릿수가 달라, 섞어 세면 릴스가 앞 반에 있느냐
+ * 뒤 반에 있느냐가 그대로 상승·하락이 됐다(1006 운영에서 실제로 「하락」이 떴다). 옛 응답이면 예전 한 줄로 그린다.
+ */
+function MomentumCard({ perf }: { perf: OverviewPerformance }) {
+  const rows = perf.momentum_by_format ?? [perf.momentum];
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
       <p className="text-[10px] text-gray-400 font-semibold">모멘텀 (조회 · 최근 90일 전/후반 비교)</p>
-      <p className={`text-lg font-bold mt-0.5 ${cls}`}>
-        {arrow} {momentum.delta_pct != null && momentum.delta_pct > 0 ? "+" : ""}
-        {momentum.delta_pct}%
+      <div className="mt-1 flex flex-col gap-1.5">
+        {rows.map((m, i) => <MomentumRow key={m.format ?? i} m={m} />)}
+      </div>
+    </div>
+  );
+}
+
+function MomentumRow({ m }: { m: MomentumStats }) {
+  const label = m.format ? MEDIA_META[m.format]?.label ?? m.format : null;
+  const tag = label && <span className="text-[11px] font-semibold text-gray-500 mr-1.5">{label}</span>;
+  if (!m.available) {
+    return (
+      <p className="text-xs text-gray-300">
+        {tag}집계 중 ({m.n}{m.min_n ? `/${m.min_n}` : ""}건)
       </p>
-      <p className="text-[10px] text-gray-400 mt-0.5">
-        {fmtStat(momentum.older_median)} → {fmtStat(momentum.recent_median)} (n={momentum.n})
+    );
+  }
+  const dir = m.direction;
+  const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "▬";
+  const cls = dir === "up" ? "text-green-600" : dir === "down" ? "text-red-500" : "text-gray-500";
+  return (
+    <div>
+      <p className={`text-sm font-bold ${cls}`}>
+        {tag}
+        {arrow} {m.delta_pct != null && m.delta_pct > 0 ? "+" : ""}
+        {m.delta_pct}%
+      </p>
+      <p className="text-[10px] text-gray-400">
+        {fmtStat(m.older_median)} → {fmtStat(m.recent_median)} (n={m.n})
       </p>
     </div>
   );
@@ -211,7 +230,7 @@ function ChannelMetrics({ perf }: { perf: OverviewPerformance }) {
       <MetricCard label="조회" stats={perf.channel.views} />
       <MetricCard label="저장" stats={perf.channel.saved} />
       <MetricCard label="참여" stats={perf.channel.engagement} />
-      <MomentumCard momentum={perf.momentum} />
+      <MomentumCard perf={perf} />
     </div>
   );
 }
