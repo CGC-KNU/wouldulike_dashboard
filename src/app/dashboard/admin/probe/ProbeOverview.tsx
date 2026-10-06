@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconRefresh } from "@tabler/icons-react";
 import type { StoreMetric } from "@/lib/draft/types";
+import { campusOfMetric, isSilent, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
+import { allCampuses } from "../astro/CampusPicker";
 import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, Table, Td, Th } from "../_shared/ui";
 
 /**
@@ -14,22 +16,18 @@ import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skelet
  * 두 가지를 지킨다.
  *   · 0 과 '모름'을 섞지 않는다. 못 읽은 매장은 '-' 이고 합계에서도 뺀다. 0 으로 채우면 "이 매장 망했네" 같은 오판이 난다.
  *   · 총합보다 '조용한 매장'이 먼저다. 쿠폰도 스탬프도 0 인 제휴 매장. 영업이 다음 주에 전화 돌릴 목록이다.
+ *
+ * 캠퍼스를 고르면 범위 숫자·KPI·표가 전부 그 캠퍼스 매장만으로 다시 센다 — "영남대 조용한 매장" 처럼 겹쳐 본다.
  */
 
 type SortKey = "name" | "coupon" | "stamp" | "loyal" | "revisit";
 
-interface Totals {
-  stores: number; affiliate: number; paid: number; free: number;
-  coupon_redeemed: number; stamp_earned: number; loyal_total: number; revisit_this_month: number;
-  unavailable: number; silent: number;
-}
-
 export default function ProbeOverview() {
   const [stores, setStores] = useState<StoreMetric[]>([]);
-  const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "coupon", dir: "desc" });
   const [scope, setScope] = useState<"all" | "paid" | "free" | "silent">("all");
+  const [campus, setCampus] = useState<string>("all");
   const [generatedAt, setGeneratedAt] = useState("");
   const [source, setSource] = useState("");
   /** 매장 목록 자체를 못 읽었는가 — 그러면 모든 합계가 0 이지만 그건 모름이다 (0925) */
@@ -41,7 +39,6 @@ export default function ProbeOverview() {
       .then((r) => r.json())
       .then((d) => {
         setStores(d.stores ?? []);
-        setTotals(d.totals ?? null);
         setGeneratedAt(d.generated_at ?? "");
         setSource(d.source ?? "");
         setStoresUnreadable(Boolean(d.stores_unreadable));
@@ -51,12 +48,21 @@ export default function ProbeOverview() {
   };
   useEffect(load, []);
 
+  /** 기본 3곳 + 데이터에 있는 캠퍼스. 숫자는 제휴 매장 수 — '제휴 전체' 와 같은 기준이다. 목록을 못 읽었으면 0 이 아니라 비운다. */
+  const campusOptions = useMemo(() => {
+    const affiliate = stores.filter((s) => s.is_affiliate);
+    const count = (c?: string) => (stores.length ? affiliate.filter((s) => !c || campusOfMetric(s) === c).length : undefined);
+    return [{ key: "all", label: "캠퍼스 전체", count: count() }, ...allCampuses(affiliate.map((s) => s.campus)).map((c) => ({ key: c, label: c, count: count(c) }))];
+  }, [stores]);
+  const inCampus = useMemo(() => (campus === "all" ? stores : stores.filter((s) => campusOfMetric(s) === campus)), [stores, campus]);
+  const totals = useMemo(() => (loading && !stores.length ? null : summarizeStoreMetrics(inCampus)), [inCampus, loading, stores.length]);
+
   const rows = useMemo(() => {
-    let list = stores.filter((s) => s.is_affiliate);
+    let list = inCampus.filter((s) => s.is_affiliate);
     const paid = (s: StoreMetric) => s.tier === "BOOST" || s.tier === "CONTENT";
     if (scope === "paid") list = list.filter(paid);
     if (scope === "free") list = list.filter((s) => !paid(s));
-    if (scope === "silent") list = list.filter((s) => !s.unavailable && s.coupon_redeemed_this_month === 0 && s.stamp_earned_this_month === 0);
+    if (scope === "silent") list = list.filter(isSilent);
     const dir = sort.dir === "asc" ? 1 : -1;
     const num = (s: StoreMetric) =>
       sort.key === "coupon" ? s.coupon_redeemed_this_month : sort.key === "stamp" ? s.stamp_earned_this_month : sort.key === "loyal" ? s.loyal_total : s.revisit_this_month;
@@ -66,7 +72,7 @@ export default function ProbeOverview() {
       if (a.unavailable !== b.unavailable) return a.unavailable ? 1 : -1;
       return (num(a) - num(b)) * dir || a.name.localeCompare(b.name, "ko");
     });
-  }, [stores, scope, sort]);
+  }, [inCampus, scope, sort]);
 
   const max = useMemo(
     () => ({
@@ -77,7 +83,7 @@ export default function ProbeOverview() {
   );
 
   const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
-  const allUnavailable = !loading && stores.length > 0 && totals?.unavailable === stores.length;
+  const allUnavailable = !loading && stores.length > 0 && stores.every((s) => s.unavailable);
 
   return (
     <>
@@ -86,17 +92,26 @@ export default function ProbeOverview() {
         description="앱 안에서 일어난 일(쿠폰·스탬프·단골)을 매장별로 봅니다. 인스타 성과는 Papillon 이 원본입니다."
         actions={<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>}
       >
-        <FilterPills
-          label="범위"
-          value={scope}
-          onChange={setScope}
-          options={[
-            { key: "all", label: "제휴 전체", count: totals?.affiliate },
-            { key: "paid", label: "유료", count: totals?.paid },
-            { key: "free", label: "무료", count: totals?.free },
-            { key: "silent", label: "조용한 매장", count: totals?.silent },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <FilterPills
+            label="범위"
+            value={scope}
+            onChange={setScope}
+            options={[
+              { key: "all", label: "제휴 전체", count: totals?.affiliate },
+              { key: "paid", label: "유료", count: totals?.paid },
+              { key: "free", label: "무료", count: totals?.free },
+              { key: "silent", label: "조용한 매장", count: totals?.silent },
+            ]}
+          />
+          <span className="hidden sm:block w-px h-5 bg-gray-200" aria-hidden />
+          <FilterPills
+            label="캠퍼스"
+            value={campus}
+            onChange={setCampus}
+            options={campusOptions}
+          />
+        </div>
       </PageHeader>
 
       {!loading && storesUnreadable && (
@@ -125,11 +140,18 @@ export default function ProbeOverview() {
         <Kpi label="지표 못 읽음" value={loading ? "-" : totals?.unavailable ?? 0} suffix="곳" hint="0 이 아니라 모름" />
       </div>
 
-      <Card flush title={`매장 ${rows.length}곳`} description="합계는 지표를 읽은 매장만으로 계산합니다.">
+      <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description="합계는 지표를 읽은 매장만으로 계산합니다.">
         {loading ? (
           <Skeleton rows={8} cols={5} />
         ) : rows.length === 0 ? (
-          <Empty title={scope === "silent" ? "조용한 매장이 없습니다" : "지표를 불러오지 못했습니다"} detail={scope === "silent" ? "모든 제휴 매장에 이번 달 활동이 있습니다." : "백엔드 연결을 확인하세요."} />
+          // 매장이 아예 없을 때만 '못 불러옴'이다. 캠퍼스·범위를 좁혀서 빈 건 그 조건에 매장이 없는 것
+          stores.length === 0 ? (
+            <Empty title="지표를 불러오지 못했습니다" detail="백엔드 연결을 확인하세요." />
+          ) : scope === "silent" ? (
+            <Empty title="조용한 매장이 없습니다" detail={`${campus === "all" ? "모든" : campus} 제휴 매장에 이번 달 활동이 있습니다.`} />
+          ) : (
+            <Empty title="이 조건에 해당하는 매장이 없습니다" detail={campus === "all" ? "다른 범위를 눌러 보세요." : `${campus} 에는 아직 이 범위의 제휴 매장이 없습니다.`} />
+          )
         ) : (
           <Table minWidth="44rem">
             <thead>
@@ -143,7 +165,7 @@ export default function ProbeOverview() {
             </thead>
             <tbody>
               {rows.map((s) => {
-                const silent = !s.unavailable && s.coupon_redeemed_this_month === 0 && s.stamp_earned_this_month === 0;
+                const silent = isSilent(s);
                 return (
                   <tr key={s.restaurant_id}>
                     <Td>
