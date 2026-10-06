@@ -379,6 +379,8 @@ export interface StoreMetric {
   stamp_earned_this_month: number;
   /** 지표를 못 읽은 매장. 0 과 구분해야 한다 — 0 은 사실이고 null 은 모름이다. */
   unavailable?: boolean;
+  /** Astro 운영 필드의 캠퍼스. 안 적은 매장은 null — 화면에서 경북대로 센다(storeMetrics.ts). */
+  campus?: Campus | null;
 }
 
 /* ═══════════ Castor ═══════════ */

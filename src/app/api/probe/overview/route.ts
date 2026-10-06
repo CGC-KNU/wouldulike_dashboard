@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
-import type { BackendRestaurant, PlanTier, StoreMetric } from "@/lib/draft/types";
+import type { BackendRestaurant, PlanTier, StoreMetric, StoreOps } from "@/lib/draft/types";
 import { requireTool } from "@/lib/draft/guard";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
+import { remoteGet } from "@/lib/draft/remote";
+import { readDraft } from "@/lib/draft/store";
+import { seedStoreOps } from "@/lib/draft/seed";
+import { summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
 
 /**
  * Probe 지표 개요 — 매장별 쿠폰·스탬프·단골 수치를 한 번에 모아 온다.
@@ -61,6 +65,11 @@ export async function GET() {
   const storesUnreadable = backend?.restaurants === undefined && !isPreview();
   const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
 
+  /** 캠퍼스는 Astro 운영 필드에 있다 — 읽는 길은 `/api/astro/stores` 와 같다(백엔드, 안 되면 초안). */
+  const opsRemote = await remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/");
+  const opsList = opsRemote.handled && opsRemote.ok ? (opsRemote.data?.ops ?? []) : readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
+  const campusById = new Map(opsList.map((o) => [o.id, o.campus ?? null]));
+
   /** 매장 하나를 지표 줄로. `stats` 가 null 이면 '모름'이다 — 0 으로 세면 안 된다. */
   const toMetric = (r: BackendRestaurant, stats: StatsEnvelope["stats"] | null): StoreMetric => ({
     restaurant_id: r.restaurant_id,
@@ -72,6 +81,7 @@ export async function GET() {
     coupon_redeemed_this_month: stats?.coupon_redeemed_this_month ?? 0,
     stamp_earned_this_month: stats?.stamp_earned_this_month ?? 0,
     unavailable: stats === null,
+    campus: campusById.get(r.restaurant_id) ?? null,
   });
 
   /**
@@ -90,25 +100,8 @@ export async function GET() {
         toMetric(r, (await fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${r.restaurant_id}`))?.stats ?? null)
       );
 
-  const live = stores.filter((s) => !s.unavailable);
-  const affiliate = stores.filter((s) => s.is_affiliate);
-  const isPaid = (s: StoreMetric) => s.tier === "BOOST" || s.tier === "CONTENT";
-  const totals = {
-    stores: stores.length,
-    affiliate: affiliate.length,
-    // 유료 + 무료 = 제휴 전체. 요금제가 비어 있는 제휴 매장은 무료로 센다(돈을 안 내는 건 같다)
-    paid: affiliate.filter(isPaid).length,
-    free: affiliate.filter((s) => !isPaid(s)).length,
-    coupon_redeemed: live.reduce((a, s) => a + s.coupon_redeemed_this_month, 0),
-    stamp_earned: live.reduce((a, s) => a + s.stamp_earned_this_month, 0),
-    loyal_total: live.reduce((a, s) => a + s.loyal_total, 0),
-    revisit_this_month: live.reduce((a, s) => a + s.revisit_this_month, 0),
-    unavailable: stores.length - live.length,
-    /** 이번 달 활동이 0인 제휴 매장 — 총합보다 이 숫자가 먼저다. */
-    silent: live.filter(
-      (s) => s.is_affiliate && s.coupon_redeemed_this_month === 0 && s.stamp_earned_this_month === 0
-    ).length,
-  };
+  // 화면이 캠퍼스별로 다시 셀 때도 같은 함수를 쓴다 (storeMetrics.ts)
+  const totals = summarizeStoreMetrics(stores);
 
   const body = {
     stores,
