@@ -105,6 +105,7 @@ export default function PerformancePanel({
             <p className="text-[10px] text-gray-400">
               발행 {perf.age_days}일 경과 · 기준: {perf.basis === "D7" ? "D7" : "누적"}
               {perf.collecting && " · 지표 수집 중"}
+              {perf.late && " · 7일차 없음(정밀 수집 전 게시물) — 견주지 않음"}
               {perf.post?.card_count != null && ` · 카드 ${perf.post.card_count}장`}
               {perf.post?.caption_length != null && ` · 캡션 ${perf.post.caption_length}자`}
             </p>
@@ -131,6 +132,9 @@ export default function PerformancePanel({
                   <p className="text-lg font-bold text-gray-800 mt-0.5">{fmtNum(m.value)}</p>
                   {m.cohort.hidden ? (
                     <p className="text-[9px] text-gray-300 mt-0.5">비교 표본 부족</p>
+                  ) : m.pi == null ? (
+                    // 늦게 찍힌 게시물(late)은 백엔드가 PI 를 비워 보낸다 — 「기준 대비 %」 빈칸을 찍지 않는다
+                    <p className="text-[9px] text-gray-300 mt-0.5">{perf.late ? "7일차가 없어 견주지 않음" : "견줄 수 없음"}</p>
                   ) : (
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       기준 대비{" "}
@@ -154,7 +158,7 @@ export default function PerformancePanel({
                 <div key={key} className="bg-gray-50 rounded-lg px-2.5 py-2">
                   <p className="text-[9px] text-gray-400 font-semibold">{PERFORMANCE_METRIC_LABEL[key] ?? key}</p>
                   <p className="text-xs font-bold text-gray-800">{fmtNum(m.value)}</p>
-                  {!m.cohort.hidden && <p className="text-[9px] text-gray-400">기준 대비 {m.pi ?? "—"}%</p>}
+                  {!m.cohort.hidden && m.pi != null && <p className="text-[9px] text-gray-400">기준 대비 {m.pi}%</p>}
                 </div>
               );
             })}

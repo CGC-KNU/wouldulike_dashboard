@@ -263,8 +263,8 @@ export interface PerformanceMetric {
   cohort: PerformanceMetricCohort;
   pi: number | null;
   percentile: number | null;
-  /** 건수 창 — 최근 5건 · 10건 · 전체. n 이 분모, rank 는 1 이 최고. 0923 이전 응답엔 없다. */
-  baskets?: import("@/lib/draft/types").MetricBaskets;
+  /** 건수 창 — 최근 5건 · 10건 · 전체. n 이 분모, rank 는 1 이 최고. 0923 이전 응답엔 없다. 7일차가 없는(late) 게시물은 null. */
+  baskets?: import("@/lib/draft/types").MetricBaskets | null;
 }
 
 export interface PerformanceInsight {
@@ -287,6 +287,11 @@ export interface PostPerformance {
   basis?: "D7" | "cumulative";
   age_days?: number;
   collecting?: boolean;
+  /**
+   * 9일이 지났는데 7일차가 없다(백엔드 1006~) — 정밀 수집이 시작된 9/10 전 게시물이 대부분이다.
+   * 그때 찍힌 「D7」은 그날 값이라 7일차가 아니다. 값은 지금 누적값이고 PI · 백분위 · 순위는 비어 온다.
+   */
+  late?: boolean;
   metrics?: Record<string, PerformanceMetric>;
   insights?: PerformanceInsight[];
   insight_disclaimer?: string;
