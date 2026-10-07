@@ -9,6 +9,7 @@ import OnboardReconcile from "./OnboardReconcile";
 import SpecialApprovals from "./SpecialApprovals";
 import CampusMark from "./CampusMark";
 import NewStorePanel from "./NewStorePanel";
+import DuplicateStoreChoice, { dupsOf, type DupStore } from "./DuplicateStoreChoice";
 import EndContractButton from "./EndContractButton";
 
 /**
@@ -178,12 +179,16 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
     load();
   }
 
-  async function makeStore(r: Row) {
+  const [makeDups, setMakeDups] = useState<Record<string, DupStore[]>>({});
+  async function makeStore(r: Row, dup: { restaurant_id?: number; allow_new?: boolean } = {}) {
     if (!r.lead_id) return;
     setMaking(r.lead_id); setMakeErr((m) => ({ ...m, [r.lead_id!]: "" }));
+    setMakeDups((m) => { const n = { ...m }; delete n[r.lead_id!]; return n; });
     try {
-      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: r.lead_id, tier: r.tier, updated_by: actor }) });
+      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: r.lead_id, tier: r.tier, updated_by: actor, ...dup }) });
       const d = (await res.json().catch(() => ({}))) as { detail?: string; restaurant_id?: number };
+      const found = dupsOf(res.status, d);
+      if (found) { setMakeDups((m) => ({ ...m, [r.lead_id!]: found })); return; }
       if (!res.ok) { setMakeErr((m) => ({ ...m, [r.lead_id!]: d.detail ?? `만들지 못했습니다 (${res.status}).` })); return; }
       if (d.restaurant_id) setJustAdded({ rid: d.restaurant_id, name: r.name });
       load();
@@ -308,6 +313,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                       {n > 0 && <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-[11.5px] font-semibold text-amber-800" title="이미 적힌 값과 사장님 값이 다른 칸 — [상세]에서 봅니다">값 다름 {n}</span>}
                     </div>
                     {r.lead_id && makeErr[r.lead_id] && <p className="text-[11.5px] text-red-600 mt-1">{makeErr[r.lead_id]}</p>}
+                    {r.lead_id && makeDups[r.lead_id] && <div className="mt-1.5"><DuplicateStoreChoice dups={makeDups[r.lead_id]} busy={making === r.lead_id} onLink={(rid) => makeStore(r, { restaurant_id: rid })} onNew={() => makeStore(r, { allow_new: true })} /></div>}
                     {r.rid !== null && rowMsg[r.rid] && <p className={`text-[11.5px] mt-1 ${rowMsg[r.rid].ok ? "text-navy" : "text-red-600"}`} role="status">{rowMsg[r.rid].text}</p>}
                   </Td>
                   <Td align="right">{r.rid !== null && <EndContractButton rid={r.rid} name={r.name} actor={actor} onDone={load} compact />}</Td>
