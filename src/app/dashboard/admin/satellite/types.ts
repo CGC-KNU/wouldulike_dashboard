@@ -279,6 +279,11 @@ export interface TimeSeriesPoint {
   label: string;
   value: number | null;
   captured: boolean;
+  /**
+   * 그 날짜가 지났는데 그 나이에 잰 값이 없다(백엔드 1007~). 정밀 수집이 9/10 에 시작돼 그 전 게시물은
+   * 창마다 그날 값이 한꺼번에 찍혀 있었다 — 그 값은 이제 안 보내고 이 칸을 「예정」이 아니라 「없음」으로 그린다.
+   */
+  missed?: boolean;
 }
 
 export interface PostPerformance {

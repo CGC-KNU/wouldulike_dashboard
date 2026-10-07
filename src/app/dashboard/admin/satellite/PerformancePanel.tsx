@@ -241,7 +241,9 @@ export default function PerformancePanel({
                       ) : (
                         <>
                           <div className="flex-1 h-2 rounded-full bg-[repeating-linear-gradient(135deg,#e5e7eb,#e5e7eb_4px,#f3f4f6_4px,#f3f4f6_8px)]" />
-                          <span className="w-14 text-right text-[10px] text-gray-300 shrink-0">예정</span>
+                          <span className="w-14 text-right text-[10px] text-gray-300 shrink-0" title={t.missed ? "그 날짜에 잰 값이 없습니다 — 정밀 수집(9/10) 전 게시물" : undefined}>
+                            {t.missed ? "없음" : "예정"}
+                          </span>
                         </>
                       )}
                     </div>
