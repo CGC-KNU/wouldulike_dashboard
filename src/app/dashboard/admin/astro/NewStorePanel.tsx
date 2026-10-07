@@ -5,6 +5,7 @@ import { Button, Field, Input, Select, SlideOver, Textarea, periodLocal } from "
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
 import { APP_CATEGORIES, type Campus } from "@/lib/draft/types";
 import CampusPicker from "./CampusPicker";
+import DuplicateStoreChoice, { dupsOf, type DupStore } from "./DuplicateStoreChoice";
 
 /* ═══════════ 매장 추가 — 식당 관리와 같은 생성 경로 ═══════════ */
 
@@ -34,15 +35,18 @@ export default function NewStorePanel({ actor, campus, campusOptions, onClose, o
   }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dups, setDups] = useState<DupStore[] | null>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  async function submit() {
+  async function submit(allowDuplicate = false) {
     if (!form.name.trim() || saving) return;
-    setSaving(true); setError(null);
+    setSaving(true); setError(null); setDups(null);
     try {
       // 1) 매장 본체는 백엔드 원본(식당 관리와 같은 경로)
-      const res = await fetch("/api/dashboard/admin/restaurants/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: form.name.trim(), address: form.address, phone_number: form.phone, category: form.category, url: form.url, main_menu: "", description: "", s3_image_urls: [], tier: form.tier || null }) });
+      const res = await fetch("/api/dashboard/admin/restaurants/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: form.name.trim(), address: form.address, phone_number: form.phone, category: form.category, url: form.url, main_menu: "", description: "", s3_image_urls: [], tier: form.tier || null, allow_duplicate: allowDuplicate }) });
       const d = await res.json().catch(() => ({}));
+      const dup = dupsOf(res.status, d);
+      if (dup) { setDups(dup); return; }
       if (!res.ok) { setError(res.status === 502 || res.status === 501 ? "미리보기 모드라 매장을 만들 수 없습니다. 백엔드에 붙으면 식당 관리와 같은 경로로 생성됩니다." : d.detail ?? d.message ?? "매장을 만들지 못했습니다."); return; }
       const id = d.restaurant_id ?? d.id;
       // 2) 캠퍼스·상권·메모는 Astro 운영 필드
@@ -54,11 +58,12 @@ export default function NewStorePanel({ actor, campus, campusOptions, onClose, o
 
   return (
     <SlideOver open onClose={onClose} title="매장 추가" subtitle="식당 관리와 같은 경로로 만들어집니다. 사진·쿠폰은 식당 관리에서 이어서 등록하세요."
-      footer={<><Button variant="primary" onClick={submit} disabled={!form.name.trim() || saving}>{saving ? "만드는 중…" : "매장 만들기"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
+      footer={<><Button variant="primary" onClick={() => submit()} disabled={!form.name.trim() || saving}>{saving ? "만드는 중…" : "매장 만들기"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
       <Field label="지도 링크 (네이버지도 · 카카오맵)" hint="지도상 공식 상호를 매장명으로 씁니다. 팀원이 부르는 이름과 툴 이름이 갈리지 않게.">
         <div className="flex gap-2"><Input value={form.map_url} onChange={set("map_url")} type="url" inputMode="url" placeholder="https://naver.me/… 또는 https://place.map.kakao.com/…" autoFocus /><Button onClick={fromMap} disabled={!form.map_url.trim() || lookup.busy}>{lookup.busy ? "읽는 중…" : "이름 가져오기"}</Button></div>
         {lookup.msg && <p className="text-[12px] text-gray-600 mt-1">{lookup.msg}</p>}
       </Field>
+      {dups && <DuplicateStoreChoice dups={dups} busy={saving} onNew={() => submit(true)} />}
       <Field label="매장명" required hint={form.map_name ? `지도 표기: ${form.map_name}` : undefined}><Input value={form.name} onChange={set("name")} placeholder="예: 라라더" /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="캠퍼스"><CampusPicker value={form.campus} options={campusOptions} onChange={(v) => setForm((f) => ({ ...f, campus: v }))} /></Field>

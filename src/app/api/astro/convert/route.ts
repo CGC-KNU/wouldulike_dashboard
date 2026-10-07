@@ -19,6 +19,10 @@ import { remoteGet, remoteSend } from "@/lib/draft/remote";
  *
  * 매장 생성은 기존 `/api/dashboard/admin/restaurants/create/` 를 그대로 쓴다 (식당 관리와 같은 경로).
  *
+ * **중복 (1007)**: 이름이 같으면 자동으로 잇는다. 지점 꼬리만 다른 이름("랜돌프비어 대구계명대점")은
+ * 백엔드가 409 + duplicates 로 돌려주고, 화면이 사람에게 묻는다 → `restaurant_id` 로 다시 오면 그 매장에 잇고,
+ * `allow_new` 로 오면 새로 만든다.
+ *
  * **단계는 건드리지 않는다** (0928). 전에는 여기서 '계약 완료' 로 올렸는데, 그러면 사장님이 링크를
  * 열기도 전에 후보 탭에 "계약 완료" 가 서고 계약 탭은 "미발급" 이라 두 탭이 서로 다른 말을 했다.
  * 구두 합의에서 보내면 구두 합의로 남고, '계약 완료' 는 온보딩을 마칠 때(api/onboard/[token]/complete)
@@ -28,7 +32,7 @@ import { remoteGet, remoteSend } from "@/lib/draft/remote";
 export async function POST(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const { lead_id, tier, updated_by } = (await req.json().catch(() => ({}))) as { lead_id?: string; tier?: string | null; updated_by?: string };
+  const { lead_id, tier, updated_by, restaurant_id, allow_new } = (await req.json().catch(() => ({}))) as { lead_id?: string; tier?: string | null; updated_by?: string; restaurant_id?: number; allow_new?: boolean };
   if (!lead_id) return NextResponse.json({ detail: "lead_id 가 필요합니다." }, { status: 400 });
 
   // 원본이 백엔드면 거기서 읽는다. 폴백이면 초안에서.
@@ -40,7 +44,10 @@ export async function POST(req: NextRequest) {
   // 1) 같은 이름의 매장이 있으면 잇기만 한다
   const b = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
   const stores = b?.restaurants ?? (isPreview() ? previewRestaurants() : []);
-  let store = stores.find((s) => normName(s.name) === normName(lead.name)) ?? null;
+  let store = restaurant_id
+    ? stores.find((s) => s.restaurant_id === Number(restaurant_id)) ?? null
+    : stores.find((s) => normName(s.name) === normName(lead.name)) ?? null;
+  if (restaurant_id && !store) return NextResponse.json({ detail: `매장 #${restaurant_id} 를 찾을 수 없습니다.` }, { status: 404 });
   let created = false;
 
   if (!store) {
@@ -60,9 +67,10 @@ export async function POST(req: NextRequest) {
       description: "",
       s3_image_urls: [],
       tier: tier ?? null,
+      allow_duplicate: !!allow_new,
     });
-    const data = (await res.json().catch(() => ({}))) as { restaurant_id?: number; id?: number; detail?: string };
-    if (!res.ok) return NextResponse.json({ detail: data.detail ?? "매장을 만들지 못했습니다." }, { status: res.status });
+    const data = (await res.json().catch(() => ({}))) as { restaurant_id?: number; id?: number; detail?: string; duplicates?: unknown };
+    if (!res.ok) return NextResponse.json({ detail: data.detail ?? "매장을 만들지 못했습니다.", duplicates: data.duplicates }, { status: res.status });
     const id = data.restaurant_id ?? data.id;
     if (!id) return NextResponse.json({ detail: "매장 ID 를 받지 못했습니다." }, { status: 502 });
     store = { restaurant_id: id, name: lead.name, tier: tier ?? null, is_affiliate: true };

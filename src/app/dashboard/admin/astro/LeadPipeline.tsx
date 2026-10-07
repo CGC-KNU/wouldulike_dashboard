@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport, IconTargetArrow } from "@tabler/icons-react";
 import EndContractButton from "./EndContractButton";
+import DuplicateStoreChoice, { dupsOf, type DupStore } from "./DuplicateStoreChoice";
 import { ALL_LEAD_STAGES, APP_CATEGORIES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES, PROPOSED_PLANS, type Campus, type Lead, type LeadIntent, type LeadStage } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
 import { INSTA_STATES, fitOf, type InstaState } from "@/lib/draft/fit";
@@ -93,11 +94,13 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
    * 카드와 상세 패널이 같은 함수를 쓴다. 결과 문구는 호출한 쪽이 보여 준다.
    */
   const [convertingId, setConvertingId] = useState<string | null>(null);
-  const convertLead = useCallback(async (lead: Lead): Promise<{ ok: boolean; text: string; rid?: number }> => {
+  const convertLead = useCallback(async (lead: Lead, dup: DupAnswer = {}): Promise<ConvertResult> => {
     setConvertingId(lead.id);
     try {
-      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, tier: tierOf(lead.proposed_plan), updated_by: actor }) });
+      const res = await fetch("/api/astro/convert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, tier: tierOf(lead.proposed_plan), updated_by: actor, ...dup }) });
       const d = await res.json().catch(() => ({}));
+      const found = dupsOf(res.status, d);
+      if (found) return { ok: false, text: "", duplicates: found };
       if (!res.ok) return { ok: false, text: d.detail ?? "보내지 못했습니다." };
       if (d.lead) setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, ...d.lead } : l)));
       else load();
@@ -168,7 +171,7 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
                   <span className="text-[13px] font-bold text-gray-700 tabular-nums">{list.length}</span>
                 </header>
                 <div className="space-y-2">
-                  {list.map((l) => <LeadCard key={l.id} lead={l} actor={actor} onOpen={() => setOpenId(l.id)} showCampus={campus === "all"} onStage={(s) => patch(l.id, { stage: s })} onConvert={() => convertLead(l)} converting={convertingId === l.id} onGo={onGo} onEnded={load} />)}
+                  {list.map((l) => <LeadCard key={l.id} lead={l} actor={actor} onOpen={() => setOpenId(l.id)} showCampus={campus === "all"} onStage={(s) => patch(l.id, { stage: s })} onConvert={(dup) => convertLead(l, dup)} converting={convertingId === l.id} onGo={onGo} onEnded={load} />)}
                   {list.length === 0 && <div className="border border-dashed border-black/[0.08] rounded-xl py-8 text-center text-[12px] text-gray-400">비어 있음</div>}
                 </div>
               </section>
@@ -189,7 +192,7 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
                   <Td className="text-gray-700 truncate max-w-[14rem]">{l.next_action ?? <span className="text-gray-300">-</span>}{l.due && <span className="text-gray-400"> · {l.due}</span>}</Td>
                   <Td className="text-gray-600">{l.owner ?? "-"}</Td>
                   <Td align="right" className={`text-[12px] ${isStale(l) ? "text-red-600 font-semibold" : "text-gray-500"}`}>{agoLabel(l.last_touch_at)}</Td>
-                  <Td align="right"><span onClick={(e) => e.stopPropagation()}><LeadActions lead={l} actor={actor} onStage={(s) => patch(l.id, { stage: s })} onConvert={() => convertLead(l)} converting={convertingId === l.id} onGo={onGo} onEnded={load} compact /></span></Td>
+                  <Td align="right"><span onClick={(e) => e.stopPropagation()}><LeadActions lead={l} actor={actor} onStage={(s) => patch(l.id, { stage: s })} onConvert={(dup) => convertLead(l, dup)} converting={convertingId === l.id} onGo={onGo} onEnded={load} compact /></span></Td>
                 </tr>
               ))}
             </tbody>
@@ -217,7 +220,10 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
 
 /* ═══════════ 카드 — 한 줄에 필요한 것만 ═══════════ */
 
-type LeadActionProps = { lead: Lead; actor: string; onStage: (s: LeadStage) => void; onConvert: () => Promise<{ ok: boolean; text: string }>; converting: boolean; onGo?: (tab: string) => void; onEnded: () => void; compact?: boolean };
+/** 비슷한 매장이 있다고 물었을 때의 답 (1007) — 그 매장에 잇거나 새로 만든다 */
+type DupAnswer = { restaurant_id?: number; allow_new?: boolean };
+type ConvertResult = { ok: boolean; text: string; rid?: number; duplicates?: DupStore[] };
+type LeadActionProps = { lead: Lead; actor: string; onStage: (s: LeadStage) => void; onConvert: (dup?: DupAnswer) => Promise<ConvertResult>; converting: boolean; onGo?: (tab: string) => void; onEnded: () => void; compact?: boolean };
 
 /**
  * 단계별로 지금 할 수 있는 한두 가지만 (민열님 0928 "미팅 완료면 결과를 바로 체크, 구두 합의면 계약·매장 탭으로").
@@ -228,7 +234,7 @@ type LeadActionProps = { lead: Lead; actor: string; onStage: (s: LeadStage) => v
  * 그 밖의 단계는 상세를 열어야 한다 — 카드가 버튼 천지가 되면 아무것도 안 눌린다.
  */
 function LeadActions({ lead, actor, onStage, onConvert, converting, onGo, onEnded, compact }: LeadActionProps) {
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState<ConvertResult | null>(null);
   const rid = lead.converted_restaurant_id;
   const linked = Boolean(rid);
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -252,7 +258,8 @@ function LeadActions({ lead, actor, onStage, onConvert, converting, onGo, onEnde
   return (
     <div onClick={stop} className={`flex flex-wrap items-center gap-1 ${compact ? "justify-end" : "mt-2 pt-2 border-t border-black/[0.05]"}`}>
       {body}
-      {msg && <span className={`basis-full text-[11px] ${msg.ok ? "text-navy" : "text-red-600"}`} role="status">{msg.text}</span>}
+      {msg?.duplicates && <div className="basis-full"><DuplicateStoreChoice dups={msg.duplicates} busy={converting} onLink={async (id) => setMsg(await onConvert({ restaurant_id: id }))} onNew={async () => setMsg(await onConvert({ allow_new: true }))} /></div>}
+      {msg?.text && <span className={`basis-full text-[11px] ${msg.ok ? "text-navy" : "text-red-600"}`} role="status">{msg.text}</span>}
     </div>
   );
 }
@@ -325,20 +332,22 @@ function Cell({ label, value, onCommit, placeholder, type, rows, hint }: { label
   );
 }
 
-function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConvert, converting }: { lead: Lead | null; actor: string; campusOptions: string[]; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConvert: (lead: Lead) => Promise<{ ok: boolean; text: string }>; converting: boolean }) {
+function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConvert, converting }: { lead: Lead | null; actor: string; campusOptions: string[]; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConvert: (lead: Lead, dup?: DupAnswer) => Promise<ConvertResult>; converting: boolean }) {
   const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => setMsg(null), [lead?.id]);
+  const [dups, setDups] = useState<DupStore[] | null>(null);
+  useEffect(() => { setMsg(null); setDups(null); }, [lead?.id]);
   if (!lead) return null;
   const idx = LEAD_STAGES.indexOf(lead.stage as (typeof LEAD_STAGES)[number]);
   const side = isSide(lead.stage);
   const set = (k: keyof Lead) => (v: string | null) => onPatch(lead.id, { [k]: v } as Partial<Lead>);
   void actor;
 
-  async function convert() {
+  async function convert(dup: DupAnswer = {}) {
     if (converting) return;
-    setMsg(null);
-    const r = await onConvert(lead!);
-    setMsg(r.text);
+    setMsg(null); setDups(null);
+    const r = await onConvert(lead!, dup);
+    if (r.duplicates) setDups(r.duplicates);
+    else setMsg(r.text);
   }
 
   return (
@@ -348,11 +357,12 @@ function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConve
       footer={
         <>
           {!side && idx >= 0 && idx < LEAD_STAGES.length - 1 && <Button variant="primary" icon={<IconArrowRight />} onClick={() => onPatch(lead.id, { stage: LEAD_STAGES[idx + 1] })}>{LEAD_STAGES[idx + 1]}(으)로</Button>}
-          {(lead.stage === "구두 합의" || lead.stage === "계약 완료") && !lead.converted_restaurant_id && <Button icon={<IconBuildingStore />} onClick={convert} disabled={converting}>{converting ? "보내는 중…" : "계약·매장 탭으로 보내기"}</Button>}
+          {(lead.stage === "구두 합의" || lead.stage === "계약 완료") && !lead.converted_restaurant_id && <Button icon={<IconBuildingStore />} onClick={() => convert()} disabled={converting}>{converting ? "보내는 중…" : "계약·매장 탭으로 보내기"}</Button>}
           <Select value={lead.stage} onChange={(e) => onPatch(lead.id, { stage: e.target.value as LeadStage })} aria-label="단계 직접 지정" className="w-32 ml-auto">{ALL_LEAD_STAGES.map((s) => <option key={s}>{s}</option>)}</Select>
         </>
       }>
       {!side && <Stepper steps={[...LEAD_STAGES]} current={Math.max(0, idx)} />}
+      {dups && <DuplicateStoreChoice dups={dups} busy={converting} onLink={(id) => convert({ restaurant_id: id })} onNew={() => convert({ allow_new: true })} />}
       {msg && <p className="text-[13px] text-navy bg-navy/5 rounded-lg px-3 py-2" role="status">{msg}</p>}
 
       <PanelSection title="진행">

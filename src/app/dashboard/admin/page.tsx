@@ -23,6 +23,7 @@ import BillingBoard from "./astro/BillingBoard";
 import AstroDocs from "./astro/AstroDocs";
 import TaxInvoices from "./astro/TaxInvoices";
 import QuoteBoard from "./astro/QuoteBoard";
+import DuplicateStoreChoice, { dupsOf, type DupStore } from "./astro/DuplicateStoreChoice";
 import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
 import MileageOps from "./probe/MileageOps";
@@ -1830,9 +1831,10 @@ function NewRestaurantModal({
   const [couponContent, setCouponContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [dups, setDups] = useState<DupStore[] | null>(null);
   const [created, setCreated] = useState<Restaurant | null>(null);
 
-  async function submit() {
+  async function submit(allowDuplicate = false) {
     if (!name.trim()) {
       setErr("식당명을 입력해주세요.");
       return;
@@ -1844,6 +1846,7 @@ function NewRestaurantModal({
       .slice(0, 5);
     setSaving(true);
     setErr("");
+    setDups(null);
     try {
       const res = await fetch("/api/dashboard/admin/restaurants/create", {
         method: "POST",
@@ -1861,9 +1864,15 @@ function NewRestaurantModal({
           is_affiliate: isAffiliate,
           naver_alarm_coupon_enabled: couponEnabled,
           naver_alarm_coupon_content: couponContent.trim(),
+          allow_duplicate: allowDuplicate,
         }),
       });
       const data = await res.json().catch(() => ({}));
+      const dup = dupsOf(res.status, data);
+      if (dup) {
+        setDups(dup);
+        return;
+      }
       if (!res.ok) {
         setErr(data.detail ?? "식당 등록에 실패했습니다.");
         return;
@@ -1944,6 +1953,7 @@ function NewRestaurantModal({
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-1">✕</button>
           </div>
 
+          {dups && <div className="mb-3"><DuplicateStoreChoice dups={dups} busy={saving} onNew={() => submit(true)} /></div>}
           {err && (
             <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 mb-3">
               <p className="text-xs text-red-600">{err}</p>
@@ -2032,7 +2042,7 @@ function NewRestaurantModal({
             </div>
 
             <button
-              onClick={submit}
+              onClick={() => submit()}
               disabled={saving || !name.trim()}
               className="mt-1 w-full py-2.5 rounded-xl bg-navy text-white text-sm font-bold hover:bg-periwinkle transition-colors disabled:opacity-40"
             >

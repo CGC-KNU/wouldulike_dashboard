@@ -6,6 +6,7 @@ import { SPOT_SIDE_STAGES, SPOT_STAGES as SPOT_ORDER, type SpotJob } from "@/lib
 import { CAMPUSES } from "@/lib/draft/types";
 import { Button, Field, Input, Notice, Segmented, Select, SlideOver, periodLocal } from "../_shared/ui";
 import { defaultMonthlyFee, feeHint } from "@/lib/draft/pricing";
+import DuplicateStoreChoice, { dupsOf, type DupStore } from "./DuplicateStoreChoice";
 
 /**
  * 일정 빠른 등록 — 달력의 날짜 칸에서 '+' 를 누르면 열린다 (민열님 0914).
@@ -88,6 +89,7 @@ export default function QuickAdd({
   const [moveStage, setMoveStage] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dups, setDups] = useState<DupStore[] | null>(null);
 
   /** 후보 목록 — 이미 끝난 단계는 미팅·기한을 잡을 일이 없다. */
   const openLeads = useMemo(
@@ -148,10 +150,12 @@ export default function QuickAdd({
   /** 미팅 일시는 "2026-09-16 14:00" 처럼 적는다 — 달력이 읽는 형식이고, 시트 자유 서식과도 섞이지 않는다. */
   const meetingAt = time ? `${date} ${time}` : date;
 
-  async function save() {
+  /** dup: 비슷한 매장이 있다고 물었을 때의 답 — 그 매장에 잇거나({ restaurant_id }) 새로 만든다({ allow_new }) */
+  async function save(dup: { restaurant_id?: number; allow_new?: boolean } = {}) {
     if (!canSave || saving) return;
     setSaving(true);
     setError(null);
+    setDups(null);
     try {
       const json = { "Content-Type": "application/json" };
 
@@ -207,9 +211,11 @@ export default function QuickAdd({
         // 후보를 골랐다면 파트너 매장으로 전환한다 (파트너 매장 탭의 '매장 추가'와 같은 경로)
         const res = await fetch("/api/astro/convert", {
           method: "POST", headers: json,
-          body: JSON.stringify({ lead_id: resolved!.slice(5), tier, updated_by: actor }),
+          body: JSON.stringify({ lead_id: resolved!.slice(5), tier, updated_by: actor, ...dup }),
         });
         const d = await res.json().catch(() => ({}));
+        const found = dupsOf(res.status, d);
+        if (found) { setDups(found); return; }
         if (!res.ok) { setError(d.detail ?? "파트너 매장으로 전환하지 못했습니다."); return; }
         rid = d.restaurant_id ?? null;
       }
@@ -246,7 +252,7 @@ export default function QuickAdd({
       subtitle="여기서 적은 값은 파트너 후보·파트너 매장의 같은 칸으로 들어갑니다."
       footer={
         <>
-          <Button variant="primary" onClick={save} disabled={!canSave || saving}>
+          <Button variant="primary" onClick={() => save()} disabled={!canSave || saving}>
             {saving ? "저장 중…" : `${kind === "spot" ? SPOT_LABEL[spotKind] : KIND_LABEL[kind]} 등록`}
           </Button>
           <Button variant="ghost" onClick={onClose}>취소</Button>
@@ -254,6 +260,7 @@ export default function QuickAdd({
         </>
       }
     >
+      {dups && <DuplicateStoreChoice dups={dups} busy={saving} onLink={(rid) => save({ restaurant_id: rid })} onNew={() => save({ allow_new: true })} />}
       <Group label="무엇을 잡나">
         <Segmented
           label="일정 종류"
