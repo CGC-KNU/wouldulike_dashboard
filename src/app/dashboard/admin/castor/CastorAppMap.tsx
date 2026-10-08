@@ -64,7 +64,7 @@ export default function CastorAppMap({ onGo }: { onGo?: (tab: string) => void })
         <>
           <p className="text-[12.5px] text-gray-500 mb-3">
             {g.source.repo} · 커밋 <b className="text-gray-700">{g.source.commit}</b> · {fmtWhen(g.generated_at)} · 화면 {g.screens.length} · 이동 {g.edges.length} · <span className={g.unresolved.length ? "text-amber-700 font-semibold" : ""}>못 잡은 이동 {g.unresolved.length}</span>
-            {g.named_routes.length === 0 && <> · <span className="text-red-600 font-semibold">이름 붙은 라우트 0개 — GA4 가 화면 이동을 못 셉니다</span></>}
+            {" · "}<span className={g.named_routes.length < g.screens.length / 2 ? "text-red-600 font-semibold" : ""} title={g.named_routes.join(" · ")}>이름 붙은 라우트 {g.named_routes.length}/{g.screens.length}{g.named_routes.length < g.screens.length / 2 && " — 나머지 화면은 GA4 가 이동을 못 셉니다"}</span>
           </p>
           <div className="overflow-x-auto -mx-1 px-1 pb-2">
             <div className="grid grid-flow-col auto-cols-[minmax(13.5rem,1fr)] gap-3 min-w-max lg:min-w-0">
