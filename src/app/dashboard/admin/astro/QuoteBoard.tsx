@@ -6,7 +6,7 @@ import type { StoreRow } from "@/lib/draft/types";
 import {
   ISSUER_FALLBACK, PLAN_DESC, PLAN_NAME, addDays, bizNo, defaultQuoteFee, dotDate, kdate, minTermTo, nextMonthFirst, planFromTier, quoteNo, todaySeoul, won,
   type IssuerInfo, type QuotePlan, type QuoteValues,
-  quoteTotal, quoteVat,
+  quotePay, quoteTotal, quoteVat,
 } from "@/lib/quote/quote";
 import { Button, Card, Field, Input, Notice, PageHeader, Select, Textarea } from "../_shared/ui";
 
@@ -77,7 +77,7 @@ export default function QuoteBoard({ actor }: { actor: string }) {
       no: quoteNo(issued, s.restaurant_id), issued_on: issued, valid_to: addDays(issued, 14),
       store_name: o?.map_name || s.name, owner_name: o?.owner_name ?? "", biz_no: o?.biz_no ?? "", campus: o?.campus ?? "",
       plan, plan_desc: PLAN_DESC[plan],
-      fee: pickFee(plan, o?.campus, o?.monthly_fee), vat: true,
+      fee: pickFee(plan, o?.campus, o?.monthly_fee), vat: true, months: 1,
       starts_on: started,
       coupon_basic: o?.coupon_basic ?? "", coupon_limited: o?.coupon_limited ?? "",
       stamp: [o?.stamp_count ? `${o.stamp_count}개` : "", o?.stamp_reward ?? ""].filter(Boolean).join(" · "),
@@ -138,7 +138,8 @@ export default function QuoteBoard({ actor }: { actor: string }) {
     const tierPlan = store ? planFromTier(store.tier) : null;
     if (tierPlan && tierPlan !== v.plan) warn.plan = `매장 플랜은 ${PLAN_NAME[tierPlan]}인데 ${PLAN_NAME[v.plan]}로 발급합니다`; else ok.plan = PLAN_NAME[v.plan];
     // 금액은 발급하는 사람이 정한다(구독료가 바뀔 수 있어 기본 단가와 달라도 경고하지 않음, 1008). 부가세가 두 번 붙는 경우만 경고.
-    const sum = v.vat ? `${won(v.fee)} + 부가세 ${won(quoteVat(v))} = ${won(quoteTotal(v))}` : `${won(v.fee)} · 부가세 없음`;
+    const per = v.vat ? `${won(v.fee)} + 부가세 ${won(quoteVat(v))} = ${won(quoteTotal(v))}` : `${won(v.fee)} · 부가세 없음`;
+    const sum = v.months > 1 ? `${per} × ${v.months}개월 = ${won(quotePay(v))}` : per;
     if (v.plan === "FREE") ok.fee = "0원";
     else if (o?.monthly_fee != null && v.vat && o.monthly_fee === Math.round(v.fee * 1.1) && v.fee !== o.monthly_fee) warn.fee = `매장 운영값 ${won(o.monthly_fee)}은 부가세 포함 금액이라 ${won(v.fee)}을 넣었습니다 — 파트너 매장에서 운영값도 고쳐 주세요 · ${sum}`;
     else ok.fee = v.fee !== def ? `${sum} (기본 단가 ${won(def)}와 다름)` : sum;
@@ -199,11 +200,8 @@ export default function QuoteBoard({ actor }: { actor: string }) {
                   {campuses.map((c) => <option key={c} value={c}>{c}</option>)}
                 </Select>
               </Field>
-              <Field label="매장" required>
-                <Select value={rid ?? ""} onChange={(e) => pick(e.target.value ? Number(e.target.value) : null)} disabled={stores === null}>
-                  <option value="">{stores === null ? "불러오는 중…" : "매장을 고르세요"}</option>
-                  {list.map((s) => <option key={s.restaurant_id} value={s.restaurant_id}>{s.name} · {PLAN_NAME[planFromTier(s.tier)]}{s.ops?.campus ? ` · ${s.ops.campus}` : ""}</option>)}
-                </Select>
+              <Field label="매장" required hint={store ? undefined : `${list.length}곳 · 이름 일부만 쳐도 찾습니다`}>
+                <StorePicker list={list} value={store} loading={stores === null} onPick={pick} />
               </Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="대표자"><Input value={v.owner_name} onChange={(e) => set("owner_name", e.target.value)} /></Field>
@@ -224,13 +222,21 @@ export default function QuoteBoard({ actor }: { actor: string }) {
                     {(["FREE", "BOOST", "PREMIUM"] as QuotePlan[]).map((p) => <option key={p} value={p}>{PLAN_NAME[p]}</option>)}
                   </Select>
                 </Field>
-                <Field label="월 이용료" hint={v.plan === "FREE" ? undefined : v.vat ? `견적서 합계 ${won(quoteTotal(v))} (부가세 포함)` : `견적서 합계 ${won(v.fee)} (부가세 없음)`}><Input type="number" inputMode="numeric" step={1000} min={0} value={v.fee} onChange={(e) => set("fee", Math.max(0, Number(e.target.value) || 0))} disabled={v.plan === "FREE"} /></Field>
+                <Field label="월 이용료" hint={v.plan === "FREE" ? undefined : `월 ${won(quoteTotal(v))}${v.vat ? " (부가세 포함)" : " (부가세 없음)"}${v.months > 1 ? ` · ${v.months}개월 ${won(quotePay(v))}` : ""}`}><Input type="number" inputMode="numeric" step={1000} min={0} value={v.fee} onChange={(e) => set("fee", Math.max(0, Number(e.target.value) || 0))} disabled={v.plan === "FREE"} /></Field>
               </div>
               {v.plan !== "FREE" && (
                 <label className="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer select-none">
                   <input type="checkbox" checked={v.vat} onChange={(e) => set("vat", e.target.checked)} className="h-4 w-4 accent-navy" />
                   부가세 10% 더하기 <span className="text-gray-400">— 끄면 넣은 금액이 그대로 합계입니다</span>
                 </label>
+              )}
+              {v.plan !== "FREE" && (
+                <Field label="결제 개월 수" hint={v.months > 1 ? `${kdate(v.starts_on)} ~ ${kdate(minTermTo(v.starts_on, v.months))} · ${v.months}개월분을 한 번에` : "1 = 매월 결제 · 2 이상 = 그만큼 미리 결제"}>
+                  <div className="flex items-center gap-1.5">
+                    {[1, 3, 6, 12].map((n) => <button key={n} type="button" onClick={() => set("months", n)} className={`rounded-lg border px-2.5 py-1 text-[12.5px] ${v.months === n ? "border-navy bg-navy text-white" : "border-black/10 text-gray-700 hover:border-navy/40"}`}>{n}개월</button>)}
+                    <Input type="number" inputMode="numeric" min={1} max={24} value={v.months} onChange={(e) => set("months", Math.min(24, Math.max(1, Math.floor(Number(e.target.value) || 1))))} className="w-20" aria-label="개월 수 직접 입력" />
+                  </div>
+                </Field>
               )}
               <Field label="개시일" hint="약관상 동의한 달의 다음 달 1일"><Input type="date" value={v.starts_on} onChange={(e) => set("starts_on", e.target.value)} /></Field>
               <Field label="플랜 내용"><Textarea rows={3} value={v.plan_desc} onChange={(e) => set("plan_desc", e.target.value)} /></Field>
@@ -301,7 +307,7 @@ function blank(): QuoteValues {
   const issued = todaySeoul();
   return {
     no: quoteNo(issued, null), issued_on: issued, valid_to: addDays(issued, 14), store_name: "", owner_name: "", biz_no: "", campus: "",
-    plan: "BOOST", plan_desc: PLAN_DESC.BOOST, fee: 30000, vat: true, starts_on: nextMonthFirst(issued),
+    plan: "BOOST", plan_desc: PLAN_DESC.BOOST, fee: 30000, vat: true, months: 1, starts_on: nextMonthFirst(issued),
     coupon_basic: "", coupon_limited: "", stamp: "", exclusions: "", note: "",
   };
 }
@@ -347,6 +353,9 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
   const paid = v.plan !== "FREE";
   const vat = quoteVat(v);
   const total = quoteTotal(v);
+  const months = paid ? Math.max(1, v.months || 1) : 1;
+  const pay = total * months;
+  const prepaidTo = minTermTo(v.starts_on, months);
   const endMin = minTermTo(v.starts_on);
   const empty = <span style={{ color: "#A3A6BF" }}>온보딩 화면에서 사장님이 등록하신 내용으로 확정</span>;
   const benefits: [string, ReactNode][] = [
@@ -404,10 +413,13 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
               <tbody>
                 <tr><th style={th}>월 이용료</th><td style={td}><V k="fee" on={mark}><b>{won(v.fee)}</b> / 월{v.vat ? " (공급가액)" : ""}</V></td></tr>
                 {v.vat && <tr><th style={th}>부가가치세</th><td style={td}>{won(vat)} (10%)</td></tr>}
-                <tr><th style={th}>월 합계</th><td style={{ ...td, fontSize: 15, fontWeight: 800, color: NAVY }}>{won(total)} <span style={{ fontSize: 11, fontWeight: 500, color: SOFT }}>/ 월{v.vat ? " · 부가세 포함" : ""}</span></td></tr>
+                <tr><th style={th}>월 합계</th><td style={{ ...td, ...(months > 1 ? {} : { fontSize: 15, fontWeight: 800, color: NAVY }) }}>{won(total)} <span style={{ fontSize: 11, fontWeight: 500, color: SOFT }}>/ 월{v.vat ? " · 부가세 포함" : ""}</span></td></tr>
+                {months > 1 && <tr><th style={th}>선결제</th><td style={{ ...td, fontSize: 15, fontWeight: 800, color: NAVY }}><V k="fee" on={mark}>{won(pay)}</V> <span style={{ fontSize: 11, fontWeight: 500, color: SOFT }}>{months}개월분 · {dotDate(v.starts_on)} ~ {dotDate(prepaidTo)}</span></td></tr>}
                 {paid ? (
                   <>
-                    <tr><th style={th}>납부 시기</th><td style={td}>첫 달은 <b>개시일부터 7일 이내</b>, 이후 매월 <b>전월 말일까지</b>. 일할 계산 없음(개시일이 매월 1일)</td></tr>
+                    <tr><th style={th}>납부 시기</th><td style={td}>{months > 1
+                      ? <><b>개시일부터 7일 이내 {months}개월분 일괄</b>. 기간이 끝난 뒤 계속하시면 그 다음 달부터 매월 <b>전월 말일까지</b>. 일할 계산 없음(개시일이 매월 1일)</>
+                      : <>첫 달은 <b>개시일부터 7일 이내</b>, 이후 매월 <b>전월 말일까지</b>. 일할 계산 없음(개시일이 매월 1일)</>}</td></tr>
                     <tr><th style={th}>그만둘 때</th><td style={{ ...td, borderBottom: 0 }}>매월 말일까지 문자·카톡·메일로 알려 주시면 <b>다음 달 1일자로 종료</b>. 위약금·해지 수수료 없음, 쓰지 않은 달은 <b>14일 안에 전액 환급</b></td></tr>
                   </>
                 ) : (
@@ -435,9 +447,9 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
       <div style={{ flex: 1 }} />
       {/* 합계 띠 */}
       <div style={{ background: NAVY, color: "#fff", borderRadius: 10, padding: "14px 22px", display: "flex", alignItems: "baseline", gap: 14 }}>
-        <span style={{ fontSize: 13, opacity: 0.8 }}>{paid ? `${PLAN_NAME[v.plan]} 월 이용료` : "무료 플랜"}</span>
-        <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.01em" }}>{won(total)}</span>
-        <span style={{ fontSize: 12, opacity: 0.8 }}>/ 월{paid && v.vat ? ` · 부가세 포함 (공급가 ${won(v.fee)} + 부가세 ${won(vat)})` : ""}</span>
+        <span style={{ fontSize: 13, opacity: 0.8 }}>{!paid ? "무료 플랜" : months > 1 ? `${PLAN_NAME[v.plan]} ${months}개월 선결제` : `${PLAN_NAME[v.plan]} 월 이용료`}</span>
+        <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.01em" }}>{won(pay)}</span>
+        <span style={{ fontSize: 12, opacity: 0.8 }}>{months > 1 ? `월 ${won(total)} × ${months}개월${v.vat ? " · 부가세 포함" : ""}` : `/ 월${paid && v.vat ? ` · 부가세 포함 (공급가 ${won(v.fee)} + 부가세 ${won(vat)})` : ""}`}</span>
       </div>
 
       {/* 하단 */}
@@ -480,6 +492,49 @@ function Party({ label, rows, accent }: { label: string; rows: [string, ReactNod
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** 매장 고르기 — 이름 일부로 검색, 위아래 키 · Enter 로 고른다 (1008 민열님 "드롭다운 말고 검색도"). */
+function StorePicker({ list, value, loading, onPick }: { list: StoreRow[]; value: StoreRow | null; loading: boolean; onPick: (id: number | null) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const norm = (x: string) => x.replace(/\s+/g, "").toLowerCase();
+  const hits = useMemo(() => {
+    const k = norm(q);
+    return (k ? list.filter((s) => norm(`${s.name}${s.ops?.map_name ?? ""}`).includes(k) || String(s.restaurant_id) === k) : list).slice(0, 30);
+  }, [list, q]);
+  const label = (s: StoreRow) => `${s.name} · ${PLAN_NAME[planFromTier(s.tier)]}${s.ops?.campus ? ` · ${s.ops.campus}` : ""}`;
+  const choose = (s: StoreRow) => { onPick(s.restaurant_id); setQ(""); setOpen(false); };
+  return (
+    <div className="relative">
+      <Input
+        value={open ? q : value ? label(value) : q}
+        placeholder={loading ? "불러오는 중…" : "매장 이름으로 검색"}
+        disabled={loading}
+        role="combobox" aria-expanded={open} aria-controls="quote-store-list" aria-autocomplete="list"
+        onFocus={() => { setOpen(true); setHi(0); }}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); setHi(0); }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(hits.length - 1, h + 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(0, h - 1)); }
+          else if (e.key === "Enter" && hits[hi]) { e.preventDefault(); choose(hits[hi]); }
+          else if (e.key === "Escape") setOpen(false);
+        }}
+      />
+      {open && !loading && (
+        <ul id="quote-store-list" role="listbox" className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:bg-[#12123A]">
+          {hits.length === 0 && <li className="px-3 py-2 text-[12.5px] text-gray-500">맞는 매장이 없습니다</li>}
+          {hits.map((s, i) => (
+            <li key={s.restaurant_id} role="option" aria-selected={i === hi}
+              onMouseDown={(e) => { e.preventDefault(); choose(s); }} onMouseEnter={() => setHi(i)}
+              className={`cursor-pointer px-3 py-1.5 text-[13px] ${i === hi ? "bg-navy/[0.07] text-navy" : "text-gray-800 dark:text-gray-200"}`}>{label(s)}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
