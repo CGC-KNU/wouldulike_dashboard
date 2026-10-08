@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { draftMessage, postedKst, reporterMentions } from "../src/lib/draft/reportAutoMessage";
+import { draftMessage, postedKst, reporterMentions, slackIdOf } from "../src/lib/draft/reportAutoMessage";
 import type { StoreReport } from "../src/lib/draft/types";
 
 /**
@@ -34,7 +34,16 @@ test("14일차 메시지 하나에 초안 안내 · 콘텐츠 · 올라간 때 �
 test("부를 사람 — 슬랙 멤버 ID 면 진짜 멘션, 이름이면 글자로(백엔드와 같은 규칙) · 비우면 호출 없이", () => {
   assert.equal(reporterMentions("U01ABCDEF, 나 ,W0XYZ12345"), "<@U01ABCDEF> 나 <@W0XYZ12345>");
   assert.equal(reporterMentions(""), "");
+  assert.equal(reporterMentions("U01ABCDEF,<!channel>,a|b"), "<@U01ABCDEF>", "슬랙 서식 글자가 든 항목은 버린다");
   assert.match(draftMessage(report, "https://x", ""), /^\*초안에 인스타 지표 입력을 진행해 주세요\.\*$/m);
+});
+
+test("기본 「준영,서지,민찬」은 팀 명단의 슬랙 ID 로 진짜 멘션이 된다 (1008 — @로 태그)", () => {
+  assert.equal(reporterMentions("준영,서지,민찬"), "<@U0BP7TXJXP1> <@U0BTK413Q3F> <@U0BPR7SUHJ5>");
+  assert.equal(reporterMentions(), "<@U0BP7TXJXP1> <@U0BTK413Q3F> <@U0BPR7SUHJ5>", "환경변수가 없으면 기본값");
+  assert.equal(slackIdOf("주준영"), "U0BP7TXJXP1", "성까지 써도");
+  assert.equal(slackIdOf("명단에없음"), null);
+  assert.equal(reporterMentions("명단에없음"), "명단에없음", "못 찾으면 이름 글자로");
 });
 
 test("올라간 때는 KST — 날짜만 오면 날짜만", () => {

@@ -1,3 +1,4 @@
+import { FOUNDERS, GROUPS } from "../atlas";
 import { reportPermalink } from "./reportPage";
 import type { StoreReport } from "./types";
 
@@ -8,10 +9,26 @@ import type { StoreReport } from "./types";
  * 이 자동 초안 알림(#259). 백엔드는 이제 올라간 날 알림만 보내고, 그쪽에 있던 콘텐츠 · 올라간 때 · 제작 담당 · 담당자 호출을 여기로 옮겼다.
  */
 
-/** 부를 사람 — 백엔드 partner_content.reporter_mentions 와 같은 규칙: 슬랙 멤버 ID(U…/W…)면 진짜 멘션, 이름이면 글자로. */
+/**
+ * 이름 → 슬랙 멤버 ID — 팀 명단(atlas.ts, users.list 실측)에서 찾는다. 「민찬」처럼 성을 빼고 써도 한 사람에게만 맞으면 그 사람.
+ * 못 찾거나 여럿이 맞으면 null — 그때는 이름 글자로 나간다(엉뚱한 사람을 부르지 않는다).
+ */
+export function slackIdOf(name: string): string | null {
+  const people = [...FOUNDERS, ...GROUPS.flatMap((g) => g.people)].filter((p) => p.slack);
+  const exact = people.find((p) => p.name === name);
+  if (exact) return exact.slack!;
+  const given = [...new Map(people.filter((p) => p.name.slice(1) === name).map((p) => [p.name, p])).values()];
+  return given.length === 1 ? given[0].slack! : null;
+}
+
+/**
+ * 부를 사람 — 슬랙 멤버 ID(U…/W…)는 그대로, 이름은 팀 명단에서 ID 를 찾아 **진짜 멘션**으로(1008 — 「@로 태그 가능해?」).
+ * 기본은 백엔드 partner_content 와 같은 「준영,서지,민찬」. 바꾸려면 GitHub 저장소 변수 SLACK_PARTNER_REPORTERS(워크플로 헤더로 온다).
+ * 슬랙 서식 글자(< > & | !)가 든 항목은 버린다 — 「<!channel>」 같은 걸로 채널 전체를 부르지 않게.
+ */
 export function reporterMentions(raw: string = process.env.SLACK_PARTNER_REPORTERS ?? "준영,서지,민찬"): string {
-  return raw.split(",").map((x) => x.trim()).filter(Boolean)
-    .map((r) => (/^[UWB][A-Z0-9]{6,}$/.test(r) ? `<@${r}>` : r)).join(" ");
+  return raw.split(",").map((x) => x.trim()).filter((x) => x && x.length <= 40 && !/[<>&|!]/.test(x))
+    .map((r) => { const id = /^[UWB][A-Z0-9]{6,}$/.test(r) ? r : slackIdOf(r); return id ? `<@${id}>` : r; }).join(" ");
 }
 
 /** 올라간 때 — KST 「M/D HH:mm」(백엔드 알림과 같은 꼴). 시각이 없는 날짜만 오면 「M/D」. */
