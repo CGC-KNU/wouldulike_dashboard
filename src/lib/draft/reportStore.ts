@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { serviceToken } from "./serviceAuth";
 import { appendDraftItem, patchDraftItem, readDraft, writeDraft } from "./store";
 import type { StoreReport } from "./types";
 
@@ -36,7 +37,7 @@ function normalize(r: Partial<StoreReport> & { id: string }): StoreReport {
 
 async function call<T>(path: string, init: RequestInit & { auth?: boolean } = {}): Promise<T | null> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (init.auth !== false) headers.Authorization = `Bearer ${(await cookies()).get("access_token")?.value ?? ""}`;
+  if (init.auth !== false) headers.Authorization = `Bearer ${serviceToken() ?? (await cookies()).get("access_token")?.value ?? ""}`;
   let res: Response;
   try {
     res = await fetch(`${BASE()}/api/probe${path}`, { ...init, headers, cache: "no-store" });

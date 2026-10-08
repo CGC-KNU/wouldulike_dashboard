@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 const PUBLIC_PATHS = ["/login", "/auth/", "/api/auth/"];
 // 크론 전용 — 판정은 라우트가 백엔드에 묻는다(cronAuth.ts). 앱 지표 보고서(0927) · 매장 리포트 미리보기(0928)
 const CRON_PATHS = new Set(["/api/probe/app-report/cron", "/api/probe/reports/cron-preview"]);
+// 14일차 자동 초안(1007)은 POST — 리포트를 만든다. 같은 방식으로 라우트가 백엔드에 토큰을 물어 판정한다.
+const CRON_POST_PATHS = new Set(["/api/probe/reports/auto"]);
 // 점주가 로그인 없이 여는 리포트 링크 — 접두어가 아니라 **정확한 모양**만 연다 (40자 hex, 또는 담당자 미리보기는 쿠키가 있어야 하므로 여기 없음).
 const PUBLIC_EXACT = [/^\/r\/[0-9a-f]{40}$/, /^\/api\/r\/[0-9a-f]{40}\/view$/, /^\/api\/version$/, /^\/manifest\.webmanifest$/]; // manifest: 브라우저가 쿠키 없이 받는다(앱 설치) // version: 데스크톱 앱의 새 배포 확인(1008)
 // 점주 온보딩 — 서명 토큰(base64url.base64url)만 연다. 세션은 라우트 안에서 만든다 (lib/onboard/token.ts).
@@ -76,7 +78,7 @@ export function middleware(req: NextRequest) {
   }
 
   // PROBE 보고서 크론(GitHub Actions)도 쿠키가 없다. 이 경로들만 라우트 안에서 X-CRON-TOKEN 으로 판정한다.
-  if (!token && CRON_PATHS.has(pathname) && req.method === "GET" && req.headers.has("x-cron-token")) {
+  if (!token && req.headers.has("x-cron-token") && ((CRON_PATHS.has(pathname) && req.method === "GET") || (CRON_POST_PATHS.has(pathname) && req.method === "POST"))) {
     return NextResponse.next();
   }
 

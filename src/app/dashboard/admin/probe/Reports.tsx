@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, day7Line, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph, stripChannelCompare } from "@/lib/draft/report";
-import { ageShare, parseManual, slideShare } from "@/lib/draft/reportManual";
+import { ageShare, manualMissing, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import InsightsSummary from "./InsightsSummary";
@@ -117,12 +117,12 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
 
   return (
     <>
-      <PageHeader title="매장 리포트" description="Papillon 이 올린 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 시기와 상관없이 리포트를 만들 수 있고(D+7 · D+14 권장), 승인하면 PNG·HTML 파일로 받아 카톡으로 보냅니다."
+      <PageHeader title="매장 리포트" description="Papillon 이 올린 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 게시 14일차(09:00)에 초안이 자동으로 만들어져 #ops-partner 에 알림이 갑니다. 지표를 입력하고 승인하면 PNG 3장 + HTML 이 #ops-partner 에 올라갑니다. 시기와 상관없이 직접 만들 수도 있습니다."
         actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button>#{TOOLS.probe.slack.channel}</Button></a><Button variant="primary" icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>} />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+7 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
-        <Kpi label="1차 전송" value={list ? counts.draft + counts.approved : "-"} tone="alert" hint="문구 확인 · 제안 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
+        <Kpi label="입력 · 승인 대기" value={list ? counts.draft + counts.approved : "-"} tone="alert" hint="지표 입력 후 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
         <Kpi label="최종 승인 대기" value={list ? counts.approved + counts.linked : "-"} tone="alert" hint="파일 받아 카톡 → '최종 승인'" />
         <Kpi label="슬랙으로 보낸 리포트" value={list ? counts.sent : "-"} tone="good" hint="최종 승인한 것" onClick={() => setFilter("sent")} active={filter === "sent"} />
       </div>
@@ -304,14 +304,25 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       setMsg({ tone: "blue", text: "저장했습니다. 승인은 다시 받아야 합니다." }); onChanged();
     } finally { setBusy(false); }
   }
-  async function act(action: "refresh" | "approve" | "link" | "sent" | "revoke") {
+  async function act(action: "refresh" | "approve" | "finalize" | "link" | "sent" | "revoke") {
     setBusy(true); setMsg(null);
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
-      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '최종 승인'을 눌러 주세요." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "최종 승인했습니다." : "링크를 회수했습니다." }); onChanged();
+      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '최종 승인'을 눌러 주세요." : action === "finalize" ? "승인했습니다. 잠시 뒤 #ops-partner 에 PNG 3장과 HTML 이 올라갑니다." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "최종 승인했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
+  /**
+   * 승인 한 번 = 최종 승인(1007). 인스타 앱에서 손으로 옮기는 값이 비어 있으면 먼저 경고를 보이고, 그래도 누르면 받는다.
+   * 승인하면 #ops-partner 에 PNG 3장 + HTML 이 바로 올라가므로 되돌릴 수 없다는 점도 같이 알린다.
+   */
+  function approve() {
+    const left = manualMissing(r.snapshot.manual, { carousel, curation });
+    const warn = left.length ? `아직 인스타 지표를 다 입력하지 않았습니다.\n\n비어 있는 항목\n${left.map((x) => `· ${x}`).join("\n")}\n\n` : "";
+    if (!window.confirm(`${warn}승인하면 #ops-partner 에 PNG 3장과 HTML 이 바로 올라갑니다.${left.length ? "\n이대로 승인할까요?" : "\n승인할까요?"}`)) return;
+    void act("finalize");
+  }
+
   /** 초안 지우기 — 게시물 목록에서 다시 만들 수 있게 돌려놓는다. 보낸 리포트는 이 버튼이 없다. */
   async function remove() {
     // 되돌릴 수 없으니 확인 창을 띄운다 (0920 민찬: 버튼 두 번 누르기 대신 창으로)
@@ -339,7 +350,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           {editable && dirty && <Button variant="primary" onClick={save} disabled={busy || (manualDirty && manualCheck.errors.length > 0)}>{manualDirty ? "저장" : "문구 저장"}</Button>}
           {/* 스냅샷은 만든 순간으로 굳는다. 초안일 때만 지금 수치로 다시 읽는다 — 보낸 리포트는 갱신본을 만든다. */}
           {r.status === "DRAFT" && !dirty && <Button icon={<IconRefresh />} onClick={() => act("refresh")} disabled={busy}>수치 다시 읽기</Button>}
-          {r.status === "DRAFT" && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("approve")} disabled={busy || !precheck.ok}>승인</Button>}
+          {r.status === "DRAFT" && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={approve} disabled={busy || !precheck.ok}>승인</Button>}
           {(r.status === "LINKED" || r.status === "SENT") && url && <Button variant={r.status === "SENT" ? "primary" : "secondary"} icon={<IconCopy />} onClick={() => copy(url)}>{copied ? "복사했습니다" : "링크 복사"}</Button>}
           {/* 0920: 사장님께는 링크 대신 파일(PNG·HTML)을 카톡으로 보낸다 — 승인 뒤 받기 → 보냈음 */}
           {(r.status === "APPROVED" || r.status === "LINKED" || r.status === "SENT") && !dirty && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer" title="미리보기 위 띠에서 PNG · HTML · 인쇄"><Button variant={r.status === "SENT" ? "secondary" : "primary"} icon={<IconDownload />}>PNG·HTML 받기</Button></a>}

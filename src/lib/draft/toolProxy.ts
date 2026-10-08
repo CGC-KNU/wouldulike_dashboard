@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { serviceToken } from "./serviceAuth";
 
 /**
  * "백엔드 먼저, 없으면 초안" 프록시.
@@ -25,6 +26,8 @@ export async function accessToken(): Promise<string> {
 }
 
 async function token(): Promise<string> {
+  const svc = serviceToken();
+  if (svc) return svc; // 사람 없이 도는 자동 초안(serviceAuth.ts) — 쿠키 대신 짧은 서비스 토큰
   const store = await cookies();
   return store.get("access_token")?.value ?? "";
 }

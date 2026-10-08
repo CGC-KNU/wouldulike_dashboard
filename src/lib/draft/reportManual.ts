@@ -100,3 +100,15 @@ export function ageShare(manual: ReportManual | null | undefined): { p18_24: num
   if (!a) return null;
   return { p18_24: a.p18_24, p25_34: a.p25_34, sum: one(a.p18_24 + a.p25_34) };
 }
+
+/**
+ * 아직 안 적은 손 입력 — 승인 전에 경고를 띄우는 데 쓴다(1007). 막지는 않는다: 경고를 보고도 승인하면 그대로 나간다.
+ * carousel: 캐러셀이면 장별 좋아요, curation: 큐레이션이면 함께 소개한 가게 수. 연령은 늘 본다.
+ */
+export function manualMissing(manual: ReportManual | null | undefined, ctx: { carousel: boolean; curation: boolean }): string[] {
+  const out: string[] = [];
+  if (ctx.carousel && !manual?.slide_likes) out.push("썸네일 장 · 가게 장 좋아요 수");
+  if (!manual?.age) out.push("18~24세 · 25~34세 비중");
+  if (ctx.curation && !manual?.store_count) out.push("함께 소개한 가게 수");
+  return out;
+}
