@@ -1,0 +1,61 @@
+# Probe 매장 리포트 — 게시 14일차 초안을 자동으로 만들어 #ops-partner 에 알린다 (민찬 1007).
+#
+#   매일 09:00 KST — 대시보드 /api/probe/reports/auto 가 14일차 숫자가 찍힌 게시물 중 리포트가 한 번도 없던 것을
+#   초안으로 만들고, 이 워크플로가 「초안에 인스타 지표 입력을 진행해 주세요」 메시지(세틀라이트 리포트 링크 + 인스타 링크)를 올린다.
+#   사람이 지표를 입력하고 「승인」을 누르면 probe-report-share.yml 이 PNG 3장 + HTML 을 올린다.
+#
+#   같은 게시물은 한 번만 만든다(리포트가 있으면 건너뜀) — 정기 실행이 몇 번 겹치거나 밀려도 중복이 안 생긴다.
+#   GitHub 무료 정기 실행은 몇 시간씩 밀리므로(0928~1001 실측) 09:00 이후 30분마다 다섯 번 건다. 늦게 돌아도 그날 안에 올라간다.
+#
+# **이 저장소는 공개다.** Actions 로그에는 리포트 id 와 개수만 남긴다 — 매장 이름·제목·본문은 찍지 않는다.
+#
+# 필요한 것 (Settings → Secrets and variables → Actions):
+#   BACKEND_BASE_URL · CRON_SECRET_TOKEN · SLACK_PROBE_BOT_TOKEN (Probe 봇이 #ops-partner 에 초대돼 있어야 한다)
+name: Probe 매장 리포트 14일차 초안
+
+on:
+  schedule:
+    - cron: "0,30 0-1 * * *"   # 09:00 · 09:30 · 10:00 · 10:30 KST
+    - cron: "0 2 * * *"        # 11:00 KST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "만들지도 올리지도 않고 대상 개수만 본다"
+        type: boolean
+        default: true
+
+concurrency:
+  group: probe-report-auto
+  cancel-in-progress: false
+
+jobs:
+  auto:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DASH: https://app.wouldulike.kr
+      CRON_TOKEN: ${{ secrets.CRON_SECRET_TOKEN }}
+      SLACK_TOKEN: ${{ secrets.SLACK_PROBE_BOT_TOKEN }}
+      CHANNEL: C0BPSQ7F8LC   # #ops-partner
+      DRY: ${{ github.event_name == 'schedule' && '0' || (inputs.dry_run && '1' || '0') }}
+    steps:
+      - name: 초안 만들기
+        run: |
+          set -uo pipefail
+          [ -n "$CRON_TOKEN" ] || { echo "::error::CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
+          CODE=$(curl -sS --max-time 280 -X POST -o r.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" "$DASH/api/probe/reports/auto?dry=$DRY") || CODE=000
+          case "$CODE" in 200|207) ;; *) echo "::error::auto HTTP $CODE: $(jq -r '.detail // empty' r.json 2>/dev/null | head -c 200)"; exit 1;; esac
+          echo "대상 $(jq '.due' r.json)건 중 이미 리포트 $(jq '.had_report' r.json) · 14일차 대기 $(jq '.waiting_d14 | length' r.json) · 새로 만듦 $(jq '.created | length' r.json) · 실패 $(jq '.failed | length' r.json)"
+          echo "만든 것: $(jq -r '[.created[].id] | join(", ")' r.json)"
+          [ "$DRY" = "1" ] && exit 0
+          FAIL=0
+          for i in $(seq 0 $(( $(jq '.created | length' r.json) - 1 ))); do
+            [ "$(jq '.created | length' r.json)" = "0" ] && break
+            ID=$(jq -r ".created[$i].id" r.json)
+            jq -c --arg ch "$CHANNEL" ".created[$i] | {channel:\$ch, text:.text, unfurl_links:false}" r.json > m.json
+            RES=$(curl -sS --max-time 30 -X POST -H "Authorization: Bearer $SLACK_TOKEN" -H "Content-Type: application/json; charset=utf-8" --data @m.json https://slack.com/api/chat.postMessage)
+            if [ "$(echo "$RES" | jq -r .ok)" = "true" ]; then echo "$ID — #ops-partner 에 올렸습니다"; else echo "::error::$ID — 슬랙 실패: $(echo "$RES" | jq -r .error)"; FAIL=1; fi
+          done
+          # 초안은 만들어졌는데 슬랙이 실패하면 다음 실행은 「이미 리포트 있음」으로 건너뛴다 — 그래서 여기서 빨갛게 남긴다
+          [ "$(jq '.failed | length' r.json)" = "0" ] || { echo "::error::만들지 못한 기획 $(jq -c '[.failed[].plan_id]' r.json)"; FAIL=1; }
+          exit $FAIL

@@ -100,7 +100,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   return new NextResponse(null, { status: 204 });
 }
 
-/** POST { action: "refresh" | "approve" | "link" | "sent" | "revoke" } */
+/** POST { action: "refresh" | "approve" | "finalize" | "link" | "sent" | "revoke" } */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -140,6 +140,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (missing.length) return bad("리포트에 꼭 들어가야 할 값이 비어 있습니다. 성과가 모인 뒤 갱신본을 만드세요.", { problems: missing.map((m) => `${m} 없음`) });
     const updated = await save(id, { status: "APPROVED", approved_by: who, approved_at: now });
     if (updated instanceof NextResponse) return updated;
+    return NextResponse.json({ report: updated, draft: draft() });
+  }
+  if (action === "finalize") {
+    // 1007: 승인 한 번으로 끝낸다 — 초안(DRAFT)에서 곧바로 최종 승인(SENT). 백엔드가 PNG 3장 + HTML 게시를 바로 깨운다.
+    // 검사는 approve 와 같다(막는 것). 손으로 넣는 값이 비었는지는 화면이 경고로 묻고, 그래도 누르면 여기서는 받는다.
+    if (cur.status !== "DRAFT") return bad("초안만 승인할 수 있습니다.");
+    const check = checkText(reportAllText(cur), cur.snapshot);
+    if (!check.ok) return bad("발행할 수 없는 문장이 있습니다.", { problems: check.problems });
+    const missing = templateMissing(cur);
+    if (missing.length) return bad("리포트에 꼭 들어가야 할 값이 비어 있습니다. 성과가 모인 뒤 갱신본을 만드세요.", { problems: missing.map((m) => `${m} 없음`) });
+    const updated = await save(id, { status: "SENT", approved_by: who, approved_at: now, sent_at: now });
+    if (updated instanceof NextResponse) return updated;
+    logStore(cur, { kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 승인 (#ops-partner 에 PNG·HTML 게시)`, author: who, created_at: now });
     return NextResponse.json({ report: updated, draft: draft() });
   }
   if (action === "link") {
