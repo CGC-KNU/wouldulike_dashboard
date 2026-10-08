@@ -24,7 +24,7 @@ type Filter = "all" | "alert" | "add" | "fix";
 
 interface Line { name: string; code: number; screens: string[]; d7: number | null; last: number | null; live: Live; row?: EventRow }
 
-export default function CastorEvents() {
+export default function CastorEvents({ embedded = false }: { embedded?: boolean }) {
   const graph = useCastorDoc<AppGraph>("app_graph");
   const doc = useCastorDoc<EventsDoc>("events");
   const h = useCastorHealth();
@@ -56,8 +56,12 @@ export default function CastorEvents() {
 
   return (
     <>
-      <PageHeader title="계측" description="앱이 보내는 이벤트와 아직 없는 이벤트. 상태는 코드와 GA4 최근 7일이 정합니다."
-        actions={<Button icon={<IconPlus size={15} />} onClick={() => setEdit({ name: "", plan: "add" })}>새 이벤트</Button>} />
+      {embedded ? (
+        <div className="flex items-center justify-between gap-2 mb-3"><p className="text-[12.5px] text-gray-500">앱이 보내는 이벤트와 아직 없는 이벤트. 상태는 코드와 GA4 최근 7일이 정합니다.</p><Button icon={<IconPlus size={15} />} onClick={() => setEdit({ name: "", plan: "add" })}>새 이벤트</Button></div>
+      ) : (
+        <PageHeader title="계측" description="앱이 보내는 이벤트와 아직 없는 이벤트. 상태는 코드와 GA4 최근 7일이 정합니다."
+          actions={<Button icon={<IconPlus size={15} />} onClick={() => setEdit({ name: "", plan: "add" })}>새 이벤트</Button>} />
+      )}
       {doc.error && <div className="mb-3"><Notice tone="red" title={doc.error} /></div>}
       <div className="mb-3"><FilterPills label="보기" value={filter} onChange={setFilter} options={[{ key: "all", label: "전체", count: n("all") }, { key: "alert", label: "끊김 경고", count: n("alert") }, { key: "fix", label: "고칠 것", count: n("fix") }, { key: "add", label: "새로 추가", count: n("add") }]} /></div>
       {!graph.loaded || h === undefined ? <Skeleton rows={8} cols={6} /> : (

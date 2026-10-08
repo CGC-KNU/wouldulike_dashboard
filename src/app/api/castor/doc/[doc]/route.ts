@@ -6,7 +6,7 @@ import { requireTool, actorName } from "@/lib/draft/guard";
  * Castor 문서 — 앱 지도 · 화면 메모 · 계측 정의서 · 변경 보드 · 단계 체크리스트 (1008).
  * 값은 백엔드 `castor:<doc>` 에만 있다(이 저장소는 공개). 동시 수정은 base_updated_at 로 백엔드가 409 를 낸다.
  */
-const DOCS = new Set(["app_graph", "screens", "events", "changes", "roadmap"]);
+const DOCS = new Set(["app_graph", "screens", "events", "changes", "roadmap", "player", "refs", "research", "experiments"]);
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ doc: string }> }) {
   const deny = await requireTool("admin");
