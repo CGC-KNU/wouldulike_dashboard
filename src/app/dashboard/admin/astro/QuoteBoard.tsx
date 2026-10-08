@@ -6,6 +6,7 @@ import type { StoreRow } from "@/lib/draft/types";
 import {
   ISSUER_FALLBACK, PLAN_DESC, PLAN_NAME, addDays, bizNo, defaultQuoteFee, dotDate, kdate, minTermTo, nextMonthFirst, planFromTier, quoteNo, todaySeoul, won,
   type IssuerInfo, type QuotePlan, type QuoteValues,
+  quoteTotal, quoteVat,
 } from "@/lib/quote/quote";
 import { Button, Card, Field, Input, Notice, PageHeader, Select, Textarea } from "../_shared/ui";
 
@@ -76,7 +77,7 @@ export default function QuoteBoard({ actor }: { actor: string }) {
       no: quoteNo(issued, s.restaurant_id), issued_on: issued, valid_to: addDays(issued, 14),
       store_name: o?.map_name || s.name, owner_name: o?.owner_name ?? "", biz_no: o?.biz_no ?? "", campus: o?.campus ?? "",
       plan, plan_desc: PLAN_DESC[plan],
-      fee: pickFee(plan, o?.campus, o?.monthly_fee),
+      fee: pickFee(plan, o?.campus, o?.monthly_fee), vat: true,
       starts_on: started,
       coupon_basic: o?.coupon_basic ?? "", coupon_limited: o?.coupon_limited ?? "",
       stamp: [o?.stamp_count ? `${o.stamp_count}개` : "", o?.stamp_reward ?? ""].filter(Boolean).join(" · "),
@@ -136,9 +137,11 @@ export default function QuoteBoard({ actor }: { actor: string }) {
     if (v.valid_to < v.issued_on) warn.valid = "발급일보다 이릅니다"; else ok.valid = `${kdate(v.valid_to)}까지`;
     const tierPlan = store ? planFromTier(store.tier) : null;
     if (tierPlan && tierPlan !== v.plan) warn.plan = `매장 플랜은 ${PLAN_NAME[tierPlan]}인데 ${PLAN_NAME[v.plan]}로 발급합니다`; else ok.plan = PLAN_NAME[v.plan];
-    if (v.plan !== "FREE" && v.fee !== def) warn.fee = `기본 단가 ${won(def)}와 다릅니다 (${v.campus || "상권 미지정"} ${PLAN_NAME[v.plan]})`;
-    else if (o?.monthly_fee != null && v.plan !== "FREE" && o.monthly_fee !== v.fee) warn.fee = o.monthly_fee === Math.round(v.fee * 1.1) ? `매장 운영값 ${won(o.monthly_fee)}은 부가세 포함 금액이라 기본 단가 ${won(v.fee)}을 넣었습니다 — 파트너 매장에서 운영값도 고쳐 주세요` : `매장 운영값 ${won(o.monthly_fee)}과 다릅니다`;
-    else ok.fee = v.plan === "FREE" ? "0원" : `${won(v.fee)} + 부가세`;
+    // 금액은 발급하는 사람이 정한다(구독료가 바뀔 수 있어 기본 단가와 달라도 경고하지 않음, 1008). 부가세가 두 번 붙는 경우만 경고.
+    const sum = v.vat ? `${won(v.fee)} + 부가세 ${won(quoteVat(v))} = ${won(quoteTotal(v))}` : `${won(v.fee)} · 부가세 없음`;
+    if (v.plan === "FREE") ok.fee = "0원";
+    else if (o?.monthly_fee != null && v.vat && o.monthly_fee === Math.round(v.fee * 1.1) && v.fee !== o.monthly_fee) warn.fee = `매장 운영값 ${won(o.monthly_fee)}은 부가세 포함 금액이라 ${won(v.fee)}을 넣었습니다 — 파트너 매장에서 운영값도 고쳐 주세요 · ${sum}`;
+    else ok.fee = v.fee !== def ? `${sum} (기본 단가 ${won(def)}와 다름)` : sum;
     if (!v.starts_on.endsWith("-01")) warn.starts = "약관상 개시일은 매월 1일입니다";
     else if (v.starts_on < v.issued_on) warn.starts = "발급일보다 이른 개시일입니다";
     else ok.starts = kdate(v.starts_on);
@@ -221,8 +224,14 @@ export default function QuoteBoard({ actor }: { actor: string }) {
                     {(["FREE", "BOOST", "PREMIUM"] as QuotePlan[]).map((p) => <option key={p} value={p}>{PLAN_NAME[p]}</option>)}
                   </Select>
                 </Field>
-                <Field label="월 이용료 (부가세 별도)"><Input type="number" inputMode="numeric" step={1000} value={v.fee} onChange={(e) => set("fee", Number(e.target.value) || 0)} disabled={v.plan === "FREE"} /></Field>
+                <Field label="월 이용료" hint={v.plan === "FREE" ? undefined : v.vat ? `견적서 합계 ${won(quoteTotal(v))} (부가세 포함)` : `견적서 합계 ${won(v.fee)} (부가세 없음)`}><Input type="number" inputMode="numeric" step={1000} min={0} value={v.fee} onChange={(e) => set("fee", Math.max(0, Number(e.target.value) || 0))} disabled={v.plan === "FREE"} /></Field>
               </div>
+              {v.plan !== "FREE" && (
+                <label className="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer select-none">
+                  <input type="checkbox" checked={v.vat} onChange={(e) => set("vat", e.target.checked)} className="h-4 w-4 accent-navy" />
+                  부가세 10% 더하기 <span className="text-gray-400">— 끄면 넣은 금액이 그대로 합계입니다</span>
+                </label>
+              )}
               <Field label="개시일" hint="약관상 동의한 달의 다음 달 1일"><Input type="date" value={v.starts_on} onChange={(e) => set("starts_on", e.target.value)} /></Field>
               <Field label="플랜 내용"><Textarea rows={3} value={v.plan_desc} onChange={(e) => set("plan_desc", e.target.value)} /></Field>
             </div>
@@ -292,7 +301,7 @@ function blank(): QuoteValues {
   const issued = todaySeoul();
   return {
     no: quoteNo(issued, null), issued_on: issued, valid_to: addDays(issued, 14), store_name: "", owner_name: "", biz_no: "", campus: "",
-    plan: "BOOST", plan_desc: PLAN_DESC.BOOST, fee: 30000, starts_on: nextMonthFirst(issued),
+    plan: "BOOST", plan_desc: PLAN_DESC.BOOST, fee: 30000, vat: true, starts_on: nextMonthFirst(issued),
     coupon_basic: "", coupon_limited: "", stamp: "", exclusions: "", note: "",
   };
 }
@@ -336,8 +345,8 @@ const td: CSSProperties = { padding: "7px 12px", fontSize: 12.5, color: INK, bor
 
 const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; mark: boolean }>(function Sheet({ v, issuer, mark }, ref) {
   const paid = v.plan !== "FREE";
-  const vat = Math.round(v.fee * 0.1);
-  const total = v.fee + vat;
+  const vat = quoteVat(v);
+  const total = quoteTotal(v);
   const endMin = minTermTo(v.starts_on);
   const empty = <span style={{ color: "#A3A6BF" }}>온보딩 화면에서 사장님이 등록하신 내용으로 확정</span>;
   const benefits: [string, ReactNode][] = [
@@ -393,9 +402,9 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
           <div style={box}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
-                <tr><th style={th}>월 이용료</th><td style={td}><V k="fee" on={mark}><b>{won(v.fee)}</b> / 월 (공급가액)</V></td></tr>
-                <tr><th style={th}>부가가치세</th><td style={td}>{won(vat)} (10%)</td></tr>
-                <tr><th style={th}>월 합계</th><td style={{ ...td, fontSize: 15, fontWeight: 800, color: NAVY }}>{won(total)} <span style={{ fontSize: 11, fontWeight: 500, color: SOFT }}>/ 월 · 부가세 포함</span></td></tr>
+                <tr><th style={th}>월 이용료</th><td style={td}><V k="fee" on={mark}><b>{won(v.fee)}</b> / 월{v.vat ? " (공급가액)" : ""}</V></td></tr>
+                {v.vat && <tr><th style={th}>부가가치세</th><td style={td}>{won(vat)} (10%)</td></tr>}
+                <tr><th style={th}>월 합계</th><td style={{ ...td, fontSize: 15, fontWeight: 800, color: NAVY }}>{won(total)} <span style={{ fontSize: 11, fontWeight: 500, color: SOFT }}>/ 월{v.vat ? " · 부가세 포함" : ""}</span></td></tr>
                 {paid ? (
                   <>
                     <tr><th style={th}>납부 시기</th><td style={td}>첫 달은 <b>개시일부터 7일 이내</b>, 이후 매월 <b>전월 말일까지</b>. 일할 계산 없음(개시일이 매월 1일)</td></tr>
@@ -428,7 +437,7 @@ const Sheet = forwardRef<HTMLDivElement, { v: QuoteValues; issuer: IssuerInfo; m
       <div style={{ background: NAVY, color: "#fff", borderRadius: 10, padding: "14px 22px", display: "flex", alignItems: "baseline", gap: 14 }}>
         <span style={{ fontSize: 13, opacity: 0.8 }}>{paid ? `${PLAN_NAME[v.plan]} 월 이용료` : "무료 플랜"}</span>
         <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.01em" }}>{won(total)}</span>
-        <span style={{ fontSize: 12, opacity: 0.8 }}>/ 월 · 부가세 포함{paid ? ` (공급가 ${won(v.fee)} + 부가세 ${won(vat)})` : ""}</span>
+        <span style={{ fontSize: 12, opacity: 0.8 }}>/ 월{paid && v.vat ? ` · 부가세 포함 (공급가 ${won(v.fee)} + 부가세 ${won(vat)})` : ""}</span>
       </div>
 
       {/* 하단 */}
