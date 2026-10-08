@@ -11,13 +11,26 @@ export const SPOT_SIDE_STAGES = ["보류", "거절"] as const;
 export type SpotStage = (typeof SPOT_STAGES)[number] | (typeof SPOT_SIDE_STAGES)[number];
 export const ALL_SPOT_STAGES: readonly SpotStage[] = [...SPOT_STAGES, ...SPOT_SIDE_STAGES];
 
-/** 상품과 정가. 정가는 '부르는 값'이고 건마다 다르게 받을 수 있다. */
+/**
+ * 상품 · 정가 · 파트너 전용가(부가세 별도). 정가는 '부르는 값'이고 건마다 다르게 받을 수 있다.
+ * 파트너 전용가 = 1008 스팟 제작 소개서 파트너용(정가보다 약 30% 낮음) — **유료 플랜(Boost · Premium) 파트너 매장**에만.
+ */
 export const SPOT_PRODUCTS = [
-  { key: "CARD", label: "카드뉴스", shoot: false, price: 100_000 },
-  { key: "CARD_SHOOT", label: "카드뉴스 + 촬영", shoot: true, price: 150_000 },
-  { key: "REELS", label: "릴스", shoot: false, price: 150_000 },
-  { key: "REELS_SHOOT", label: "릴스 + 촬영", shoot: true, price: 200_000 },
+  { key: "CARD", label: "카드뉴스", shoot: false, price: 100_000, partner: 70_000 },
+  { key: "CARD_SHOOT", label: "카드뉴스 + 촬영", shoot: true, price: 150_000, partner: 100_000 },
+  { key: "REELS", label: "릴스", shoot: false, price: 150_000, partner: 100_000 },
+  { key: "REELS_SHOOT", label: "릴스 + 촬영", shoot: true, price: 200_000, partner: 150_000 },
 ] as const;
+
+/** 이 매장이 파트너 전용가를 받나 — 유료 플랜(Boost · Premium) 파트너 매장만 (소개서 파트너용 3쪽). */
+export function partnerPriced(store: { tier: string | null; is_affiliate: boolean } | null | undefined): boolean {
+  return Boolean(store && store.is_affiliate !== false && (store.tier === "BOOST" || store.tier === "CONTENT" || store.tier === "PREMIUM"));
+}
+/** 상품의 기준가 — 파트너면 전용가, 아니면 정가 */
+export function basePrice(key: string | null | undefined, partner: boolean): number | null {
+  const p = productOf(key);
+  return p ? (partner ? p.partner : p.price) : null;
+}
 export type SpotProduct = (typeof SPOT_PRODUCTS)[number]["key"];
 
 export function productOf(key: string | null | undefined) {
@@ -29,9 +42,9 @@ export function productOf(key: string | null | undefined) {
  * **0원은 적어 둔 금액이다.** 첫 건을 무료로 주는 일이 실제로 있다(교동 서서·후추, 0914).
  * 0 을 '안 적음'으로 보면 화면이 조용히 정가를 되살려서, 무료로 준 건이 받을 돈에 얹힌다.
  */
-export function spotAmount(s: { product: string | null; price: number | null }): number | null {
+export function spotAmount(s: { product: string | null; price: number | null }, partner = false): number | null {
   if (typeof s.price === "number" && s.price >= 0) return s.price;
-  return productOf(s.product)?.price ?? null;
+  return basePrice(s.product, partner);
 }
 
 export interface SpotJob {

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconCopy, IconExternalLink, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-react";
-import { APP_CATEGORIES } from "@/lib/draft/types";
+import { IconCopy, IconDownload, IconExternalLink, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-react";
+import { APP_CATEGORIES, type SalesDoc, type StoreRow } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
 import {
   ALL_SPOT_STAGES, SPOT_PRODUCTS, SPOT_SIDE_STAGES, SPOT_STAGES,
-  productOf, spotAmount, type SpotJob, type SpotStage,
+  basePrice, partnerPriced, productOf, spotAmount, type SpotJob, type SpotStage,
 } from "@/lib/draft/spot";
+import StorePicker from "./StorePicker";
 import {
   Button, Card, Chip, DraftBadge, Empty, Field, Input, Kpi, Notice, PageHeader,
   PanelSection, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, todayLocal, type ChipTone,
@@ -55,6 +56,16 @@ export default function SpotBoard({ actor }: { actor: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  const [stores, setStores] = useState<StoreRow[] | null>(null);
+  const [docs, setDocs] = useState<SalesDoc[] | null>(null);
+  useEffect(() => {
+    fetch("/api/astro/stores").then((r) => r.json()).then((d) => setStores((d.stores ?? []) as StoreRow[])).catch(() => setStores([]));
+    fetch("/api/astro/docs").then((r) => r.json()).then((d) => setDocs((d.docs ?? []) as SalesDoc[])).catch(() => setDocs([]));
+  }, []);
+  /** 파트너 전용가를 받는 건 — 파트너 매장에 이어져 있고 그 매장이 유료 플랜 */
+  const isPartner = useCallback((s: Pick<SpotJob, "restaurant_id">) => partnerPriced(s.restaurant_id ? (stores ?? []).find((x) => x.restaurant_id === s.restaurant_id) : null), [stores]);
+  const amountOf = useCallback((s: SpotJob) => spotAmount(s, isPartner(s)), [isPartner]);
+
   const load = useCallback(() => {
     fetch("/api/astro/spots")
       .then((r) => r.json())
@@ -75,8 +86,15 @@ export default function SpotBoard({ actor }: { actor: string }) {
   /** 진행 중 = 보류·거절이 아닌 것. 돈은 납품 뒤에 들어오므로 '받을 돈'과 '받은 돈'을 갈라 센다. */
   const live = all.filter((s) => !SPOT_SIDE_STAGES.includes(s.stage as (typeof SPOT_SIDE_STAGES)[number]));
   const contracted = live.filter((s) => ["계약", "촬영", "편집", "납품", "정산"].includes(s.stage));
-  const unpaid = contracted.filter((s) => !s.paid_at && (spotAmount(s) ?? 0) > 0);
-  const sum = (list: SpotJob[]) => list.reduce((a, s) => a + (spotAmount(s) ?? 0), 0);
+  const unpaid = contracted.filter((s) => !s.paid_at && (amountOf(s) ?? 0) > 0);
+  const sum = (list: SpotJob[]) => list.reduce((a, s) => a + (amountOf(s) ?? 0), 0);
+
+  /** 상품을 바꿀 때 — 금액이 비었거나 이전 상품의 기준가 그대로였으면 새 상품의 기준가(파트너면 전용가)로 따라간다. 직접 적은 금액은 그대로 둔다. */
+  function changeProduct(s: SpotJob, product: SpotJob["product"]) {
+    const partner = isPartner(s);
+    const follow = s.price === null || s.price === basePrice(s.product, partner);
+    patch(s.id, { product, ...(follow ? { price: partner ? basePrice(product, true) : null } : {}) });
+  }
 
   async function patch(id: string, body: Partial<SpotJob>) {
     setBusy(id); setMsg(null);
@@ -123,15 +141,20 @@ export default function SpotBoard({ actor }: { actor: string }) {
       {msg && <div className="mb-4"><Notice tone="red" title={msg} /></div>}
 
       {/* 상품과 정가 — 견적 대화의 출발점이라 화면에 늘 띄워 둔다 */}
-      <Card flush title="상품과 정가" description="건마다 다르게 받을 수 있습니다. 여기 값은 부르는 값입니다." className="mb-4">
-        <Table minWidth="30rem">
-          <thead><tr><Th>상품</Th><Th width="7rem">촬영</Th><Th width="8rem" align="right">정가</Th><Th width="5rem" align="right">진행 중</Th></tr></thead>
+      <Card title="소개서" description="매장에 보낼 스팟 제작 소개서. 파트너 매장(유료 플랜)에는 전용가가 적힌 파트너용을 보냅니다." className="mb-4">
+        <BrochureLinks docs={docs} />
+      </Card>
+
+      <Card flush title="상품과 가격" description="부가세 별도. 파트너가는 유료 플랜(Boost · Premium) 파트너 매장에만 — 건마다 다르게 받을 수 있습니다." className="mb-4">
+        <Table minWidth="34rem">
+          <thead><tr><Th>상품</Th><Th width="7rem">촬영</Th><Th width="8rem" align="right">정가 (비파트너)</Th><Th width="8rem" align="right">파트너가</Th><Th width="5rem" align="right">진행 중</Th></tr></thead>
           <tbody>
             {SPOT_PRODUCTS.map((p) => (
               <tr key={p.key}>
                 <Td><span className="font-semibold text-gray-900">{p.label}</span></Td>
                 <Td>{p.shoot ? <Chip tone="amber">촬영 포함</Chip> : <span className="text-gray-400">촬영 없이</span>}</Td>
                 <Td align="right" numeric className="font-semibold text-gray-900">{p.price.toLocaleString()}원</Td>
+                <Td align="right" numeric className="font-semibold text-navy">{p.partner.toLocaleString()}원</Td>
                 <Td align="right" numeric className="text-gray-500">{loading ? "-" : live.filter((s) => s.product === p.key).length}</Td>
               </tr>
             ))}
@@ -166,7 +189,8 @@ export default function SpotBoard({ actor }: { actor: string }) {
             <tbody>
               {visible.map((s) => {
                 const p = productOf(s.product);
-                const amount = spotAmount(s);
+                const amount = amountOf(s);
+                const partner = isPartner(s);
                 // 단계에 따라 지금 중요한 날짜가 다르다 — 계약 전엔 미팅, 계약 뒤엔 촬영, 그 뒤엔 납품 기한.
                 const next = s.stage === "촬영" || s.stage === "계약" ? s.shoot_at : s.stage === "미팅" ? s.meeting_at : s.due;
                 const nextLabel = s.stage === "촬영" || s.stage === "계약" ? "촬영" : s.stage === "미팅" ? "미팅" : "기한";
@@ -181,7 +205,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
                     <Td>
                       <span onClick={(e) => e.stopPropagation()}>
                         <Select aria-label={`${s.name} 상품`} value={s.product ?? ""} disabled={busy === s.id}
-                          onChange={(e) => patch(s.id, { product: (e.target.value || null) as SpotJob["product"] })}
+                          onChange={(e) => changeProduct(s, (e.target.value || null) as SpotJob["product"])}
                           className="h-8 text-[12px] w-[9rem]">
                           <option value="">미정</option>
                           {SPOT_PRODUCTS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
@@ -190,7 +214,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
                     </Td>
                     <Td align="right" numeric className={s.price !== null ? "font-semibold text-gray-900" : "text-gray-500"}>
                       {won(amount)}
-                      {s.price === null && p && <span className="block text-[11px] text-gray-400">정가</span>}
+                      {partner ? <span className="block text-[11px] text-navy">파트너가</span> : s.price === null && p && <span className="block text-[11px] text-gray-400">정가</span>}
                     </Td>
                     <Td>
                       <span onClick={(e) => e.stopPropagation()}>
@@ -232,8 +256,8 @@ export default function SpotBoard({ actor }: { actor: string }) {
         받을 돈은 계약 이후 단계 중 정산이 안 된 건의 합입니다.
       </p>
 
-      {open && <SpotPanel spot={open} actor={actor} onClose={() => setOpenId(null)} onPatch={patch} onDeleted={() => { setOpenId(null); load(); }} />}
-      {adding && <NewSpotPanel actor={actor} onClose={() => setAdding(false)} onCreated={load} />}
+      {open && <SpotPanel spot={open} actor={actor} partner={isPartner(open)} onClose={() => setOpenId(null)} onPatch={patch} onProduct={(pr) => changeProduct(open, pr)} onDeleted={() => { setOpenId(null); load(); }} />}
+      {adding && <NewSpotPanel actor={actor} stores={stores} onClose={() => setAdding(false)} onCreated={load} />}
       {planning && <ResearchPanel onClose={() => setPlanning(false)} />}
     </>
   );
@@ -276,18 +300,18 @@ function WhenCell({ label, value, onCommit, hint }: { label: string; value: stri
   );
 }
 
-function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
-  spot: SpotJob; actor: string; onClose: () => void;
-  onPatch: (id: string, body: Partial<SpotJob>) => void; onDeleted: () => void;
+function SpotPanel({ spot, actor, partner, onClose, onPatch, onProduct, onDeleted }: {
+  spot: SpotJob; actor: string; partner: boolean; onClose: () => void;
+  onPatch: (id: string, body: Partial<SpotJob>) => void; onProduct: (p: SpotJob["product"]) => void; onDeleted: () => void;
 }) {
   const set = (k: keyof SpotJob) => (v: string | null) => onPatch(spot.id, { [k]: v } as Partial<SpotJob>);
   const p = productOf(spot.product);
-  const amount = spotAmount(spot);
+  const amount = spotAmount(spot, partner);
   const [removing, setRemoving] = useState(false);
   const [err, setErr] = useState("");
 
   return (
-    <SlideOver open onClose={onClose} title={spot.name} subtitle={`${p?.label ?? "상품 미정"}${amount === null ? "" : ` · ${won(amount)}`}`}
+    <SlideOver open onClose={onClose} title={spot.name} subtitle={`${partner ? "파트너 매장 · " : ""}${p?.label ?? "상품 미정"}${amount === null ? "" : ` · ${won(amount)}`}`}
       badge={<Chip tone={STAGE_TONE[spot.stage] ?? "gray"}>{spot.stage}</Chip>}
       footer={<><Button variant="ghost" onClick={onClose}>닫기</Button>
         <span className="ml-auto">
@@ -319,15 +343,15 @@ function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
           </Select>
         </Field>
         <Field label="상품">
-          <Select value={spot.product ?? ""} onChange={(e) => onPatch(spot.id, { product: (e.target.value || null) as SpotJob["product"] })}>
+          <Select value={spot.product ?? ""} onChange={(e) => onProduct((e.target.value || null) as SpotJob["product"])}>
             <option value="">미정</option>
-            {SPOT_PRODUCTS.map((x) => <option key={x.key} value={x.key}>{x.label} · {x.price.toLocaleString()}원</option>)}
+            {SPOT_PRODUCTS.map((x) => <option key={x.key} value={x.key}>{x.label} · {(partner ? x.partner : x.price).toLocaleString()}원{partner ? " (파트너가)" : ""}</option>)}
           </Select>
         </Field>
         {/* 0 을 적으면 **무료**다. `Number(v) || null` 로 쓰면 0 이 null 로 떨어져서
             "비워 둔 것"이 되고, 화면이 정가를 되살린다 (민열님 0914 제보). */}
         <Cell label="금액" value={spot.price === null ? "" : String(spot.price)} type="number"
-          hint={p ? `비워 두면 정가 ${p.price.toLocaleString()}원. 0 을 적으면 무료입니다.` : "상품을 고르면 정가가 붙습니다. 0 을 적으면 무료입니다."}
+          hint={p ? `비워 두면 ${partner ? `파트너가 ${p.partner.toLocaleString()}` : `정가 ${p.price.toLocaleString()}`}원. 0 을 적으면 무료입니다.` : "상품을 고르면 기준가가 붙습니다. 0 을 적으면 무료입니다."}
           onCommit={(v) => {
             const digits = (v ?? "").replace(/[^\d]/g, "");
             onPatch(spot.id, { price: digits === "" ? null : Number(digits) });
@@ -380,40 +404,103 @@ function SpotPanel({ spot, actor, onClose, onPatch, onDeleted }: {
 
 /* ═══════════ 새 건 ═══════════ */
 
-function NewSpotPanel({ actor, onClose, onCreated }: { actor: string; onClose: () => void; onCreated: () => void }) {
+function NewSpotPanel({ actor, stores, onClose, onCreated }: { actor: string; stores: StoreRow[] | null; onClose: () => void; onCreated: () => void }) {
+  // 1008 민열님: 건을 만들 때 **파트너 매장인지부터** 묻는다. 파트너면 매장을 검색해서 잇고 파트너가를 적용한다.
+  const [kind, setKind] = useState<"partner" | "other" | null>(null);
+  const [rid, setRid] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", category: "", product: "", owner: actor, contact: "", insta: "", map_url: "", memo: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const partnerList = useMemo(() => (stores ?? []).filter((x) => x.is_affiliate !== false && !x.ops?.is_test).sort((a, b) => a.name.localeCompare(b.name, "ko")), [stores]);
+  const store = partnerList.find((x) => x.restaurant_id === rid) ?? null;
+  const paid = partnerPriced(store);
+  const pick = (id: number | null) => {
+    setRid(id);
+    const st = partnerList.find((x) => x.restaurant_id === id);
+    if (st) setForm((f) => ({ ...f, name: st.ops?.map_name || st.name, contact: f.contact || st.ops?.owner_phone || "" }));
+  };
+  const ready = kind === "other" ? Boolean(form.name.trim()) : kind === "partner" ? Boolean(store) : false;
+
   async function submit() {
-    if (!form.name.trim() || saving) return;
+    if (!ready || saving) return;
     setSaving(true); setError(null);
     try {
-      const res = await fetch("/api/astro/spots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, product: form.product || null, category: form.category || null }) });
+      const product = form.product || null;
+      const body = {
+        ...form, product, category: form.category || null,
+        ...(kind === "partner" && store ? { restaurant_id: store.restaurant_id, campus: store.ops?.campus ?? null, owner_name: store.ops?.owner_name ?? null } : {}),
+        // 파트너가는 금액으로 적어 둔다 — 비워 두면 정가로 읽히는 화면(다른 탭 · 슬랙 알림)이 있어서
+        ...(kind === "partner" && paid && product ? { price: basePrice(product, true) } : {}),
+      };
+      const res = await fetch("/api/astro/spots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) { setError((await res.json().catch(() => ({}))).detail ?? "만들지 못했습니다."); return; }
       onCreated(); onClose();
     } catch { setError("서버에 연결하지 못했습니다."); } finally { setSaving(false); }
   }
 
+  const priceOf = (x: (typeof SPOT_PRODUCTS)[number]) => (kind === "partner" && paid ? `${x.partner.toLocaleString()}원 (파트너가 · 정가 ${x.price.toLocaleString()})` : `${x.price.toLocaleString()}원`);
+
   return (
-    <SlideOver open onClose={onClose} title="스팟 제작 건 추가" subtitle="제휴가 아니어도 됩니다. 매장명만 있어도 만들 수 있습니다."
-      footer={<><Button variant="primary" onClick={submit} disabled={!form.name.trim() || saving}>{saving ? "만드는 중…" : "건 추가"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
-      <Field label="매장명" required><Input value={form.name} onChange={set("name")} placeholder="예: 서서맥주" autoFocus /></Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="상품" hint="나중에 정해도 됩니다.">
-          <Select value={form.product} onChange={set("product")}>
-            <option value="">미정</option>{SPOT_PRODUCTS.map((x) => <option key={x.key} value={x.key}>{x.label} · {x.price.toLocaleString()}원</option>)}
-          </Select>
+    <SlideOver open onClose={onClose} title="스팟 제작 건 추가" subtitle="먼저 파트너 매장인지 고르세요. 파트너 매장(유료 플랜)은 파트너가가 적용됩니다."
+      footer={<><Button variant="primary" onClick={submit} disabled={!ready || saving}>{saving ? "만드는 중…" : "건 추가"}</Button><Button variant="ghost" onClick={onClose}>취소</Button>{error && <span className="text-[12px] text-red-600 ml-auto" role="alert">{error}</span>}</>}>
+      <Field label="파트너 매장인가요?" required>
+        <div className="grid grid-cols-2 gap-2">
+          {([["partner", "파트너 매장", "우주라이크와 제휴 중 · 검색해서 고름"], ["other", "비파트너", "제휴 없이 제작만 · 매장명 직접 입력"]] as const).map(([k, t, d]) => (
+            <button key={k} type="button" aria-pressed={kind === k} onClick={() => { setKind(k); setRid(null); setForm((f) => ({ ...f, name: "" })); }}
+              className={`text-left rounded-xl border px-3 py-2.5 ${focusRing} ${kind === k ? "border-navy bg-navy/[0.05]" : "border-black/10 hover:border-navy/40"}`}>
+              <span className="block text-[13.5px] font-bold text-gray-900">{t}</span>
+              <span className="block text-[11.5px] text-gray-500 mt-0.5">{d}</span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {kind === "partner" && (
+        <Field label="파트너 매장" required hint={store ? (paid ? "유료 플랜 — 파트너가가 적용됩니다" : "무료 플랜 매장 — 소개서 기준 파트너가는 유료 플랜(Boost · Premium)만이라 정가로 잡힙니다") : `${partnerList.length}곳 · 이름 일부로 검색`}>
+          <StorePicker list={partnerList} value={store} loading={stores === null} onPick={pick} listId="spot-store-list" />
         </Field>
-        <Field label="카테고리"><Select value={form.category} onChange={set("category")}><option value="">미정</option>{APP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
-        <Field label="담당"><Input value={form.owner} onChange={set("owner")} /></Field>
-        <Field label="연락처"><Input value={form.contact} onChange={set("contact")} type="tel" inputMode="tel" /></Field>
-        <Field label="인스타"><Input value={form.insta} onChange={set("insta")} placeholder="@handle" /></Field>
-      </div>
-      <Field label="지도 링크" hint="기획안 리서치에 씁니다."><Input value={form.map_url} onChange={set("map_url")} placeholder="카카오맵 링크" /></Field>
-      <Field label="메모"><Textarea rows={3} value={form.memo} onChange={set("memo")} /></Field>
+      )}
+      {kind === "other" && <Field label="매장명" required><Input value={form.name} onChange={set("name")} placeholder="예: 서서맥주" autoFocus /></Field>}
+
+      {kind && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="상품" hint="나중에 정해도 됩니다.">
+              <Select value={form.product} onChange={set("product")}>
+                <option value="">미정</option>{SPOT_PRODUCTS.map((x) => <option key={x.key} value={x.key}>{x.label} · {priceOf(x)}</option>)}
+              </Select>
+            </Field>
+            <Field label="카테고리"><Select value={form.category} onChange={set("category")}><option value="">미정</option>{APP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+            <Field label="담당"><Input value={form.owner} onChange={set("owner")} /></Field>
+            <Field label="연락처"><Input value={form.contact} onChange={set("contact")} type="tel" inputMode="tel" /></Field>
+            <Field label="인스타"><Input value={form.insta} onChange={set("insta")} placeholder="@handle" /></Field>
+          </div>
+          <Field label="지도 링크" hint="기획안 리서치에 씁니다."><Input value={form.map_url} onChange={set("map_url")} placeholder="카카오맵 링크" /></Field>
+          <Field label="메모"><Textarea rows={3} value={form.memo} onChange={set("memo")} /></Field>
+        </>
+      )}
     </SlideOver>
+  );
+}
+
+/** 자료실의 스팟 제작 소개서(파트너용 · 비파트너용)를 바로 내려받는 줄. 없으면 숨기지 않고 '등록 필요'로 둔다. */
+function BrochureLinks({ docs }: { docs: SalesDoc[] | null }) {
+  if (!docs) return <Skeleton rows={1} cols={2} />;
+  const find = (who: "파트너용" | "비파트너용") => docs.find((d) => d.title.includes("스팟") && d.title.includes(who) && !(who === "파트너용" && d.title.includes("비파트너용")));
+  return (
+    <div className="flex flex-wrap gap-2">
+      {(["비파트너용", "파트너용"] as const).map((who) => {
+        const d = find(who);
+        return d?.url ? (
+          <a key={who} href={d.url} target="_blank" rel="noreferrer" download
+            className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-semibold ${who === "파트너용" ? "bg-navy text-white hover:bg-[#0a0a8a]" : "bg-black/[0.05] text-gray-800 hover:bg-black/[0.08]"} ${focusRing}`}>
+            <IconDownload size={15} aria-hidden="true" /> 소개서 {who} PDF{d.version ? <span className="opacity-70 font-normal"> · {d.version}</span> : null}
+          </a>
+        ) : <Chip key={who} tone="gray">{who} — 자료실 등록 필요</Chip>;
+      })}
+    </div>
   );
 }
 
