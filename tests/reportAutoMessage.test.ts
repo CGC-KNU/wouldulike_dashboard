@@ -34,6 +34,7 @@ test("14일차 메시지 하나에 초안 안내 · 콘텐츠 · 올라간 때 �
 test("부를 사람 — 슬랙 멤버 ID 면 진짜 멘션, 이름이면 글자로(백엔드와 같은 규칙) · 비우면 호출 없이", () => {
   assert.equal(reporterMentions("U01ABCDEF, 나 ,W0XYZ12345"), "<@U01ABCDEF> 나 <@W0XYZ12345>");
   assert.equal(reporterMentions(""), "");
+  assert.equal(reporterMentions("U01ABCDEF,<!channel>,a|b"), "<@U01ABCDEF>", "슬랙 서식 글자가 든 항목은 버린다");
   assert.match(draftMessage(report, "https://x", ""), /^\*초안에 인스타 지표 입력을 진행해 주세요\.\*$/m);
 });
 

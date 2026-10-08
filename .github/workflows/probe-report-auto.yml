@@ -3,7 +3,9 @@
 #   매일 09:00 KST — 대시보드 /api/probe/reports/auto 가 14일차 숫자가 찍힌 게시물 중 리포트가 한 번도 없던 것을
 #   초안으로 만들고, 이 워크플로가 「초안에 인스타 지표 입력을 진행해 주세요」 메시지(세틀라이트 리포트 링크 + 인스타 링크)를 올린다.
 #   **14일차 #ops-partner 알림은 이것 하나다**(민찬 1008) — 백엔드 「14일 경과」 알림을 합쳐 콘텐츠 · 올라간 때 · 제작 담당 ·
-#   담당자 호출(SLACK_PARTNER_REPORTERS — Vercel 환경변수, 백엔드와 같은 값)이 같이 들어간다(src/lib/draft/reportAutoMessage.ts).
+#   담당자 호출이 같이 들어간다(src/lib/draft/reportAutoMessage.ts). 부를 사람은 **저장소 변수** SLACK_PARTNER_REPORTERS
+#   (Settings → Secrets and variables → Actions → Variables, 슬랙 멤버 ID 를 쉼표로)를 X-Partner-Reporters 헤더로 넘긴다.
+#   로그에 찍지 않는다. 비어 있으면 대시보드 기본값(이름 글자).
 #   사람이 지표를 입력하고 「승인」을 누르면 probe-report-share.yml 이 PNG 3장 + HTML 을 올린다.
 #
 #   같은 게시물은 한 번만 만든다(리포트가 있으면 건너뜀) — 정기 실행이 몇 번 겹치거나 밀려도 중복이 안 생긴다.
@@ -38,6 +40,7 @@ jobs:
       DASH: https://app.wouldulike.kr
       CRON_TOKEN: ${{ secrets.CRON_SECRET_TOKEN }}
       SLACK_TOKEN: ${{ secrets.SLACK_PROBE_BOT_TOKEN }}
+      REPORTERS: ${{ vars.SLACK_PARTNER_REPORTERS }}
       CHANNEL: C0BPSQ7F8LC   # #ops-partner
       DRY: ${{ github.event_name == 'schedule' && '0' || (inputs.dry_run && '1' || '0') }}
     steps:
@@ -45,7 +48,7 @@ jobs:
         run: |
           set -uo pipefail
           [ -n "$CRON_TOKEN" ] || { echo "::error::CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
-          CODE=$(curl -sS --max-time 280 -X POST -o r.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" "$DASH/api/probe/reports/auto?dry=$DRY") || CODE=000
+          CODE=$(curl -sS --max-time 280 -X POST -o r.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" -H "X-Partner-Reporters: $REPORTERS" "$DASH/api/probe/reports/auto?dry=$DRY") || CODE=000
           case "$CODE" in 200|207) ;; *) echo "::error::auto HTTP $CODE: $(jq -r '.detail // empty' r.json 2>/dev/null | head -c 200)"; exit 1;; esac
           echo "대상 $(jq '.due' r.json)건 중 이미 리포트 $(jq '.had_report' r.json) · 14일차 대기 $(jq '.waiting_d14 | length' r.json) · 새로 만듦 $(jq '.created | length' r.json) · 실패 $(jq '.failed | length' r.json)"
           echo "만든 것: $(jq -r '[.created[].id] | join(", ")' r.json)"

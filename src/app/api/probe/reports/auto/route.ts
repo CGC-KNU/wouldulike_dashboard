@@ -3,7 +3,7 @@ import { checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 import { buildInsights } from "@/lib/draft/insights";
 import { fetchReportData } from "@/lib/draft/papillon";
 import { createReportDraft } from "@/lib/draft/reportCreate";
-import { draftMessage } from "@/lib/draft/reportAutoMessage";
+import { draftMessage, reporterMentions } from "@/lib/draft/reportAutoMessage";
 import { originOf } from "@/lib/draft/reportPage";
 import { listReports } from "@/lib/draft/reportStore";
 import { mintServiceToken, withServiceToken } from "@/lib/draft/serviceAuth";
@@ -43,6 +43,8 @@ export async function POST(req: Request) {
   if (!svc) return NextResponse.json({ detail: "백엔드가 자동 초안용 토큰을 내주지 않았습니다 — 백엔드가 이 길(auto-token)을 아는 버전인지 보세요." }, { status: 502 });
 
   const dry = new URL(req.url).searchParams.get("dry") === "1";
+  // 부를 사람 — 워크플로가 저장소 변수 SLACK_PARTNER_REPORTERS 를 헤더로 넘긴다(1008). 비면 환경변수 · 기본값.
+  const mentions = reporterMentions(req.headers.get("x-partner-reporters")?.trim() || undefined);
   const origin = originOf(req);
 
   return withServiceToken(svc, async () => {
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
       if (dry) { created.push({ id: `(dry) plan ${i.plan_id}`, text: "" }); continue; }
       const out = await createReportDraft({ restaurant_id: i.restaurant_id, store_name: i.restaurant_id === null ? i.store : undefined, plan_id: i.plan_id, actor: "Probe 자동" });
       if (!out.ok) { failed.push({ plan_id: i.plan_id, detail: out.detail }); continue; }
-      created.push({ id: out.report.id, text: draftMessage(out.report, origin) });
+      created.push({ id: out.report.id, text: draftMessage(out.report, origin, mentions) });
     }
     return NextResponse.json({ dry, checked: list.insights.length, due: due.length, had_report: had, waiting_d14: wait, created, failed }, { status: failed.length ? 207 : 200 });
   });
