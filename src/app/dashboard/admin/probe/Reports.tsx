@@ -112,7 +112,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
 
   const dueLabel = (p: Post) => {
     if (p.age_days === null) return "-";
-    return p.targets.d14 ? "D+14 지남" : p.targets.d7 ? "D+7 지남" : `D+7 까지 ${7 - p.age_days}일`;
+    return p.targets.d14 ? "D+14 지남" : `D+14 까지 ${14 - p.age_days}일`;
   };
 
   return (
@@ -121,7 +121,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
         actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button>#{TOOLS.probe.slack.channel}</Button></a><Button variant="primary" icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>} />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
-        <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+7 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
+        <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+14 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
         <Kpi label="입력 · 승인 대기" value={list ? counts.draft + counts.approved : "-"} tone="alert" hint="지표 입력 후 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
         <Kpi label="최종 승인 대기" value={list ? counts.approved + counts.linked : "-"} tone="alert" hint="파일 받아 카톡 → '최종 승인'" />
         <Kpi label="슬랙으로 보낸 리포트" value={list ? counts.sent : "-"} tone="good" hint="최종 승인한 것" onClick={() => setFilter("sent")} active={filter === "sent"} />
@@ -147,7 +147,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
                   <tr key={k} className={rowClickable} onClick={() => setOpenPost(k)}>
                     <Td><span className="font-semibold text-gray-900">{p.store}</span>{p.restaurant_id === null && (p.matched_by === "sponsor" ? <Chip tone="gray">앱 밖 협찬</Chip> : <Chip tone="red">매장 미확인</Chip>)}<span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{p.topic}{p.co_stores > 1 ? ` · ${p.co_stores}곳 함께` : ""}</span></Td>
                     <Td className="text-[12px] text-gray-600">{p.posted_at ? p.posted_at.slice(5, 10).replace("-", "/") : "-"}{p.age_days !== null && <span className="block text-[11px] text-gray-400">D+{p.age_days}</span>}</Td>
-                    <Td><Chip tone={p.due ? "amber" : p.targets.d7 ? "gray" : "blue"} dot={p.due}>{dueLabel(p)}</Chip></Td>
+                    <Td><Chip tone={p.due ? "amber" : p.targets.d14 ? "gray" : "blue"} dot={p.due}>{dueLabel(p)}</Chip></Td>
                     <Td align="right">{cell("saved")}</Td><Td align="right">{cell("reach")}</Td><Td align="right">{cell("views")}</Td>
                     <Td align="center"><span onClick={(e) => e.stopPropagation()} className="inline-flex">
                       {p.sent_report ? (
