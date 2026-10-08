@@ -28,7 +28,10 @@ import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
 import MileageOps from "./probe/MileageOps";
 import Reports from "./probe/Reports";
-import CastorMap from "./castor/CastorMap";
+import CastorAppMap from "./castor/CastorAppMap";
+import CastorFlow from "./castor/CastorFlow";
+import CastorEvents from "./castor/CastorEvents";
+import CastorChanges from "./castor/CastorChanges";
 import CastorExperiments, { type VariantSeed } from "./castor/CastorExperiments";
 import Launcher from "./_shared/Launcher";
 import CommandPalette from "./_shared/CommandPalette";
@@ -82,6 +85,9 @@ type Tab =
   // Castor(앱 구조·여정)
   | "castor-home"
   | "castor-map"
+  | "castor-flow"
+  | "castor-events"
+  | "castor-changes"
   | "castor-experiments"
   | "atlas-team"
   | "atlas-mission"
@@ -2120,6 +2126,9 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   // ── Castor. 앱 구조를 바꾸는 제안을 만드는 곳이라 관리자만 본다.
   { key: "castor-home", label: "홈", icon: "⌂", allow: (me) => me.is_admin || me.is_superadmin },
   { key: "castor-map", label: "화면 지도", icon: "◫", allow: (me) => me.is_admin || me.is_superadmin },
+  { key: "castor-flow", label: "흐름", icon: "↘", allow: (me) => me.is_admin || me.is_superadmin },
+  { key: "castor-events", label: "계측", icon: "◉", allow: (me) => me.is_admin || me.is_superadmin },
+  { key: "castor-changes", label: "변경 보드", icon: "▤", allow: (me) => me.is_admin || me.is_superadmin },
   { key: "castor-experiments", label: "A/B 후보", icon: "⇄", allow: (me) => me.is_admin || me.is_superadmin },
 
   // ── Atlas — ABOUT WOULDULIKE. 팀 내부용이라 로그인한 구성원 누구나 (민열님 0919).
@@ -2219,8 +2228,8 @@ const PRODUCTS: {
     key: "castor",
     name: "Castor",
     subtitle: "앱 구조 · 여정",
-    description: "화면 지도 · 블록 배치 · A/B 후보",
-    tabs: ["castor-home", "castor-map", "castor-experiments"],
+    description: "앱 화면 지도 · 흐름 · 계측 · 변경 보드",
+    tabs: ["castor-home", "castor-map", "castor-flow", "castor-events", "castor-changes", "castor-experiments"],
     ready: true,
   },
   {
@@ -2585,14 +2594,10 @@ export default function AdminHomePage() {
           {(activeTab === "atlas-team" || activeTab === "atlas-mission" || activeTab === "atlas-tools" || activeTab === "atlas-history") && (
             <Atlas tab={activeTab} onGo={(t) => { if (t === "launcher") backToProducts(); else if (PRODUCTS.some((p) => p.key === t)) selectProduct(t as Product); else go(t); }} />
           )}
-          {activeTab === "castor-map" && (
-            <CastorMap
-              onDraftVariant={(screen, blocks) => {
-                setCastorSeed({ screen: screen.id, blocksA: screen.blocks, blocksB: blocks });
-                setActiveTab("castor-experiments");
-              }}
-            />
-          )}
+          {activeTab === "castor-map" && <CastorAppMap onGo={(t) => setActiveTab(t as Tab)} />}
+          {activeTab === "castor-flow" && <CastorFlow />}
+          {activeTab === "castor-events" && <CastorEvents />}
+          {activeTab === "castor-changes" && <CastorChanges actor={actorName} />}
           {activeTab === "castor-experiments" && (
             <CastorExperiments seed={castorSeed} onSeedConsumed={() => setCastorSeed(null)} actor={actorName} />
           )}
