@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  IconActivityHeartbeat,
+  IconChartArrowsVertical,
+  IconLayoutKanban,
   IconActivity,
   IconAlertTriangle,
   IconArrowsExchange,
@@ -106,6 +109,9 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-mileage": IconGift,
   "probe-reports": IconFileDescription,
   "castor-map": IconSitemap,
+  "castor-flow": IconChartArrowsVertical,
+  "castor-events": IconActivityHeartbeat,
+  "castor-changes": IconLayoutKanban,
   "castor-experiments": IconArrowsExchange,
   content: IconPhoto,
   "aether-alerts": IconBell,

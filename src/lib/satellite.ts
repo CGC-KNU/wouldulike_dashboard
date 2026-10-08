@@ -58,11 +58,11 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     key: "castor",
     name: "Castor",
     subtitle: "앱 구조",
-    description: "화면 지도(코드 자동 파싱) · 블록 배치 · A/B 후보",
-    users: "VE(영입 예정) · 재민 · 민열",
+    description: "앱 화면 지도 · 흐름 · 계측 · 변경 보드",
+    users: "민열 · Claude(대시보드) · 재민(앱 연결)",
     slack: { channel: "sat-castor" },
     icon: "/satellite/castor.svg",
-    status: "hold",
+    status: "live", // 1008 민열님: 0~2단계 착수 — 보류 해제
   },
   // 0919 민열님: 6번째 자리는 툴이 아니라 회사 — ABOUT WOULDULIKE. 팀 내부용.
   // Atlas 는 지금 서 있는 곳(조직·미션·연혁), Polaris 는 가는 곳(메인의 우주선).
