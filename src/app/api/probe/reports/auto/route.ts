@@ -3,7 +3,8 @@ import { checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 import { buildInsights } from "@/lib/draft/insights";
 import { fetchReportData } from "@/lib/draft/papillon";
 import { createReportDraft } from "@/lib/draft/reportCreate";
-import { originOf, reportPermalink } from "@/lib/draft/reportPage";
+import { draftMessage } from "@/lib/draft/reportAutoMessage";
+import { originOf } from "@/lib/draft/reportPage";
 import { listReports } from "@/lib/draft/reportStore";
 import { mintServiceToken, withServiceToken } from "@/lib/draft/serviceAuth";
 import { normName } from "@/lib/draft/sheet";
@@ -24,22 +25,12 @@ import type { StoreReport } from "@/lib/draft/types";
  *  · 14~16일차만 본다. 더 오래된 게시물을 지금 와서 채우지 않고, 사람이 지운 초안이 몇 주 뒤 되살아나지도 않는다.
  *  · 같은 게시물·매장에 리포트가 있으면(회수된 것 포함) 만들지 않는다 — 사람이 이미 다뤘다.
  *  · 앱 매장이거나 협찬 매장으로 잡힌 게시물만. 매장 표에서 이름을 못 찾은 괄호는 사람이 정리해야 한다.
+ *
+ * 14일차 #ops-partner 알림은 이 메시지 하나다(1008) — 백엔드의 「14일 경과」 알림을 여기로 합쳤다(reportAutoMessage.ts).
  */
 
 const todayKst = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 const MIN_AGE = 14, MAX_AGE = 16;
-
-function draftMessage(r: StoreReport, origin: string): string {
-  const insta = reportPermalink(r);
-  return [
-    `:memo: *매장 리포트 초안* — ${r.snapshot.store.name || "매장"}`,
-    `• ${r.title || r.id}`,
-    "• 게시 14일차 자동 작성",
-    "*초안에 인스타 지표 입력을 진행해 주세요.*",
-    ...(insta ? [`• 인스타 게시물 <${insta}|인스타그램에서 보기>`] : []),
-    `• 세틀라이트 리포트 <${origin}/dashboard/admin?tab=probe-reports&open=${encodeURIComponent(r.id)}|리포트 열기>`,
-  ].join("\n");
-}
 
 export async function POST(req: Request) {
   const token = req.headers.get("x-cron-token");
