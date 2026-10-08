@@ -20,9 +20,12 @@ export function useLiveStatus(health: CastorHealth | null | undefined, graph: Ap
   return useMemo(() => {
     const live = new Map((health?.ok ? health.events : []).map((e) => [e.name, e.d7]));
     const code = new Set((graph?.events ?? []).map((e) => e.name));
+    const named = new Set((health?.ok ? health.screen_views : []).map((s) => s.screen));
     return (ev: string, st: HotStatus): HotStatus => {
       if (st === "new" || st === "dead" || !ev || ev === "—" || !health?.ok) return st;
       const base = ev.split("(")[0].trim();
+      // screen_view 는 화면 이름이 붙어야 그 화면 것으로 셀 수 있다 — 이름 없이 찍히면 '정의 안 됨'
+      if (base === "screen_view") { const nm = ev.match(/\(([^)]+)\)/)?.[1]; return !nm ? "none" : named.has(nm) ? "ok" : "miss"; }
       if ((live.get(base) ?? 0) > 0) return "ok";
       return code.has(base) ? "miss" : "none";
     };
@@ -104,8 +107,12 @@ html,body{margin:0;background:transparent;overflow:hidden}
 body.nohs .pl-hm{outline-color:transparent}
 .pl-hm.blink{animation:b .6s}@keyframes b{50%{background-color:rgba(47,107,255,.4)}}
 </style></head><body>${doc.after_html[cur] ?? ""}<script>
-var S=${sels};S.forEach(function(s,i){var el=document.querySelector(s);if(!el)return;el.classList.add('pl-hm');el.setAttribute('role','button');el.tabIndex=0;
-var f=function(e){e.preventDefault();e.stopPropagation();parent.postMessage({castor:i},'*')};el.addEventListener('click',f);el.addEventListener('keydown',function(e){if(e.key==='Enter')f(e)});});
+var S=${sels},E=S.map(function(s){return document.querySelector(s)});
+E.forEach(function(el,i){if(!el)return;el.classList.add('pl-hm');el.setAttribute('role','button');el.tabIndex=0;el.addEventListener('keydown',function(e){if(e.key==='Enter')parent.postMessage({castor:i},'*')});});
+// 시안 위에 덮인 층이 있어도 눌린 자리 아래의 영역을 찾는다
+document.addEventListener('click',function(e){var under=document.elementsFromPoint(e.clientX,e.clientY);
+for(var i=0;i<E.length;i++){var el=E[i];if(el&&under.some(function(x){return x===el||el.contains(x)})){e.preventDefault();e.stopPropagation();parent.postMessage({castor:i},'*');return;}}},true);
+parent.postMessage({castorReady:E.map(function(x){return !!x})},'*');
 addEventListener('message',function(e){var d=e.data||{};if('showHs' in d)document.body.classList.toggle('nohs',!d.showHs);
 if(typeof d.blink==='number'){var el=document.querySelector(S[d.blink]);if(el){el.classList.add('blink');setTimeout(function(){el.classList.remove('blink')},600)}}});
 </script></body></html>`;
