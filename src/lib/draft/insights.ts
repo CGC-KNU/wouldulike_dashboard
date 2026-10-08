@@ -158,7 +158,8 @@ export async function buildInsights(): Promise<InsightsResult> {
       restaurant_id: rid, store: label, matched_by: by, plan_id: plan.id, topic: plan.topic,
       posted_at: snapshot.post.posted_at, permalink: snapshot.post.permalink, age_days: age, co_stores: snapshot.post.co_stores, checkpoint: cp,
       targets: { d7: age !== null && age >= 7, d14: age !== null && age >= 14 },
-      due: reportable && Boolean(p?.available) && age !== null && age >= 7 && !sent,
+      // 권장 시점은 14일차(민찬 1008) — 14일차 09:00 자동 초안(#259)과 같은 날. 전에는 7일차였다.
+      due: reportable && Boolean(p?.available) && age !== null && age >= 14 && !sent,
       available: reportable && Boolean(p?.available), reason, metrics, cohort_note: snapshot.cohort_note,
       report: p?.available ? buildReportText(snapshot, cp) : null,
       sent_report: sent && { id: sent.id, status: sent.status, sent_at: sent.sent_at, views: sent.views.count },
