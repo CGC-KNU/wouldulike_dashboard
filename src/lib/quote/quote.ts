@@ -51,6 +51,9 @@ export function minTermTo(starts: string): string {
 }
 export const kdate = (s: string) => { if (!s) return "—"; const [y, m, d] = s.split("-"); return `${y}년 ${Number(m)}월 ${Number(d)}일`; };
 export const dotDate = (s: string) => { if (!s) return "—"; const [y, m, d] = s.split("-"); return `${y}. ${Number(m)}. ${Number(d)}`; };
+/** 견적서 합계 — 부가세를 켜면 입력 금액 + 10% */
+export const quoteVat = (v: { fee: number; vat: boolean }) => (v.vat ? Math.round(v.fee * 0.1) : 0);
+export const quoteTotal = (v: { fee: number; vat: boolean }) => v.fee + quoteVat(v);
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 /** 사업자번호 10자리를 000-00-00000 으로. 자리수가 다르면 그대로. */
 export const bizNo = (s: string) => { const d = s.replace(/\D/g, ""); return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : s; };
@@ -69,7 +72,9 @@ export interface QuoteValues {
   campus: string;
   plan: QuotePlan;
   plan_desc: string;
-  fee: number; // 공급가액(부가세 별도)
+  fee: number; // 입력한 월 이용료
+  /** true = 입력 금액에 부가세 10%를 더해 합계(공급가 + 부가세), false = 부가세 없이 입력 금액이 곧 합계 (1008 민열님) */
+  vat: boolean;
   starts_on: string;
   coupon_basic: string;
   coupon_limited: string;
