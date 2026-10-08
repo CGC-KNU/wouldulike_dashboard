@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  IconActivityHeartbeat,
   IconChartArrowsVertical,
   IconLayoutKanban,
   IconActivity,
@@ -19,6 +18,8 @@ import {
   IconClipboardList,
   IconClockHour4,
   IconDeviceMobile,
+  IconZoomQuestion,
+  IconPhotoSearch,
   IconFileDescription,
   IconFileInvoice,
   IconFiles,
@@ -110,7 +111,9 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-reports": IconFileDescription,
   "castor-map": IconSitemap,
   "castor-flow": IconChartArrowsVertical,
-  "castor-events": IconActivityHeartbeat,
+  "castor-screen": IconDeviceMobile,
+  "castor-research": IconZoomQuestion,
+  "castor-refs": IconPhotoSearch,
   "castor-changes": IconLayoutKanban,
   "castor-experiments": IconArrowsExchange,
   content: IconPhoto,

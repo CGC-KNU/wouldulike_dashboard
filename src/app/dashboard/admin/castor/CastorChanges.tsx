@@ -1,113 +1,166 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { IconCopy, IconPlus } from "@tabler/icons-react";
-import { CHANGE_KIND_LABEL, CHANGE_PATH_LABEL, CHANGE_STATUS, type AppGraph, type ChangeCard, type ChangeKind, type ChangePath, type ChangeStatus, type ChangesDoc } from "@/lib/castor/app";
-import { Button, Chip, Field, FilterPills, Input, Notice, PageHeader, PanelSection, Select, Skeleton, SlideOver, Textarea, type ChipTone } from "../_shared/ui";
+import { CHANGE_KIND_LABEL, CHANGE_PATH_LABEL, CHANGE_STATUS, METHOD_LABEL, type AppGraph, type ChangeCard, type ChangeKind, type ChangePath, type ChangeStatus, type ChangesDoc, type PlayerDoc } from "@/lib/castor/app";
+import { Field, Input, Notice, PageHeader, Select, Skeleton, Textarea } from "../_shared/ui";
 import { fmtWhen, useCastorDoc } from "./useCastor";
 
 /**
- * Castor · 변경 보드 (2단계, 1008). 카드 하나 = 화면 ID · 종류 · 적용 경로 · 잴 방법.
- * 제안 → 디자인 → 개발 → 배포 → 측정 중 → 결론. 개발 경로 카드는 재민에게 넘길 문장을 바로 꺼낸다.
- * 측정할 수 없는 개선은 하지 않는다(기획안 원칙 2) — '잴 방법'이 비면 카드에 경고가 붙는다.
+ * Castor · 변경 보드 (기획안 Castor 절 C3 · 변경 보드 v2 시안, 1008).
+ * 모든 수정은 카드를 거친다 — 카드 = 화면 ID + 종류 + 적용 경로 + 잴 방법.
+ * 왼쪽 칸반(제안 → 디자인 → 개발 → 배포 → 측정 중 → 결론), 오른쪽 서랍에서 지금/바뀐 뒤 · 적용 경로 · 어떻게 잴까 · 체크 · 기록.
+ * 측정할 수 없는 개선은 하지 않는다(기획안 원칙 2) — 잴 방법이 비면 카드에 경고. 개발 경로는 재민에게 넘길 문장을 꺼낸다.
  */
-const PATH_TONE: Record<ChangePath, ChipTone> = { remote: "blue", dev: "amber", ops: "gray", us: "navy" };
+const COL_COLOR: Record<ChangeStatus, string> = { proposed: "#9A9DB0", design: "#7048E8", dev: "#1C7ED6", shipped: "#E8590C", measuring: "#0E9F6E", done: "#060073" };
+const PATH_SHORT: Record<ChangePath, string> = { remote: "바로", dev: "개발", ops: "운영", us: "우리" };
+const DEFAULT_CHECKS: Record<ChangePath, string[]> = {
+  remote: ["원격 설정 키 확인", "되돌리는 값 적어 두기", "점주 · 팀 공지"],
+  dev: ["재민에게 넘김", "이벤트 수집 확인", "출시본 반영 확인"],
+  ops: ["현장 담당 정하기", "끝난 날 기록"],
+  us: ["세틀라이트 반영", "팀 공지"],
+};
+type Fil = { kind: "all" | ChangeKind; path: "all" | ChangePath; stage: "all" | "1" | "2" | "3" };
 
 export default function CastorChanges({ actor }: { actor: string }) {
   const doc = useCastorDoc<ChangesDoc>("changes");
   const graph = useCastorDoc<AppGraph>("app_graph");
-  const [stage, setStage] = useState<"all" | "1" | "2" | "3">("all");
-  const [edit, setEdit] = useState<ChangeCard | null>(null);
+  const player = useCastorDoc<PlayerDoc>("player");
+  const [fil, setFil] = useState<Fil>({ kind: "all", path: "all", stage: "all" });
+  const [selId, setSelId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ChangeCard | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const cards = useMemo(() => (doc.data?.cards ?? []).filter((c) => stage === "all" || String(c.stage) === stage), [doc.data, stage]);
+  const all = doc.data?.cards ?? [];
+  const cards = useMemo(() => all.filter((c) => (fil.kind === "all" || c.kind === fil.kind) && (fil.path === "all" || c.path === fil.path) && (fil.stage === "all" || String(c.stage) === fil.stage)), [all, fil]);
+  const saved = all.find((c) => c.id === selId) ?? null;
+  const edit = draft && draft.id === selId ? draft : saved;
+  const isNew = !!draft && !all.some((c) => c.id === draft.id);
   const screenName = (id?: string) => graph.data?.screens.find((s) => s.id === id)?.name;
+  const thumb = (id?: string) => (id ? player.data?.thumbs[id] : undefined);
+  const dirty = !!draft && (isNew || JSON.stringify(draft) !== JSON.stringify(saved));
 
-  async function saveCard(c: ChangeCard, text?: string) {
-    const all = doc.data?.cards ?? [];
+  async function save(c: ChangeCard, text?: string) {
     const prev = all.find((x) => x.id === c.id);
     const log = [...(c.log ?? [])];
-    if (prev && prev.status !== c.status) log.push({ at: new Date().toISOString(), by: actor, text: `${label(prev.status)} → ${label(c.status)}` });
-    if (!prev) log.push({ at: new Date().toISOString(), by: actor, text: "카드 만듦" });
-    if (text) log.push({ at: new Date().toISOString(), by: actor, text });
-    const next = { ...c, log };
-    const ok = await doc.save({ cards: prev ? all.map((x) => (x.id === c.id ? next : x)) : [...all, next] });
-    if (ok) setEdit(null);
+    const now = new Date().toISOString();
+    if (prev && prev.status !== c.status) log.push({ at: now, by: actor, text: `${label(prev.status)} → ${label(c.status)}` });
+    if (!prev) log.push({ at: now, by: actor, text: "카드 만듦" });
+    if (text) log.push({ at: now, by: actor, text });
+    const next = { ...c, title: c.title.trim(), log };
+    if (await doc.save({ cards: prev ? all.map((x) => (x.id === c.id ? next : x)) : [...all, next] })) setDraft(null);
   }
+  const set = (p: Partial<ChangeCard>) => edit && setDraft({ ...edit, ...p });
 
   function handoffText(c: ChangeCard) {
-    return [`재민님, Castor 변경 보드 카드 하나 넘겨요 — ${c.title}`, c.screen ? `화면: ${screenName(c.screen) ?? c.screen} (${c.screen})` : "", c.now ? `지금: ${c.now}` : "", c.next ? `바꿀 것: ${c.next}` : "", c.measure ? `잴 방법: ${c.measure}` : "", "편하실 때 보시고, 다르게 가는 게 낫다 싶으면 말씀 주세요!"].filter(Boolean).join("\n");
+    return [`재민님, Castor 변경 보드 카드 하나 넘겨요 — ${c.title}`, c.screen ? `화면: ${screenName(c.screen) ?? c.screen} (${c.screen})` : "", c.now ? `지금: ${c.now}` : "", c.next ? `바꿀 것: ${c.next}` : "", c.metric || c.measure ? `잴 방법: ${[c.method && METHOD_LABEL[c.method], c.metric, c.period].filter(Boolean).join(" · ") || c.measure}` : "", "편하실 때 보시고, 다르게 가는 게 낫다 싶으면 말씀 주세요!"].filter(Boolean).join("\n");
   }
+  const noMeasure = (c: ChangeCard) => !c.measure && !c.metric && c.method !== "none" && c.kind !== "ops";
 
   return (
-    <>
-      <PageHeader title="변경 보드" description="바꿀 것 하나 = 카드 하나. 화면 · 적용 경로 · 잴 방법을 같이 적습니다."
-        actions={<Button variant="primary" icon={<IconPlus size={15} />} onClick={() => setEdit({ id: `chg-${Date.now()}`, title: "", kind: "screen", path: "dev", status: "proposed" })}>새 카드</Button>} />
+    <div className="cx">
+      <PageHeader title="변경 보드" description="모든 수정은 카드를 거칩니다 · 카드 = 화면 ID + 종류 + 적용 경로 + 잴 방법"
+        actions={<button type="button" className="cx-btn pri" onClick={() => { const c: ChangeCard = { id: `chg-${Date.now()}`, title: "", kind: "screen", path: "dev", status: "proposed" }; setSelId(c.id); setDraft(c); }}>+ 변경 제안</button>} />
       {doc.error && <div className="mb-3"><Notice tone="red" title={doc.error} /></div>}
-      <div className="mb-3"><FilterPills label="단계" value={stage} onChange={setStage} options={[{ key: "all", label: "전체", count: doc.data?.cards.length ?? 0 }, ...(["1", "2", "3"] as const).map((k) => ({ key: k, label: `${k}단계`, count: (doc.data?.cards ?? []).filter((c) => String(c.stage) === k).length }))]} /></div>
+
+      <div className="cx-chips mb-3" role="group" aria-label="거르기">
+        <button type="button" className={fil.kind === "all" && fil.path === "all" && fil.stage === "all" ? "on" : ""} onClick={() => setFil({ kind: "all", path: "all", stage: "all" })}>전체 {all.length}</button>
+        {(Object.keys(CHANGE_KIND_LABEL) as ChangeKind[]).map((k) => <button key={k} type="button" className={fil.kind === k ? "on" : ""} onClick={() => setFil({ ...fil, kind: fil.kind === k ? "all" : k })}>{CHANGE_KIND_LABEL[k]}</button>)}
+        <span style={{ border: 0, padding: 0, cursor: "default" }}>·</span>
+        {(Object.keys(CHANGE_PATH_LABEL) as ChangePath[]).map((k) => <button key={k} type="button" className={fil.path === k ? "on" : ""} onClick={() => setFil({ ...fil, path: fil.path === k ? "all" : k })}>{CHANGE_PATH_LABEL[k]}</button>)}
+        <span style={{ border: 0, padding: 0, cursor: "default" }}>·</span>
+        {(["1", "2", "3"] as const).map((k) => <button key={k} type="button" className={fil.stage === k ? "on" : ""} onClick={() => setFil({ ...fil, stage: fil.stage === k ? "all" : k })}>{k}단계</button>)}
+      </div>
+
       {!doc.loaded ? <Skeleton rows={4} cols={6} /> : (
-        <div className="overflow-x-auto -mx-1 px-1 pb-2">
-          <div className="grid grid-flow-col auto-cols-[minmax(15rem,1fr)] gap-3 min-w-max xl:min-w-0">
+        <div className="cb-wrap">
+          <div className="cb-k">
             {CHANGE_STATUS.map((col) => {
               const list = cards.filter((c) => c.status === col.key);
               return (
-                <section key={col.key} aria-label={col.label} className="rounded-2xl bg-black/[0.025] p-2.5">
-                  <h3 className="px-1 pb-2 text-[12px] font-bold text-gray-500">{col.label} <span className="font-medium text-gray-400">{list.length}</span></h3>
-                  <div className="flex flex-col gap-2">
-                    {list.map((c) => (
-                      <button key={c.id} type="button" onClick={() => setEdit(c)} className="text-left rounded-xl bg-white border border-black/[0.06] px-3 py-2.5 hover:border-navy/40 transition-colors">
-                        <span className="block text-[13px] font-bold text-gray-900 leading-snug">{c.title}</span>
-                        {c.screen && <span className="block font-mono text-[11px] text-gray-400 mt-0.5">{c.screen}</span>}
-                        <span className="flex flex-wrap gap-1 mt-1.5">
-                          <Chip tone={PATH_TONE[c.path]}>{CHANGE_PATH_LABEL[c.path]}</Chip>
-                          <Chip tone="gray">{CHANGE_KIND_LABEL[c.kind]}</Chip>
-                          {c.stage && <Chip tone="navy">{c.stage}단계</Chip>}
-                          {!c.measure && c.kind !== "ops" && <Chip tone="red">잴 방법 없음</Chip>}
-                          {c.path === "dev" && c.handed_off_at && <Chip tone="green">넘김</Chip>}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+                <section key={col.key} className="cb-col" aria-label={col.label}>
+                  <div className="cb-h" style={{ ["--cc" as string]: COL_COLOR[col.key] }}><b>{col.label}</b><span>{list.length}</span></div>
+                  {list.map((c) => (
+                    <button key={c.id} type="button" className={`cb-c${c.id === selId ? " sel" : ""}`} onClick={() => { setSelId(c.id); setDraft(null); }}>
+                      {thumb(c.screen) && <span className="cb-th"><i className="cx-th xs" style={{ backgroundImage: `url(${thumb(c.screen)})` }} /></span>}
+                      <b>{c.title}</b>
+                      <span className="cb-m">
+                        {c.screen && <code>{c.screen}</code>}
+                        <span className={`cb-t ${c.kind}`}>{CHANGE_KIND_LABEL[c.kind]}</span>
+                        <span className={`cb-p ${c.path}`}>{PATH_SHORT[c.path]}</span>
+                        {c.stage && <span className="cb-t ops">{c.stage}단계</span>}
+                      </span>
+                      {noMeasure(c) && <span className="cb-pr bad">잴 방법 없음</span>}
+                      {c.path === "dev" && c.handed_off_at && <span className="cb-pr ok">재민에게 넘김 · {c.handed_off_at.slice(5, 10).replace("-", "/")}</span>}
+                      {c.checks?.length ? <span className="cb-pr">체크 {c.checks.filter((x) => x.done).length}/{c.checks.length}</span> : null}
+                    </button>
+                  ))}
                 </section>
               );
             })}
           </div>
+
+          <aside className="cb-dr" aria-label="카드 자세히">
+            {!edit ? <p className="cx-cap">카드를 누르면 여기서 자세히 보고 고칩니다.</p> : (
+              <>
+                <div className="flex flex-col gap-1">
+                  <span className="cx-tag run">{label(edit.status)}</span>
+                  <Input value={edit.title} onChange={(e) => set({ title: e.target.value })} placeholder="제목 — 예: 버튼 문구 바꾸기" aria-label="제목" />
+                  <span className="cx-cap">{edit.screen ? <><code>{edit.screen}</code> {screenName(edit.screen) ?? "지도에 없는 화면"}</> : "화면 없음"} · {CHANGE_KIND_LABEL[edit.kind]}{edit.owner ? ` · 담당 ${edit.owner}` : ""}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="상태"><Select value={edit.status} onChange={(e) => set({ status: e.target.value as ChangeStatus })}>{CHANGE_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</Select></Field>
+                  <Field label="종류"><Select value={edit.kind} onChange={(e) => set({ kind: e.target.value as ChangeKind })}>{(Object.keys(CHANGE_KIND_LABEL) as ChangeKind[]).map((k) => <option key={k} value={k}>{CHANGE_KIND_LABEL[k]}</option>)}</Select></Field>
+                  <Field label="화면"><Select value={edit.screen ?? ""} onChange={(e) => set({ screen: e.target.value || undefined })}><option value="">— 여러 화면 · 앱 밖</option>{(graph.data?.screens ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+                  <Field label="단계 · 담당"><Input value={[edit.stage, edit.owner].filter(Boolean).join(" · ")} onChange={(e) => { const [a, ...b] = e.target.value.split("·").map((x) => x.trim()); const n = Number(a); set({ stage: n >= 1 && n <= 3 ? (n as 1 | 2 | 3) : undefined, owner: (n ? b.join(" · ") : [a, ...b].join(" · ")) || undefined }); }} placeholder="2 · 재민" /></Field>
+                </div>
+                <div className="cb-ba">
+                  <div><em>지금</em>{thumb(edit.screen) ? <span className="cx-th mid" style={{ width: 96, height: 176, backgroundImage: `url(${thumb(edit.screen)})` }} /> : null}<Textarea rows={2} value={edit.now ?? ""} onChange={(e) => set({ now: e.target.value })} aria-label="지금" /></div>
+                  <div><em>바뀐 뒤</em><Textarea rows={thumb(edit.screen) ? 9 : 2} value={edit.next ?? ""} onChange={(e) => set({ next: e.target.value })} aria-label="바뀐 뒤" /></div>
+                </div>
+
+                <span className="cx-sub">적용 경로</span>
+                <div className="e-f">
+                  {(Object.keys(CHANGE_PATH_LABEL) as ChangePath[]).map((p) => <button key={p} type="button" className={`e-path${edit.path === p ? " on" : ""}`} onClick={() => set({ path: p })}><b>{CHANGE_PATH_LABEL[p]}</b></button>)}
+                </div>
+                {edit.path === "remote" && <Field label="원격 설정 키" hint="원격 설정이 앱에 붙으면(재민 인계 ⑤) 배포 없이 바뀝니다"><Input className="font-mono" value={edit.rc_key ?? ""} onChange={(e) => set({ rc_key: e.target.value })} placeholder="screen.option_key" /></Field>}
+
+                <span className="cx-sub">어떻게 잴까</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="방식"><Select value={edit.method ?? ""} onChange={(e) => set({ method: (e.target.value || undefined) as ChangeCard["method"] })}><option value="">—</option>{(Object.keys(METHOD_LABEL) as NonNullable<ChangeCard["method"]>[]).map((k) => <option key={k} value={k}>{METHOD_LABEL[k]}</option>)}</Select></Field>
+                  <Field label="기간"><Input value={edit.period ?? ""} onChange={(e) => set({ period: e.target.value })} placeholder="적용 전후 14일" /></Field>
+                  <Field label="지표"><Input value={edit.metric ?? ""} onChange={(e) => set({ metric: e.target.value })} placeholder="상세 → 사용 전환" /></Field>
+                  <Field label="가드"><Input value={edit.guard ?? ""} onChange={(e) => set({ guard: e.target.value })} placeholder="쿠폰 사용 건수" /></Field>
+                </div>
+                {edit.measure && <p className="cx-cap">예전 메모: {edit.measure}</p>}
+                <p className="cx-cap">드문 전환(쿠폰 · 스탬프)은 A/B 대신 전후 비교 · 매장 단위로 — 흐름 탭 주별 선에 배포 날이 세로선으로 찍힙니다.</p>
+
+                <span className="cx-sub">체크</span>
+                {(edit.checks ?? []).map((k, i) => (
+                  <label key={i} className="x-ck"><input type="checkbox" checked={k.done} onChange={(e) => set({ checks: (edit.checks ?? []).map((x, j) => (j === i ? { ...x, done: e.target.checked } : x)) })} /><span>{k.text}</span></label>
+                ))}
+                {!(edit.checks?.length) && <button type="button" className="cx-btn" onClick={() => set({ checks: DEFAULT_CHECKS[edit.path].map((text) => ({ text, done: false })) })}>기본 체크 넣기</button>}
+
+                <Field label="메모"><Textarea rows={2} value={edit.note ?? ""} onChange={(e) => set({ note: e.target.value })} /></Field>
+
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" className="cx-btn pri" disabled={!dirty || !edit.title.trim() || doc.saving} onClick={() => save(edit)}>{doc.saving ? "저장 중…" : isNew ? "카드 만들기" : "저장"}</button>
+                  {edit.path === "dev" && <button type="button" className="cx-btn" onClick={async () => { await navigator.clipboard.writeText(handoffText(edit)); setCopied(true); setTimeout(() => setCopied(false), 1800); }}>{copied ? "복사했습니다" : "재민에게 보낼 문장"}</button>}
+                  {edit.path === "dev" && !edit.handed_off_at && !isNew && <button type="button" className="cx-btn" onClick={() => save({ ...edit, handed_off_at: new Date().toISOString() }, "재민에게 넘김")}>넘김으로 표시</button>}
+                  {dirty && <button type="button" className="cx-btn" onClick={() => { setDraft(null); if (isNew) setSelId(null); }}>되돌리기</button>}
+                </div>
+
+                {(edit.log?.length ?? 0) > 0 && (
+                  <>
+                    <span className="cx-sub">기록</span>
+                    <div className="x-log">{[...(edit.log ?? [])].reverse().map((l, i) => <span key={i}>{fmtWhen(l.at)} · {l.by} · {l.text}</span>)}</div>
+                  </>
+                )}
+              </>
+            )}
+          </aside>
         </div>
       )}
-
-      {edit && (
-        <SlideOver open onClose={() => setEdit(null)} title={edit.title || "새 카드"} subtitle={edit.screen ? `${screenName(edit.screen) ?? "지도에 없는 화면"} · ${edit.screen}` : "화면을 고르면 지도와 이어집니다"} width="lg"
-          footer={<>
-            <Button variant="primary" disabled={!edit.title.trim() || doc.saving} onClick={() => saveCard({ ...edit, title: edit.title.trim() })}>{doc.saving ? "저장 중…" : "저장"}</Button>
-            {edit.path === "dev" && <Button icon={<IconCopy size={14} />} onClick={async () => { await navigator.clipboard.writeText(handoffText(edit)); setCopied(true); setTimeout(() => setCopied(false), 1800); }}>{copied ? "복사했습니다" : "재민에게 보낼 문장"}</Button>}
-            {edit.path === "dev" && !edit.handed_off_at && (doc.data?.cards ?? []).some((x) => x.id === edit.id) && <Button variant="ghost" onClick={() => saveCard({ ...edit, handed_off_at: new Date().toISOString() }, "재민에게 넘김")}>넘김으로 표시</Button>}
-            <Button variant="ghost" onClick={() => setEdit(null)}>닫기</Button>
-          </>}>
-          <div className="space-y-3">
-            <Field label="제목" required><Input value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="예: 쿠폰 사용 화면 문구 '관리자 비밀번호' → '매장 PIN'" /></Field>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label="상태"><Select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value as ChangeStatus })}>{CHANGE_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</Select></Field>
-              <Field label="종류"><Select value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value as ChangeKind })}>{(Object.keys(CHANGE_KIND_LABEL) as ChangeKind[]).map((k) => <option key={k} value={k}>{CHANGE_KIND_LABEL[k]}</option>)}</Select></Field>
-              <Field label="적용 경로"><Select value={edit.path} onChange={(e) => setEdit({ ...edit, path: e.target.value as ChangePath })}>{(Object.keys(CHANGE_PATH_LABEL) as ChangePath[]).map((k) => <option key={k} value={k}>{CHANGE_PATH_LABEL[k]}</option>)}</Select></Field>
-              <Field label="단계"><Select value={edit.stage ?? ""} onChange={(e) => setEdit({ ...edit, stage: e.target.value ? (Number(e.target.value) as 1 | 2 | 3) : undefined })}><option value="">—</option><option value="1">1단계</option><option value="2">2단계</option><option value="3">3단계</option></Select></Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="화면 ID"><Select value={edit.screen ?? ""} onChange={(e) => setEdit({ ...edit, screen: e.target.value || undefined })}><option value="">— (앱 밖 · 여러 화면)</option>{(graph.data?.screens ?? []).map((s) => <option key={s.id} value={s.id}>{s.name} · {s.id}</option>)}</Select></Field>
-              <Field label="담당 · 과제"><Input value={[edit.owner, edit.task].filter(Boolean).join(" · ")} onChange={(e) => { const [o, ...t] = e.target.value.split("·").map((x) => x.trim()); setEdit({ ...edit, owner: o || undefined, task: t.join(" · ") || undefined }); }} placeholder="재민 · 과제 2" /></Field>
-            </div>
-            <Field label="지금"><Textarea rows={2} value={edit.now ?? ""} onChange={(e) => setEdit({ ...edit, now: e.target.value })} /></Field>
-            <Field label="바뀐 뒤"><Textarea rows={2} value={edit.next ?? ""} onChange={(e) => setEdit({ ...edit, next: e.target.value })} /></Field>
-            <Field label="잴 방법" hint="무엇으로, 언제 판정하나. 쿠폰 · 스탬프 같은 드문 전환은 매장 단위 전후 비교로."><Textarea rows={2} value={edit.measure ?? ""} onChange={(e) => setEdit({ ...edit, measure: e.target.value })} /></Field>
-            <Field label="메모"><Textarea rows={2} value={edit.note ?? ""} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></Field>
-            {(edit.log?.length ?? 0) > 0 && (
-              <PanelSection title="기록">
-                <ul className="space-y-1 text-[12.5px] text-gray-600">{[...(edit.log ?? [])].reverse().map((l, i) => <li key={i}>{fmtWhen(l.at)} · {l.by} · {l.text}</li>)}</ul>
-              </PanelSection>
-            )}
-          </div>
-        </SlideOver>
-      )}
-    </>
+    </div>
   );
 }
 

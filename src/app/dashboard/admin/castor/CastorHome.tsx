@@ -74,8 +74,8 @@ export default function CastorHome({ onGo }: { onGo: (tab: string) => void }) {
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-5 gap-2.5 mb-5">
         <Kpi label="앱 화면" value={loading ? "-" : g?.screens.length ?? 0} hint={g ? `코드 ${g.source.commit} · 못 잡은 이동 ${g.unresolved.length}` : "지도 불러오기 전"} onClick={() => onGo("castor-map")} />
-        <Kpi label="코드 속 이벤트" value={loading ? "-" : codeEvents.size} hint="앱이 보내는 것" onClick={() => onGo("castor-events")} />
-        <Kpi label="7일간 0건" value={health === undefined ? "-" : health?.ok ? zero.length : "-"} tone={zero.length ? "alert" : "plain"} hint={health?.ok ? `확정 ${health.through} 까지` : health?.reason ?? "연결 전"} onClick={() => onGo("castor-events")} />
+        <Kpi label="코드 속 이벤트" value={loading ? "-" : codeEvents.size} hint="앱이 보내는 것" onClick={() => onGo("castor-screen")} />
+        <Kpi label="7일간 0건" value={health === undefined ? "-" : health?.ok ? zero.length : "-"} tone={zero.length ? "alert" : "plain"} hint={health?.ok ? `확정 ${health.through} 까지` : health?.reason ?? "연결 전"} onClick={() => onGo("castor-screen")} />
         <Kpi label="이름 없는 화면 기록" value={health?.ok && totalViews ? `${Math.round((unnamed / totalViews) * 100)}%` : "-"} tone={unnamed ? "alert" : "plain"} hint="라우트 이름이 없으면 지도 이동량을 못 잰다" onClick={() => onGo("castor-flow")} />
         <Kpi label="변경 카드" value={!changes.loaded ? "-" : cards.filter((c) => c.status !== "done").length} hint={`결론 ${cards.filter((c) => c.status === "done").length}`} onClick={() => onGo("castor-changes")} />
       </div>

@@ -25,8 +25,8 @@ function shift(s: string, days: number): string {
   return ymd(d);
 }
 
-export async function readCastorHealth(env: Record<string, string | undefined> = process.env): Promise<CastorHealth> {
-  const empty = (reason: string): CastorHealth => ({ ok: false, reason, through: null, window: null, events: [], screen_views: [], user_id_share: null, flows: [] });
+export async function readCastorHealth(days = 7, env: Record<string, string | undefined> = process.env): Promise<CastorHealth> {
+  const empty = (reason: string): CastorHealth => ({ ok: false, reason, through: null, window: null, days, events: [], screen_views: [], user_id_share: null, flows: [], fail_reasons: [], redeem_lag: [], weekly: [] });
   const c = clientFromEnv(env);
   if (!c) return empty("BigQuery 키(GCP_SA_KEY)가 없습니다.");
   const [last] = await c.run<{ t: string | null }>(
@@ -34,7 +34,7 @@ export async function readCastorHealth(env: Record<string, string | undefined> =
   );
   const end = last?.t ? last.t.slice("events_".length) : null;
   if (!end) return empty("확정 테이블이 아직 없습니다.");
-  const start = shift(end, -6);
+  const start = shift(end, -(Math.max(1, days) - 1));
   const T = `\`${c.dataset}.events_*\``;
 
   const events = await c.run<{ name: string; d7: number; last_day: number; devices7: number }>(
@@ -71,10 +71,38 @@ export async function readCastorHealth(env: Record<string, string | undefined> =
     flows.push({ key: f.key, title: f.title, steps: f.steps.map(([event, label], i) => ({ event, label, devices: Number(row?.[`s${i}`] ?? 0) })) });
   }
 
+  // 사용 실패 이유 — coupon_redeem_failed 의 fail_reason (9/7부터 수집)
+  const fails = await c.run<{ reason: string; n: number }>(
+    `SELECT COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'fail_reason'), '(이유 없음)') AS reason, COUNT(*) AS n
+       FROM ${T} WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_redeem_failed' GROUP BY reason ORDER BY n DESC LIMIT 8`,
+    { start, end }
+  );
+  // 매장 상세 → 쿠폰 사용까지 걸린 날 — 기기마다 첫 상세 열기와 그 뒤 첫 사용 사이(최근 28일, 사용한 기기만)
+  const lagStart = shift(end, -27);
+  const lag = await c.run<{ d: number; n: number }>(
+    `WITH x AS (SELECT user_pseudo_id, MIN(IF(event_name='restaurant_detail_open', event_timestamp, NULL)) AS a, MIN(IF(event_name='coupon_redeemed', event_timestamp, NULL)) AS b
+                 FROM ${T} WHERE _TABLE_SUFFIX BETWEEN @s AND @end AND event_name IN ('restaurant_detail_open','coupon_redeemed') GROUP BY user_pseudo_id)
+     SELECT LEAST(7, DIV(b - a, 86400000000)) AS d, COUNT(*) AS n FROM x WHERE a IS NOT NULL AND b IS NOT NULL AND b >= a GROUP BY d ORDER BY d`,
+    { s: lagStart, end }
+  );
+  // 주별 추세 — 매장 상세를 연 기기 중 같은 주에 쿠폰을 쓴 기기 비율(최근 6주, 월요일 시작)
+  const wStart = shift(end, -41);
+  const weekly = await c.run<{ wk: string; opened: number; redeemed: number }>(
+    `WITH d AS (SELECT user_pseudo_id, FORMAT_DATE('%Y-%m-%d', DATE_TRUNC(PARSE_DATE('%Y%m%d', _TABLE_SUFFIX), WEEK(MONDAY))) AS wk,
+                       COUNTIF(event_name='restaurant_detail_open') > 0 AS o, COUNTIF(event_name='coupon_redeemed') > 0 AS r
+                  FROM ${T} WHERE _TABLE_SUFFIX BETWEEN @s AND @end AND event_name IN ('restaurant_detail_open','coupon_redeemed') GROUP BY user_pseudo_id, wk)
+     SELECT wk, COUNTIF(o) AS opened, COUNTIF(o AND r) AS redeemed FROM d GROUP BY wk ORDER BY wk`,
+    { s: wStart, end }
+  );
+
   return {
     ok: true,
     through: dash(end),
     window: { from: dash(start), to: dash(end) },
+    days,
+    fail_reasons: fails.map((f) => ({ reason: f.reason, n: Number(f.n) })),
+    redeem_lag: lag.map((l) => ({ d: Number(l.d), n: Number(l.n) })),
+    weekly: weekly.map((w) => ({ wk: w.wk, opened: Number(w.opened), redeemed: Number(w.redeemed) })),
     events: events.map((e) => ({ name: e.name, d7: Number(e.d7), last_day: Number(e.last_day), devices7: Number(e.devices7) })),
     screen_views: screenViews.map((s) => ({ screen: s.screen, views: Number(s.views) })),
     user_id_share: uid?.share == null ? null : Number(uid.share),

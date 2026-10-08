@@ -45,11 +45,12 @@ export function useCastorDoc<T>(doc: CastorDoc) {
 }
 
 /** BigQuery 이벤트 감시 · 흐름 — 6시간 캐시라 화면마다 따로 불러도 싸다 */
-export function useCastorHealth() {
+export function useCastorHealth(days = 7) {
   const [h, setH] = useState<CastorHealth | null | undefined>(undefined);
   useEffect(() => {
-    fetch("/api/castor/health").then((r) => (r.ok ? r.json() : null)).then((d) => setH(d)).catch(() => setH(null));
-  }, []);
+    setH(undefined);
+    fetch(`/api/castor/health?days=${days}`).then((r) => (r.ok ? r.json() : null)).then((d) => setH(d)).catch(() => setH(null));
+  }, [days]);
   return h;
 }
 

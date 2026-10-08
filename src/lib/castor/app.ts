@@ -8,7 +8,7 @@
  * Flutter 라우트 이름 = GA4 screen_name = 배너 슬롯 = 실험 대상 = 변경 카드의 대상.
  */
 
-export type CastorDoc = "app_graph" | "screens" | "events" | "changes" | "roadmap";
+export type CastorDoc = "app_graph" | "screens" | "events" | "changes" | "roadmap" | "player" | "refs" | "research" | "experiments";
 
 export interface DocEnvelope<T> {
   doc: CastorDoc;
@@ -81,8 +81,48 @@ export interface ChangeCard {
   measure?: string;
   note?: string;
   handed_off_at?: string;
+  // 변경 보드 v2 — 어떻게 잴까 · 체크리스트 · 바로 적용 키
+  method?: "before_after" | "ab" | "holdout" | "store" | "none";
+  metric?: string;
+  period?: string;
+  guard?: string;
+  rc_key?: string;
+  checks?: { text: string; done: boolean }[];
   log?: { at: string; by: string; text: string }[];
 }
+export const METHOD_LABEL: Record<NonNullable<ChangeCard["method"]>, string> = { before_after: "전후 비교", ab: "A/B", holdout: "홀드아웃", store: "매장 단위", none: "재지 않음" };
+
+/* ── 눌러보기(플레이어) — 기획안 시안 castor_mocks3.NOW · AFTER 그대로 ── */
+export type HotStatus = "ok" | "miss" | "none" | "dead" | "new";
+export interface PlayerDoc {
+  now: Record<string, { title: string; img: string; screen: string; view: [string, HotStatus]; hs: [number, number, number, number, string, string, HotStatus, string][] }>;
+  after: Record<string, { title: string; sid: string; hs: [string, string, string, HotStatus, string][] }>;
+  after_html: Record<string, string>;
+  after_css: string;
+  thumbs: Record<string, string>;
+  source: string;
+}
+
+/* ── 레퍼런스 · 조사 ── */
+export interface RefItem { id: string; app: string; dev?: string; store_url?: string; category: string; shots: string[]; take: string; screen: string }
+export interface RefsDoc { items: RefItem[] }
+export interface ResearchReq { id: string; scope: "화면" | "흐름" | "실험"; screen?: string; status: "queued" | "doing" | "done"; by: string; at?: string; question: string; range?: string; answer?: string; refs?: string[]; card?: string }
+export interface ResearchDoc { requests: ResearchReq[] }
+
+/* ── 실험 v2 (마법사) ── */
+export type ExpMethod = "ab" | "before_after" | "holdout" | "store";
+export type ExpState = "draft" | "review" | "check" | "running" | "judged" | "logged";
+export const EXP_LIFE: { key: ExpState; label: string }[] = [
+  { key: "draft", label: "초안" }, { key: "review", label: "검토" }, { key: "check", label: "출시 점검" },
+  { key: "running", label: "진행" }, { key: "judged", label: "판정" }, { key: "logged", label: "기록" },
+];
+export interface Experiment {
+  id: string; title: string; screen?: string; change?: string; hypothesis: string;
+  metric: { name: string; event?: string; base?: number; mde?: number }; method: ExpMethod;
+  guard?: string; stop_rule?: string; days: number; start?: string; state: ExpState;
+  checks: { text: string; done: boolean }[]; log: { at: string; by: string; text: string }[];
+}
+export interface ExperimentsDoc { items: Experiment[] }
 export interface ChangesDoc { cards: ChangeCard[] }
 
 /* ── 단계(0~2) 체크리스트 — 기획안 Castor 절 C6 로드맵 ── */
@@ -101,7 +141,11 @@ export interface CastorHealth {
   reason?: string;
   through: string | null; // 마지막 확정 테이블 날짜 YYYY-MM-DD
   window: { from: string; to: string } | null;
+  days: number;
   events: EventHealthRow[];
+  fail_reasons: { reason: string; n: number }[];
+  redeem_lag: { d: number; n: number }[]; // 0..7(7=7일 이상)
+  weekly: { wk: string; opened: number; redeemed: number }[];
   screen_views: { screen: string; views: number }[];
   user_id_share: number | null; // 최근 7일 이벤트 중 user_id 가 붙은 비율(%)
   flows: Flow[];
