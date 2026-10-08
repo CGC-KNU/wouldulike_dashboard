@@ -41,10 +41,10 @@ export const todaySeoul = () => { const t = new Date(Date.now() + 9 * 3600 * 100
 export const addDays = (base: string, n: number) => { const [y, m, d] = base.split("-").map(Number); return iso(new Date(y, m - 1, d + n)); };
 /** 발급일이 속한 달의 다음 달 1일 — 약관 제2조의 개시일 규칙 */
 export const nextMonthFirst = (base: string) => { const [y, m] = base.split("-").map(Number); return iso(new Date(y, m, 1)); };
-/** 개시일 + 1개월 - 1일 = 최소 이용기간 만료일 */
-export function minTermTo(starts: string): string {
+/** 개시일 + n개월 - 1일 — n=1 이면 최소 이용기간 만료일, n 개월 선결제면 그 기간의 끝 */
+export function minTermTo(starts: string, months = 1): string {
   const [y, m, d] = starts.split("-").map(Number);
-  const t = new Date(y, m, 1);
+  const t = new Date(y, m - 1 + months, 1);
   t.setDate(Math.min(d, new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate()));
   t.setDate(t.getDate() - 1);
   return iso(t);
@@ -54,6 +54,8 @@ export const dotDate = (s: string) => { if (!s) return "—"; const [y, m, d] = 
 /** 견적서 합계 — 부가세를 켜면 입력 금액 + 10% */
 export const quoteVat = (v: { fee: number; vat: boolean }) => (v.vat ? Math.round(v.fee * 0.1) : 0);
 export const quoteTotal = (v: { fee: number; vat: boolean }) => v.fee + quoteVat(v);
+/** 이번에 결제할 금액 = 월 합계 × 개월 수 */
+export const quotePay = (v: { fee: number; vat: boolean; months: number }) => quoteTotal(v) * Math.max(1, v.months || 1);
 export const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 /** 사업자번호 10자리를 000-00-00000 으로. 자리수가 다르면 그대로. */
 export const bizNo = (s: string) => { const d = s.replace(/\D/g, ""); return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}` : s; };
@@ -75,6 +77,8 @@ export interface QuoteValues {
   fee: number; // 입력한 월 이용료
   /** true = 입력 금액에 부가세 10%를 더해 합계(공급가 + 부가세), false = 부가세 없이 입력 금액이 곧 합계 (1008 민열님) */
   vat: boolean;
+  /** 한 번에 결제하는 개월 수 — 1이면 월납, 2 이상이면 그만큼 미리 결제 (1008 민열님) */
+  months: number;
   starts_on: string;
   coupon_basic: string;
   coupon_limited: string;
