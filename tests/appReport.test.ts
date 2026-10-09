@@ -19,7 +19,7 @@ import { eventCoverage, isCampaignSource, type CouponFunnel } from "../src/lib/b
 // 2026-09-14~20 실측값 (BigQuery). 전주는 9/7~13.
 const cur: Ga4AppMetrics = {
   through: "2026-09-20", week: { from: "2026-09-14", to: "2026-09-20" },
-  wau: 253, new_devices: 164, dau_wau: 20.5, open_to_store: 24.9, sessions: 429,
+  wau: 253, mau: 400, dau: 51.9, new_devices: 164, dau_wau: 20.5, open_to_store: 24.9, sessions: 429,
   sessions_detail_to_coupon: 10,
   retention_w1: 2.5, cohort: { from: "2026-08-31", to: "2026-09-06", users: 40 },
   push_open: 5.4, push: { from: "2026-09-07", to: "2026-09-20", received: 349, opened_android: 19, opened_ios: 35 },
@@ -27,7 +27,7 @@ const cur: Ga4AppMetrics = {
 };
 const prev: Ga4AppMetrics = {
   ...cur, through: "2026-09-13", week: { from: "2026-09-07", to: "2026-09-13" },
-  wau: 69, new_devices: 27, dau_wau: 21.3, open_to_store: 34.1, sessions: 132,
+  wau: 69, mau: 160, dau: 14.7, new_devices: 27, dau_wau: 21.3, open_to_store: 34.1, sessions: 132,
   sessions_detail_to_coupon: 9,
   retention_w1: 27.3, cohort: { from: "2026-08-24", to: "2026-08-30", users: 11 },
   push_open: 7.6, push: { from: "2026-08-31", to: "2026-09-13", received: 66, opened_android: 5, opened_ios: 12 },
@@ -36,7 +36,7 @@ const prev: Ga4AppMetrics = {
 const stats: AppStats = {
   since: "2026-09-01T00:00:00+09:00",
   stats: {
-    signups_this_month: 154, coupon_issued_this_month: 717, coupon_redeemed_this_month: 24,
+    signups_this_month: 154, signups_total: 1000, coupon_issued_this_month: 717, coupon_redeemed_this_month: 24,
     coupon_redeem_rate: 3.3, coupon_expiring_7d: 513, stamp_earned_this_month: 1284,
     stamp_reward_this_month: 96, mileage_entries_this_month: 412, mileage_winners_this_month: 21,
     mileage_exchanges_this_month: 7, push_sent_this_month: 14,
@@ -124,8 +124,8 @@ test("주간 값을 못 읽으면 DB·푸시 칸에 「이번 달 누계」가 �
   for (const m of metrics(d)) {
     const src = (m as unknown as { source: string }).source;
     if ((src === "backend" || src === "push") && m.value !== null) {
-      // 7일 안에 만료만 예외 — 누계가 아니라 읽는 시점 기준 앞으로 7일이다
-      const want = m.key === "coupon_expiring" ? "period" : "month_to_date";
+      // 7일 안에 만료(읽는 시점 기준 앞으로 7일)와 누적 가입자(읽는 시점의 계정 수)만 예외 — 둘 다 월 누계가 아니다
+      const want = m.key === "coupon_expiring" || m.key === "signups_total" ? "period" : "month_to_date";
       assert.equal(m.scope, want, `${m.key} 의 scope`);
     }
   }
@@ -146,6 +146,34 @@ test("표본이 얕은 칸에는 전주 대비를 붙이지 않는다", () => {
   assert.equal(ret.prev, 27.3);
 });
 
+test("규모 칸 — DAU · MAU · WAU/MAU · 누적 가입자 · 가입자 중 활성", () => {
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" });
+  assert.equal(find(d, "dau").value, 51.9);
+  assert.equal(find(d, "dau").prev, 14.7);
+  assert.equal(find(d, "mau").value, 400);
+  assert.equal(find(d, "wau_mau").value, 63.3); // 253 / 400
+  assert.equal(find(d, "wau_mau").prev, 43.1);  // 69 / 160
+  assert.equal(find(d, "signups_total").value, 1000);
+  assert.equal(find(d, "wau_per_signup").value, 25.3); // 253 / 1000
+  // 읽는 시점 값이라 월 누계 배지도, 전주 대비도 붙지 않는다
+  assert.equal(find(d, "signups_total").scope, "period");
+  assert.equal(find(d, "signups_total").prev, undefined);
+});
+
+test("규모 칸 — 값이 없으면 0 이 아니라 연결 전으로 둔다", () => {
+  // 백엔드가 signups_total 을 아직 안 주고, GA4 쪽에도 mau 가 없는 상태(예전 캐시)
+  const bare = { ...cur, dau: undefined, mau: undefined };
+  const noTotal: AppStats = { ...stats, stats: { ...stats.stats, signups_total: null } };
+  const d = buildAppReportData({ end: "20260920", cur: bare, prev: { ...prev, dau: undefined, mau: undefined }, stats: noTotal, today: "2026-09-22" });
+  for (const k of ["dau", "mau", "wau_mau", "signups_total", "wau_per_signup"]) {
+    const m = find(d, k);
+    assert.equal(m.value, null, `${k} 가 0 으로 채워졌습니다`);
+    assert.equal(m.status, "pending", `${k} 에 사유가 없습니다`);
+  }
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+});
+
 test("분모가 반 이상 달라진 주의 비율은 판정을 유보한다", () => {
   const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" });
   assert.equal(find(d, "dau_wau").verdict, "flat", "WAU 69→253 인데 DAU/WAU 를 빨갛게 칠하면 안 된다");
@@ -161,7 +189,7 @@ test("양식에 끼우면 보낼 수 있는 상태로 렌더된다", () => {
   assert.equal(r.warnings, "", `양식 경고: ${r.warnings}`);
   assert.match(r.text, /9월 3주차/);
   // 18칸 중 2칸은 일부러 비운다 — 「매장 상세 → 쿠폰 발급」(정의 보류) · 「배너 노출 → 클릭」(앱 수정 대기)
-  assert.match(r.text, /채워진 지표 20\/22/);
+  assert.match(r.text, /채워진 지표 25\/27/);
   const empty = metrics(d).filter((m) => m.value === null).map((m) => m.key).sort();
   assert.deepEqual(empty, ["banner_ctr", "store_to_coupon"]);
   assert.match(r.text, /이번 달 누계/);
@@ -268,7 +296,7 @@ test("주간 값으로 양식에 끼워도 보낼 수 있는 상태로 렌더된
   const r = render(fillAppReportTemplate(d));
   assert.equal(r.status, "ok", `빠진 값이 있습니다`);
   assert.equal(r.warnings, "", `양식 경고: ${r.warnings}`);
-  assert.match(r.text, /채워진 지표 20\/22/);
+  assert.match(r.text, /채워진 지표 25\/27/);
 });
 
 // ── 월간 ────────────────────────────────────────────────────────────

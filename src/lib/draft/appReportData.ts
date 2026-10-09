@@ -286,6 +286,15 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
   const ratioVerdict = verdictForRatio(g?.wau ?? null, p?.wau ?? null);
   const dom = dominantNote(coupons ?? null);
 
+  // 규모 칸 — 누적 가입자는 읽는 시점의 계정 수라 그 주만 센 값이 아니다(월 누계도 아니다). 그래서 scope 를 period 로 두고
+  // 어느 시점 값인지를 note 에 적는다. 지난 주를 나중에 다시 뽑으면 그만큼 크게 나온다.
+  const signupsTotal = n("signups_total");
+  const mauPrev = p?.mau ?? null;
+  const wauMau = g?.wau != null && g.mau ? Math.round((g.wau / g.mau) * 1000) / 10 : null;
+  const wauMauPrev = p?.wau != null && p.mau ? Math.round((p.wau / p.mau) * 1000) / 10 : null;
+  const wauPerSignup = g?.wau != null && signupsTotal ? Math.round((g.wau / signupsTotal) * 1000) / 10 : null;
+  const pendingIf = (v: Num) => (v === null ? { status: "pending" as const } : {});
+
   const groups = [
     {
       key: "usage",
@@ -300,10 +309,28 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
           ...(g ? {} : { status: "pending" as const }),
         },
         {
+          key: "dau", label: "일간 활성(DAU)", value: g?.dau ?? null, prev: prevIf(p?.dau ?? null), unit: "명", source: "ga4",
+          // WAU 와 같은 이유 — 첫 실행 비중이 크게 달라진 주끼리는 그대로 견줄 수 없다
+          ...(ret?.mixShifted ? { verdict: "flat" as const } : {}),
+          note: g ? `${win} 하루 평균 앱을 켠 기기 수(사용자가 없던 날도 하루로 셉니다). 9/20 개발 회의 목표는 평균 150명` : "하루 평균 접속 기기 — BigQuery 를 읽지 못했습니다",
+          ...(g ? pendingIf(g.dau ?? null) : { status: "pending" as const }),
+        },
+        {
           key: "dau_wau", label: "DAU/WAU", value: g?.dau_wau ?? null, prev: prevIf(p?.dau_wau ?? null), unit: "%", source: "ga4",
           ...(ratioVerdict ? { verdict: ratioVerdict } : {}),
           note: "끈적함. 20% 넘으면 습관이 붙은 것" + (ratioVerdict ? ` — 분모(WAU)가 ${p?.wau?.toLocaleString()} → ${g?.wau?.toLocaleString()} 으로 크게 달라져 전주와 같은 조건이 아닙니다` : ""),
           ...(g ? {} : { status: "pending" as const }),
+        },
+        {
+          key: "mau", label: "월간 활성(MAU)", value: g?.mau ?? null, prev: prevIf(mauPrev), unit: "명", source: "ga4",
+          note: g ? `${md(shiftDay(bare(g.week.to), -29))}~${md(bare(g.week.to))} 30일간 앱을 켠 기기 수. 주간 보고서에서는 주 끝에서 거꾸로 30일을 셉니다. 재설치하면 새로 셉니다` : "최근 30일 고유 사용자 — BigQuery 를 읽지 못했습니다",
+          ...(g ? pendingIf(g.mau ?? null) : { status: "pending" as const }),
+        },
+        {
+          key: "wau_mau", label: "WAU/MAU", value: wauMau, prev: prevIf(wauMauPrev), unit: "%", source: "ga4",
+          ...(verdictForRatio(g?.wau ?? null, p?.wau ?? null) ? { verdict: "flat" as const } : {}),
+          note: "한 달에 온 기기 중 이번 주에도 온 비율. 높을수록 단골이 쌓이는 중이고, 낮으면 한 번 쓰고 떠나는 기기가 많습니다",
+          ...pendingIf(wauMau),
         },
         {
           key: "retention_w1", label: "가입 1주 후 복귀", value: g?.retention_w1 ?? null, prev: prevIf(p?.retention_w1 ?? null, retSample), unit: "%", source: "firebase",
@@ -312,6 +339,16 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
           ...(g ? {} : { status: "pending" as const }),
         },
         countMetric("signups_month", "가입", ["signups"], { week: `${win} 새로 만든 계정`, month: `${monthLabel} 새로 만든 계정` }),
+        {
+          key: "signups_total", label: "누적 가입자", value: signupsTotal, unit: "명", source: "backend", scope: "period" as const,
+          note: signupsTotal === null ? "백엔드 app-stats 에서 읽지 못했습니다" : "보고서를 만든 시점에 남아 있는 계정 수(탈퇴 제외). 그 주 말일 기준이 아닙니다",
+          ...pendingIf(signupsTotal),
+        },
+        {
+          key: "wau_per_signup", label: "가입자 중 이번 주 활성", value: wauPerSignup, unit: "%", source: "ga4", scope: "period" as const,
+          note: wauPerSignup === null ? "WAU(GA4)와 누적 가입자(DB)가 둘 다 있어야 나옵니다" : "WAU 기기 수 ÷ 누적 가입자. 기기와 계정을 나눈 근사값이라 재설치·기기 여러 대면 높게 나오고 100%를 넘을 수도 있습니다",
+          ...pendingIf(wauPerSignup),
+        },
       ] as Metric[],
     },
     {
