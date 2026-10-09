@@ -3,6 +3,34 @@
  * 화면(InsightsSummary.tsx)에서 빼 둔 이유: 그림은 눈으로 보지만 이 셋은 틀려도 눈에 잘 안 띈다.
  */
 
+import type { Trend, TrendPoint } from "@/app/api/probe/insights/summary/route";
+
+/** 옛 백엔드(~1009) 모양 — `day` 가 없고 제때 잰 점이 basis `d7` 이다 */
+export type RawTrend = Omit<Trend, "day" | "points" | "counts"> & {
+  day?: number;
+  points: (Omit<TrendPoint, "basis"> & { basis: TrendPoint["basis"] | "d7" })[];
+  counts: Partial<Record<TrendPoint["basis"] | "d7", number>>;
+};
+
+/**
+ * 백엔드 trend 를 한 모양으로. 1009 백엔드부터 점 · 중앙값이 **14일차**이고 `day: 14` · basis `timely` 로 온다.
+ * 그 전 백엔드는 `day` 없이 basis `d7`(7일차) — 대시보드가 먼저 나가도 그림이 비지 않게 여기서 맞춘다.
+ */
+export function normalizeTrend(t: RawTrend): Trend {
+  const c = t.counts;
+  return {
+    ...t,
+    day: t.day ?? 7,
+    points: t.points.map((p) => ({ ...p, basis: p.basis === "d7" ? "timely" : p.basis })),
+    counts: { timely: c.timely ?? c.d7 ?? 0, late: c.late ?? 0, pending: c.pending ?? 0, none: c.none ?? 0 },
+  };
+}
+
+/** N일차로 인정하는 나이 「14~16일」 — 백엔드 cohort.timely_bounds 와 같다(여유 2일, 단 N 보다 길지 않게) */
+export function dayRange(day: number): string {
+  return `${day}~${day + Math.min(2, day)}일`;
+}
+
 /** 점 그림이 보여 주는 기간(이번 달 포함). 그 전 게시물은 발행 수 막대와 월별 표에만 있다. */
 export const DOT_MONTHS = 6;
 

@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { IconRefresh } from "@tabler/icons-react";
 import { Button, Card, Empty, Kpi, Notice, PanelSection, Skeleton, Table, Td, Th } from "../_shared/ui";
 import type { SummaryPayload, Trend, TrendMonth, TrendPoint } from "@/app/api/probe/insights/summary/route";
-import { DOT_MONTHS, axisTicks, compactKo, monthBounds, monthTick, niceMax } from "@/lib/draft/insightsTrend";
+import { DOT_MONTHS, axisTicks, compactKo, dayRange, monthBounds, monthTick, niceMax } from "@/lib/draft/insightsTrend";
 
 /**
  * Probe · 인스타 성과 **추이** — 매장 리포트 화면 아래.
@@ -14,8 +14,8 @@ import { DOT_MONTHS, axisTicks, compactKo, monthBounds, monthTick, niceMax } fro
  * 예전 표는 "D7 이면 같은 시점"이라고 믿고 월 합계·중앙값을 냈다. 그런데 정밀 수집이 9/10 에 처음 돌면서
  * 그 전 게시물의 D7 이 그날 값으로 한꺼번에 찍혔다 — 몇 주~몇 달 쌓인 값이 7일차 자리에 있었다.
  * 그래서 지금은:
- *  · 7일차 = 게시 후 7~9일에 잰 값만(백엔드 trend). 채운 점.
- *  · 7일차가 없는 게시물은 **지금까지 쌓인 값**을 속 빈 회색 점으로 — 보이되 견주지 않게. 중앙값에도 안 넣는다.
+ *  · N일차 = 게시 후 N~N+2일에 잰 값만(백엔드 trend). 채운 점. N 은 백엔드가 `day` 로 준다 — 1009 부터 14(민찬), 그 전 7.
+ *  · N일차가 없는 게시물은 **지금까지 쌓인 값**을 속 빈 회색 점으로 — 보이되 견주지 않게. 중앙값에도 안 넣는다.
  *  · 합계(조회 합·저장 합)는 뺐다. 발행 수와 릴스 비중을 따라 움직여서 "잘하고 있나"에 답하지 못한다.
  *  · 판정 글(좋아짐·나빠짐)은 붙이지 않는다 — Probe 화면에서 판정을 걷어 낸 흐름(#240·#243)과 같다.
  */
@@ -67,14 +67,14 @@ export default function InsightsSummary() {
 }
 
 function TrendView({ trend }: { trend: Trend }) {
-  const { recent, months, points, counts } = trend;
+  const { recent, months, points, counts, day } = trend;
   const present = FORMATS.filter((f) => months.some((m) => m.by_format[f]));
 
   // 점 그림 기간 — 이번 달 포함 최근 DOT_MONTHS 개월
   const dotMonths = months.slice(-DOT_MONTHS);
   const range: [number, number] | null = dotMonths.length ? [monthBounds(dotMonths[0].period)[0], monthBounds(dotMonths[dotMonths.length - 1].period)[1]] : null;
   const inRange = (p: TrendPoint) => range !== null && Date.parse(p.posted_at) >= range[0];
-  const dotFormats = FORMATS.filter((f) => points.some((p) => p.format === f && inRange(p) && (p.basis === "d7" || p.basis === "late")));
+  const dotFormats = FORMATS.filter((f) => points.some((p) => p.format === f && inRange(p) && (p.basis === "timely" || p.basis === "late")));
   const pendingIn = points.filter((p) => inRange(p) && p.basis === "pending").length;
   const noneIn = points.filter((p) => inRange(p) && p.basis === "none").length;
   const before = points.filter((p) => !inRange(p)).length;
@@ -99,31 +99,31 @@ function TrendView({ trend }: { trend: Trend }) {
         <div className="mb-3">
           <Legend
             items={[
-              { key: "d7", label: "7일차 (게시 후 7~9일에 잰 값)", swatch: <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="rgb(var(--g-700))" /></svg> },
+              { key: "timely", label: `${day}일차 (게시 후 ${dayRange(day)}에 잰 값)`, swatch: <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="rgb(var(--g-700))" /></svg> },
               { key: "late", label: "늦게 잰 값 — 지금까지 쌓인 조회수, 견주지 않음", swatch: <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="3.75" fill="none" stroke="rgb(var(--g-400))" strokeWidth="1.5" /></svg> },
-              { key: "median", label: "월 중앙값 (7일차 5건부터)", swatch: <svg width="14" height="12" aria-hidden><line x1="1" y1="6" x2="13" y2="6" stroke="rgb(var(--g-700))" strokeWidth="2" strokeLinecap="round" /></svg> },
+              { key: "median", label: `월 중앙값 (${day}일차 5건부터)`, swatch: <svg width="14" height="12" aria-hidden><line x1="1" y1="6" x2="13" y2="6" stroke="rgb(var(--g-700))" strokeWidth="2" strokeLinecap="round" /></svg> },
             ]}
           />
         </div>
         {range && dotFormats.length ? (
           <div className="grid lg:grid-cols-2 gap-x-6 gap-y-4">
             {dotFormats.map((f) => (
-              <DotPanel key={f} fmt={f} points={points.filter((p) => p.format === f && inRange(p))} months={dotMonths} range={range} />
+              <DotPanel key={f} fmt={f} day={day} points={points.filter((p) => p.format === f && inRange(p))} months={dotMonths} range={range} />
             ))}
           </div>
         ) : (
           <Empty title={`최근 ${DOT_MONTHS}개월에 그릴 게시물이 없습니다`} />
         )}
         <ul className="mt-3 space-y-1 text-[12px] text-gray-500 leading-relaxed">
-          <li>정밀 수집이 9월 10일에 시작돼, 그 전에 올린 게시물은 7일차가 없습니다. 속 빈 점은 언제 잰 값인지가 제각각이라 서로 견주면 안 됩니다.</li>
-          {pendingIn > 0 && <li>아직 7일이 안 된 {pendingIn}건은 7일차가 찍히면 점이 생깁니다.</li>}
+          <li>정밀 수집이 9월 10일에 시작돼, 그보다 {day}일 넘게 앞서 올린 게시물은 대부분 {day}일차가 없습니다. 속 빈 점은 언제 잰 값인지가 제각각이라 서로 견주면 안 됩니다.</li>
+          {pendingIn > 0 && <li>아직 {day}일차를 기다리는 {pendingIn}건은 {day}일차가 찍히면 점이 생깁니다.</li>}
           {noneIn > 0 && <li>수치가 한 번도 안 들어온 {noneIn}건은 그리지 않았습니다.</li>}
           {before > 0 && <li>그 전 {before}건은 위 월별 발행 수와 아래 표에만 있습니다.</li>}
-          {counts.d7 === 0 && <li>아직 7일차를 제때 잰 게시물이 없습니다.</li>}
+          {counts.timely === 0 && <li>아직 {day}일차를 제때 잰 게시물이 없습니다.</li>}
         </ul>
       </Card>
 
-      <MonthTable months={months} formats={present} />
+      <MonthTable months={months} formats={present} day={day} />
     </div>
   );
 }
@@ -232,10 +232,10 @@ function useWidth<T extends HTMLElement>() {
 const DOT_H = 180;
 const PAD = { l: 40, r: 10, t: 14, b: 22 };
 
-function DotPanel({ fmt, points, months, range }: { fmt: string; points: TrendPoint[]; months: TrendMonth[]; range: [number, number] }) {
+function DotPanel({ fmt, day, points, months, range }: { fmt: string; day: number; points: TrendPoint[]; months: TrendMonth[]; range: [number, number] }) {
   const [ref, W] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<TrendPoint | null>(null);
-  const drawn = useMemo(() => points.filter((p) => (p.basis === "d7" || p.basis === "late") && p.views !== null), [points]);
+  const drawn = useMemo(() => points.filter((p) => (p.basis === "timely" || p.basis === "late") && p.views !== null), [points]);
   const medians = months
     .map((m) => ({ period: m.period, v: m.by_format[fmt]?.views_median ?? null, k: m.by_format[fmt]?.timely ?? 0 }))
     .filter((m): m is { period: string; v: number; k: number } => m.v !== null);
@@ -245,7 +245,7 @@ function DotPanel({ fmt, points, months, range }: { fmt: string; points: TrendPo
   const x = (t: number) => PAD.l + ((Math.min(t, range[1]) - range[0]) / (range[1] - range[0])) * innerW;
   const y = (v: number) => PAD.t + (1 - v / top) * (DOT_H - PAD.t - PAD.b);
   const color = COLOR[fmt];
-  const d7 = drawn.filter((p) => p.basis === "d7").length;
+  const timely = drawn.filter((p) => p.basis === "timely").length;
   const lastMedian = medians[medians.length - 1];
 
   return (
@@ -254,11 +254,11 @@ function DotPanel({ fmt, points, months, range }: { fmt: string; points: TrendPo
         <span className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-800">
           <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: color }} aria-hidden />
           {FORMAT_KO[fmt]}
-          <span className="font-normal text-[12px] text-gray-500">· 7일차 {d7}건 · 늦게 잰 값 {drawn.length - d7}건</span>
+          <span className="font-normal text-[12px] text-gray-500">· {day}일차 {timely}건 · 늦게 잰 값 {drawn.length - timely}건</span>
         </span>
         {/* 중앙값 숫자는 그림 밖에 — 선 옆에 쓰면 그 달 점들과 겹친다 */}
         <span className="block text-[12px] text-gray-500 mt-0.5 tabular-nums">
-          {lastMedian ? <>{Number(lastMedian.period.slice(5))}월 7일차 중앙값 <b className="font-semibold text-gray-800">{lastMedian.v.toLocaleString()}회</b> ({lastMedian.k}건)</> : "월 중앙값은 7일차가 한 달에 5건 모이면 나옵니다"}
+          {lastMedian ? <>{Number(lastMedian.period.slice(5))}월 {day}일차 중앙값 <b className="font-semibold text-gray-800">{lastMedian.v.toLocaleString()}회</b> ({lastMedian.k}건)</> : `월 중앙값은 ${day}일차가 한 달에 5건 모이면 나옵니다`}
         </span>
       </figcaption>
       <div ref={ref} className="relative" style={{ height: DOT_H }}>
@@ -279,16 +279,16 @@ function DotPanel({ fmt, points, months, range }: { fmt: string; points: TrendPo
                 </g>
               );
             })}
-            {/* 월 중앙값 — 7일차를 제때 잰 값 5건부터. 늦게 잰 값은 들어가지 않는다 */}
+            {/* 월 중앙값 — N일차를 제때 잰 값 5건부터. 늦게 잰 값은 들어가지 않는다 */}
             {medians.map((m) => {
               const [s, e] = monthBounds(m.period);
               return <line key={m.period} x1={x(s) + 2} x2={x(Math.min(e, now)) - 2} y1={y(m.v)} y2={y(m.v)} stroke={color} strokeWidth="2" strokeLinecap="round" />;
             })}
-            {/* 늦게 잰 값을 먼저 깔고 7일차를 위에 — 비교할 점이 가려지지 않게 */}
+            {/* 늦게 잰 값을 먼저 깔고 N일차를 위에 — 비교할 점이 가려지지 않게 */}
             {drawn.filter((p) => p.basis === "late").map((p) => (
               <circle key={p.id} cx={x(Date.parse(p.posted_at))} cy={y(p.views as number)} r="3.75" fill="rgb(var(--card))" stroke="rgb(var(--g-400))" strokeWidth="1.5" opacity={hover && hover.id !== p.id ? 0.5 : 1} />
             ))}
-            {drawn.filter((p) => p.basis === "d7").map((p) => (
+            {drawn.filter((p) => p.basis === "timely").map((p) => (
               <circle key={p.id} cx={x(Date.parse(p.posted_at))} cy={y(p.views as number)} r={hover?.id === p.id ? 6 : 4.5} fill={color} stroke="rgb(var(--card))" strokeWidth="2" />
             ))}
             {/* 맞히기 쉬운 자리 — 점보다 크게(지름 24px) */}
@@ -302,7 +302,7 @@ function DotPanel({ fmt, points, months, range }: { fmt: string; points: TrendPo
                 className="cursor-pointer outline-none"
                 tabIndex={0}
                 role="link"
-                aria-label={`${md(p.posted_at)} ${FORMAT_KO[fmt]} 조회 ${n(p.views)}회 — ${p.basis === "d7" ? "7일차" : `게시 후 ${p.measured_days}일째까지 쌓인 값`}`}
+                aria-label={`${md(p.posted_at)} ${FORMAT_KO[fmt]} 조회 ${n(p.views)}회 — ${p.basis === "timely" ? `${day}일차` : `게시 후 ${p.measured_days}일째까지 쌓인 값`}`}
                 onMouseEnter={() => setHover(p)}
                 onMouseLeave={() => setHover(null)}
                 onFocus={() => setHover(p)}
@@ -313,13 +313,13 @@ function DotPanel({ fmt, points, months, range }: { fmt: string; points: TrendPo
             ))}
           </svg>
         )}
-        {hover && W > 0 && <DotTip p={hover} left={x(Date.parse(hover.posted_at))} top={y(hover.views as number)} width={W} />}
+        {hover && W > 0 && <DotTip p={hover} day={day} left={x(Date.parse(hover.posted_at))} top={y(hover.views as number)} width={W} />}
       </div>
     </figure>
   );
 }
 
-function DotTip({ p, left, top, width }: { p: TrendPoint; left: number; top: number; width: number }) {
+function DotTip({ p, day, left, top, width }: { p: TrendPoint; day: number; left: number; top: number; width: number }) {
   const shift = left < width * 0.2 ? "0" : left > width * 0.8 ? "-100%" : "-50%";
   const below = top < 70; // 위쪽 점이면 툴팁을 아래로
   return (
@@ -329,8 +329,8 @@ function DotTip({ p, left, top, width }: { p: TrendPoint; left: number; top: num
     >
       <p className="text-[15px] font-bold text-gray-900 tabular-nums">{n(p.views)}회</p>
       <p className="text-gray-600">{md(p.posted_at)} 게시 · {FORMAT_KO[p.format] ?? p.format}</p>
-      <p className={p.basis === "d7" ? "text-gray-500" : "text-amber-700"}>
-        {p.basis === "d7" ? `7일차 (게시 후 ${p.measured_days}일에 잼)` : `게시 후 ${p.measured_days}일째까지 쌓인 값 — 견주지 않음`}
+      <p className={p.basis === "timely" ? "text-gray-500" : "text-amber-700"}>
+        {p.basis === "timely" ? `${day}일차 (게시 후 ${p.measured_days}일에 잼)` : `게시 후 ${p.measured_days}일째까지 쌓인 값 — 견주지 않음`}
       </p>
     </div>
   );
@@ -338,7 +338,7 @@ function DotTip({ p, left, top, width }: { p: TrendPoint; left: number; top: num
 
 /* ═══════════ 월별 표 — 그림의 표 버전 ═══════════ */
 
-function MonthTable({ months, formats }: { months: TrendMonth[]; formats: readonly string[] }) {
+function MonthTable({ months, formats, day }: { months: TrendMonth[]; formats: readonly string[]; day: number }) {
   const medianFormats = formats.filter((f) => f !== "image");
   return (
     <details className="group">
@@ -353,7 +353,7 @@ function MonthTable({ months, formats }: { months: TrendMonth[]; formats: readon
                 <Th>월</Th>
                 <Th align="right">발행</Th>
                 {formats.map((f) => <Th key={f} align="right">{FORMAT_KO[f]}</Th>)}
-                {medianFormats.map((f) => <Th key={`m-${f}`} align="right">{FORMAT_KO[f]} 7일차 조회 중앙값</Th>)}
+                {medianFormats.map((f) => <Th key={`m-${f}`} align="right">{FORMAT_KO[f]} {day}일차 조회 중앙값</Th>)}
               </tr>
             </thead>
             <tbody>
@@ -366,7 +366,7 @@ function MonthTable({ months, formats }: { months: TrendMonth[]; formats: readon
                     const s = m.by_format[f];
                     return (
                       <Td key={`m-${f}`} align="right" numeric>
-                        {s?.views_median != null ? n(s.views_median) : <span className="text-gray-300" title={s?.timely ? "7일차 5건 미만" : "7일차 없음"}>—</span>}
+                        {s?.views_median != null ? n(s.views_median) : <span className="text-gray-300" title={s?.timely ? `${day}일차 5건 미만` : `${day}일차 없음`}>—</span>}
                         {s?.timely ? <span className="ml-1 text-[11px] text-gray-400">{s.timely}건</span> : null}
                       </Td>
                     );
@@ -377,7 +377,7 @@ function MonthTable({ months, formats }: { months: TrendMonth[]; formats: readon
           </Table>
         </Card>
         <p className="mt-2 text-[11.5px] text-gray-500 leading-relaxed">
-          중앙값은 7일차를 제때 잰 게시물이 5건 이상일 때만 냅니다 — 그보다 적으면 「—」입니다(0 이 아닙니다). 옆의 작은 숫자가 그 건수입니다.
+          중앙값은 {day}일차를 제때 잰 게시물이 5건 이상일 때만 냅니다 — 그보다 적으면 「—」입니다(0 이 아닙니다). 옆의 작은 숫자가 그 건수입니다.
         </p>
       </div>
     </details>
