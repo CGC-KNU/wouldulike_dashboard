@@ -42,13 +42,27 @@ export async function POST(req: NextRequest) {
   if (!lead) return NextResponse.json({ detail: "후보를 찾을 수 없습니다." }, { status: 404 });
 
   // 1) 같은 이름의 매장이 있으면 잇기만 한다
-  const b = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
+  // 중복 안내(백엔드 409 duplicates)는 **제휴 꺼진 매장까지** 보여 준다 — 그래서 고른 매장을 찾을 때도 비제휴를 같이 본다 (1009, 고운라멘 #220).
+  const b = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/", restaurant_id ? "include_inactive=1" : undefined, Boolean(restaurant_id));
   const stores = b?.restaurants ?? (isPreview() ? previewRestaurants() : []);
   let store = restaurant_id
     ? stores.find((s) => s.restaurant_id === Number(restaurant_id)) ?? null
     : stores.find((s) => normName(s.name) === normName(lead.name)) ?? null;
   if (restaurant_id && !store) return NextResponse.json({ detail: `매장 #${restaurant_id} 를 찾을 수 없습니다.` }, { status: 404 });
   let created = false;
+  let reactivated = false;
+
+  // 제휴가 꺼진 매장에 잇는 건 **다시 파트너가 되는 것**이다 — 제휴를 켜야 파트너 매장 · 계약 탭에 나타난다.
+  if (store && store.is_affiliate === false) {
+    const res = await proxyBody("PATCH", `/api/dashboard/admin/restaurants/${store.restaurant_id}/`, { is_affiliate: true });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { detail?: string };
+      return NextResponse.json({ detail: `매장 #${store.restaurant_id} 의 제휴를 다시 켜지 못했습니다 — ${d.detail ?? res.status}` }, { status: res.status });
+    }
+    store = { ...store, is_affiliate: true };
+    reactivated = true;
+    clearBackendCache();
+  }
 
   if (!store) {
     if (isPreview() && !process.env.NEXT_PUBLIC_API_URL) {
@@ -96,9 +110,9 @@ export async function POST(req: NextRequest) {
       converted_restaurant_id: store.restaurant_id,
     });
     await notifyAstro(
-      `:tada: *파트너 전환* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${tier ? ` · ${tier}` : ""} ${created ? "(매장 새로 만듦)" : "(기존 매장에 연결)"} · ${updated_by ?? "unknown"}`
+      `:tada: *파트너 전환* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${tier ? ` · ${tier}` : ""} ${created ? "(매장 새로 만듦)" : reactivated ? "(제휴 꺼진 기존 매장을 다시 켜고 연결)" : "(기존 매장에 연결)"} · ${updated_by ?? "unknown"}`
     );
-    return NextResponse.json({ ok: true, created, restaurant_id: store.restaurant_id, lead: patched.data?.lead ?? lead, draft: false });
+    return NextResponse.json({ ok: true, created, reactivated, restaurant_id: store.restaurant_id, lead: patched.data?.lead ?? lead, draft: false });
   }
 
   const list = [...readDraft<StoreOps[]>("astro_store_ops", seedStoreOps)];
@@ -126,7 +140,7 @@ export async function POST(req: NextRequest) {
   });
 
   await notifyAstro(
-    `:tada: *파트너 전환* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${tier ? ` · ${tier}` : ""} ${created ? "(매장 새로 만듦)" : "(기존 매장에 연결)"} · ${updated_by ?? "unknown"}`
+    `:tada: *파트너 전환* — ${lead.name}${lead.campus ? ` · ${lead.campus}` : ""}${tier ? ` · ${tier}` : ""} ${created ? "(매장 새로 만듦)" : reactivated ? "(제휴 꺼진 기존 매장을 다시 켜고 연결)" : "(기존 매장에 연결)"} · ${updated_by ?? "unknown"}`
   );
   return NextResponse.json({ ok: true, created, restaurant_id: store.restaurant_id, lead: lead2, draft: true });
 }
