@@ -14,7 +14,7 @@ import { Button, Card, Chip, DraftBadge, Field, Input, Kpi, Notice, PageHeader, 
  * 시트(우주라이크_마일리지_운영)가 정본이고 여기는 운영 기록이다.
  */
 
-interface Round { id: string; date: string; weekday: "수" | "금"; seats: { fixed: number; random: number }; prizes: string; pool_count: number | null; pool_checked_by: string | null; pool_checked_at: string | null; result: "scheduled" | "drawn" | "held" | "skipped"; note: string | null; updated_by: string | null; updated_at: string | null }
+interface Round { id: string; date: string; weekday: "수" | "금"; seats: { fixed: number; random: number }; prizes: string; pool_auto?: boolean; result_auto?: boolean; pool_count: number | null; pool_checked_by: string | null; pool_checked_at: string | null; result: "scheduled" | "drawn" | "held" | "skipped"; note: string | null; updated_by: string | null; updated_at: string | null }
 interface Raffle { id: number; title: string; prize_amount: number; winner_count: number; status: string; entries: number; winners: number; drawn_at: string | null }
 interface Voucher { user_id: number; coupon_code: string | null; status: "REDEEMED" | "EXPIRED" | "ISSUED" | null; expires_at: string | null; redeemed_at: string | null; restaurant_id: number | null; restaurant_name: string | null }
 interface VoucherSummary { issued: number; redeemed: number; expired: number; waiting: number; none: number }
@@ -156,7 +156,8 @@ function RoundPanel({ r, prog, onClose, onPatch, onCreated }: { r: Round; prog: 
   useEffect(() => { setPool(r.pool_count === null ? "" : String(r.pool_count)); setNote(r.note ?? ""); setResult(r.result); setItems(defaultItems(r.date)); setCreateMsg(null); }, [r]);
   async function save() {
     if (saving) return; setSaving(true);
-    try { await onPatch(r.id, { pool_count: pool.trim() === "" ? null : Math.max(0, parseInt(pool, 10) || 0), result, note: note.trim() || null }); onClose(); } finally { setSaving(false); }
+    // 앱이 채우는 칸(응모 인원·추첨 완료)은 보내지 않는다 — 앱 값이 저장값을 덮어쓰지 않게
+    try { await onPatch(r.id, { ...(r.pool_auto ? {} : { pool_count: pool.trim() === "" ? null : Math.max(0, parseInt(pool, 10) || 0) }), ...(r.result_auto ? {} : { result }), note: note.trim() || null }); onClose(); } finally { setSaving(false); }
   }
   return (
     <SlideOver open onClose={onClose} title={`${Number(r.date.slice(5, 7))}/${Number(r.date.slice(8))} (${r.weekday}) 11:00 마감 회차`} subtitle={`확정 ${r.seats.fixed} · 랜덤 ${r.seats.random} · ${r.prizes}`} badge={<Chip tone={R_TONE[r.result]}>{R_LABEL[r.result]}</Chip>}
@@ -184,8 +185,10 @@ function RoundPanel({ r, prog, onClose, onPatch, onCreated }: { r: Round; prog: 
       )}
       <PanelSection title={prog ? "응모 (앱 실측)" : "응모풀"}>
         {prog && <p className="text-[13px] text-gray-800 mb-2">응모 <b>{prog.entries}건</b> · {prog.people}명 · 당첨 <b>{prog.winners}명</b>{prog.raffles.map((x) => ` · ${x.prize_amount.toLocaleString()}원 ${x.entries}건${x.status === "DRAWN" ? " (추첨 완료)" : ""}`).join("")}</p>}
-        <Field label="응모 인원 (사람 확인 · 시트 기준)" hint="비어 있으면 '미확인'. 0 은 확인했는데 없다는 뜻입니다."><Input type="number" inputMode="numeric" value={pool} onChange={(e) => setPool(e.target.value)} placeholder="예: 42" /></Field>
-        {r.pool_checked_at && <p className="text-[12px] text-gray-500">{r.pool_checked_by} 가 {new Date(r.pool_checked_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 에 확인</p>}
+        {r.pool_auto
+          ? <Field label="응모 인원 (앱 자동 집계)" hint="앱 DB 에서 그날 응모한 사람 수를 자동으로 셉니다. 따로 확인하지 않아도 됩니다."><Input type="number" value={pool} readOnly disabled /></Field>
+          : <Field label="응모 인원 (사람 확인 · 시트 기준)" hint="앱 기록을 못 읽을 때만 직접 적습니다. 비어 있으면 '미확인', 0 은 확인했는데 없다는 뜻입니다."><Input type="number" inputMode="numeric" value={pool} onChange={(e) => setPool(e.target.value)} placeholder="예: 42" /></Field>}
+        {r.pool_checked_at && !r.pool_auto && <p className="text-[12px] text-gray-500">{r.pool_checked_by} 가 {new Date(r.pool_checked_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 에 확인</p>}
       </PanelSection>
       {prog && prog.vouchers.length > 0 && (
         <PanelSection title={`식사권 ${prog.vouchers.filter((x) => x.status === "REDEEMED").length}/${prog.vouchers.length} 사용`}>
@@ -206,10 +209,10 @@ function RoundPanel({ r, prog, onClose, onPatch, onCreated }: { r: Round; prog: 
         </PanelSection>
       )}
       <PanelSection title="결과">
-        <Field label="회차 결과"><Select value={result} onChange={(e) => setResult(e.target.value as Round["result"])}><option value="scheduled">예정</option><option value="drawn">추첨 완료</option><option value="held">보류 (응모풀 비어 있음 등)</option><option value="skipped">미운용 (정책상 없음)</option></Select></Field>
+        <Field label="회차 결과" hint={r.result_auto ? "앱에서 추첨이 끝나 당첨자가 생겨 자동으로 '추첨 완료'가 됐습니다." : undefined}><Select value={result} disabled={r.result_auto} onChange={(e) => setResult(e.target.value as Round["result"])}><option value="scheduled">예정</option><option value="drawn">추첨 완료</option><option value="held">보류 (응모풀 비어 있음 등)</option><option value="skipped">미운용 (정책상 없음)</option></Select></Field>
         <Field label="메모"><Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 당첨 2명, 시트 추첨기록 탭 반영" /></Field>
       </PanelSection>
-      <p className="text-[12px] text-gray-500">추첨 자체는 시트의 <code className="bg-black/[0.05] px-1 rounded">mileageDrawManual</code> 이 합니다(시드 재현 가능). 여기는 그 결과를 사람이 옮겨 적는 자리입니다.</p>
+      <p className="text-[12px] text-gray-500">응모 인원과 '추첨 완료'는 앱 DB 에서 자동으로 채워집니다. 앱 기록을 못 읽을 때만 직접 적습니다.</p>
     </SlideOver>
   );
 }

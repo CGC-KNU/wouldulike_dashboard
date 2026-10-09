@@ -110,6 +110,26 @@ interface Voucher { user_id: number; coupon_code: string | null; status: "REDEEM
 interface DayProgress { entries: number; people: number; winners: number; vouchers: Voucher[]; raffles: { id: number; title: string; prize_amount: number; winner_count: number; status: string; entries: number; winners: number; drawn_at: string | null }[] }
 interface VoucherSummary { issued: number; redeemed: number; expired: number; waiting: number; none: number }
 
+/**
+ * 앱 DB 실측이 있으면 사람이 적던 두 칸을 그걸로 채운다(저장값은 건드리지 않는다).
+ * - 응모 인원: 그날 응모한 사람 수. 사람 확인이 필요 없다.
+ * - 결과: 그날 래플이 전부 DRAWN 이면 '추첨 완료'. 보류·미운용으로 적혀 있어도 앱에서 뽑혔으면 앱이 맞다(9/9).
+ * 못 읽었거나(progress null) 래플이 없으면 예전 그대로 사람 기록을 쓴다.
+ */
+function withAppFacts(r: MileageRound, p: DayProgress | null): MileageRound & { pool_auto: boolean; result_auto: boolean } {
+  if (!p) return { ...r, pool_auto: false, result_auto: false };
+  const drawn = p.raffles.length > 0 && p.raffles.every((x) => x.status === "DRAWN");
+  return {
+    ...r,
+    pool_count: p.people,
+    pool_checked_by: "앱 자동",
+    pool_checked_at: new Date().toISOString(),
+    result: drawn ? "drawn" : r.result,
+    pool_auto: true,
+    result_auto: drawn,
+  };
+}
+
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -117,7 +137,7 @@ export async function GET() {
   const live = onBackend() ? await fetchBackendJson<{ days: Record<string, DayProgress>; vouchers: VoucherSummary }>("/api/probe/mileage/progress/") : null;
   const progress = live?.days ?? null;
   return NextResponse.json({
-    rounds,
+    rounds: rounds.map((r) => withAppFacts(r, progress?.[r.date] ?? null)),
     // 회차 날짜별 실제 응모·당첨. 못 읽으면 null — 0 이 아니다(사람이 적은 숫자와 섞이면 안 된다).
     progress,
     // 당첨 식사권이 매장에서 쓰였나 — 뽑힌 것과 쓴 것은 다르다
