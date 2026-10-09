@@ -209,7 +209,7 @@ export default function Launcher({ available, extras = [], userName, username = 
       {/* Satty — 기능을 해치지 않는 여백(우하단)에 산다. 숫자가 좋으면 기뻐하고 막히면 지친다 (민열님 0919). */}
       <Satty status={status} weekItems={weekCount} onGo={onGo} />
 
-      <p className="text-[12px] text-gray-400 mt-6">Probe 는 아직 초안이라 화면의 &lsquo;초안 데이터&rsquo; 표시를 같이 보세요. Castor 는 Visual Engineer 합류 후 다시 봅니다.</p>
+      <p className="text-[12px] text-gray-400 mt-6">Castor 는 Visual Engineer 합류 후 다시 봅니다.</p>
     </div>
   );
 }
