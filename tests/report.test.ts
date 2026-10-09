@@ -835,3 +835,14 @@ test("편집 화면 카드는 해석 글과 같은 날의 숫자 — 14일차면
   assert.equal(day7Line(old, old.metrics[0]), null);
   assert.deepEqual(measuredPoint(old), { day: 7, date: "2026-09-11" });
 });
+
+test("1009 — Probe 성과 지표가 14일차(basis D14)면 7일차 작은 줄은 report-data 추이에서 읽는다", () => {
+  const series = [{ day: 1, measured_at: "2026-09-05", views: 3000 }, { day: 7, measured_at: "2026-09-11", views: 20000 }, { day: 14, measured_at: "2026-09-18", views: 32657 }];
+  const s = report({}, { basis: "D14", metrics: [metric("views", 32657), metric("reach", 18702)], report_data: { ...rd, series } }).snapshot;
+  assert.equal(day7Line(s, s.metrics[0]), "7일차 20,000", "스냅샷 metrics(14일차 32,657)가 아니라 추이의 7일차");
+  assert.equal(day7Line(s, s.metrics[1]), null, "추이에 7일차 도달이 없으면 줄이 없다 — 14일차 값을 7일차라고 쓰지 않는다");
+
+  // report-data 가 없으면 basis 가 며칠차를 말한다
+  const bare = report({}, { basis: "D14", report_data: undefined }).snapshot;
+  assert.deepEqual(measuredPoint(bare), { day: 14, date: "2026-09-18" });
+});

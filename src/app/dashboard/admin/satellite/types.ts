@@ -249,7 +249,8 @@ export interface PlanDetail {
 
 export interface PerformanceMetricCohort {
   window_days: number | null;
-  basis: "D7" | "cumulative" | "none";
+  /** "D14" 는 Probe 가 ?day=14 로 불렀을 때만(1009) — Papillon 화면은 늘 "D7" */
+  basis: "D7" | "D14" | "cumulative" | "none";
   hidden: boolean;
   n: number;
   median?: number | null;
@@ -289,7 +290,9 @@ export interface TimeSeriesPoint {
 export interface PostPerformance {
   available: boolean;
   reason?: string;
-  basis?: "D7" | "cumulative";
+  basis?: "D7" | "D14" | "cumulative";
+  /** 며칠차끼리 견줬나 — 백엔드 #128 부터. 없으면 7 */
+  compare_day?: number;
   age_days?: number;
   collecting?: boolean;
   /**

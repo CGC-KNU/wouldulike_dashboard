@@ -1,4 +1,4 @@
-import type { ReportMetric, ReportMetricSource, ReportProposal, ReportSnapshot, VerdictTone } from "./types";
+import type { ReportMetric, ReportMetricKey, ReportMetricSource, ReportProposal, ReportSnapshot, VerdictTone } from "./types";
 import { ageShare, slideShare, slideTop } from "./reportManual";
 
 /**
@@ -127,12 +127,16 @@ export function cardValue(s: ReportSnapshot, m: ReportMetric): number {
 
 /**
  * 카드 아래 작은 회색 줄 — 7일차 숫자(1005 민찬: 7일차 · 14일차 둘 다 보이게, 증가분은 빼고).
- * 카드 큰 숫자가 14일차(report-data)일 때만 「7일차 1,234」. 7일차 값은 스냅샷 metrics(Papillon 성과 — 7일차 우선)에 원래 있다.
- * 카드와 같은 날이면 null. 순위(baskets)도 이 7일차 값으로 매긴 것이다 — 판정을 카드에 다시 올리면 이 줄 옆에 둔다.
+ * 카드 큰 숫자(report-data)가 7일차가 아닐 때만 「7일차 1,234」. 카드와 같은 날이면 null.
+ * 7일차 값은 report-data 의 1·7·14 추이(제때 잰 것만)에서 읽는다 — 1009 부터 스냅샷 metrics 는 14일차라서다.
+ * 추이가 없는 옛 스냅샷은 metrics 가 7일차(basis "D7")일 때 그 값.
  */
 export function day7Line(s: ReportSnapshot, m: ReportMetric): string | null {
-  const otherDay = s.basis === "D7" && s.report_data?.available && typeof s.report_data.day === "number" && s.report_data.day !== 7;
-  return otherDay ? `7일차 ${m.value.toLocaleString()}` : null;
+  const rd = s.report_data?.available ? s.report_data : null;
+  if (!rd || typeof rd.day !== "number" || rd.day === 7) return null;
+  const key = m.key as ReportMetricKey;
+  const v = rd.series?.find((p) => p.day === 7)?.[key] ?? (rd.previous?.day === 7 ? rd.previous[key] : undefined) ?? (s.basis === "D7" ? m.value : undefined);
+  return typeof v === "number" ? `7일차 ${v.toLocaleString()}` : null;
 }
 
 /** 반응 지표마다 — 무엇인지(정의) 한 문장 + 이번 콘텐츠에서 한 일 한 문장. 좋아요·댓글 문장은 0928 민찬 확인. */

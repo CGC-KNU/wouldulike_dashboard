@@ -63,14 +63,16 @@ function viaProxy(url: string, origin?: string): string {
 }
 
 /**
- * 리포트 숫자가 며칠차 · 어느 날 값인가 — report-data 가 말해 준다. 없으면 예전 규칙(D+7 이 있으면 7일차, 아니면 누적).
+ * 리포트 숫자가 며칠차 · 어느 날 값인가 — report-data 가 말해 준다. 없으면 성과 지표의 basis(「D7」 · 1009 부터 「D14」)가
+ * 그 일차, 누적이면 만든 날.
  * 양식과 편집 화면 「스냅샷」 머리(1005)가 같이 쓴다.
  */
 export function measuredPoint(s: StoreReport["snapshot"]): { day: number | null; date: string } {
   const rd = s.report_data?.available ? s.report_data : null;
   const posted = rd?.post?.posted_at ?? (s.post.posted_at ? kstDate(s.post.posted_at) : null);
-  const d7 = s.basis === "D7";
-  return { day: rd?.day ?? (d7 ? 7 : s.age_days), date: rd?.measured_at ?? (d7 && posted ? addDays(posted, 7) : kstDate(s.as_of)) };
+  const nth = /^D(\d+)$/.exec(s.basis ?? "");
+  const at = nth ? Number(nth[1]) : null;
+  return { day: rd?.day ?? at ?? s.age_days, date: rd?.measured_at ?? (at !== null && posted ? addDays(posted, at) : kstDate(s.as_of)) };
 }
 
 export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): Json {
