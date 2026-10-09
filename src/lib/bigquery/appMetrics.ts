@@ -60,6 +60,8 @@ export interface Ga4AppMetrics {
   wau: number | null;
   /** 활성 기기 중 그 주에 처음 앱을 연 기기 수 — WAU 가 뛰었을 때 "새로 온 것"과 "돌아온 것"을 가른다 */
   new_devices: number | null;
+  /** 창 안 하루 평균 활성 기기 수 — 사용자가 0인 날도 하루로 친다. dau_wau 의 분자와 같은 값이다 */
+  dau?: number | null;
   /** 7일 평균 DAU ÷ WAU, % */
   dau_wau: number | null;
   /** 월간 활성 — 창의 끝에서 거꾸로 30일간 앱을 켠 기기 수. 창이 7일이어도 30일을 센다(WAU 와 같은 기준일에서 끝난다) */
@@ -341,6 +343,7 @@ export async function readGa4AppMetrics(
       week: { from: dash(start), to: dash(end) },
       wau: act ? wau : null,
       new_devices: fresh ? Number(fresh.new_devices ?? 0) : null,
+      dau: act ? Math.round((Number(act.dau_sum ?? 0) / days) * 10) / 10 : null,
       dau_wau: pct(Number(act?.dau_sum ?? 0) / days, wau),
       mau: mauRow ? Number(mauRow.mau ?? 0) : null,
       open_to_store: pct(Number(ses?.with_detail ?? 0), sessions),

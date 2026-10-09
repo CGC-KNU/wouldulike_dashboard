@@ -72,7 +72,7 @@ const cachedGa4 = unstable_cache(
     if (!r.ok) throw new Error(r.detail ?? r.reason);
     return r.data;
   },
-  ["probe-app-ga4-v3"],
+  ["probe-app-ga4-v4"],
   { revalidate: 6 * 60 * 60 }
 );
 
@@ -147,6 +147,7 @@ export async function GET() {
         { key: "signups_month", label: "이번 달 가입", value: n("signups_this_month"), unit: "명", source: "backend", note: s ? `${month} 새로 만든 계정` : undefined },
         { key: "signups_total", label: "누적 가입자", value: n("signups_total"), unit: "명", source: "backend", note: s ? "지금 남아 있는 계정 수(탈퇴 제외). 위 「이번 달 가입」과 WAU 의 분모" : undefined },
         { key: "wau", label: "주간 활성(WAU)", value: g?.wau ?? null, unit: "명", source: "ga4", note: g ? `${week} 앱을 켠 기기 수. 재설치하면 새로 센다` : "BigQuery 원본 — 최근 7일 고유 사용자. 쿼리 연결 전" },
+        { key: "dau", label: "일간 활성(DAU)", value: g?.dau ?? null, unit: "명", source: "ga4", note: g ? `${week} 하루 평균 앱을 켠 기기 수. 9/20 개발 회의 목표는 평균 150명` : "BigQuery 원본 — 7일 하루 평균. 쿼리 연결 전" },
         { key: "dau_wau", label: "DAU/WAU", value: g?.dau_wau ?? null, unit: "%", source: "ga4", note: "끈적함. 20% 넘으면 습관이 붙은 것" },
         // 분자는 기기, 분모는 계정이라 비율은 근사다 — 한 사람이 기기 둘이면 높게, 재설치해도 높게 나온다. 100% 를 넘을 수 있다.
         { key: "wau_per_signup", label: "가입자 중 이번 주 활성", value: g?.wau != null && signupsTotal ? Math.round((g.wau / signupsTotal) * 1000) / 10 : null, unit: "%", source: "ga4",
