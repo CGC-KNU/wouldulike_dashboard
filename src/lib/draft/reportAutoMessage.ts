@@ -6,7 +6,8 @@ import type { StoreReport } from "./types";
  * 게시 14일차 #ops-partner 메시지 — **14일차에 나가는 알림은 이것 하나다** (민찬 1008 「합쳐줘」).
  *
  * 전에는 같은 날 두 개가 갔다: 백엔드 partner_content_alerts 의 「14일 경과 — 인사이트 보고 부탁드립니다」(영업 담당 호출)와
- * 이 자동 초안 알림(#259). 백엔드는 이제 올라간 날 알림만 보내고, 그쪽에 있던 콘텐츠 · 올라간 때 · 제작 담당 · 담당자 호출을 여기로 옮겼다.
+ * 이 자동 초안 알림(#259). 백엔드는 이제 올라간 날 알림만 보내고, 그쪽에 있던 콘텐츠 · 올라간 때 · 담당자 호출을 여기로 옮겼다.
+ * 제작 담당 줄은 옮겼다가 뺐다(민찬 1009 「제작 담당은 지우자」).
  */
 
 /**
@@ -52,7 +53,6 @@ export function draftMessage(r: StoreReport, origin: string, mentions: string = 
     "• 게시 14일차 자동 작성",
     ...(post.topic ? [`• 콘텐츠  ${post.topic}`] : []),
     ...(when ? [`• 올라간 때  ${when}`] : []),
-    ...(post.owner_name ? [`• 제작 담당  ${post.owner_name}`] : []),
     `${mentions ? `${mentions} — ` : ""}*초안에 인스타 지표 입력을 진행해 주세요.*`,
     ...(insta ? [`• 인스타 게시물 <${insta}|인스타그램에서 보기>`] : []),
     `• 세틀라이트 리포트 <${origin}/dashboard/admin?tab=probe-reports&open=${encodeURIComponent(r.id)}|리포트 열기>`,

@@ -2,7 +2,7 @@
 #
 #   매일 09:00 KST — 대시보드 /api/probe/reports/auto 가 14일차 숫자가 찍힌 게시물 중 리포트가 한 번도 없던 것을
 #   초안으로 만들고, 이 워크플로가 「초안에 인스타 지표 입력을 진행해 주세요」 메시지(세틀라이트 리포트 링크 + 인스타 링크)를 올린다.
-#   **14일차 #ops-partner 알림은 이것 하나다**(민찬 1008) — 백엔드 「14일 경과」 알림을 합쳐 콘텐츠 · 올라간 때 · 제작 담당 ·
+#   **14일차 #ops-partner 알림은 이것 하나다**(민찬 1008) — 백엔드 「14일 경과」 알림을 합쳐 콘텐츠 · 올라간 때 ·
 #   담당자 호출이 같이 들어간다(src/lib/draft/reportAutoMessage.ts) — 기본은 준영 · 서지 · 민찬, 팀 명단(atlas.ts)의 슬랙 ID 로 진짜 멘션.
 #   부를 사람을 바꾸려면 **저장소 변수** SLACK_PARTNER_REPORTERS(Settings → Secrets and variables → Actions → Variables,
 #   이름이나 슬랙 멤버 ID 를 쉼표로)를 두면 X-Partner-Reporters 헤더로 넘어간다. 비어 있으면 기본값.
