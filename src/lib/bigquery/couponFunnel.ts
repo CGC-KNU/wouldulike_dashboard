@@ -87,6 +87,16 @@ export type CouponFunnelRead =
   | { ok: false; reason: "no_key" | "error"; detail?: string };
 
 const dash = (s: string) => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+
+/**
+ * 쿠폰 한 장의 발급 경로(SQL 집계식). 같은 쿠폰이 이벤트마다 다른 경로로 찍히는 일이 있다 —
+ * 대개 한 번은 캠페인 코드, 한 번은 `other` 다(1010 실측). `ANY_VALUE` 로 고르면 실행할 때마다
+ * 캠페인/그 외가 바뀌어 같은 달을 두 번 뽑아도 숫자가 다르다. **구체적인 경로를 먼저** 고르고
+ * (`other`·`unknown` 은 매핑이 없을 때 붙는 대체값), 그 안에서는 MIN 으로 늘 같은 것을 고른다.
+ */
+const pickSource = (expr: string) =>
+  `IFNULL(MIN(IF(${expr} NOT IN ('other', 'unknown'), ${expr}, NULL)), IFNULL(MIN(${expr}), 'unknown'))`;
+
 const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 const num = (v: unknown) => Number(v ?? 0);
 
@@ -109,7 +119,7 @@ export async function readCouponFunnel(
     // ① 경로별 발급 · 그 쿠폰이 쓰였는지 — coupon_code 로 잇는다(기기 단위로 세면 경로가 섞인다)
     const rowsP = run<{ source: string | null; issued: number; redeemed: number }>(
       `WITH iss AS (
-         SELECT ${S("coupon_code")} AS code, ANY_VALUE(${S("coupon_issue_source")}) AS source
+         SELECT ${S("coupon_code")} AS code, ${pickSource(S("coupon_issue_source"))} AS source
          FROM ${events}
          WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_issued'
            AND ${S("coupon_code")} IS NOT NULL
@@ -291,6 +301,159 @@ export async function readStoreToCoupon(
         views, claimed,
         claimed_including_campaign: Number(r?.any_claimed ?? 0),
         rate: pct(claimed, views),
+      },
+    };
+  } catch (e) {
+    return { ok: false, reason: "error", detail: e instanceof Error ? e.message.slice(0, 160) : "알 수 없는 오류" };
+  }
+}
+
+// ── 쓰기 퍼널 — 받은 쿠폰 한 장을 끝까지 따라간다 ──────────────────────────
+/**
+ * 보고서 「쓰기 퍼널」(민찬 1010). 받은 쿠폰 → 사용 화면 → 사용 시도 → 사용 을 **쿠폰 한 장 단위**로 센다.
+ *
+ * ── 왜 퍼널을 둘로 나눴나 ──
+ * 찾기 퍼널(앱 열기 → 매장 상세 → 쿠폰 발급)은 세션 단위다. 쿠폰은 받은 세션이 아니라 **나중 방문에서**
+ * 쓰이므로 그 퍼널의 4단 「쿠폰 사용」은 세션으로 이을 수 없어 「끊김」으로 비워 두었다.
+ * 단위를 쿠폰 한 장으로 바꾸면 끊기지 않는다 — 사용 화면 · 사용 시도 · 사용 이벤트가 모두 `coupon_code` 를
+ * 싣고 있어서(1010 확인) 받은 뒤 며칠이 지나 다른 세션에서 써도 같은 쿠폰으로 이어진다.
+ *
+ * ── 발급 뒤 며칠까지 보나 ──
+ * 각 쿠폰을 **발급 시각부터 7일**만 따라간다. 창 끝에 받은 쿠폰이 쓸 시간이 짧아 낮게 나오는 일을 막는다.
+ * 1010 실측으로 쓰인 쿠폰은 모두 발급 14일 안, 대부분 7일 안에 쓰였다. 확정 테이블이 발급 + 7일까지 아직
+ * 없는 쿠폰은 `maturing` 으로 센다 — 부르는 쪽이 「아직 지켜보는 중」이라고 적는다.
+ *
+ * ── 「받은 쿠폰」은 그 창에 **처음** 받은 쿠폰이다 ──
+ * `coupon_issued` 는 지갑 목록 diff 로 찍혀서, 재설치하거나 다른 기기로 로그인하면 예전에 받은 쿠폰에도 다시 찍힌다
+ * (1010 실측 — 한 주의 발급 절반 가까이가 그런 주도 있었다). 그대로 세면 옛 쿠폰이 새로 받은 것처럼 들어오고 7일 창도
+ * 다시 보인 날부터 잡힌다. 그래서 창 앞 90일(LOOKBACK_DAYS)을 거슬러 보고 그 전에 받은 쿠폰은 뺀다.
+ *
+ * ── 단계가 역전되지 않게 ──
+ * 뒤 단계에 간 쿠폰은 앞 단계도 지난 것으로 센다(`screen OR attempt OR redeemed`). 1010 실측으로는 쓰인 쿠폰이
+ * 모두 사용 화면과 사용 시도 이벤트를 거쳤지만, 옛 앱이 앞 이벤트를 빠뜨려도 퍼널이 거꾸로 서지 않게 한다.
+ */
+export const FOLLOW_DAYS = 7;
+/** 창보다 앞서 받은 쿠폰을 거르려고 거슬러 보는 날 수 — 거슬러 읽어도 쿼리 하나에 십몇 MB 다(1010) */
+export const LOOKBACK_DAYS = 90;
+
+export interface UseFunnelLine {
+  /** 창 안에 받은 쿠폰 */
+  issued: number;
+  /** 발급 뒤 7일 안에 사용 화면을 연 쿠폰(뒤 단계에 간 쿠폰 포함) */
+  screen: number;
+  /** 사용을 시도한 쿠폰(쓰인 쿠폰 포함) */
+  attempt: number;
+  /** 발급 뒤 7일 안에 쓰인 쿠폰 */
+  redeemed: number;
+  /** 시도했지만 7일 안에 못 쓴 쿠폰 중 PIN 불일치(http_403)로 실패한 적이 있는 쿠폰 */
+  pin_failed: number;
+}
+
+export interface CouponUseFunnel {
+  /** 발급 창 */
+  window: { from: string; to: string };
+  followDays: number;
+  /** 발급 + 7일까지 확정 테이블이 아직 없는 쿠폰 — 「사용」이 낮게 나올 수 있다 */
+  maturing: number;
+  /** 가입 환영·스탬프 보상·추천·한정 등 */
+  organic: UseFunnelLine;
+  /** 기획전으로 뿌린 쿠폰 */
+  campaign: UseFunnelLine;
+  /**
+   * steps — 사용 화면·사용 시도 이벤트가 발급 창 전체에 있었나. 아니면 가운데 두 단계를 비운다.
+   * failures — 실패 이벤트(9/7~)가 있었나. 아니면 PIN 불일치를 말하지 않는다.
+   */
+  coverage: { steps: "full" | "partial" | "none"; failures: "full" | "partial" | "none" };
+}
+
+const ORDER = { none: 0, partial: 1, full: 2 } as const;
+const worse = (a: "full" | "partial" | "none", b: "full" | "partial" | "none") => (ORDER[a] <= ORDER[b] ? a : b);
+
+export async function readCouponUseFunnel(
+  env: Record<string, string | undefined> = process.env,
+  opts: { start: string; end: string; through?: string | null }
+): Promise<{ ok: true; data: CouponUseFunnel } | { ok: false; reason: "no_key" | "error"; detail?: string }> {
+  const client = clientFromEnv(env);
+  if (!client) return { ok: false, reason: "no_key" };
+  const { dataset, run } = client;
+  const { start, end } = opts;
+  if (start > end) return { ok: false, reason: "error", detail: `창이 거꾸로입니다 — ${start} > ${end}` };
+
+  const shiftYmd = (s: string, days: number) =>
+    new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8) + days)).toISOString().slice(0, 10).replace(/-/g, "");
+  // 발급 뒤 7일까지 읽되, 확정 테이블이 없는 날은 읽지 않는다 — 없는 날은 「지켜보는 중」으로 센다
+  const shifted = shiftYmd(end, FOLLOW_DAYS);
+  const through = opts.through ?? shifted;
+  const followEnd = through < shifted ? through : shifted;
+  const lookback = shiftYmd(start, -LOOKBACK_DAYS);
+
+  const events = `\`${dataset}.events_*\``;
+  const S = (k: string) => `(SELECT value.string_value FROM UNNEST(event_params) WHERE key='${k}')`;
+
+  try {
+    const rows = await run<{ source: string; issued: number; screen: number; attempt: number; redeemed: number; pin_failed: number; maturing: number }>(
+      `WITH first_seen AS (
+         SELECT ${S("coupon_code")} AS code, MIN(event_timestamp) AS t, MIN(event_date) AS d,
+                ${pickSource(S("coupon_issue_source"))} AS source
+         FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @lookback AND @end AND event_name = 'coupon_issued'
+           AND ${S("coupon_code")} IS NOT NULL
+         GROUP BY code
+       ), iss AS (
+         -- 창 앞에서 이미 받은 쿠폰은 뺀다 — 재설치·다른 기기에서 다시 보인 것이다
+         SELECT * FROM first_seen WHERE d >= @start
+       ), ev AS (
+         SELECT ${S("coupon_code")} AS code, event_name, event_timestamp AS t, ${S("fail_reason")} AS reason
+         FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @start AND @followEnd
+           AND event_name IN ('coupon_use_screen_view', 'coupon_redeem_attempt', 'coupon_redeemed', 'coupon_redeem_failed')
+           AND ${S("coupon_code")} IS NOT NULL
+       ), per AS (
+         SELECT i.code, i.source,
+                FORMAT_DATE('%Y%m%d', DATE_ADD(PARSE_DATE('%Y%m%d', i.d), INTERVAL ${FOLLOW_DAYS} DAY)) > @through AS maturing,
+                LOGICAL_OR(e.event_name = 'coupon_use_screen_view') AS screen,
+                LOGICAL_OR(e.event_name = 'coupon_redeem_attempt') AS attempt,
+                LOGICAL_OR(e.event_name = 'coupon_redeemed') AS redeemed,
+                LOGICAL_OR(e.event_name = 'coupon_redeem_failed' AND e.reason = 'http_403') AS pin
+         FROM iss i LEFT JOIN ev e
+           ON e.code = i.code AND e.t >= i.t AND e.t < i.t + ${FOLLOW_DAYS} * 86400 * 1000000
+         GROUP BY i.code, i.source, i.d
+       )
+       SELECT source,
+              COUNT(*) AS issued,
+              COUNTIF(screen OR attempt OR redeemed) AS screen,
+              COUNTIF(attempt OR redeemed) AS attempt,
+              COUNTIF(redeemed) AS redeemed,
+              COUNTIF(pin AND NOT redeemed) AS pin_failed,
+              COUNTIF(maturing) AS maturing
+       FROM per GROUP BY source`,
+      { start, end, lookback, followEnd, through }
+    );
+
+    const zero = (): UseFunnelLine => ({ issued: 0, screen: 0, attempt: 0, redeemed: 0, pin_failed: 0 });
+    const organic = zero(), campaign = zero();
+    let maturing = 0;
+    for (const r of rows) {
+      const line = isCampaignSource(r.source ?? "unknown") ? campaign : organic;
+      line.issued += num(r.issued);
+      line.screen += num(r.screen);
+      line.attempt += num(r.attempt);
+      line.redeemed += num(r.redeemed);
+      line.pin_failed += num(r.pin_failed);
+      maturing += num(r.maturing);
+    }
+    return {
+      ok: true,
+      data: {
+        window: { from: dash(start), to: dash(end) },
+        followDays: FOLLOW_DAYS,
+        maturing,
+        organic,
+        campaign,
+        coverage: {
+          steps: worse(eventCoverage("coupon_use_screen_view", start, end), eventCoverage("coupon_redeem_attempt", start, end)),
+          failures: eventCoverage("coupon_redeem_failed", start, end),
+        },
       },
     };
   } catch (e) {
