@@ -146,6 +146,35 @@ test("표본이 얕은 칸에는 전주 대비를 붙이지 않는다", () => {
   assert.equal(ret.prev, 27.3);
 });
 
+test("규모 칸 — DAU · MAU · WAU/MAU · 누적 가입자 · 가입자 중 활성", () => {
+  const g = { ...cur, dau: 51.9, mau: 400 };
+  const q = { ...prev, dau: 14.7, mau: 160 };
+  const st: AppStats = { ...stats, stats: { ...stats.stats, signups_total: 1000 } };
+  const d = buildAppReportData({ end: "20260920", cur: g, prev: q, stats: st, today: "2026-09-22" });
+  assert.equal(find(d, "dau").value, 51.9);
+  assert.equal(find(d, "dau").prev, 14.7);
+  assert.equal(find(d, "mau").value, 400);
+  assert.equal(find(d, "wau_mau").value, 63.3); // 253 / 400
+  assert.equal(find(d, "wau_mau").prev, 43.1);  // 69 / 160
+  assert.equal(find(d, "signups_total").value, 1000);
+  assert.equal(find(d, "wau_per_signup").value, 25.3); // 253 / 1000
+  // 읽는 시점 값이라 월 누계 배지도, 전주 대비도 붙지 않는다
+  assert.equal(find(d, "signups_total").scope, "period");
+  assert.equal(find(d, "signups_total").prev, undefined);
+});
+
+test("규모 칸 — 값이 없으면 0 이 아니라 연결 전으로 둔다", () => {
+  // 백엔드가 signups_total 을 아직 안 주고, GA4 쪽에도 mau 가 없는 상태(예전 캐시)
+  const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" });
+  for (const k of ["dau", "mau", "wau_mau", "signups_total", "wau_per_signup"]) {
+    const m = find(d, k);
+    assert.equal(m.value, null, `${k} 가 0 으로 채워졌습니다`);
+    assert.equal(m.status, "pending", `${k} 에 사유가 없습니다`);
+  }
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+});
+
 test("분모가 반 이상 달라진 주의 비율은 판정을 유보한다", () => {
   const d = buildAppReportData({ end: "20260920", cur, prev, stats, today: "2026-09-22" });
   assert.equal(find(d, "dau_wau").verdict, "flat", "WAU 69→253 인데 DAU/WAU 를 빨갛게 칠하면 안 된다");

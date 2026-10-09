@@ -178,6 +178,12 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
           ...(g ? {} : { status: "pending" as const }),
         },
         {
+          key: "dau", label: "일간 활성(DAU)", value: g?.dau ?? null, prev: prevIf(p?.dau ?? null), unit: "명", source: "ga4",
+          ...(ret?.mixShifted ? { verdict: "flat" as const } : {}),
+          note: g ? `${win} 하루 평균 앱을 켠 기기 수(사용자가 없던 날도 하루로 셉니다). 9/20 개발 회의 목표는 평균 150명` : "하루 평균 접속 기기 — BigQuery 를 읽지 못했습니다",
+          ...(g && g.dau != null ? {} : { status: "pending" as const }),
+        },
+        {
           key: "dau_wau", label: "DAU/MAU", value: g?.dau_wau ?? null, prev: prevIf(p?.dau_wau ?? null), unit: "%", source: "ga4",
           ...(ratioVerdict ? { verdict: ratioVerdict } : {}),
           note: "하루 평균 접속 기기 ÷ 월간 활성. 분모가 한 달이라 주간(DAU/WAU)보다 훨씬 낮게 나옵니다 — 두 값을 나란히 비교하지 않습니다"
