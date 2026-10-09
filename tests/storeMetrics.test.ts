@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { campusOfMetric, summarizeStoreMetrics } from "../src/lib/draft/storeMetrics";
+import { campusOfMetric, summarizeStoreMetrics, withoutTestStores } from "../src/lib/draft/storeMetrics";
 import type { StoreMetric } from "../src/lib/draft/types";
 
 /** 매장 지표 합계 — 서버(/api/probe/overview)와 캠퍼스로 좁힌 화면이 같은 함수로 센다. */
@@ -43,4 +43,12 @@ test("캠퍼스별 합계를 더하면 전체와 같다", () => {
     assert.equal(by.reduce((a, t) => a + t[k], 0), all[k], k);
   }
   assert.deepEqual(by.map((t) => t.affiliate), [2, 2, 0]);
+});
+
+test("테스트 매장은 뺀다 — Astro 파트너 매장과 같은 기준", () => {
+  const ops = [{ id: 2, is_test: true }, { id: 3, is_test: false }, { id: 99, is_test: true }];
+  const { rows, excluded } = withoutTestStores(stores, ops);
+  assert.deepEqual(rows.map((s) => s.restaurant_id), [1, 3, 4, 5]);
+  assert.equal(excluded, 1, "목록에 없는 테스트 매장(99)은 세지 않는다");
+  assert.equal(withoutTestStores(stores, []).excluded, 0, "운영 행이 없으면 아무것도 안 뺀다");
 });

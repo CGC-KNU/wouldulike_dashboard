@@ -39,3 +39,16 @@ export function summarizeStoreMetrics(stores: StoreMetric[]) {
 }
 
 export type StoreMetricTotals = ReturnType<typeof summarizeStoreMetrics>;
+
+/**
+ * 테스트 매장은 뺀다 — Astro 「파트너 매장」과 같은 기준(제휴이고 테스트가 아닌 매장). 운영 필드의 is_test 로 안다.
+ * 빼지 않으면 Probe 숫자가 Astro 보다 그만큼 크고, 조용한 매장 목록에도 테스트 매장이 섞인다.
+ */
+export function withoutTestStores<T extends { restaurant_id: number }>(
+  rows: T[],
+  ops: { id: number; is_test?: boolean | null }[]
+): { rows: T[]; excluded: number } {
+  const test = new Set(ops.filter((o) => o.is_test).map((o) => o.id));
+  const kept = rows.filter((r) => !test.has(r.restaurant_id));
+  return { rows: kept, excluded: rows.length - kept.length };
+}
