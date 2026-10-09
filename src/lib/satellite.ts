@@ -52,7 +52,7 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     users: "민찬",
     slack: { channel: "sat-probe" },
     icon: "/satellite/probe.svg",
-    status: "draft",
+    status: "live",
   },
   castor: {
     key: "castor",
