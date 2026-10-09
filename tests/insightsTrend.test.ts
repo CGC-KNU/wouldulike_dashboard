@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { axisTicks, compactKo, monthBounds, monthTick, niceMax } from "../src/lib/draft/insightsTrend";
+import { axisTicks, compactKo, dayRange, monthBounds, monthTick, niceMax, normalizeTrend, type RawTrend } from "../src/lib/draft/insightsTrend";
 
 /** 인스타 성과 추이 화면의 축 계산 — 틀려도 그림에서 잘 안 보이는 것들. */
 
@@ -38,4 +38,27 @@ test("축 눈금 — 가운데가 정수일 때만", () => {
   assert.deepEqual(axisTicks(20), [20, 10, 0]);
   assert.deepEqual(axisTicks(25), [25, 0], "12.5건 눈금은 없다");
   assert.deepEqual(axisTicks(1), [1, 0]);
+});
+
+const pt = (id: number, basis: string) => ({ id, posted_at: "2026-09-01T10:00:00+09:00", format: "carousel", permalink: "", basis, views: 100, measured_days: 14.2 });
+const raw = (over: Partial<RawTrend>): RawTrend => ({ months: [], recent: { days: 28, posts: 0, by_format: {} }, points: [], counts: {}, archived_excluded: 0, ...over } as RawTrend);
+
+test("14일차 백엔드(1009) — day 와 timely 를 그대로", () => {
+  const t = normalizeTrend(raw({ day: 14, points: [pt(1, "timely"), pt(2, "late")] as RawTrend["points"], counts: { timely: 1, late: 1, pending: 0, none: 0 } }));
+  assert.equal(t.day, 14);
+  assert.deepEqual(t.points.map((p) => p.basis), ["timely", "late"]);
+  assert.deepEqual(t.counts, { timely: 1, late: 1, pending: 0, none: 0 });
+});
+
+test("옛 백엔드 — day 가 없으면 7일차, d7 은 timely 로 (대시보드가 먼저 나가도 점이 비지 않게)", () => {
+  const t = normalizeTrend(raw({ points: [pt(1, "d7"), pt(2, "pending")] as RawTrend["points"], counts: { d7: 1, late: 0, pending: 1, none: 0 } }));
+  assert.equal(t.day, 7);
+  assert.deepEqual(t.points.map((p) => p.basis), ["timely", "pending"]);
+  assert.deepEqual(t.counts, { timely: 1, late: 0, pending: 1, none: 0 });
+});
+
+test("N일차로 인정하는 나이 — 백엔드 timely_bounds 와 같다", () => {
+  assert.equal(dayRange(14), "14~16일");
+  assert.equal(dayRange(7), "7~9일");
+  assert.equal(dayRange(1), "1~2일", "1일차는 여유가 1일");
 });
