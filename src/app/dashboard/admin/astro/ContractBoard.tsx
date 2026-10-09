@@ -313,7 +313,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
                       {n > 0 && <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-[11.5px] font-semibold text-amber-800" title="이미 적힌 값과 사장님 값이 다른 칸 — [상세]에서 봅니다">값 다름 {n}</span>}
                     </div>
                     {r.lead_id && makeErr[r.lead_id] && <p className="text-[11.5px] text-red-600 mt-1">{makeErr[r.lead_id]}</p>}
-                    {r.lead_id && makeDups[r.lead_id] && <div className="mt-1.5"><DuplicateStoreChoice dups={makeDups[r.lead_id]} busy={making === r.lead_id} onLink={(rid) => makeStore(r, { restaurant_id: rid })} onNew={() => makeStore(r, { allow_new: true })} /></div>}
+                    {r.lead_id && makeDups[r.lead_id] && <div className="mt-1.5"><DuplicateStoreChoice dups={makeDups[r.lead_id]} campus={r.campus} busy={making === r.lead_id} onLink={(rid) => makeStore(r, { restaurant_id: rid })} onNew={() => makeStore(r, { allow_new: true })} /></div>}
                     {r.rid !== null && rowMsg[r.rid] && <p className={`text-[11.5px] mt-1 ${rowMsg[r.rid].ok ? "text-navy" : "text-red-600"}`} role="status">{rowMsg[r.rid].text}</p>}
                   </Td>
                   <Td align="right">{r.rid !== null && <EndContractButton rid={r.rid} name={r.name} actor={actor} onDone={load} compact />}</Td>
