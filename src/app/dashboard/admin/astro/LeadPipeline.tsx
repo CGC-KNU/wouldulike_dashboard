@@ -258,7 +258,7 @@ function LeadActions({ lead, actor, onStage, onConvert, converting, onGo, onEnde
   return (
     <div onClick={stop} className={`flex flex-wrap items-center gap-1 ${compact ? "justify-end" : "mt-2 pt-2 border-t border-black/[0.05]"}`}>
       {body}
-      {msg?.duplicates && <div className="basis-full"><DuplicateStoreChoice dups={msg.duplicates} busy={converting} onLink={async (id) => setMsg(await onConvert({ restaurant_id: id }))} onNew={async () => setMsg(await onConvert({ allow_new: true }))} /></div>}
+      {msg?.duplicates && <div className="basis-full"><DuplicateStoreChoice dups={msg.duplicates} campus={lead.campus} busy={converting} onLink={async (id) => setMsg(await onConvert({ restaurant_id: id }))} onNew={async () => setMsg(await onConvert({ allow_new: true }))} /></div>}
       {msg?.text && <span className={`basis-full text-[11px] ${msg.ok ? "text-navy" : "text-red-600"}`} role="status">{msg.text}</span>}
     </div>
   );
@@ -362,7 +362,7 @@ function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConve
         </>
       }>
       {!side && <Stepper steps={[...LEAD_STAGES]} current={Math.max(0, idx)} />}
-      {dups && <DuplicateStoreChoice dups={dups} busy={converting} onLink={(id) => convert({ restaurant_id: id })} onNew={() => convert({ allow_new: true })} />}
+      {dups && <DuplicateStoreChoice dups={dups} campus={lead.campus} busy={converting} onLink={(id) => convert({ restaurant_id: id })} onNew={() => convert({ allow_new: true })} />}
       {msg && <p className="text-[13px] text-navy bg-navy/5 rounded-lg px-3 py-2" role="status">{msg}</p>}
 
       <PanelSection title="진행">

@@ -260,7 +260,7 @@ export default function QuickAdd({
         </>
       }
     >
-      {dups && <DuplicateStoreChoice dups={dups} busy={saving} onLink={(rid) => save({ restaurant_id: rid })} onNew={() => save({ allow_new: true })} />}
+      {dups && <DuplicateStoreChoice dups={dups} campus={campus} busy={saving} onLink={(rid) => save({ restaurant_id: rid })} onNew={() => save({ allow_new: true })} />}
       <Group label="무엇을 잡나">
         <Segmented
           label="일정 종류"
