@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconDownload, IconPlus, IconSearch } from "@tabler/icons-react";
-import { APP_CATEGORIES, CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, type Campus, type StoreOps, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
+import { APP_CATEGORIES, CAMPUSES, TAX_STATUS_LABEL, emptyStoreOps, isPaidTier, planLabel, planTextClass, type Campus, type StoreOps, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, Segmented, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, periodLocal, rowClickable, type ChipTone } from "../_shared/ui";
 import StoreDetailPanel from "./StoreDetailPanel";
 import CampusPicker, { allCampuses } from "./CampusPicker";
@@ -248,8 +248,8 @@ export default function AstroOverview({ actor, onGo }: { actor: string; onGo?: (
                         표에서 실수로 스크롤하다 값이 바뀌는 게 더 위험하고, 플랜을 바꾸면
                         월 이용료·청구가 따라 움직여서 그 맥락이 보이는 자리에서 바꾸는 게 맞다. */}
                     <Td>
-                      <span className={`text-[12px] font-semibold ${r.tier === "BOOST" ? "text-navy" : r.tier === "CONTENT" ? "text-amber-700" : r.tier ? "text-gray-700" : "text-gray-400"}`}>
-                        {r.tier === "CONTENT" ? "Premium" : r.tier === "BOOST" ? "Boost" : r.tier === "FREE" ? "무료" : "미지정"}
+                      <span className={`text-[12px] font-semibold ${planTextClass(r.tier)}`}>
+                        {planLabel(r.tier)}
                       </span>
                     </Td>
                     {/* 운영 구분 — 계약이 끝난 곳은 학기/방학이 의미가 없다. 종료를 먼저 말한다 (민열님 0914). */}

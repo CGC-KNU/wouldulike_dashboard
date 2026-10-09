@@ -40,6 +40,17 @@ export function isPaidTier(t: string | null | undefined): boolean {
   return t === "BOOST" || t === "CONTENT";
 }
 
+/**
+ * 요금제 이름과 글자색 — **Astro 매장 목록이 기준**(민찬 1009). CONTENT 는 「Premium」, Boost 는 남색 · Premium 은 주황.
+ * 화면마다 따로 쓰다가 Probe 가 「BOOST」 주황 · 「CONTENT」 남색으로 거꾸로 보여서, 같은 매장이 두 화면에서 다르게 보였다.
+ */
+export function planLabel(t: string | null | undefined): string {
+  return t === "CONTENT" ? "Premium" : t === "BOOST" ? "Boost" : t === "FREE" ? "무료" : "미지정";
+}
+export function planTextClass(t: string | null | undefined): string {
+  return t === "BOOST" ? "text-navy" : t === "CONTENT" ? "text-amber-700" : t ? "text-gray-700" : "text-gray-400";
+}
+
 export const BILLING_LABEL: Record<BillingState, string> = {
   UNKNOWN: "미확인",
   PENDING: "입금 대기",

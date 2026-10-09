@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IconRefresh } from "@tabler/icons-react";
-import type { StoreMetric } from "@/lib/draft/types";
+import { planLabel, planTextClass, type StoreMetric } from "@/lib/draft/types";
 import { campusOfMetric, isSilent, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
 import { allCampuses } from "../astro/CampusPicker";
 import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, Table, Td, Th } from "../_shared/ui";
@@ -183,7 +183,8 @@ export default function ProbeOverview() {
                     <Td>
                       <span className="inline-flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-900">{s.name}</span>
-                        {s.tier && <Chip tone={s.tier === "BOOST" ? "amber" : s.tier === "CONTENT" ? "navy" : "gray"}>{s.tier}</Chip>}
+                        {/* Astro 매장 목록과 같은 이름 · 색 — Boost 남색 · Premium 주황 (types.ts planLabel) */}
+                        {s.tier && <span className={`text-[12px] font-semibold ${planTextClass(s.tier)}`}>{planLabel(s.tier)}</span>}
                         {silent && <Chip tone="red">조용함</Chip>}
                       </span>
                     </Td>
