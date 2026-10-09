@@ -32,6 +32,8 @@ export default function ProbeOverview() {
   const [source, setSource] = useState("");
   /** 매장 목록 자체를 못 읽었는가 — 그러면 모든 합계가 0 이지만 그건 모름이다 (0925) */
   const [storesUnreadable, setStoresUnreadable] = useState(false);
+  const [testExcluded, setTestExcluded] = useState(0);
+  const [truncated, setTruncated] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -42,6 +44,8 @@ export default function ProbeOverview() {
         setGeneratedAt(d.generated_at ?? "");
         setSource(d.source ?? "");
         setStoresUnreadable(Boolean(d.stores_unreadable));
+        setTestExcluded(Number(d.test_excluded) || 0);
+        setTruncated(Boolean(d.stores_truncated));
       })
       .catch(() => setStores([]))
       .finally(() => setLoading(false));
@@ -114,6 +118,14 @@ export default function ProbeOverview() {
         </div>
       </PageHeader>
 
+      {!loading && truncated && (
+        <div className="mb-4">
+          <Notice tone="amber" title="매장 목록이 잘렸습니다">
+            백엔드가 안전 상한에서 목록을 잘랐습니다 — 이름순으로 뒤쪽 매장은 이 화면에 없습니다.
+          </Notice>
+        </div>
+      )}
+
       {!loading && storesUnreadable && (
         <div className="mb-4">
           <Notice tone="red" title="매장 목록을 읽지 못했습니다">
@@ -140,7 +152,7 @@ export default function ProbeOverview() {
         <Kpi label="지표 못 읽음" value={loading ? "-" : totals?.unavailable ?? 0} suffix="곳" hint="0 이 아니라 모름" />
       </div>
 
-      <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description="합계는 지표를 읽은 매장만으로 계산합니다.">
+      <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description={`합계는 지표를 읽은 매장만으로 계산합니다.${testExcluded ? ` 테스트 매장 ${testExcluded}곳은 뺐습니다(Astro 와 같은 기준).` : ""}`}>
         {loading ? (
           <Skeleton rows={8} cols={5} />
         ) : rows.length === 0 ? (

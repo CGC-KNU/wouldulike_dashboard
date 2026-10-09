@@ -6,7 +6,7 @@ import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { remoteGet } from "@/lib/draft/remote";
 import { readDraft } from "@/lib/draft/store";
 import { seedStoreOps } from "@/lib/draft/seed";
-import { summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
+import { summarizeStoreMetrics, withoutTestStores } from "@/lib/draft/storeMetrics";
 
 /**
  * Probe 지표 개요 — 매장별 쿠폰·스탬프·단골 수치를 한 번에 모아 온다.
@@ -54,7 +54,7 @@ export async function GET() {
   if (deny) return deny;
   if (cached && Date.now() - cached.at < TTL) return NextResponse.json(cached.body);
 
-  const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>(
+  const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[]; truncated?: boolean }>(
     "/api/dashboard/restaurants/"
   );
   /**
@@ -63,12 +63,14 @@ export async function GET() {
    * "못 읽은 곳이 없다" 고 말한 셈이다. 못 읽었다는 사실을 같이 내려보낸다.
    */
   const storesUnreadable = backend?.restaurants === undefined && !isPreview();
-  const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
+  const allRestaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : []);
 
   /** 캠퍼스는 Astro 운영 필드에 있다 — 읽는 길은 `/api/astro/stores` 와 같다(백엔드, 안 되면 초안). */
   const opsRemote = await remoteGet<{ ops: StoreOps[] }>("/api/astro/stores/ops/");
   const opsList = opsRemote.handled && opsRemote.ok ? (opsRemote.data?.ops ?? []) : readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
   const campusById = new Map(opsList.map((o) => [o.id, o.campus ?? null]));
+  // Astro 「파트너 매장」과 같은 기준 — 테스트 매장은 처음부터 뺀다(1009). 몇 곳 뺐는지는 화면이 적는다
+  const { rows: restaurants, excluded: testExcluded } = withoutTestStores(allRestaurants, opsList);
 
   /** 매장 하나를 지표 줄로. `stats` 가 null 이면 '모름'이다 — 0 으로 세면 안 된다. */
   const toMetric = (r: BackendRestaurant, stats: StatsEnvelope["stats"] | null): StoreMetric => ({
@@ -108,6 +110,9 @@ export async function GET() {
     totals,
     generated_at: new Date().toISOString(),
     stores_unreadable: storesUnreadable,
+    test_excluded: testExcluded,
+    // 백엔드가 안전 상한에서 목록을 잘랐다(백엔드 #126~) — 뒤쪽 매장이 없다
+    stores_truncated: Boolean(backend?.truncated),
     source: backend ? "backend" : isPreview() ? "preview-snapshot" : "unavailable",
     draft: false,
   };
