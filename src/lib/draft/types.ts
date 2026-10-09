@@ -567,7 +567,8 @@ export interface ReportSnapshot {
   store: { name: string; campus: Campus | null; in_app?: boolean };
   post: { plan_id: number; topic: string; posted_at: string | null; permalink: string | null; format: string | null; caption: string | null; cover_url: string | null; owner_name: string | null; co_stores: number };
   as_of: string; // ISO — "○시 기준"
-  basis: "D7" | "cumulative" | null;
+  /** 성과 지표가 며칠차 값인가 — 1009 부터 Probe 는 14일차로 부른다("D14"). 그 전 스냅샷은 "D7" */
+  basis: "D7" | "D14" | "cumulative" | null;
   age_days: number | null;
   collecting: boolean;
   metrics: ReportMetric[];

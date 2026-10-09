@@ -62,10 +62,17 @@ export function sliceForStore(all: Awaited<ReturnType<typeof fetchPapillonMonths
 }
 
 /**
+ * Probe 는 **14일차끼리** 견준다(1009 민찬 — 평소 범위 · 가운데 값 · 순위 · 다음 제안 조건). Papillon 화면은 7일차 그대로다.
+ * 백엔드 performance `?day=` (#128 부터, 그 전 백엔드는 무시하고 7일차를 준다).
+ */
+export const PROBE_COMPARE_DAY = 14;
+
+/**
  * 성과 + 못 읽은 이유. 403 은 세틀라이트 블라인드 규칙(리드가 아니면 본인 기획만) — "아직 발행 전"(404)과 다르다.
+ * Probe(리포트 스냅샷 · 게시물 목록)만 부른다 — 그래서 14일차로 부른다.
  */
 export async function fetchPerformance(planId: number): Promise<{ perf: PostPerformance | null; denied: boolean; notPublished: boolean }> {
-  const r = await fetchBackendResult<PostPerformance>(`/api/satellite/plans/${planId}/performance/`);
+  const r = await fetchBackendResult<PostPerformance>(`/api/satellite/plans/${planId}/performance/`, `day=${PROBE_COMPARE_DAY}`);
   return { perf: r.data, denied: r.status === 403, notPublished: r.status === 404 };
 }
 
