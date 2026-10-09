@@ -5,7 +5,7 @@ import type { StoreReport } from "../src/lib/draft/types";
 
 /**
  * 게시 14일차 #ops-partner 메시지 — 백엔드 「14일 경과」 알림을 합친 하나 (민찬 1008).
- * 그쪽에 있던 콘텐츠 · 올라간 때 · 제작 담당 · 담당자 호출이 여기 들어 있어야 한다.
+ * 그쪽에 있던 콘텐츠 · 올라간 때 · 담당자 호출이 여기 들어 있어야 한다. 제작 담당 줄은 뺐다(민찬 1009).
  */
 
 const report = {
@@ -16,7 +16,7 @@ const report = {
   },
 } as unknown as StoreReport;
 
-test("14일차 메시지 하나에 초안 안내 · 콘텐츠 · 올라간 때 · 제작 담당 · 담당자 호출 · 두 링크가 다 있다", () => {
+test("14일차 메시지 하나에 초안 안내 · 콘텐츠 · 올라간 때 · 담당자 호출 · 두 링크가 다 있다 — 제작 담당은 없다(1009)", () => {
   const t = draftMessage(report, "https://app.wouldulike.kr", "가 나 다");
   assert.equal(t, [
     ":memo: *매장 리포트 초안* — 한끼갈비",
@@ -24,7 +24,6 @@ test("14일차 메시지 하나에 초안 안내 · 콘텐츠 · 올라간 때 �
     "• 게시 14일차 자동 작성",
     "• 콘텐츠  대구 대학가 가성비 맛집 (한끼갈비 포함)",
     "• 올라간 때  8/31 18:54",
-    "• 제작 담당  담당자A",
     "가 나 다 — *초안에 인스타 지표 입력을 진행해 주세요.*",
     "• 인스타 게시물 <https://www.instagram.com/p/x/|인스타그램에서 보기>",
     "• 세틀라이트 리포트 <https://app.wouldulike.kr/dashboard/admin?tab=probe-reports&open=rep_abc|리포트 열기>",
