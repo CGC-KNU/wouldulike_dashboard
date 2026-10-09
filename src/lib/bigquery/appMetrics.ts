@@ -62,6 +62,8 @@ export interface Ga4AppMetrics {
   new_devices: number | null;
   /** 7일 평균 DAU ÷ WAU, % */
   dau_wau: number | null;
+  /** 월간 활성 — 창의 끝에서 거꾸로 30일간 앱을 켠 기기 수. 창이 7일이어도 30일을 센다(WAU 와 같은 기준일에서 끝난다) */
+  mau?: number | null;
   /** SDK 세션 중 매장 상세를 연 세션 비율, % */
   open_to_store: number | null;
   sessions: number;
@@ -204,6 +206,13 @@ export async function readGa4AppMetrics(
     { start, end }
   );
 
+  // ①-2 MAU — 같은 end 에서 거꾸로 30일. WAU 가 그 안에 포개져서 WAU/MAU 가 100% 를 넘을 수 없다.
+  const [mauRow] = await run<{ mau: number }>(
+    `SELECT COUNT(DISTINCT user_pseudo_id) AS mau FROM ${events}
+     WHERE _TABLE_SUFFIX BETWEEN @mStart AND @end AND event_name = 'user_engagement'`,
+    { mStart: shift(end, -29), end }
+  );
+
   // ② 퍼널 세 단계 — 앱을 연(session_start 가 있는) SDK 세션을 하나씩 훑어, 그 세션이
   //    어디까지 갔는지를 센다. 세 단계가 모두 같은 단위(세션)라 한 줄에 세울 수 있다.
   //
@@ -333,6 +342,7 @@ export async function readGa4AppMetrics(
       wau: act ? wau : null,
       new_devices: fresh ? Number(fresh.new_devices ?? 0) : null,
       dau_wau: pct(Number(act?.dau_sum ?? 0) / days, wau),
+      mau: mauRow ? Number(mauRow.mau ?? 0) : null,
       open_to_store: pct(Number(ses?.with_detail ?? 0), sessions),
       sessions,
       sessions_detail_to_coupon: ses ? Number(ses.detail_to_coupon ?? 0) : null,

@@ -18,6 +18,7 @@ const d = r.data;
 console.log(`확정 테이블 ${d.through} 까지`);
 console.log(`주간 활성(WAU)       ${d.wau?.toLocaleString() ?? "-"}명   (${d.week.from} ~ ${d.week.to})`);
 console.log(`DAU/WAU              ${d.dau_wau ?? "-"}%`);
+console.log(`MAU                  ${d.mau ?? "-"}`);
 console.log(`앱 열기 → 매장 상세  ${d.open_to_store ?? "-"}%   (세션 ${d.sessions.toLocaleString()}개)`);
 console.log(`가입 1주 후 복귀     ${d.retention_w1 ?? "-"}%   (${d.cohort.from} ~ ${d.cohort.to} 첫 실행 ${d.cohort.users.toLocaleString()}대)`);
 console.log(`푸시 → 앱 열기      ${d.push_open ?? "-"}%   (${d.push.from} ~ ${d.push.to} 안드로이드 수신 ${d.push.received} · 열기 ${d.push.opened_android} · iOS 열기 ${d.push.opened_ios})`);
