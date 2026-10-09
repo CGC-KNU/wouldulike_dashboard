@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { readLastEventDate } from "@/lib/bigquery/appMetrics";
+import { FOLLOW_DAYS } from "@/lib/bigquery/couponFunnel";
 import { buildMonthlyAppReport, buildWeeklyAppReport, monthWindow } from "@/lib/draft/appReport";
-import { dash, fillAppReportTemplate, normalizeWeekEnd } from "@/lib/draft/appReportData";
+import { dash, fillAppReportTemplate, normalizeWeekEnd, shiftDay } from "@/lib/draft/appReportData";
 import { appReportMessage, appReportSummary, renderAppReportStatic } from "@/lib/draft/appReportStatic";
 import { backendWithCronToken, checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 
@@ -17,6 +18,7 @@ import { backendWithCronToken, checkCronToken, plausibleCronToken } from "@/lib/
  * GET /api/probe/app-report/cron?type=monthly         마지막으로 다 끝난 달
  * GET /api/probe/app-report/cron?type=monthly&month=2026-08
  * GET /api/probe/app-report/cron?check=1&week=2026-09-27   GA4 가 그 주 끝까지 들어왔나만 — { ready, through, end }
+ * GET /api/probe/app-report/cron?check=1&type=monthly&month=2026-09   월간은 말일 + 7일까지 들어왔나
  *
  * `check=1` 은 보고서를 만들지 않고 GA4 확정 테이블 목록만 본다(쿼리 한 번). 월요일 정오 워크플로가 일요일
  * 데이터가 올 때까지 15분마다 부른다 — 보고서를 매번 만들면 BigQuery 쿼리 스무 개씩이다.
@@ -59,7 +61,9 @@ export async function GET(req: Request) {
 
   if (q.get("check") === "1") {
     if (monthly ? !month : !end) return NextResponse.json({ detail: "check=1 은 week(주간) 또는 month(월간)를 같이 주세요." }, { status: 400 });
-    const until = monthly ? monthWindow(month!).end : end!;
+    // 월간은 말일 + 7일까지 기다린다 — 쓰기 퍼널이 말일에 받은 쿠폰도 발급 뒤 7일을 다 본다(1010).
+    // 주간은 그 주 일요일이면 된다 — 쓰기 퍼널이 한 주 앞 발급분이라 그 7일이 이번 주 일요일에 끝난다.
+    const until = monthly ? shiftDay(monthWindow(month!).end, FOLLOW_DAYS) : end!;
     const through = await readLastEventDate().catch(() => null);
     return NextResponse.json({ ready: through !== null && through >= until, through, end: dash(until) }, { headers: { "Cache-Control": "no-store" } });
   }
