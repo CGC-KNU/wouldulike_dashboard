@@ -3,7 +3,6 @@ import { readCouponFunnel, readCouponUseFunnel, readStoreToCoupon, type CouponFu
 import { buildAppReportData, appReportFilename, dash, lastCompleteWeekEnd, shiftDay, weekLabel, type AppStats, type Json, type PeriodStats } from "./appReportData";
 import { buildMonthlyAppReportData, previousPeriod, type SnapshotPayload } from "./appReportMonthly";
 import { fetchBackendJson } from "./toolProxy";
-import type { Bucket, SummaryPayload } from "@/app/api/probe/insights/summary/route";
 
 /**
  * Probe · 앱 지표 **주간 보고서** 발급 — 화면에서 누르면 파일 한 장이 나온다.
@@ -135,16 +134,13 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
     warnings.push(`${period} 은 아직 ${last.slice(4, 6)}/${last.slice(6, 8)} 까지만 확정 테이블이 있습니다 — GA4 칸이 그 달 전체가 아닙니다.`);
   }
 
-  const [curR, prevR, snapshot, cpR, cpPrevR, s2cR, ig, useR] = await Promise.all([
+  const [curR, prevR, snapshot, cpR, cpPrevR, s2cR, useR] = await Promise.all([
     readGa4AppMetrics(process.env, { ...win, subWindows: "in-period" }),
     readGa4AppMetrics(process.env, { ...prevWin, subWindows: "in-period" }),
     fetchJson<SnapshotPayload>("/api/dashboard/admin/metric-snapshots/", `period=${period}`),
     readCouponFunnel(process.env, win),
     readCouponFunnel(process.env, prevWin),
     readStoreToCoupon(process.env, win),
-    // 인스타 성과 — 우리 DB(satellite)에서 센 값. 앱 지표와 달리 BigQuery 가 아니라 백엔드다.
-    // 6개월을 받아 그 달과 전달을 골라 쓴다(2개만 받으면 경계에서 전달이 빠질 수 있다).
-    fetchJson<SummaryPayload>("/api/probe/insights/summary/", "months=6&weeks=1"),
     // 쓰기 퍼널 — 그 달 발급분을 한 장씩 발급 뒤 7일까지. 말일 발급분은 다음 달 초 테이블까지 읽는다
     readCouponUseFunnel(process.env, { ...win, through: last }),
   ]);
@@ -157,16 +153,6 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
   const couponUse: CouponUseFunnel | null = useR.ok ? useR.data : null;
   if (!useR.ok && useR.reason !== "no_key") warnings.push(`쓰기 퍼널을 읽지 못했습니다 — ${useR.detail ?? "조회 실패"}`);
 
-  /**
-   * 인스타는 **월 버킷을 period 로 골라** 쓴다. 배열 순서에 기대지 않는다 —
-   * 발행이 없던 달은 버킷 자체가 없을 수 있어서, 순서로 집으면 엉뚱한 달을 전달로 쓴다.
-   */
-  const bucket = (p: string): Bucket | null => ig?.months?.find((m) => m.period === p) ?? null;
-  const instagram = bucket(period);
-  const instagramPrev = bucket(previousPeriod(period));
-  if (!ig) warnings.push("인스타 성과를 읽지 못했습니다 — 그 칸은 비웁니다(0 이 아닙니다).");
-  else if (!instagram) warnings.push(`${period} 에 발행한 게시물이 없어 인스타 칸을 비웁니다.`);
-
   const cur = curR.ok ? curR.data : null;
   const prev = prevR.ok ? prevR.data : null;
   if (!curR.ok) warnings.push(`GA4 를 읽지 못했습니다 — ${curR.reason === "no_key" ? "GCP_SA_KEY 미설정" : curR.detail ?? "조회 실패"}`);
@@ -176,7 +162,7 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
   else if (!snapshot.current.complete) warnings.push(`${period} 은 아직 끝나지 않은 달입니다 — DB 칸은 누계입니다.`);
 
   return {
-    data: buildMonthlyAppReportData({ period, cur, prev, snapshot: snapshot ?? null, coupons, couponsPrev, storeToCoupon, couponUse, instagram, instagramPrev }),
+    data: buildMonthlyAppReportData({ period, cur, prev, snapshot: snapshot ?? null, coupons, couponsPrev, storeToCoupon, couponUse }),
     filename: `앱지표_월간보고서_${period}`.replace(/[\\/:*?"<>|\s]+/g, "_"),
     week: { start: win.start, end: win.end, label: `${+period.slice(0, 4)}년 ${+period.slice(5, 7)}월` },
     warnings,

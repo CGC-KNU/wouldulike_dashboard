@@ -1007,67 +1007,23 @@ test("돌아온 기기가 음수로 나오면 말하지 않는다 — 창이 어
   assert.equal(returningBase({ ...cur, wau: 10, new_devices: 12 }, { ...cur, wau: 100, new_devices: 10 }), null);
 });
 
-// ── 월간 보고서의 인스타 묶음 ────────────────────────────────────────
-import type { Bucket } from "../src/app/api/probe/insights/summary/route";
-
-const igBucket = (over: Partial<Bucket> = {}): Bucket => ({
-  period: "2026-09", posts: 12, pending_d7: 1,
-  views: 84000, reach: 41000, saved: 620, shares: 310, likes: 2400, comments: 88,
-  engagement: 3418, by_format: {}, ...over,
-});
-
+// ── 월간 보고서에 인스타는 싣지 않는다 ────────────────────────────────
 /**
- * 인스타는 GA4 가 아니라 백엔드(satellite)에서 온다. 앱 지표와 **출처도 뜻도 다르다** —
- * 앱은 「앱 안에서 일어난 일」, 인스타는 「밖에서 얼마나 알려졌나」다.
- * 두 숫자를 더하거나 비율로 엮으면 안 된다(도달한 사람과 앱을 켠 사람이 겹치는지조차 모른다).
+ * 9/30 에 월간 보고서를 「앱 + 인스타」로 만들었다가 1010 민찬이 인스타를 뺐다 — 앱 지표 보고서는 앱만 본다.
+ * 인스타 성과는 Probe 「인스타 성과 추이」 화면에서 본다.
  */
-test("월간: 인스타 칸이 값과 전월 대비를 같이 낸다", () => {
+test("월간: 인스타 칸 · 출처가 없다 — 앱 지표만 싣는다", () => {
   const d = buildMonthlyAppReportData({
     period: "2026-09", cur: augGa4, prev: julGa4, snapshot: { period: "2026-09", current: side("2026-09"), previous: side("2026-08") },
-    today: "2026-10-01", instagram: igBucket(), instagramPrev: igBucket({ period: "2026-08", posts: 9, reach: 22000, saved: 300 }),
-  });
-  assert.equal(find(d, "ig_posts").value, 12);
-  assert.equal(find(d, "ig_reach").value, 41000);
-  assert.equal(find(d, "ig_reach").prev, 22000, "전월 대비가 붙는다");
-  assert.equal(find(d, "ig_saved").value, 620);
-  // 우리 DB 에 쌓지만 **앱 DB 가 아니다** — 배지가 「DB」면 가입·쿠폰 같은 앱 숫자와
-  // 한 덩어리로 읽힌다. 출처가 밖(메타)이라는 게 화면에 보여야 한다.
-  assert.equal(find(d, "ig_reach").source, "instagram", "GA4 도 앱 DB 도 아니다");
+    today: "2026-10-01",
+  }) as { groups: { key: string }[]; sources: { key: string }[] };
+  assert.ok(!d.groups.some((g) => g.key === "instagram"), "인스타 묶음이 남아 있다");
+  assert.ok(!d.sources.some((x) => x.key === "instagram"), "출처 표에 인스타가 남아 있다");
+  assert.ok(!metrics(d).some((m) => m.source === "instagram" || m.key.startsWith("ig_")), "인스타 칸이 남아 있다");
   const r = render(fillAppReportTemplate(d));
   assert.equal(r.status, "ok");
-  assert.match(r.text, /인스타그램/);
-});
-
-test("월간: 그 달에 발행이 없으면 0 이 아니라 「발행 없음」", () => {
-  const d = buildMonthlyAppReportData({
-    period: "2026-09", cur: augGa4, prev: julGa4, snapshot: { period: "2026-09", current: side("2026-09"), previous: side("2026-08") },
-    today: "2026-10-01", instagram: null, instagramPrev: igBucket(),
-  });
-  const m = find(d, "ig_reach");
-  assert.equal(m.value, null);
-  assert.equal(m.status, "none", "0 으로 그리면 「아무도 안 봤다」로 읽힌다");
-  assert.equal(render(fillAppReportTemplate(d)).status, "ok");
-});
-
-test("월간: 전월이 없으면 증감을 붙이지 않는다", () => {
-  const d = buildMonthlyAppReportData({
-    period: "2026-09", cur: augGa4, prev: julGa4, snapshot: { period: "2026-09", current: side("2026-09"), previous: side("2026-08") },
-    today: "2026-10-01", instagram: igBucket(), instagramPrev: null,
-  });
-  assert.equal(find(d, "ig_reach").value, 41000);
-  assert.equal(find(d, "ig_reach").prev, undefined);
-});
-
-test("월간: 출처 표가 인스타를 GA4 와 따로 적는다", () => {
-  const d = buildMonthlyAppReportData({
-    period: "2026-09", cur: augGa4, prev: julGa4, snapshot: { period: "2026-09", current: side("2026-09"), previous: side("2026-08") },
-    today: "2026-10-01", instagram: igBucket(),
-  }) as { sources: { key: string; label: string; status: string; hint: string }[] };
-  const src = d.sources.find((x) => x.key === "instagram");
-  assert.ok(src, "인스타 출처가 있어야 한다");
-  assert.equal(src!.status, "connected");
-  assert.match(src!.hint, /게시물 12건/);
-  assert.match(src!.hint, /7일이 안 된 1건/, "덜 익은 게시물 수를 밝힌다");
+  assert.equal(r.warnings, "");
+  assert.doesNotMatch(r.text, /인스타/);
 });
 
 test("배너 노출이 들어오면 노출 → 클릭 칸이 채워진다", () => {

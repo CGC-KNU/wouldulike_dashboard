@@ -49,7 +49,7 @@ export interface Metric {
   value: Num;
   prev?: Num;
   unit?: string;
-  source: "backend" | "push" | "ga4" | "firebase" | "instagram";
+  source: "backend" | "push" | "ga4" | "firebase";
   status?: "connected" | "app_fix" | "pending" | "undefined" | "none";
   /** 빈 칸에 보일 말 — 없으면 status 의 기본 말(양식). 예: none 인데 「해당 없음」 대신 「발급 없음」 */
   status_label?: string;
