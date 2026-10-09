@@ -8,7 +8,7 @@ import { buildMonthlyAppReportData, previousPeriod } from "../src/lib/draft/appR
 import { lastCompleteMonth } from "../src/lib/draft/appReport";
 import { appReportMessage, appReportSummary, renderAppReportStatic } from "../src/lib/draft/appReportStatic";
 import type { Ga4AppMetrics } from "../src/lib/bigquery/appMetrics";
-import { eventCoverage, isCampaignSource, type CouponFunnel } from "../src/lib/bigquery/couponFunnel";
+import { eventCoverage, isCampaignSource, type CouponFunnel, type CouponUseFunnel } from "../src/lib/bigquery/couponFunnel";
 
 /**
  * 앱 지표 주간 보고서 — 양식에 끼운 결과가 **보낼 수 있는 상태**인지까지 본다.
@@ -613,15 +613,146 @@ test("퍼널은 단계를 포개 세므로 역전될 수 없다", () => {
   assert.ok(steps.every((x) => x.unit === "세션"), "단위가 섞이면 한 줄에 세울 수 없다");
 });
 
-test("퍼널 4단은 비운 채로, 왜 비웠는지를 적는다", () => {
-  // 쿠폰은 받은 세션이 아니라 나중 방문에서 쓰인다. 같은 세션으로 포개면 0~3 이 되어
-  // 「아무도 안 쓴다」로 읽힌다 — 0 으로 채우는 것보다 비우고 이유를 적는 쪽이 맞다.
+test("찾기 퍼널은 세 단계에서 끝난다 — 끊긴 단계를 두지 않는다", () => {
+  // 쿠폰은 받은 세션이 아니라 나중 방문에서 쓰여 세션으로는 4단 「쿠폰 사용」을 이을 수 없다.
+  // 예전에는 그 자리를 「끊김」으로 비워 뒀다 — 이제 그 뒤는 쿠폰 한 장 단위의 쓰기 퍼널이 잇는다(민찬 1010).
   const d = buildAppReportData({
     end: "20260920", cur, prev, stats, today: "2026-09-22", storeToCoupon: s2c(),
   });
   const steps = d.funnel as { label: string; value: number | null; note?: string }[];
-  assert.equal(steps[3].value, null);
-  assert.match(String(steps[3].note), /나중 방문/);
+  assert.deepEqual(steps.map((x) => x.label), ["앱 열기", "매장 상세", "쿠폰 발급"]);
+  assert.ok(steps.every((x) => x.value !== null), "찾기 퍼널에 빈 단계가 있다");
+  assert.match(String(steps[2].note), /쓰기 퍼널/);
+});
+
+// ── 쓰기 퍼널 (쿠폰 한 장 단위) ────────────────────────────────────────
+/** 지어낸 값이다 — 이 저장소는 공개라 실측을 싣지 않는다 */
+const useFunnel = (over: Partial<CouponUseFunnel> = {}): CouponUseFunnel => ({
+  window: { from: "2026-09-07", to: "2026-09-13" },
+  followDays: 7,
+  maturing: 0,
+  organic: { issued: 40, screen: 12, attempt: 6, redeemed: 5, pin_failed: 1 },
+  campaign: { issued: 120, screen: 30, attempt: 10, redeemed: 7, pin_failed: 2 },
+  coverage: { steps: "full", failures: "full" },
+  ...over,
+});
+type Step = { label: string; value: number | null; unit?: string; note?: string };
+type Line = { key: string; label: string; sample?: number; empty?: string; steps?: Step[] };
+type UseCard = { title: string; window_label: string; note?: string; status?: string; lines: Line[] };
+const useCard = (d: unknown) => (d as { coupon_funnel: UseCard }).coupon_funnel;
+
+test("쓰기 퍼널은 한 주 앞 발급분을 쿠폰 장 단위로 끝까지 잇는다", () => {
+  const c = useCard(weekly({ couponUse: useFunnel() }));
+  // 이번 주(9/14~20)에 받은 쿠폰은 아직 7일이 안 지났다 — 한 주 앞 발급분을 본다
+  assert.match(c.window_label, /^9\/7~9\/13 발급분 · 발급 후 7일 · 쿠폰 장 수$/);
+  assert.deepEqual(c.lines.map((l) => l.label), ["캠페인 외", "캠페인"]);
+  assert.deepEqual(c.lines[0].steps!.map((x) => x.value), [40, 12, 6, 5]);
+  assert.deepEqual(c.lines[1].steps!.map((x) => x.value), [120, 30, 10, 7]);
+  for (const l of c.lines) {
+    assert.ok(l.steps!.every((x) => x.unit === "장"), "단위가 섞이면 한 줄에 세울 수 없다");
+    assert.equal(l.sample, l.steps![0].value, "표본은 받은 쿠폰 수다");
+  }
+  // 시도했지만 못 쓴 쿠폰과 PIN 불일치를 마지막 단계에 적는다
+  assert.equal(c.lines[0].steps![3].note, "시도했지만 7일 안에 못 쓴 쿠폰 1장 — 그중 PIN 불일치 1장");
+  assert.equal(c.lines[1].steps![3].note, "시도했지만 7일 안에 못 쓴 쿠폰 3장 — 그중 PIN 불일치 2장");
+  assert.match(String(c.note), /한 주 앞 발급분/);
+});
+
+test("쓰기 퍼널을 양식에 끼우면 보낼 수 있는 상태로 렌더되고 끊긴 단계가 없다", () => {
+  const r = render(fillAppReportTemplate(weekly({ coupons: funnel(), couponsPrev: funnel(), couponUse: useFunnel() })));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "", `양식 경고: ${r.warnings}`);
+  assert.match(r.text, /찾기 퍼널/);
+  assert.match(r.text, /쓰기 퍼널 9\/7~9\/13 발급분/);
+  assert.match(r.text, /앞 단계의 30\.0%/, "받은 쿠폰 40장 → 사용 화면 12장");
+  assert.doesNotMatch(r.text, /끊김/);
+});
+
+test("쓰기 퍼널을 못 읽으면 0 이 아니라 「연결 전」", () => {
+  const d = weekly({ couponUse: null });
+  const c = useCard(d);
+  assert.deepEqual(c.lines, []);
+  assert.equal(c.status, "pending");
+  assert.match(c.window_label, /^9\/7~9\/13 발급분/, "못 읽어도 어느 발급분 자리인지는 적는다");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "");
+  assert.match(r.text, /쓰기 퍼널.*연결 전/);
+});
+
+test("그 기간에 새로 받은 쿠폰이 없으면 그 줄은 단계 대신 이유를 적는다", () => {
+  const d = weekly({ couponUse: useFunnel({ campaign: { issued: 0, screen: 0, attempt: 0, redeemed: 0, pin_failed: 0 } }) });
+  const camp = useCard(d).lines[1];
+  assert.equal(camp.steps, undefined);
+  assert.match(String(camp.empty), /셀 대상이 없습니다/);
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.warnings, "");
+  assert.doesNotMatch(r.text, /n=0/, "셀 대상이 없는 줄에 「표본 작음」을 붙이지 않는다");
+});
+
+test("사용 화면·시도 이벤트가 없던 기간은 가운데 두 단계를 비우고 이유를 적는다", () => {
+  // 그 이벤트는 8/31 에 생겼다. 그 전 발급분의 「사용 화면 0장」은 0 이 아니라 못 센 것이다.
+  const d = weekly({ couponUse: useFunnel({ coverage: { steps: "none", failures: "none" } }) });
+  const steps = useCard(d).lines[0].steps!;
+  assert.deepEqual(steps.map((x) => x.value), [40, null, null, 5]);
+  assert.match(String(steps[1].note), /앱에 없었습니다/);
+  assert.equal(steps[3].note, undefined, "시도를 못 셌으면 「시도했지만 못 쓴」도 말하지 않는다");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "");
+  assert.match(r.text, /끊김/);
+  assert.match(r.text, /앞의 살아 있는 단계/);
+});
+
+test("PIN 불일치는 실패 이벤트가 창 전체에 있을 때만 말한다", () => {
+  const c = useCard(weekly({ couponUse: useFunnel({ coverage: { steps: "full", failures: "partial" } }) }));
+  assert.equal(c.lines[0].steps![3].note, "시도했지만 7일 안에 못 쓴 쿠폰 1장");
+});
+
+test("발급 7일이 아직 안 지난 쿠폰이 섞이면 알린다", () => {
+  assert.doesNotMatch(String(useCard(weekly({ couponUse: useFunnel() })).note), /아직 안 지난/);
+  const c = useCard(weekly({ couponUse: useFunnel({ maturing: 3 }) }));
+  assert.match(String(c.note), /발급 7일이 아직 안 지난 쿠폰 3장/);
+});
+
+test("양식은 쓰기 퍼널이 역전되면 경고한다", () => {
+  const d = weekly({ couponUse: useFunnel({ organic: { issued: 5, screen: 9, attempt: 2, redeemed: 1, pin_failed: 0 } }) });
+  const r = render(fillAppReportTemplate(d));
+  assert.match(r.warnings, /coupon_funnel\.organic 의 「사용 화면」이 앞 단계보다 큽니다/);
+});
+
+test("월간 쓰기 퍼널은 그 달 발급분을 본다", () => {
+  const d = buildMonthlyAppReportData({
+    period: "2026-08", cur: augGa4, prev: julGa4,
+    snapshot: { period: "2026-08", current: side("2026-08"), previous: side("2026-07") },
+    today: "2026-09-23", coupons: funnel(), couponsPrev: funnel(),
+    couponUse: useFunnel({ window: { from: "2026-08-01", to: "2026-08-31" } }),
+  });
+  const c = useCard(d);
+  assert.match(c.window_label, /^8월 발급분 · 발급 후 7일/);
+  assert.match(String(c.note), /다음 달 초까지/);
+  assert.equal((d.funnel as unknown[]).length, 3);
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.status, "ok");
+  assert.equal(r.warnings, "");
+  assert.doesNotMatch(r.text, /끊김/);
+});
+
+/**
+ * 쓰기 퍼널의 정의는 SQL 몇 줄에 있다. 테스트는 BigQuery 를 돌리지 않으므로 그 줄이 느슨해져도
+ * 위 검사들은 통과한다 — 「퍼널 SQL 이 앞 단계를 포개서 센다」와 같은 이유로 쿼리 글자를 직접 본다.
+ */
+test("쓰기 퍼널 SQL — 발급 뒤 7일 안의 이벤트만, 창에 처음 받은 쿠폰만, 뒤 단계는 앞 단계에 포함", async () => {
+  const src = await readFile("src/lib/bigquery/couponFunnel.ts", "utf8");
+  assert.match(src, /e\.t >= i\.t AND e\.t < i\.t \+ \$\{FOLLOW_DAYS\}/,
+    "발급 전 이벤트나 7일 뒤 이벤트를 그 쿠폰에 붙이면 창 끝에 받은 쿠폰과 견줄 수 없다");
+  assert.match(src, /SELECT \* FROM first_seen WHERE d >= @start/,
+    "재설치·다른 기기에서 다시 보인 옛 쿠폰이 새로 받은 것으로 들어온다");
+  assert.match(src, /COUNTIF\(screen OR attempt OR redeemed\) AS screen/, "옛 앱이 앞 이벤트를 빠뜨리면 퍼널이 역전된다");
+  assert.match(src, /COUNTIF\(attempt OR redeemed\) AS attempt/, "옛 앱이 앞 이벤트를 빠뜨리면 퍼널이 역전된다");
+  // 같은 쿠폰이 캠페인 코드와 other 로 섞여 찍힌다 — 아무거나 고르면 실행마다 캠페인/그 외가 바뀐다
+  assert.doesNotMatch(src, /ANY_VALUE\(\$\{S\("coupon_issue_source"\)\}\)/, "발급 경로를 ANY_VALUE 로 고르면 같은 달도 뽑을 때마다 숫자가 다르다");
+  assert.equal((src.match(/pickSource\(S\("coupon_issue_source"\)\)/g) ?? []).length, 2, "사용률 칸과 쓰기 퍼널이 같은 규칙으로 경로를 고른다");
 });
 
 test("캠페인을 가르는 목록이 SQL 과 판정 함수에서 같다", () => {

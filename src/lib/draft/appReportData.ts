@@ -1,5 +1,5 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
-import { dominantSource, sourceRateNote, type CouponFunnel, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
+import { FOLLOW_DAYS, dominantSource, sourceRateNote, type CouponFunnel, type CouponUseFunnel, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 import APP_REPORT_TEMPLATE_HTML from "./appReportTemplateHtml";
 
 /**
@@ -209,10 +209,15 @@ export interface AppReportInput {
    * 갈라지면 같은 주를 두 곳에서 다르게 읽는다.
    */
   storeToCoupon?: StoreToCoupon | null;
+  /**
+   * 쓰기 퍼널 (GA4, 쿠폰 한 장 단위) — **한 주 앞 발급분**이다. 이번 주에 받은 쿠폰은 아직 7일이 안 지났다.
+   * 없으면 그 카드가 「연결 전」이 된다.
+   */
+  couponUse?: CouponUseFunnel | null;
 }
 
 // ── 본체 ──────────────────────────────────────────────────────────
-export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev, today, coupons, couponsPrev, storeToCoupon: s2c }: AppReportInput): Json {
+export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev, today, coupons, couponsPrev, storeToCoupon: s2c, couponUse }: AppReportInput): Json {
   const start = shiftDay(end, -6);
   const prevEnd = shiftDay(end, -7);
 
@@ -416,20 +421,26 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
     },
   ];
 
-  // 퍼널 — 네 단계를 **모두 세션 단위**로 센다. 예전에는 뒤 두 단계를 DB(이번 달 누계)에서
+  // 찾기 퍼널 — 세 단계를 **모두 세션 단위**로 센다. 예전에는 뒤 두 단계를 DB(이번 달 누계)에서
   // 가져올 수밖에 없어 주간 세션과 같은 줄에 세울 수 없었고, 그래서 끊긴 채로 그렸다.
   // GA4 는 창을 그대로 잘라 낼 수 있어 같은 단위로 이어진다(appMetrics 의 sessions_with_*).
   // 발급은 캠페인 자동 지급을 뺀 수다 — 빼지 않으면 9/17~23 이 25 → 53세션으로 부푼다.
+  //
+  // 4단 「쿠폰 사용」은 여기 두지 않는다(민찬 1010). 쿠폰은 받은 세션이 아니라 **나중 방문에서** 쓰이므로
+  // 세션으로는 이을 수 없어 「끊김」으로 비워 두던 자리다. 그 뒤는 단위를 쿠폰 한 장으로 바꾼
+  // 쓰기 퍼널(couponUseFunnelData)이 잇는다.
   const funnel = [
     { label: "앱 열기", value: g?.sessions ?? null, unit: "세션" },
     { label: "매장 상세", value: g && g.open_to_store !== null ? Math.round((g.sessions * g.open_to_store) / 100) : null, unit: "세션" },
-    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "상세를 보고 그 자리에서 받은 세션. 캠페인 자동 지급은 뺍니다" },
-    // 여기는 일부러 비운다. 쿠폰은 받은 세션이 아니라 **나중 방문에서** 쓰이므로 같은 세션으로
-    // 포개면 0~3 이 되어(7월 0 · 8월 1 · 9/14~20 3) 「아무도 안 쓴다」로 읽힌다. 포개지 않으면
-    // 앞 단계와 무관한 수를 퍼널로 그리는 것이 된다. 그 전환은 위 「발급 → 사용」 칸이
-    // coupon_code 로 발급↔사용을 이어 정확히 센다.
-    { label: "쿠폰 사용", value: null, unit: "세션", note: "쿠폰은 받은 세션이 아니라 나중 방문에서 쓰입니다 — 같은 세션으로 세면 뜻이 없습니다. 위 「발급 → 사용」 칸을 보십시오" },
+    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "상세를 보고 그 자리에서 받은 세션. 캠페인 자동 지급은 뺍니다 — 받은 쿠폰이 쓰였는지는 아래 「쓰기 퍼널」이 봅니다" },
   ];
+  const useFrom = couponUse ? bare(couponUse.window.from) : shiftDay(prevEnd, -6);
+  const useTo = couponUse ? bare(couponUse.window.to) : prevEnd;
+  const couponFunnel = couponUseFunnelData(
+    couponUse ?? null,
+    `${md(useFrom)}~${md(useTo)} 발급분`,
+    `이번 주에 받은 쿠폰은 아직 ${FOLLOW_DAYS}일이 안 지나 **한 주 앞 발급분**을 봅니다 — 「배너 클릭 → 쿠폰 사용」과 같은 방식입니다.`
+  );
 
   const caveats = [
     weekly
@@ -478,6 +489,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
     headline: ["wau", "open_to_store", "retention_w1", "dau_wau"],
     groups,
     funnel,
+    coupon_funnel: couponFunnel,
     caveats,
   };
 }
@@ -597,4 +609,48 @@ export function dominantNote(f: CouponFunnel | null): { verdict?: "flat"; extra:
     verdict: "flat",
     extra: ` · 발급의 ${Math.round((top.issued / total) * 100)}%가 「${top.source}」 한 경로(${top.issued}장 중 ${top.redeemed}장)라 이 숫자는 사실상 그 경로 얘기입니다 — 판정은 위 「캠페인 외」 칸으로 하십시오`,
   };
+}
+
+// ── 쓰기 퍼널 (GA4, 쿠폰 한 장 단위) ─────────────────────────────────
+/**
+ * 받은 쿠폰 → 사용 화면 → 사용 시도 → 사용 을 **쿠폰 한 장 단위**로 그린다(민찬 1010). 찾기 퍼널(세션)의
+ * 4단 「쿠폰 사용」이 끊겨 있던 자리를 잇는다 — 정의는 couponFunnel.ts 의 readCouponUseFunnel.
+ * 캠페인 외 · 캠페인 두 줄로 낸다. 사용률 칸과 같은 경계다(isCampaignSource).
+ *
+ * 주간·월간이 같은 함수를 쓴다. `windowLabel` 은 어느 발급분인지, `lead` 는 카드 아래 첫 문장이다.
+ * 값이 없는 칸은 0 으로 채우지 않는다 — 이벤트가 없던 기간이면 가운데 두 단계를 비우고 이유를 적는다.
+ */
+export function couponUseFunnelData(f: CouponUseFunnel | null, windowLabel: string, lead: string): Json {
+  const days = f?.followDays ?? FOLLOW_DAYS;
+  const base = { title: "쓰기 퍼널", window_label: `${windowLabel} · 발급 후 ${days}일 · 쿠폰 장 수` };
+  if (!f) return { ...base, lines: [], status: "pending", note: "GA4 를 읽지 못해 비웠습니다 — 0 이 아닙니다" };
+
+  // 사용 화면·사용 시도 이벤트는 8/31 에 생겼다. 그 전 발급분은 「사용 화면 0장」이 아니라 못 센 것이다.
+  const stepsLive = f.coverage.steps === "full";
+  const gap = f.coverage.steps === "partial"
+    ? "사용 화면·사용 시도 이벤트가 이 기간 중간에 앱에 배포됐습니다 — 일부만 세게 되어 비웁니다. 0 이 아닙니다"
+    : "사용 화면·사용 시도 이벤트가 이 기간에는 앱에 없었습니다 — 0 이 아니라 못 센 것입니다";
+
+  const line = (key: "organic" | "campaign", label: string): Json => {
+    const l = f[key];
+    if (l.issued === 0) return { key, label, empty: `이 기간에 ${label} 쿠폰을 새로 받은 사람이 없습니다 — 0 이 아니라 셀 대상이 없습니다` };
+    // 시도했지만 못 쓴 쿠폰 — PIN 불일치는 실패 이벤트(9/7~)가 창 전체에 있을 때만 말한다
+    const missed = l.attempt - l.redeemed;
+    const failNote = stepsLive && missed > 0
+      ? `시도했지만 ${days}일 안에 못 쓴 쿠폰 ${missed}장` + (f.coverage.failures === "full" && l.pin_failed > 0 ? ` — 그중 PIN 불일치 ${l.pin_failed}장` : "")
+      : null;
+    return {
+      key, label, sample: l.issued,
+      steps: [
+        { label: "받은 쿠폰", value: l.issued, unit: "장" },
+        { label: "사용 화면", value: stepsLive ? l.screen : null, unit: "장", ...(stepsLive ? {} : { note: gap }) },
+        { label: "사용 시도", value: stepsLive ? l.attempt : null, unit: "장" },
+        { label: "사용", value: l.redeemed, unit: "장", ...(failNote ? { note: failNote } : {}) },
+      ],
+    };
+  };
+
+  const notes = [lead, "재설치·다른 기기에서 다시 보인 쿠폰은 처음 받은 날로 셉니다."];
+  if (f.maturing > 0) notes.push(`**발급 ${days}일이 아직 안 지난 쿠폰 ${f.maturing}장**이 섞여 있어 뒤 단계가 낮게 나올 수 있습니다.`);
+  return { ...base, lines: [line("organic", "캠페인 외"), line("campaign", "캠페인")], note: notes.join(" ") };
 }

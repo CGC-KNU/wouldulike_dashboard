@@ -1,6 +1,6 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
-import { SMALL_SAMPLE, bannerCtrMetric, couponMetrics, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
-import type { CouponFunnel, StoreToCoupon } from "@/lib/bigquery/couponFunnel";
+import { SMALL_SAMPLE, bannerCtrMetric, couponMetrics, couponUseFunnelData, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
+import { FOLLOW_DAYS, type CouponFunnel, type CouponUseFunnel, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 import type { Bucket } from "@/app/api/probe/insights/summary/route";
 
 /**
@@ -50,6 +50,8 @@ export interface MonthlyReportInput {
   /** 쿠폰 발급→사용 (GA4). 스냅샷의 DB 칸과 달리 기간이 정확하다. */
   coupons?: CouponFunnel | null;
   couponsPrev?: CouponFunnel | null;
+  /** 쓰기 퍼널 (GA4, 쿠폰 한 장 단위) — 그 달 발급분을 한 장씩 발급 뒤 7일까지 따라간다. 없으면 「연결 전」. */
+  couponUse?: CouponUseFunnel | null;
   /**
    * 그 달 인스타 성과 (백엔드 satellite — 우리가 올린 게시물의 합).
    *
@@ -89,7 +91,7 @@ const UNIT: Record<string, string> = {
   mileage_exchanges: "건", push_sent: "건",
 };
 
-export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today, coupons, couponsPrev, storeToCoupon: s2c, instagram: ig, instagramPrev: igPrev }: MonthlyReportInput): Json {
+export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, today, coupons, couponsPrev, storeToCoupon: s2c, couponUse, instagram: ig, instagramPrev: igPrev }: MonthlyReportInput): Json {
   const snap = snapshot?.current ?? null;
   const snapPrev = snapshot?.previous ?? null;
   const s = snap?.stats ?? null;
@@ -278,19 +280,19 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
     },
   ];
 
-  // 퍼널 — 네 단계를 모두 세션 단위로 센다(주간과 같은 정의). 예전에는 뒤 두 단계를
+  // 찾기 퍼널 — 세 단계를 모두 세션 단위로 센다(주간과 같은 정의). 예전에는 뒤 두 단계를
   // 스냅샷 DB 에서 가져올 수밖에 없어 단위가 달라 끊어 뒀다.
-  // 발급은 캠페인 자동 지급을 뺀 수다.
+  // 발급은 캠페인 자동 지급을 뺀 수다. 4단 「쿠폰 사용」은 세션으로 이을 수 없어 쓰기 퍼널로 옮겼다(민찬 1010).
   const funnel = [
     { label: "앱 열기", value: g?.sessions ?? null, unit: "세션" },
     { label: "매장 상세", value: g && g.open_to_store !== null ? Math.round((g.sessions * g.open_to_store) / 100) : null, unit: "세션" },
-    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "상세를 보고 그 자리에서 받은 세션. 캠페인 자동 지급은 뺍니다" },
-    // 여기는 일부러 비운다. 쿠폰은 받은 세션이 아니라 **나중 방문에서** 쓰이므로 같은 세션으로
-    // 포개면 0~3 이 되어(7월 0 · 8월 1 · 9/14~20 3) 「아무도 안 쓴다」로 읽힌다. 포개지 않으면
-    // 앞 단계와 무관한 수를 퍼널로 그리는 것이 된다. 그 전환은 위 「발급 → 사용」 칸이
-    // coupon_code 로 발급↔사용을 이어 정확히 센다.
-    { label: "쿠폰 사용", value: null, unit: "세션", note: "쿠폰은 받은 세션이 아니라 나중 방문에서 쓰입니다 — 같은 세션으로 세면 뜻이 없습니다. 위 「발급 → 사용」 칸을 보십시오" },
+    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "상세를 보고 그 자리에서 받은 세션. 캠페인 자동 지급은 뺍니다 — 받은 쿠폰이 쓰였는지는 아래 「쓰기 퍼널」이 봅니다" },
   ];
+  const couponFunnel = couponUseFunnelData(
+    couponUse ?? null,
+    `${+period.slice(5, 7)}월 발급분`,
+    `그 달에 받은 쿠폰을 한 장씩 발급 뒤 ${FOLLOW_DAYS}일까지 따라갑니다 — 말일에 받은 쿠폰은 다음 달 초까지 봅니다. 위 사용률 칸은 그 달 안에 쓴 것만 세서 값이 조금 다를 수 있습니다.`
+  );
 
   const caveats = [
     "**DAU/MAU 는 주간 보고서의 DAU/WAU 와 다른 값입니다.** 분모가 한 달이라 훨씬 낮게 나옵니다 — 두 보고서의 숫자를 나란히 놓고 비교하지 마십시오.",
@@ -348,6 +350,7 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
     ...(snap ? { headline: ["wau", "signups", "coupon_redeem_rate", "retention_w1"] } : {}),
     groups,
     funnel,
+    coupon_funnel: couponFunnel,
     caveats,
   };
 }

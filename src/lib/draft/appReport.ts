@@ -1,5 +1,5 @@
 import { readGa4AppMetrics, readLastEventDate, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
-import { readCouponFunnel, readStoreToCoupon, type CouponFunnel, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
+import { readCouponFunnel, readCouponUseFunnel, readStoreToCoupon, type CouponFunnel, type CouponUseFunnel, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 import { buildAppReportData, appReportFilename, dash, lastCompleteWeekEnd, shiftDay, weekLabel, type AppStats, type Json, type PeriodStats } from "./appReportData";
 import { buildMonthlyAppReportData, previousPeriod, type SnapshotPayload } from "./appReportMonthly";
 import { fetchBackendJson } from "./toolProxy";
@@ -53,7 +53,7 @@ export async function buildWeeklyAppReport(opts: { end?: string; fetchJson?: Bac
   const prevEnd = shiftDay(end, -7);
   const weekOf = (from: string, to: string) =>
     fetchJson<PeriodStats>("/api/dashboard/admin/app-stats/period/", `start=${dash(from)}&end=${dash(to)}`);
-  const [curR, prevR, stats, week, weekPrev, cpR, cpPrevR, s2cR] = await Promise.all([
+  const [curR, prevR, stats, week, weekPrev, cpR, cpPrevR, s2cR, useR] = await Promise.all([
     readGa4AppMetrics(process.env, { end }),
     readGa4AppMetrics(process.env, { end: prevEnd }),
     // 「7일 안에 만료」·「발급 → 사용」은 여기(이번 달 기준)에서만 온다
@@ -66,12 +66,16 @@ export async function buildWeeklyAppReport(opts: { end?: string; fetchJson?: Bac
     readCouponFunnel(process.env, { start: shiftDay(prevEnd, -6), end: prevEnd }),
     // Probe 화면(/api/probe/app)이 쓰는 것과 같은 함수 — 같은 주를 두 곳에서 다르게 읽지 않게 한다
     readStoreToCoupon(process.env, { start, end }),
+    // 쓰기 퍼널은 **한 주 앞 발급분** — 이번 주에 받은 쿠폰은 아직 7일이 안 지났다
+    readCouponUseFunnel(process.env, { start: shiftDay(prevEnd, -6), end: prevEnd, through: last }),
   ]);
   const coupons: CouponFunnel | null = cpR.ok ? cpR.data : null;
   const couponsPrev: CouponFunnel | null = cpPrevR.ok ? cpPrevR.data : null;
   if (!cpR.ok && cpR.reason !== "no_key") warnings.push(`쿠폰 퍼널을 읽지 못했습니다 — ${cpR.detail ?? "조회 실패"}`);
   const storeToCoupon: StoreToCoupon | null = s2cR.ok ? s2cR.data : null;
   if (!s2cR.ok && s2cR.reason !== "no_key") warnings.push(`매장 상세 → 쿠폰 발급을 읽지 못했습니다 — ${s2cR.detail ?? "조회 실패"}`);
+  const couponUse: CouponUseFunnel | null = useR.ok ? useR.data : null;
+  if (!useR.ok && useR.reason !== "no_key") warnings.push(`쓰기 퍼널을 읽지 못했습니다 — ${useR.detail ?? "조회 실패"}`);
 
   const cur: Ga4AppMetrics | null = curR.ok ? curR.data : null;
   const prev: Ga4AppMetrics | null = prevR.ok ? prevR.data : null;
@@ -86,7 +90,7 @@ export async function buildWeeklyAppReport(opts: { end?: string; fetchJson?: Bac
   }
 
   return {
-    data: buildAppReportData({ end, cur, prev, stats: stats ?? null, week: week ?? null, weekPrev: weekPrev ?? null, coupons, couponsPrev, storeToCoupon }),
+    data: buildAppReportData({ end, cur, prev, stats: stats ?? null, week: week ?? null, weekPrev: weekPrev ?? null, coupons, couponsPrev, storeToCoupon, couponUse }),
     filename: appReportFilename(end),
     week: { start: shiftDay(end, -6), end, label: weekLabel(end) },
     warnings,
@@ -131,7 +135,7 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
     warnings.push(`${period} 은 아직 ${last.slice(4, 6)}/${last.slice(6, 8)} 까지만 확정 테이블이 있습니다 — GA4 칸이 그 달 전체가 아닙니다.`);
   }
 
-  const [curR, prevR, snapshot, cpR, cpPrevR, s2cR, ig] = await Promise.all([
+  const [curR, prevR, snapshot, cpR, cpPrevR, s2cR, ig, useR] = await Promise.all([
     readGa4AppMetrics(process.env, { ...win, subWindows: "in-period" }),
     readGa4AppMetrics(process.env, { ...prevWin, subWindows: "in-period" }),
     fetchJson<SnapshotPayload>("/api/dashboard/admin/metric-snapshots/", `period=${period}`),
@@ -141,6 +145,8 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
     // 인스타 성과 — 우리 DB(satellite)에서 센 값. 앱 지표와 달리 BigQuery 가 아니라 백엔드다.
     // 6개월을 받아 그 달과 전달을 골라 쓴다(2개만 받으면 경계에서 전달이 빠질 수 있다).
     fetchJson<SummaryPayload>("/api/probe/insights/summary/", "months=6&weeks=1"),
+    // 쓰기 퍼널 — 그 달 발급분을 한 장씩 발급 뒤 7일까지. 말일 발급분은 다음 달 초 테이블까지 읽는다
+    readCouponUseFunnel(process.env, { ...win, through: last }),
   ]);
   const coupons: CouponFunnel | null = cpR.ok ? cpR.data : null;
   const couponsPrev: CouponFunnel | null = cpPrevR.ok ? cpPrevR.data : null;
@@ -148,6 +154,8 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
   if (coupons?.coverage.wallet_to_use === "none") warnings.push("「쿠폰함 → 사용 화면」은 그 달에 앱 이벤트가 없어 비웠습니다.");
   const storeToCoupon: StoreToCoupon | null = s2cR.ok ? s2cR.data : null;
   if (!s2cR.ok && s2cR.reason !== "no_key") warnings.push(`매장 상세 → 쿠폰 발급을 읽지 못했습니다 — ${s2cR.detail ?? "조회 실패"}`);
+  const couponUse: CouponUseFunnel | null = useR.ok ? useR.data : null;
+  if (!useR.ok && useR.reason !== "no_key") warnings.push(`쓰기 퍼널을 읽지 못했습니다 — ${useR.detail ?? "조회 실패"}`);
 
   /**
    * 인스타는 **월 버킷을 period 로 골라** 쓴다. 배열 순서에 기대지 않는다 —
@@ -168,7 +176,7 @@ export async function buildMonthlyAppReport(opts: { period?: string; fetchJson?:
   else if (!snapshot.current.complete) warnings.push(`${period} 은 아직 끝나지 않은 달입니다 — DB 칸은 누계입니다.`);
 
   return {
-    data: buildMonthlyAppReportData({ period, cur, prev, snapshot: snapshot ?? null, coupons, couponsPrev, storeToCoupon, instagram, instagramPrev }),
+    data: buildMonthlyAppReportData({ period, cur, prev, snapshot: snapshot ?? null, coupons, couponsPrev, storeToCoupon, couponUse, instagram, instagramPrev }),
     filename: `앱지표_월간보고서_${period}`.replace(/[\\/:*?"<>|\s]+/g, "_"),
     week: { start: win.start, end: win.end, label: `${+period.slice(0, 4)}년 ${+period.slice(5, 7)}월` },
     warnings,
