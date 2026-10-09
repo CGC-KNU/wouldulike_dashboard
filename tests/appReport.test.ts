@@ -910,3 +910,20 @@ test("월간: 출처 표가 인스타를 GA4 와 따로 적는다", () => {
   assert.match(src!.hint, /게시물 12건/);
   assert.match(src!.hint, /7일이 안 된 1건/, "덜 익은 게시물 수를 밝힌다");
 });
+
+test("배너 노출이 들어오면 노출 → 클릭 칸이 채워진다", () => {
+  const live = { ...cur, banner_ctr: 12.5, banner_view: { seen: 80, clicked: 10 } };
+  const d = buildAppReportData({ end: "20260920", cur: live, prev, stats, today: "2026-09-22" });
+  const ctr = find(d, "banner_ctr");
+  assert.equal(ctr.value, 12.5);
+  assert.equal(ctr.status, undefined, "값이 있으면 app_fix 를 떼야 한다");
+  assert.equal(ctr.sample, 80);
+});
+
+test("노출 기기가 0 이면 값을 지어내지 않는다", () => {
+  const none = { ...cur, banner_ctr: null, banner_view: { seen: 0, clicked: 0 } };
+  const d = buildAppReportData({ end: "20260920", cur: none, prev, stats, today: "2026-09-22" });
+  const ctr = find(d, "banner_ctr");
+  assert.equal(ctr.value, null);
+  assert.equal(ctr.status, "app_fix");
+});

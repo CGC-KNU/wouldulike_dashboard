@@ -194,13 +194,12 @@ export async function GET() {
       metrics: [
         { key: "push_sent", label: "푸시 발송", value: n("push_sent_this_month"), unit: "건", source: "push", note: s ? "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺐다" : undefined },
         { key: "push_open", label: "푸시 → 앱 열기", value: g?.push_open ?? null, unit: "%", source: "firebase", note: g ? `${md(g.push.from)}~${md(g.push.to)} 안드로이드 수신 ${g.push.received.toLocaleString()}건 중 ${g.push.opened_android}건 열림 (iOS 는 수신을 못 세 열기 ${g.push.opened_ios}건만)` : "Firebase 자동 이벤트(notification_receive/open) — BigQuery 쿼리 연결 전" },
-        // 분모가 없는 칸이다. home_banner_impression 이 analytics_events.dart 에 **선언만** 돼 있고
-        // 앱 어디서도 부르지 않는다 — 클릭은 찍히는데 몇 번 보였는지를 모른다. 억지 분모(홈을 본 세션 등)를
-        // 끼우면 다른 지표가 되므로 비워 둔다. 심을 이벤트 명세는 probe/Castor_이벤트_설계_0924.html.
-        { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix",
-          note: g
-            ? `home_banner_impression 이 앱에 선언만 있고 호출이 없어 분모가 없습니다(노출 0건). ${week} 클릭은 ${g.banner.clicked.toLocaleString()}대에서 찍혔습니다 — 노출 이벤트가 배포되면 이 칸이 살아납니다`
-            : "배너 노출 이벤트가 없다(0건). 노출 이벤트 배포가 먼저" },
+        // 노출 이벤트는 앱 2.5.8 부터 나간다. 노출을 보낸 기기가 없으면 분모가 없는 칸으로 둔다.
+        g && (g.banner_view?.seen ?? 0) > 0
+          ? { key: "banner_ctr", label: "배너 노출 → 클릭", value: g.banner_ctr ?? null, unit: "%", source: "ga4",
+              note: `${md(g.week.from)}~${md(g.week.to)} 배너 노출을 보낸 기기 ${g.banner_view!.seen.toLocaleString()}대 중 ${g.banner_view!.clicked.toLocaleString()}대가 눌렀다. 노출 이벤트가 없는 구버전 기기는 제외` }
+          : { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix",
+              note: g ? "앱에 노출 이벤트를 심었고 스토어 릴리스를 기다리는 중 — 이 창에는 아직 노출 0건" : "배너 노출 이벤트 — BigQuery 를 읽지 못했다" },
         { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: g?.banner_to_coupon ?? null, unit: "%", source: "ga4", note: g ? `${md(g.banner.from)}~${md(g.banner.to)} 배너를 누른 기기 ${g.banner.clicked}대 중 7일 안에 쿠폰을 쓴 ${g.banner.redeemed}대. 표본이 작다` : "배너 클릭 기기의 7일 내 coupon_redeemed — BigQuery 쿼리 연결 전" },
       ],
     },
