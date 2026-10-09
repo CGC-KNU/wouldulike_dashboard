@@ -114,6 +114,30 @@ function prevIf(prev: Num, sample?: number): Num | undefined {
 }
 
 /**
+ * 배너 노출 → 클릭. 노출 이벤트(home_banner_impression)는 앱 2.5.8 부터 나가서, 사용자 기기에 깔리기 전에는
+ * 노출 기기가 0 이다 — 그동안은 분모가 없는 칸(app_fix)으로 두고, 들어오기 시작하면 값을 채운다.
+ * 주간·월간 보고서가 같은 정의를 쓰도록 한 곳에 둔다.
+ */
+export function bannerCtrMetric(g: Ga4AppMetrics | null | undefined, p: Ga4AppMetrics | null | undefined): Metric {
+  const base = { key: "banner_ctr", label: "배너 노출 → 클릭", unit: "%", source: "ga4" as const };
+  const seen = g?.banner_view?.seen ?? 0;
+  if (!g || seen === 0) {
+    return {
+      ...base, value: null, status: "app_fix",
+      note: g
+        ? "앱에 노출 이벤트를 심었고(0927 머지) 스토어 릴리스를 기다리는 중입니다. 사용자 기기에 깔려야 home_banner_impression 이 들어옵니다 — 이 창에는 아직 0건"
+        : "배너 노출 이벤트 — BigQuery 를 읽지 못했습니다",
+    };
+  }
+  const prevSeen = p?.banner_view?.seen;
+  return {
+    ...base, value: g.banner_ctr ?? null, sample: seen,
+    prev: prevIf(p?.banner_ctr ?? null, prevSeen),
+    note: `${md(bare(g.week.from))}~${md(bare(g.week.to))} 배너 노출을 보낸 기기 ${seen.toLocaleString()}대 중 ${g.banner_view!.clicked.toLocaleString()}대가 배너를 눌렀습니다. 노출 이벤트가 없는 구버전 기기는 제외합니다`,
+  };
+}
+
+/**
  * 분모가 반 이상 달라진 주의 비율 지표는 판정을 유보한다.
  * 유입이 3.7배가 된 주에 DAU/WAU 가 0.8%p 내려간 것을 빨갛게 칠하면 "같은 사람들이 덜 왔다"로 읽힌다.
  * 숫자는 그대로 두고 색만 중립으로 바꾼다(양식의 verdict "flat" = 판정 유보).
@@ -349,7 +373,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
           note: g ? `${md(bare(g.banner.from))}~${md(bare(g.banner.to))} 배너를 누른 기기 ${g.banner.clicked}대 중 7일 안에 쿠폰을 쓴 ${g.banner.redeemed}대` : "배너 클릭 기기의 7일 내 coupon_redeemed",
           ...(g ? {} : { status: "pending" as const }),
         },
-        { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix", note: "앱에 노출 이벤트를 심었고(0927 머지) 스토어 릴리스를 기다리는 중입니다. 사용자 기기에 깔려야 home_banner_impression 이 들어옵니다 — 지금은 0건" },
+        bannerCtrMetric(g, p),
         countMetric("push_sent", "푸시 발송", ["push_sent"], { week: "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺍니다", month: "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺍니다" }),
       ] as Metric[],
     },

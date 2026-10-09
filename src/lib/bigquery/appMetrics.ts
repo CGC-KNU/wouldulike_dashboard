@@ -89,6 +89,13 @@ export interface Ga4AppMetrics {
   /** 홈 배너를 누른 기기 중 7일 안에 쿠폰을 쓴 비율, % */
   banner_to_coupon: number | null;
   banner: { from: string; to: string; clicked: number; redeemed: number };
+  /**
+   * 홈 배너 노출 → 클릭, % — **노출 이벤트(home_banner_impression)를 보낸 기기** 중 같은 창에서 배너도 누른 기기의 비율.
+   * 노출 이벤트는 앱 2.5.8 부터 나가서 구버전 기기는 클릭만 있고 노출이 없다 — 클릭을 노출 기기로 한정해
+   * 분자가 분모 밖으로 나가지 않게 한다. 노출이 0 이면 null(분모 없음).
+   */
+  banner_ctr?: number | null;
+  banner_view?: { seen: number; clicked: number };
 }
 
 export type Ga4Read = { ok: true; data: Ga4AppMetrics } | { ok: false; reason: "no_key" | "error"; detail?: string };
@@ -287,6 +294,20 @@ export async function readGa4AppMetrics(
     { bStart, bEnd, end }
   );
 
+  // ⑤-2 배너 노출 → 클릭 — 같은 창에서 노출을 보낸 기기와, 그중 배너도 누른 기기.
+  const [view] = await run<{ seen: number; clicked: number }>(
+    `WITH i AS (
+       SELECT DISTINCT user_pseudo_id FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'home_banner_impression'
+     ), c AS (
+       SELECT DISTINCT user_pseudo_id FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'home_banner_click'
+     )
+     SELECT COUNT(*) AS seen, COUNTIF(c.user_pseudo_id IS NOT NULL) AS clicked
+     FROM i LEFT JOIN c USING (user_pseudo_id)`,
+    { start, end }
+  );
+
   // ⑥ 이번 주 활성 중 신규 — 같은 창에서 first_open 이 있는 기기. WAU 가 뛴 주에 "유입인가 복귀인가"를 가른다.
   const [fresh] = await run<{ new_devices: number }>(
     `WITH a AS (
@@ -326,6 +347,8 @@ export async function readGa4AppMetrics(
       },
       banner_to_coupon: pct(Number(ban?.redeemed ?? 0), Number(ban?.clicked ?? 0)),
       banner: { from: dash(bStart), to: dash(bEnd), clicked: Number(ban?.clicked ?? 0), redeemed: Number(ban?.redeemed ?? 0) },
+      banner_ctr: pct(Number(view?.clicked ?? 0), Number(view?.seen ?? 0)),
+      banner_view: { seen: Number(view?.seen ?? 0), clicked: Number(view?.clicked ?? 0) },
     },
   };
 }

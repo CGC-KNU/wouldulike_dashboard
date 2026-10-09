@@ -1,5 +1,5 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
-import { SMALL_SAMPLE, couponMetrics, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
+import { SMALL_SAMPLE, bannerCtrMetric, couponMetrics, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
 import type { CouponFunnel, StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 import type { Bucket } from "@/app/api/probe/insights/summary/route";
 
@@ -248,7 +248,7 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
           note: g ? `${md(bare(g.banner.from))}~${md(bare(g.banner.to))} 배너를 누른 기기 ${g.banner.clicked}대 중 7일 안에 쿠폰을 쓴 ${g.banner.redeemed}대` : "배너 클릭 기기의 7일 내 coupon_redeemed",
           ...(g ? {} : { status: "pending" as const }),
         },
-        { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix", note: "앱에 노출 이벤트를 심었고(0927 머지) 스토어 릴리스를 기다리는 중입니다. 사용자 기기에 깔려야 home_banner_impression 이 들어옵니다 — 지금은 0건" },
+        bannerCtrMetric(g, p),
       ] as Metric[],
     },
     {
