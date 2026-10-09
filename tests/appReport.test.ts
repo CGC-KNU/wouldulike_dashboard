@@ -124,8 +124,8 @@ test("주간 값을 못 읽으면 DB·푸시 칸에 「이번 달 누계」가 �
   for (const m of metrics(d)) {
     const src = (m as unknown as { source: string }).source;
     if ((src === "backend" || src === "push") && m.value !== null) {
-      // 7일 안에 만료만 예외 — 누계가 아니라 읽는 시점 기준 앞으로 7일이다
-      const want = m.key === "coupon_expiring" ? "period" : "month_to_date";
+      // 7일 안에 만료(읽는 시점 기준 앞으로 7일)와 누적 가입자(읽는 시점의 계정 수)만 예외 — 둘 다 월 누계가 아니다
+      const want = m.key === "coupon_expiring" || m.key === "signups_total" ? "period" : "month_to_date";
       assert.equal(m.scope, want, `${m.key} 의 scope`);
     }
   }
