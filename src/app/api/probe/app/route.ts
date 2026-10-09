@@ -72,7 +72,7 @@ const cachedGa4 = unstable_cache(
     if (!r.ok) throw new Error(r.detail ?? r.reason);
     return r.data;
   },
-  ["probe-app-ga4-v2"],
+  ["probe-app-ga4-v3"],
   { revalidate: 6 * 60 * 60 }
 );
 
@@ -110,6 +110,7 @@ async function ga4(): Promise<{ data: Ga4AppMetrics | null; error: string | null
   }
 }
 
+const shiftDay = (d: string, days: number) => new Date(Date.parse(d) + days * 86_400_000).toISOString().slice(0, 10);
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 
 export async function GET() {
@@ -132,6 +133,7 @@ export async function GET() {
   // 경로별 사용률은 표본이 얕으면 뜻이 없다 — 발급 10건 이상만
   const expiringList = [...bySource].sort((a, b) => (b[1].expiring ?? 0) - (a[1].expiring ?? 0)).filter(([, v]) => v.expiring).slice(0, 3).map(([k, v]) => `${ko(k)} ${v.expiring!.toLocaleString()}장`).join(" · ");
   const rateList = bySource.filter(([, v]) => v.issued >= 10).slice(0, 4).map(([k, v]) => `${ko(k)} ${Math.round((v.redeemed / v.issued) * 1000) / 10}%`).join(" · ");
+  const signupsTotal = n("signups_total");
   const { data: g, error: gErr } = await ga4();
   const s2c = await storeToCoupon(g);
   const week = g ? `${md(g.week.from)}~${md(g.week.to)}` : "";
@@ -143,8 +145,14 @@ export async function GET() {
       description: "얼마나 많은 학생이 앱을 켜고, 돌아오는가.",
       metrics: [
         { key: "signups_month", label: "이번 달 가입", value: n("signups_this_month"), unit: "명", source: "backend", note: s ? `${month} 새로 만든 계정` : undefined },
+        { key: "signups_total", label: "누적 가입자", value: n("signups_total"), unit: "명", source: "backend", note: s ? "지금 남아 있는 계정 수(탈퇴 제외). 위 「이번 달 가입」과 WAU 의 분모" : undefined },
         { key: "wau", label: "주간 활성(WAU)", value: g?.wau ?? null, unit: "명", source: "ga4", note: g ? `${week} 앱을 켠 기기 수. 재설치하면 새로 센다` : "BigQuery 원본 — 최근 7일 고유 사용자. 쿼리 연결 전" },
         { key: "dau_wau", label: "DAU/WAU", value: g?.dau_wau ?? null, unit: "%", source: "ga4", note: "끈적함. 20% 넘으면 습관이 붙은 것" },
+        // 분자는 기기, 분모는 계정이라 비율은 근사다 — 한 사람이 기기 둘이면 높게, 재설치해도 높게 나온다. 100% 를 넘을 수 있다.
+        { key: "wau_per_signup", label: "가입자 중 이번 주 활성", value: g?.wau != null && signupsTotal ? Math.round((g.wau / signupsTotal) * 1000) / 10 : null, unit: "%", source: "ga4",
+          note: g?.wau != null && signupsTotal ? `WAU ${g.wau.toLocaleString()}기기 ÷ 누적 가입자 ${signupsTotal.toLocaleString()}명. 기기와 계정을 나눈 근사값 — 재설치·기기 여러 대면 높게 나온다` : "WAU(GA4)와 누적 가입자(DB)가 둘 다 들어와야 나온다" },
+        { key: "mau", label: "월간 활성(MAU)", value: g?.mau ?? null, unit: "명", source: "ga4", note: g ? `${md(shiftDay(g.week.to, -29))}~${md(g.week.to)} 30일간 앱을 켠 기기 수. 재설치하면 새로 센다` : "BigQuery 원본 — 최근 30일 고유 사용자. 쿼리 연결 전" },
+        { key: "wau_mau", label: "WAU/MAU", value: g?.wau != null && g.mau ? Math.round((g.wau / g.mau) * 1000) / 10 : null, unit: "%", source: "ga4", note: "한 달에 온 사람 중 이번 주에도 온 비율. 높을수록 단골이 쌓이는 중이고, 낮으면 한 번 쓰고 떠나는 사람이 많다" },
         { key: "retention_w1", label: "가입 1주 후 복귀", value: g?.retention_w1 ?? null, unit: "%", source: "firebase", note: g ? `${md(g.cohort.from)}~${md(g.cohort.to)} 첫 실행 ${g.cohort.users.toLocaleString()}대 중 7~13일째 다시 켠 비율` : "first_open 코호트의 7일 뒤 재방문. BigQuery 쿼리 연결 전" },
       ],
     },
