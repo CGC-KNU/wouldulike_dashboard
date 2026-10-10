@@ -225,8 +225,8 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   // 한쪽이라도 모르면 합도 모른다. 못 센 칸을 0 으로 더하면 「당첨 5 · 교환 모름」이 5로 찍힌다.
   const sum = (...ks: string[]): Num => {
-    const vals = ks.map((k) => n(k));
-    return vals.some((v) => v === null) ? null : vals.reduce((a, v) => a + (v as number), 0);
+    const nums = ks.map((k) => n(k)).filter((v): v is number => v !== null);
+    return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
   };
 
   // 그 주만 센 DB 칸. 전주 대비는 **두 주 모두 끝났을 때만** 붙인다 — 반쪽 주와 온전한 주를 비교하면 늘 줄어 보인다.
@@ -236,9 +236,8 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
   const wp = weekly && !weekOpen && weekPrev?.complete ? weekPrev.stats ?? null : null;
   const total = (src: Record<string, number | null> | null, ks: string[]): Num => {
     if (!src) return null;
-    const vals = ks.map((k) => src[k]);
-    if (vals.some((v) => typeof v !== "number")) return null;
-    return vals.reduce((a, v) => a + (v as number), 0);
+    const nums = ks.map((k) => src[k]).filter((v): v is number => typeof v === "number");
+    return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
   };
 
   const monthLabel = stats?.since ? `${+stats.since.slice(5, 7)}월` : "이번 달";

@@ -123,8 +123,8 @@ export async function GET() {
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   // 한쪽이라도 모르면 합도 모른다 — 교환을 못 셌는데 당첨만 더하면 그 합이 사실처럼 보인다
   const sum = (...ks: string[]) => {
-    const vals = ks.map((k) => n(k));
-    return vals.some((v) => v === null) ? null : vals.reduce((a, v) => a + (v as number), 0);
+    const nums = ks.map((k) => n(k)).filter((v): v is number => v !== null);
+    return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
   };
   const month = stats?.since ? `${md(stats.since)}~ 이번 달` : "이번 달";
   // 쿠폰 발급 경로 — 「발급 → 사용」이 자동 지급 쿠폰에 묻히지 않게 상위 경로를 설명에 적는다
