@@ -52,7 +52,7 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
   const L = useRef<typeof import("leaflet") | null>(null);
   const campusLayer = useRef<LayerGroup | null>(null);
   const storeLayer = useRef<LayerGroup | null>(null);
-  const ring = useRef<Circle | null>(null);
+  const ring = useRef<Circle[]>([]);
 
   useEffect(() => { getDoc<CampusesDoc>("campuses").then((d) => setMeta(d.data)).catch((e) => { setErr(String(e.message ?? e)); setMeta(null); }); }, []);
 
@@ -108,10 +108,14 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
     const lf = L.current, layer = storeLayer.current, m = map.current;
     if (!lf || !layer || !m) return;
     layer.clearLayers();
-    ring.current?.remove(); ring.current = null;
+    ring.current.forEach((r) => r.remove()); ring.current = [];
     if (!sel) return;
-    ring.current = lf.circle([sel.y, sel.x], { radius: 1000, color: "#060073", weight: 1.5, fillColor: "#060073", fillOpacity: 0.06 }).addTo(m);
-    lf.circleMarker([sel.y, sel.x], { radius: 7, color: "#fff", weight: 2, fillColor: "#060073", fillOpacity: 1 }).bindTooltip("정문(대표 좌표)").addTo(layer);
+    // 문마다 1km — 경북대처럼 정문 · 북문 · 서문이 따로 상권이면 원 여러 개가 겹친다(1011 정문 보정)
+    const gates = sel.gates?.length ? sel.gates : [{ n: "대표 좌표", y: sel.y, x: sel.x }];
+    for (const g of gates) {
+      ring.current.push(lf.circle([g.y, g.x], { radius: 1000, color: "#060073", weight: 1.2, fillColor: "#060073", fillOpacity: gates.length > 1 ? 0.035 : 0.06 }).addTo(m));
+      lf.circleMarker([g.y, g.x], { radius: 7, color: "#fff", weight: 2, fillColor: "#060073", fillOpacity: 1 }).bindTooltip(g.n, { permanent: gates.length > 1, direction: "top" }).addTo(layer);
+    }
     for (const s of stores?.stores ?? []) {
       const f = finalGrade(s, obs?.data?.obs?.[s.id]);
       const on = s.id === storeId;
@@ -267,7 +271,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
       <div className="p-4 border-b border-black/[0.06]">
         <div className="flex justify-between items-start gap-2">
           <div><h2 className="text-[17px] font-extrabold text-gray-900">{c.name} {c.branch !== "본교" && <span className="text-[13px] font-semibold text-gray-500">{c.branch}</span>}</h2>
-            <p className="text-[11.5px] text-gray-500">{c.addr} · 대표 좌표 기준 1km{c.gate !== "manual" && " (정문 보정 전)"}</p></div>
+            <p className="text-[11.5px] text-gray-500">{c.addr} · {c.gate === "manual" && c.gates?.length ? `${c.gates.map((g) => g.n).join(" · ")}에서 각 1km` : "대표 좌표 기준 1km (정문 보정 전)"}</p></div>
           <button type="button" onClick={onClose} aria-label="상권 닫기" className="p-1 rounded hover:bg-black/5"><IconX size={18} /></button>
         </div>
         <div className="grid grid-cols-4 gap-1.5 mt-3 text-[11px]">
@@ -291,7 +295,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
                 <li key={s.id}>
                   <button type="button" onClick={() => onPick(s.id)} className="w-full text-left flex justify-between items-center gap-2 py-2 border-b border-black/[0.05] hover:bg-navy/[0.03]">
                     <span className="min-w-0"><b className="text-gray-900">{s.n}</b>
-                      <span className="block text-[11px] text-gray-400 truncate">{s.c || KIND_LABEL[s.k]} · {s.d}m · {isNew(s.o) ? "NEW" : years(s.o) !== null ? `${years(s.o)}년` : "—"}{s.ch ? ` · ${s.ch}` : ""}{obs[s.id]?.grade ? " · 팀 관찰" : ""}</span></span>
+                      <span className="block text-[11px] text-gray-400 truncate">{s.c || KIND_LABEL[s.k]} · {s.gn ? `${s.gn} ` : ""}{s.d}m · {isNew(s.o) ? "NEW" : years(s.o) !== null ? `${years(s.o)}년` : "—"}{s.ch ? ` · ${s.ch}` : ""}{obs[s.id]?.grade ? " · 팀 관찰" : ""}</span></span>
                     <GradeChip g={f.g} />
                   </button>
                 </li>
@@ -314,7 +318,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
               const max = Math.max(1, ...Object.values(dist));
               return <div key={g} className="flex items-center gap-2 py-1"><GradeChip g={g} /><span className="flex-1 h-3 rounded bg-black/[0.04] overflow-hidden"><i className="block h-full rounded" style={{ width: `${(dist[g] / max) * 100}%`, background: GRADE_COLOR[g] }} /></span><b className="w-12 text-right tabular-nums">{dist[g].toLocaleString()}</b></div>;
             })}
-            <p className="text-[11.5px] text-gray-500 mt-3 leading-relaxed">산식 v{doc.fit_version}(검증 전) — 공공 원장으로 셀 수 있는 것: 독립점 20 · 골목 집적도 15 · 업력 10 · 정문 거리 15 · 90일 신규 15. 팀 관찰 등급을 매기면 최대 25점이 더해져 다시 매겨집니다. 평점 · 리뷰는 약관상 넣지 않습니다. 영남대 · 계명대 계약 매장으로 적중률을 잰 뒤 가중치를 확정합니다.</p>
+            <p className="text-[11.5px] text-gray-500 mt-3 leading-relaxed">{doc.fit_version >= 2 ? <>산식 v2 — 골목 집적도 35 · 문까지 거리 25 · 일반음식점 5 · 독립점 5 · 90일 신규 5. 경북대 · 계명대 · 영남대 현 파트너 54곳으로 재서 정함(맞히는 정도 AUC 0.59 → 0.80). 팀 관찰 등급을 매기면 최대 25점이 더해집니다. 평점 · 리뷰는 약관상 넣지 않습니다.</> : <>산식 v1(검증 전) — 독립점 20 · 골목 집적도 15 · 업력 10 · 정문 거리 15 · 90일 신규 8. 팀 관찰 등급을 매기면 최대 25점이 더해집니다.</>}</p>
           </div>
         )}
       </div>
@@ -322,43 +326,55 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
   );
 }
 
+type Similar = { kind: "lead" | "store"; id: string | number; name: string; stage?: string; owner?: string | null; campus?: string; address?: string; why: string };
+type AddState = null | "check" | { similar: Similar[] } | { blocked: { name: string; stage: string; owner: string | null } } | { done: "created" | "linked" } | { error: string };
+
 function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: Store; campus: CampusItem; obs?: Obs; actor: string; onBack: () => void; onSave: (o: Obs | null) => Promise<boolean>; onOpenLead?: () => void }) {
   const [tab, setTab] = useState<"info" | "fit" | "obs">("info");
   const [o, setO] = useState<Obs>(obs ?? {});
   const [saving, setSaving] = useState(false);
-  const [add, setAdd] = useState<null | "check" | { dup: { name: string; stage?: string; owner?: string | null; kind: "lead" | "store" }[] } | "done">(null);
+  const [add, setAdd] = useState<AddState>(null);
+  const [reason, setReason] = useState("");
   const [copied, setCopied] = useState(false);
-  useEffect(() => { setO(obs ?? {}); setAdd(null); }, [s.id, obs]);
+  useEffect(() => { setO(obs ?? {}); setAdd(null); setReason(""); }, [s.id, obs]);
   const f = finalGrade(s, obs);
   const y = years(s.o);
   const fitRows: [string, string, string][] = [
-    ["독립점", s.ch ? `아님 — ${s.ch}` : "예", `${s.p.indep}/20`],
-    ["골목 집적도", `반경 약 50m 안 ${s.dn}곳`, `${s.p.dense}/15`],
-    ["업력", s.o ? `${s.o.slice(0, 10)} 인허가${y !== null ? ` · ${y}년` : ""}` : "—", `${s.p.age}/10`],
-    ["정문 거리", `${s.d}m`, `${s.p.dist}/15`],
-    ["90일 신규", isNew(s.o) ? "예" : "아님", `${s.p.new}/15`],
+    ...(s.p.kind !== undefined ? [
+      // v2(1011) — 현 파트너 54곳으로 검증: 집적도 · 거리가 가장 잘 맞음
+      ["골목 집적도", `반경 약 50m 안 ${s.dn}곳`, `${s.p.dense}/35`],
+      ["문까지 거리", `${s.gn ? `${s.gn} ` : ""}${s.d}m`, `${s.p.dist}/25`],
+      ["일반음식점", s.k === "일" ? "예" : KIND_LABEL[s.k], `${s.p.kind}/5`],
+      ["독립점", s.ch ? `아님 — ${s.ch}` : "예", `${s.p.indep}/5`],
+      ["90일 신규", isNew(s.o) ? "예" : "아님", `${s.p.new}/5`],
+    ] as [string, string, string][] : [
+      ["독립점", s.ch ? `아님 — ${s.ch}` : "예", `${s.p.indep}/20`],
+      ["골목 집적도", `반경 약 50m 안 ${s.dn}곳`, `${s.p.dense}/15`],
+      ["업력", s.o ? `${s.o.slice(0, 10)} 인허가${y !== null ? ` · ${y}년` : ""}` : "—", `${s.p.age ?? 0}/10`],
+      ["정문 거리", `${s.gn ? `${s.gn} ` : ""}${s.d}m`, `${s.p.dist}/15`],
+      ["90일 신규", isNew(s.o) ? "예" : "아님", `${s.p.new}/8`],
+    ] as [string, string, string][]),
     ["팀 관찰", obs?.grade ? `${obs.grade} · ${obs.by ?? ""} 「${obs.why ?? ""}」` : "아직", obs?.grade ? `+${{ S: 25, A: 18, B: 10, C: 0 }[obs.grade]}` : "—"],
   ];
 
-  async function addLead() {
+  // 중복 판정은 백엔드가 한다(1011) — 같은 인허가 번호는 막고, 이름 · 전화가 비슷하면 목록을 돌려준다.
+  async function addLead(extra: { reason?: string; link_lead_id?: string } = {}) {
     setAdd("check");
-    const norm = normName(s.n);
-    const [L, S] = await Promise.all([fetch("/api/astro/leads").then((r) => r.json()).catch(() => ({})), fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({}))]);
-    const dup = [
-      ...((L.leads ?? []) as { name: string; stage: string; owner: string | null }[]).filter((l) => normName(l.name).includes(norm) || norm.includes(normName(l.name))).map((l) => ({ name: l.name, stage: l.stage, owner: l.owner, kind: "lead" as const })),
-      ...((S.stores ?? []) as { name: string; is_affiliate: boolean }[]).filter((x) => x.is_affiliate !== false && (normName(x.name).includes(norm) || norm.includes(normName(x.name)))).map((x) => ({ name: x.name, kind: "store" as const })),
-    ].slice(0, 5);
-    if (dup.length) { setAdd({ dup }); return; }
-    await create();
-  }
-  async function create() {
-    setAdd("check");
-    const r = await fetch("/api/astro/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-      name: s.n, campus: shortCampus(campus), district: `${campus.name} 정문 ${s.d}m`, category: s.c || KIND_LABEL[s.k], phone: s.t || null, stage: "미컨택", owner: actor, source: "hubble",
-      grade: f.g === "S" || f.g === "A" ? "A" : f.g, score: f.sc, angle: `허블 적합 ${f.g} — ${fitRows.filter((x) => !x[2].startsWith("0") && x[2] !== "—").map((x) => x[0]).join(" · ")}`,
-      memo: `허블에서 추가 · ${s.a} · 인허가 ${s.id}`,
-    }) });
-    setAdd(r.ok ? "done" : null);
+    try {
+      const r = await fetch("/api/astro/leads/from-hubble", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        hubble_id: s.id, name: s.n, address: s.a, phone: s.t || "", campus: shortCampus(campus), district: `${campus.name} ${s.gn ?? "정문"} ${s.d}m`, category: s.c || KIND_LABEL[s.k],
+        stage: "미컨택", owner: actor, grade: f.g === "S" || f.g === "A" ? "A" : f.g, score: f.sc,
+        angle: `허블 적합 ${f.g} — ${fitRows.filter((x) => !x[2].startsWith("0") && x[2] !== "—").map((x) => x[0]).join(" · ")}`,
+        memo: `허블에서 추가 · ${s.a} · 인허가 ${s.id}`, ...extra,
+      }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) return setAdd({ done: d.linked ? "linked" : "created" });
+      if (r.status === 409 && d.blocked) return setAdd({ blocked: d.blocked });
+      if (r.status === 409 && d.similar) return setAdd({ similar: d.similar });
+      setAdd({ error: d.detail ?? `후보를 만들지 못했습니다(${r.status}).` });
+    } catch {
+      setAdd({ error: "네트워크 오류로 후보를 만들지 못했습니다." });
+    }
   }
 
   return (
@@ -368,7 +384,7 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
         <div className="flex justify-between items-start gap-2 mt-1">
           <h2 className="text-[17px] font-extrabold text-gray-900">{s.n}</h2><GradeChip g={f.g} />
         </div>
-        <p className="text-[11.5px] text-gray-500">{s.c || KIND_LABEL[s.k]} · 정문 {s.d}m · {s.o ? `인허가 ${s.o.slice(0, 10)}` : ""} · 영업 중</p>
+        <p className="text-[11.5px] text-gray-500">{s.c || KIND_LABEL[s.k]} · {s.gn ?? "정문"} {s.d}m · {s.o ? `인허가 ${s.o.slice(0, 10)}` : ""} · 영업 중</p>
         <p className="text-[11.5px] text-gray-600 flex items-center gap-1 mt-0.5">{s.a}
           <button type="button" aria-label="주소 복사" onClick={async () => { await navigator.clipboard.writeText(s.a); setCopied(true); setTimeout(() => setCopied(false), 1500); }}><IconCopy size={13} /></button>{copied && <span className="text-[10.5px] text-green-700">복사함</span>}</p>
         <div className="flex flex-wrap gap-1.5 mt-2">
@@ -413,16 +429,31 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
         )}
       </div>
       <div className="p-3 border-t border-black/[0.06]">
-        {add && typeof add === "object" ? (
+        {add && typeof add === "object" && "similar" in add ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[12px] text-amber-900 space-y-1.5">
-            <p className="font-semibold">비슷한 이름이 이미 있습니다 — 같은 가게면 추가하지 마세요.</p>
-            {add.dup.map((d, i) => <p key={i}>{d.name} · {d.kind === "store" ? "파트너 매장" : `후보 · ${d.stage}${d.owner ? ` · ${d.owner}` : ""}`}</p>)}
-            <div className="flex gap-2 pt-1"><button type="button" onClick={create} className="px-2.5 py-1 rounded bg-white border border-amber-300 font-semibold">다른 가게예요 — 추가</button>{onOpenLead && <button type="button" onClick={onOpenLead} className="px-2.5 py-1 rounded font-semibold underline">후보 탭 열기</button>}<button type="button" onClick={() => setAdd(null)} className="ml-auto text-amber-700">취소</button></div>
+            <p className="font-semibold">비슷한 곳이 있습니다 — 같은 가게면 새로 만들지 말고 잇기를 누르세요.</p>
+            <ul className="space-y-1">{add.similar.map((d) => (
+              <li key={`${d.kind}${d.id}`} className="flex items-center gap-2">
+                <span className="flex-1 min-w-0"><b>{d.name}</b> · {d.kind === "store" ? `파트너 매장${d.campus ? ` · ${d.campus}` : ""}` : `후보 · ${d.stage}${d.owner ? ` · ${d.owner}` : ""}`}
+                  <span className={`block text-[11px] ${d.why === "같은 자리" ? "text-red-700 font-semibold" : "text-amber-700"}`}>{d.why}{d.address ? ` · ${d.address}` : ""}</span></span>
+                {d.kind === "lead" && <button type="button" onClick={() => addLead({ link_lead_id: String(d.id) })} className="shrink-0 px-2 py-0.5 rounded bg-white border border-amber-300 font-semibold">같은 가게 — 잇기</button>}
+              </li>))}</ul>
+            <div className="flex gap-1.5 pt-1">
+              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="다른 가게인 이유(필수) — 예: 지점 다름" className="flex-1 min-w-0 rounded border border-amber-300 bg-white px-2 py-1 text-gray-800" />
+              <button type="button" disabled={!reason.trim()} onClick={() => addLead({ reason: reason.trim() })} className="shrink-0 px-2.5 py-1 rounded bg-white border border-amber-300 font-semibold disabled:opacity-50">다른 가게 — 추가</button>
+            </div>
+            <div className="flex">{onOpenLead && <button type="button" onClick={onOpenLead} className="font-semibold underline">후보 탭 열기</button>}<button type="button" onClick={() => setAdd(null)} className="ml-auto text-amber-700">취소</button></div>
           </div>
-        ) : add === "done" ? (
-          <div className="flex items-center justify-between text-[12.5px] text-green-800 bg-green-50 rounded-lg px-3 py-2">후보로 추가했습니다 (미컨택 · {actor}){onOpenLead && <button type="button" onClick={onOpenLead} className="underline font-semibold">ASTRO에서 보기</button>}</div>
+        ) : add && typeof add === "object" && "blocked" in add ? (
+          <div className="flex items-center justify-between gap-2 text-[12.5px] text-navy bg-[#060073]/[0.06] rounded-lg px-3 py-2">
+            <span>이미 후보입니다 — <b>{add.blocked.name}</b> · {add.blocked.stage}{add.blocked.owner ? ` · 담당 ${add.blocked.owner}` : ""}</span>{onOpenLead && <button type="button" onClick={onOpenLead} className="shrink-0 underline font-semibold">그 후보 열기</button>}</div>
+        ) : add && typeof add === "object" && "done" in add ? (
+          <div className="flex items-center justify-between text-[12.5px] text-green-800 bg-green-50 rounded-lg px-3 py-2">{add.done === "linked" ? "기존 후보에 이었습니다" : `후보로 추가했습니다 (미컨택 · ${actor})`}{onOpenLead && <button type="button" onClick={onOpenLead} className="underline font-semibold">ASTRO에서 보기</button>}</div>
         ) : (
-          <button type="button" disabled={add === "check"} onClick={addLead} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-navy text-white font-bold disabled:opacity-60"><IconPlus size={16} /> {add === "check" ? "확인 중…" : "파트너 후보로 추가"}</button>
+          <>
+            {add && typeof add === "object" && "error" in add && <p className="text-[12px] text-red-700 mb-1.5">{add.error}</p>}
+            <button type="button" disabled={add === "check"} onClick={() => addLead()} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-navy text-white font-bold disabled:opacity-60"><IconPlus size={16} /> {add === "check" ? "확인 중…" : add && typeof add === "object" && "error" in add ? "다시 시도" : "파트너 후보로 추가"}</button>
+          </>
         )}
       </div>
     </>
