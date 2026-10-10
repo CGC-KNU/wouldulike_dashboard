@@ -2,20 +2,20 @@
 
 import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Map as LMap, LayerGroup, Circle } from "leaflet";
 import { IconSearch, IconX, IconArrowLeft, IconCopy, IconExternalLink, IconPhone, IconPlus } from "@tabler/icons-react";
 import {
   GRADE_COLOR, KIND_LABEL, finalGrade, isNew, kakaoSearch, naverSearch, normName, shortCampus, years,
   type CampusItem, type CampusesDoc, type Grade, type Obs, type ObsDoc, type Store, type StoresDoc,
 } from "@/lib/hubble";
 import { Notice, Skeleton } from "../_shared/ui";
+import { openMap, type Engine } from "./mapEngine";
 
 /**
  * 허블 · 지도 (1010, 명세 CGC/04_사내툴_개발/07_hubble/허블_UI명세.html A절).
  *
  * 첫 화면 = 대한민국 지도. 정문 1km 안 영업 중 식당 · 카페 · 주점이 100곳 이상인 4년제 대학가가 점으로 뜬다.
  * 점을 누르면 그 상권으로 날아가 1km 원 · 매장 마커가 깔리고 오른쪽 서랍에 목록 · 특이사항 · 적합도가 열린다.
- * 바탕지도는 지금 OpenStreetMap(키 없음) — 카카오 JS 키가 생기면 이 파일의 타일 레이어만 바꾼다.
+ * 바탕지도는 카카오맵(NEXT_PUBLIC_KAKAO_JS_KEY, 1011) — 키가 없거나 도메인이 등록 안 됐으면 OpenStreetMap 으로 연다(mapEngine.ts).
  * 매장 원장은 공공 인허가, 평점 · 리뷰 · 메뉴는 카카오맵 · 네이버지도 링크로만 연다(약관상 저장 금지).
  */
 type Doc<T> = { data: T | null; updated_at: string | null };
@@ -48,11 +48,9 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
   const [obs, setObs] = useState<Doc<ObsDoc> | null>(null);
   const [storeId, setStoreId] = useState<string | null>(null);
   const mapEl = useRef<HTMLDivElement>(null);
-  const map = useRef<LMap | null>(null);
-  const L = useRef<typeof import("leaflet") | null>(null);
-  const campusLayer = useRef<LayerGroup | null>(null);
-  const storeLayer = useRef<LayerGroup | null>(null);
-  const ring = useRef<Circle[]>([]);
+  const map = useRef<Engine | null>(null);
+  const [ready, setReady] = useState(false);
+  const [mapNote, setMapNote] = useState<string | null>(null);
 
   useEffect(() => { getDoc<CampusesDoc>("campuses").then((d) => setMeta(d.data)).catch((e) => { setErr(String(e.message ?? e)); setMeta(null); }); }, []);
 
@@ -65,38 +63,30 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
   useEffect(() => {
     let dead = false;
     (async () => {
-      const leaflet = await import("leaflet");
-      if (dead || !mapEl.current || map.current) return;
-      L.current = leaflet;
-      const m = leaflet.map(mapEl.current, { zoomControl: false, minZoom: 6, maxZoom: 19, attributionControl: true }).setView([36.2, 127.9], 7);
-      leaflet.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(m);
-      leaflet.control.zoom({ position: "topright" }).addTo(m);
-      campusLayer.current = leaflet.layerGroup().addTo(m);
-      storeLayer.current = leaflet.layerGroup().addTo(m);
-      map.current = m;
-      setTimeout(() => m.invalidateSize(), 50);
+      if (!mapEl.current || map.current) return;
+      const { engine, note } = await openMap(mapEl.current);
+      if (dead) { engine.destroy(); return; }
+      map.current = engine; setMapNote(note); setReady(true);
     })();
-    return () => { dead = true; map.current?.remove(); map.current = null; };
+    return () => { dead = true; map.current?.destroy(); map.current = null; };
   }, []);
 
   // 대학가 점
   useEffect(() => {
-    const lf = L.current, layer = campusLayer.current;
-    if (!lf || !layer) return;
-    layer.clearLayers();
+    const m = map.current;
+    if (!m) return;
+    m.clear("campus");
     for (const c of visible) {
       const r = c.n >= 1000 ? 9 : c.n >= 500 ? 7 : c.n >= 200 ? 5.5 : 4.5;
       const on = sel?.key === c.key;
-      const mk = lf.circleMarker([c.y, c.x], { radius: r, color: "#060073", weight: on ? 3 : 1.6, fillColor: on ? "#060073" : "#ffffff", fillOpacity: 1 });
-      mk.bindTooltip(`${c.name}${c.branch !== "본교" ? ` ${c.branch}` : ""} · 식당 ${c.n.toLocaleString()} · 적합 S·A ${c.sa}`, { direction: "top" });
-      mk.on("click", () => pick(c));
-      mk.addTo(layer);
+      m.dot("campus", c.y, c.x, { r, stroke: "#060073", weight: on ? 3 : 1.6, fill: on ? "#060073" : "#ffffff",
+        title: `${c.name}${c.branch !== "본교" ? ` ${c.branch}` : ""} · 식당 ${c.n.toLocaleString()} · 적합 S·A ${c.sa}`, onClick: () => pick(c) });
     }
-  }, [visible, sel?.key, meta]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visible, sel?.key, meta, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = useCallback(async (c: CampusItem) => {
     setSel(c); setStoreId(null); setStores(null); setObs(null);
-    map.current?.flyTo([c.y, c.x], 15, { duration: 0.6 });
+    map.current?.view(c.y, c.x, 15, true);
     try {
       const [s, o] = await Promise.all([getDoc<StoresDoc>(`c:${c.key}`), getDoc<ObsDoc>(`o:${c.key}`)]);
       setStores(s.data); setObs(o);
@@ -105,31 +95,25 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
 
   // 상권 매장 · 1km 원
   useEffect(() => {
-    const lf = L.current, layer = storeLayer.current, m = map.current;
-    if (!lf || !layer || !m) return;
-    layer.clearLayers();
-    ring.current.forEach((r) => r.remove()); ring.current = [];
+    const m = map.current;
+    if (!m) return;
+    m.clear("store");
     if (!sel) return;
     // 문마다 1km — 경북대처럼 정문 · 북문 · 서문이 따로 상권이면 원 여러 개가 겹친다(1011 정문 보정)
     const gates = sel.gates?.length ? sel.gates : [{ n: "대표 좌표", y: sel.y, x: sel.x }];
-    for (const g of gates) {
-      ring.current.push(lf.circle([g.y, g.x], { radius: 1000, color: "#060073", weight: 1.2, fillColor: "#060073", fillOpacity: gates.length > 1 ? 0.035 : 0.06 }).addTo(m));
-      lf.circleMarker([g.y, g.x], { radius: 7, color: "#fff", weight: 2, fillColor: "#060073", fillOpacity: 1 }).bindTooltip(g.n, { permanent: gates.length > 1, direction: "top" }).addTo(layer);
-    }
+    for (const g of gates) m.ring("store", g.y, g.x, 1000, gates.length > 1 ? 0.035 : 0.06);
     for (const s of stores?.stores ?? []) {
       const f = finalGrade(s, obs?.data?.obs?.[s.id]);
       const on = s.id === storeId;
-      const mk = lf.circleMarker([s.y, s.x], { radius: on ? 8 : f.g === "S" ? 5 : 4, color: on ? "#FF6A3D" : GRADE_COLOR[f.g], weight: on ? 3 : 2, fillColor: "#fff", fillOpacity: 0.95 });
-      mk.bindTooltip(`${s.n} · ${f.g}`, { direction: "top" });
-      mk.on("click", () => setStoreId(s.id));
-      mk.addTo(layer);
+      m.dot("store", s.y, s.x, { r: on ? 8 : f.g === "S" ? 5 : 4, stroke: on ? "#FF6A3D" : GRADE_COLOR[f.g], weight: on ? 3 : 2, fill: "#fff", title: `${s.n} · ${f.g}`, onClick: () => setStoreId(s.id) });
     }
-  }, [sel, stores, obs, storeId]);
+    for (const g of gates) m.dot("store", g.y, g.x, { r: 6, stroke: "#fff", weight: 2, fill: "#060073", title: g.n, label: gates.length > 1 ? g.n : undefined });
+  }, [sel, stores, obs, storeId, ready]);
 
   // 매장 고르면 그 자리로
   useEffect(() => {
     const s = stores?.stores.find((x) => x.id === storeId);
-    if (s) map.current?.panTo([s.y, s.x]);
+    if (s) map.current?.pan(s.y, s.x);
   }, [storeId, stores]);
 
   async function saveObs(id: string, o: Obs | null) {
@@ -217,6 +201,7 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
       {/* 범례 */}
       <div className="absolute left-3 bottom-6 z-[500] rounded-lg bg-white border border-black/[0.08] px-2.5 py-1.5 text-[11px] text-gray-600 shadow">
         {sel ? <>테두리 = 적합도 {(["S", "A", "B", "C"] as Grade[]).map((g) => <span key={g} className="inline-flex items-center gap-0.5 ml-1.5"><i className="inline-block w-2.5 h-2.5 rounded-full border-2 bg-white" style={{ borderColor: GRADE_COLOR[g] }} />{g}</span>)}</> : <>점 크기 = 정문 1km 식당 수 (200 · 500 · 1000+)</>}
+        {mapNote && <span className="block text-[10.5px] text-amber-700 mt-0.5">{mapNote}</span>}
       </div>
 
       {err && <div className="absolute left-1/2 -translate-x-1/2 top-3 z-[600] max-w-md"><Notice tone="red" title={err}><button type="button" className="underline" onClick={() => setErr(null)}>닫기</button></Notice></div>}
@@ -227,7 +212,7 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
           {store ? (
             <StorePanel s={store} campus={sel} obs={obs?.data?.obs?.[store.id]} actor={actor} onBack={() => setStoreId(null)} onSave={(o) => saveObs(store.id, o)} onOpenLead={onOpenLead} />
           ) : (
-            <CampusPanel c={sel} doc={stores} obs={obs?.data?.obs ?? {}} onClose={() => { setSel(null); setStores(null); map.current?.flyTo([36.2, 127.9], 7, { duration: 0.6 }); }} onPick={setStoreId} />
+            <CampusPanel c={sel} doc={stores} obs={obs?.data?.obs ?? {}} onClose={() => { setSel(null); setStores(null); map.current?.view(36.2, 127.9, 7, true); }} onPick={setStoreId} />
           )}
         </aside>
       )}
