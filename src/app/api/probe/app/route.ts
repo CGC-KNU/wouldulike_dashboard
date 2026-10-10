@@ -121,7 +121,11 @@ export async function GET() {
   const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/");
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
-  const sum = (...ks: string[]) => (ks.every((k) => n(k) === null) ? null : ks.reduce((a, k) => a + (n(k) ?? 0), 0));
+  // 한쪽이라도 모르면 합도 모른다 — 교환을 못 셌는데 당첨만 더하면 그 합이 사실처럼 보인다
+  const sum = (...ks: string[]) => {
+    const nums = ks.map((k) => n(k)).filter((v): v is number => v !== null);
+    return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
+  };
   const month = stats?.since ? `${md(stats.since)}~ 이번 달` : "이번 달";
   // 쿠폰 발급 경로 — 「발급 → 사용」이 자동 지급 쿠폰에 묻히지 않게 상위 경로를 설명에 적는다
   const bySource: [string, { issued: number; redeemed: number; expiring?: number; label?: string }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
@@ -216,14 +220,15 @@ export async function GET() {
 
   const SOURCE_HINT: Record<Source, string> = {
     backend: s
-      ? "백엔드 app-stats 에서 이번 달(KST) 합계를 읽는다. 「매장 상세 → 쿠폰 발급」은 정의를 다시 정하는 중이라 비워 둔다 — 앱의 coupon_issued 는 자동 지급 쿠폰이 보일 때도 찍혀 매장을 보고 받은 쿠폰과 섞인다."
+      ? "백엔드 app-stats 에서 이번 달(KST) 합계를 읽는다. 「매장 상세 → 쿠폰 발급」은 DB 가 아니라 GA4 에서 같은 기기·세션·매장으로 잇고, 기획전 자동 지급은 뺀다."
       : "쿠폰·스탬프·가입은 이미 DB 에 있다. 백엔드 /api/dashboard/admin/app-stats/ 가 배포되면 채워진다.",
     push: s
       ? "발송 건수는 notifications 테이블에서 센다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸."
       : "발송 건수는 notifications 테이블 집계로 나온다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸.",
     ga4: g
-      ? `BigQuery 확정 테이블(${md(g.through)}까지)에서 6시간마다 읽는다. 기기 단위라 재설치하면 새 사용자로 센다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저.`
-      : "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. WAU · DAU/WAU · 앱 열기 → 매장 상세는 쿼리만 붙이면 된다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저. 값과 배지는 같은 배포에.",
+      ? `BigQuery 확정 테이블(${md(g.through)}까지)에서 6시간마다 읽는다. 기기 단위라 재설치하면 새 사용자로 센다.`
+        + ((g.banner_view?.seen ?? 0) > 0 ? "" : " 배너 노출은 이 창에 0건이라 그 칸만 앱에 이벤트가 깔리기를 기다린다.")
+      : "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. WAU · 퍼널 · 매장 상세 → 쿠폰 발급은 확정 테이블에서 읽는다. 배너 노출은 그 창에 노출 이벤트가 있어야 채워진다.",
     firebase: g
       ? "GA4 와 같은 스트림이라 같은 BigQuery 에서 읽는다. 가입 1주 후 복귀 = first_open 코호트의 7~13일째 재방문. 푸시 열기 = FCM 자동 이벤트, 수신은 안드로이드만 남아 비율도 안드로이드 기준."
       : "GA4 와 같은 스트림이라 같은 BigQuery 에 있다. 가입 1주 후 복귀는 first_open 코호트 쿼리로 읽는다.",

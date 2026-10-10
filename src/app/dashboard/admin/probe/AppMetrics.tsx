@@ -84,10 +84,12 @@ export default function AppMetrics() {
         <Kpi label="채워진 지표" value={loading ? "-" : `${filled} / ${total}`} hint="출처가 연결된 칸" />
         <Kpi label="연결된 출처" value={loading ? "-" : `${connected} / ${data?.sources.length ?? 4}`} hint="DB · 푸시 · GA4 · Firebase" />
         {!data?.sources.find((s) => s.key === "ga4")?.connected
-          ? <Kpi label="다음 연결" value={loading ? "-" : "BigQuery"} hint="GA4 원본 쿼리로 4칸 · 2칸은 앱 수정 대기" />
+          ? <Kpi label="다음 연결" value={loading ? "-" : "BigQuery"} hint="WAU · 퍼널 · 복귀는 확정 테이블에서 읽는다" />
           : !data?.sources.find((s) => s.key === "backend")?.connected
-            ? <Kpi label="다음 연결" value={loading ? "-" : "DB 집계"} hint="백엔드 app-stats 배포로 9칸 · 2칸은 앱 수정 대기" />
-            : <Kpi label="남은 칸" value={loading ? "-" : "정의 · 앱 수정"} hint="매장 상세 → 쿠폰은 정의 보류 · 배너 노출은 앱 이벤트 먼저" />}
+            ? <Kpi label="다음 연결" value={loading ? "-" : "DB 집계"} hint="백엔드 app-stats 가 이번 달 가입·쿠폰·스탬프를 채운다" />
+            : data?.groups.flatMap((g) => g.metrics).find((m) => m.key === "banner_ctr")?.status === "app_fix"
+              ? <Kpi label="남은 칸" value={loading ? "-" : "배너 노출"} hint="이 창에는 home_banner_impression 이 아직 없다" />
+              : <Kpi label="읽기" value={loading ? "-" : "기기 단위"} hint="재설치하면 새 사용자로 센다. 계정 수와 1:1 이 아니다" />}
         <Kpi label="주요 지표 후보" value={loading ? "-" : "발급 → 사용"} hint="배너 A/B 의 판정 기준 (Castor)" />
       </div>
 
