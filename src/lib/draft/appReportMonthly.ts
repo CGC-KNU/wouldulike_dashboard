@@ -1,5 +1,5 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
-import { SMALL_SAMPLE, bannerCtrMetric, couponMetrics, couponUseFunnelData, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
+import { SMALL_SAMPLE, bannerCtrMetric, couponMetrics, couponUseFunnelData, detailSessions, dominantNote, returningBase, type Json, type Metric } from "./appReportData";
 import { FOLLOW_DAYS, type CouponFunnel, type CouponUseFunnel, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 
 /**
@@ -238,8 +238,8 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
   // 발급은 캠페인 자동 지급을 뺀 수다. 4단 「쿠폰 사용」은 세션으로 이을 수 없어 쓰기 퍼널로 옮겼다(민찬 1010).
   const funnel = [
     { label: "앱 열기", value: g?.sessions ?? null, unit: "세션" },
-    { label: "매장 상세", value: g && g.open_to_store !== null ? Math.round((g.sessions * g.open_to_store) / 100) : null, unit: "세션" },
-    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "상세를 보고 그 자리에서 받은 세션. 캠페인 자동 지급은 뺍니다 — 받은 쿠폰이 쓰였는지는 아래 「쓰기 퍼널」이 봅니다" },
+    { label: "매장 상세", value: detailSessions(g), unit: "세션" },
+    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "같은 세션에서 그 매장 상세를 열고 그 매장 쿠폰을 받은 세션. 캠페인 자동 지급은 뺍니다 — 받은 쿠폰이 쓰였는지는 아래 「쓰기 퍼널」이 봅니다" },
   ];
   const couponFunnel = couponUseFunnelData(
     couponUse ?? null,
@@ -290,7 +290,7 @@ export function buildMonthlyAppReportData({ period, cur: g, prev: p, snapshot, t
     sources: [
       { key: "backend", label: "백엔드 DB", status: snap ? "connected" : "pending", hint: snap ? `월별 스냅샷 — ${snap.period} 를 ${snap.counted_at.slice(0, 10)} 에 세어 굳힌 값` : "월별 스냅샷이 없습니다. snapshot_metrics 를 돌려야 채워집니다" },
       { key: "push", label: "푸시 발송 기록", status: n("push_sent") !== null ? "connected" : "pending", hint: "발송 건수도 같은 스냅샷에서 옵니다. 열기 비율은 Firebase 칸" },
-      { key: "ga4", label: "GA4", status: g ? "connected" : "pending", hint: g ? `BigQuery 확정 테이블 ${g.through} 까지. 배너 노출 1칸만 앱 이벤트가 없어 비어 있습니다` : "BigQuery 를 읽지 못했습니다" },
+      { key: "ga4", label: "GA4", status: g ? "connected" : "pending", hint: g ? `BigQuery 확정 테이블 ${g.through} 까지.${(g.banner_view?.seen ?? 0) > 0 ? "" : " 배너 노출은 이 창에 아직 0건이라 그 칸만 비어 있습니다"}` : "BigQuery 를 읽지 못했습니다" },
       { key: "firebase", label: "Firebase", status: g ? "connected" : "pending", hint: "자동 이벤트 — 푸시 수신·열기, first_open 코호트" },
     ],
     // 스냅샷이 없으면 signups·coupon_redeem_rate 가 비어 타일 넷 중 둘이 「연결 전」이 된다 —
