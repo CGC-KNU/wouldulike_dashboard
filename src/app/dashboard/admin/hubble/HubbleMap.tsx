@@ -318,7 +318,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
               const max = Math.max(1, ...Object.values(dist));
               return <div key={g} className="flex items-center gap-2 py-1"><GradeChip g={g} /><span className="flex-1 h-3 rounded bg-black/[0.04] overflow-hidden"><i className="block h-full rounded" style={{ width: `${(dist[g] / max) * 100}%`, background: GRADE_COLOR[g] }} /></span><b className="w-12 text-right tabular-nums">{dist[g].toLocaleString()}</b></div>;
             })}
-            <p className="text-[11.5px] text-gray-500 mt-3 leading-relaxed">산식 v{doc.fit_version}(검증 전) — 공공 원장으로 셀 수 있는 것: 독립점 20 · 골목 집적도 15 · 업력 10 · 정문 거리 15(문이 여럿이면 가까운 문) · 90일 신규 8. 팀 관찰 등급을 매기면 최대 25점이 더해져 다시 매겨집니다. 평점 · 리뷰는 약관상 넣지 않습니다. 영남대 · 계명대 계약 매장으로 적중률을 잰 뒤 가중치를 확정합니다.</p>
+            <p className="text-[11.5px] text-gray-500 mt-3 leading-relaxed">{doc.fit_version >= 2 ? <>산식 v2 — 골목 집적도 35 · 문까지 거리 25 · 일반음식점 5 · 독립점 5 · 90일 신규 5. 경북대 · 계명대 · 영남대 현 파트너 54곳으로 재서 정함(맞히는 정도 AUC 0.59 → 0.80). 팀 관찰 등급을 매기면 최대 25점이 더해집니다. 평점 · 리뷰는 약관상 넣지 않습니다.</> : <>산식 v1(검증 전) — 독립점 20 · 골목 집적도 15 · 업력 10 · 정문 거리 15 · 90일 신규 8. 팀 관찰 등급을 매기면 최대 25점이 더해집니다.</>}</p>
           </div>
         )}
       </div>
@@ -340,11 +340,20 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
   const f = finalGrade(s, obs);
   const y = years(s.o);
   const fitRows: [string, string, string][] = [
-    ["독립점", s.ch ? `아님 — ${s.ch}` : "예", `${s.p.indep}/20`],
-    ["골목 집적도", `반경 약 50m 안 ${s.dn}곳`, `${s.p.dense}/15`],
-    ["업력", s.o ? `${s.o.slice(0, 10)} 인허가${y !== null ? ` · ${y}년` : ""}` : "—", `${s.p.age}/10`],
-    ["정문 거리", `${s.gn ? `${s.gn} ` : ""}${s.d}m`, `${s.p.dist}/15`],
-    ["90일 신규", isNew(s.o) ? "예" : "아님", `${s.p.new}/8`],
+    ...(s.p.kind !== undefined ? [
+      // v2(1011) — 현 파트너 54곳으로 검증: 집적도 · 거리가 가장 잘 맞음
+      ["골목 집적도", `반경 약 50m 안 ${s.dn}곳`, `${s.p.dense}/35`],
+      ["문까지 거리", `${s.gn ? `${s.gn} ` : ""}${s.d}m`, `${s.p.dist}/25`],
+      ["일반음식점", s.k === "일" ? "예" : KIND_LABEL[s.k], `${s.p.kind}/5`],
+      ["독립점", s.ch ? `아님 — ${s.ch}` : "예", `${s.p.indep}/5`],
+      ["90일 신규", isNew(s.o) ? "예" : "아님", `${s.p.new}/5`],
+    ] as [string, string, string][] : [
+      ["독립점", s.ch ? `아님 — ${s.ch}` : "예", `${s.p.indep}/20`],
+      ["골목 집적도", `반경 약 50m 안 ${s.dn}곳`, `${s.p.dense}/15`],
+      ["업력", s.o ? `${s.o.slice(0, 10)} 인허가${y !== null ? ` · ${y}년` : ""}` : "—", `${s.p.age ?? 0}/10`],
+      ["정문 거리", `${s.gn ? `${s.gn} ` : ""}${s.d}m`, `${s.p.dist}/15`],
+      ["90일 신규", isNew(s.o) ? "예" : "아님", `${s.p.new}/8`],
+    ] as [string, string, string][]),
     ["팀 관찰", obs?.grade ? `${obs.grade} · ${obs.by ?? ""} 「${obs.why ?? ""}」` : "아직", obs?.grade ? `+${{ S: 25, A: 18, B: 10, C: 0 }[obs.grade]}` : "—"],
   ];
 

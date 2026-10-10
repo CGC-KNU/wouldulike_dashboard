@@ -55,7 +55,7 @@ export interface Store {
   ch: string | null;   // 프랜차이즈 브랜드(이름 대조)
   dn: number;   // 반경 약 50m 매장 수(골목 집적도)
   g: Grade; sc: number;
-  p: { indep: number; dense: number; age: number; dist: number; new: number };
+  p: { indep: number; dense: number; dist: number; new: number; age?: number; kind?: number };   // v1 은 age, v2(1011) 는 kind
 }
 
 export interface StoresDoc { campus: string; built_at: string; fit_version: number; stores: Store[] }
@@ -66,12 +66,12 @@ export interface ObsDoc { obs: Record<string, Obs>; notes?: { by: string; at: st
 export const KIND_LABEL: Record<Store["k"], string> = { 일: "음식점", 휴: "카페 · 분식", 제: "제과" };
 export const GRADE_COLOR: Record<Grade, string> = { S: "#060073", A: "#4B45C6", B: "#9FA5C4", C: "#C9CCD8" };
 
-/** 팀 관찰을 합친 등급 — 공공 원장 점수(최대 75) + 팀 관찰 S 25 · A 18 · B 10 · C 0 */
+/** 팀 관찰을 합친 등급 — 공공 원장 점수(최대 75) + 팀 관찰 S 25 · A 18 · B 10 · C 0. 컷은 v2 원장 컷(65 · 51 · 39)에 팀 관찰 B 만큼 더한 자리 */
 export function finalGrade(s: Store, o?: Obs): { g: Grade; sc: number } {
   if (!o?.grade) return { g: s.g, sc: s.sc };
   const add = { S: 25, A: 18, B: 10, C: 0 }[o.grade];
   const sc = s.sc + add;
-  return { g: sc >= 74 ? "S" : sc >= 66 ? "A" : sc >= 54 ? "B" : "C", sc };
+  return { g: sc >= 75 ? "S" : sc >= 61 ? "A" : sc >= 49 ? "B" : "C", sc };
 }
 
 export const years = (o: string) => (o && /^\d{4}/.test(o) ? new Date().getFullYear() - Number(o.slice(0, 4)) : null);
