@@ -20,7 +20,7 @@ export interface Engine {
 
 const NAVY = "#060073";
 // Leaflet 줌(7 = 전국 · 15 = 골목) ↔ 카카오 레벨(1 = 가장 가까이 · 14)
-const level = (zoom: number) => Math.max(1, Math.min(14, 19 - zoom));
+const level = (zoom: number) => Math.max(1, Math.min(14, zoom <= 7 ? 13 : 19 - zoom));   // 전국(7)은 13 — 12 면 남해안 · 수도권이 잘림
 
 type Kakao = { maps: { load: (cb: () => void) => void } & Record<string, any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
 declare global { interface Window { kakao?: Kakao } }
@@ -50,7 +50,9 @@ async function kakaoEngine(el: HTMLElement, key: string): Promise<Engine> {
     kind: "kakao",
     view(lat, lng, zoom, animate) {
       const c = new M.LatLng(lat, lng);
-      if (animate) { map.setLevel(level(zoom), { animate: { duration: 350 } }); map.panTo(c); } else { map.setLevel(level(zoom)); map.setCenter(c); }
+      // 카카오는 레벨 차이가 크면 애니메이션 확대가 멈춰 화면이 빈다(1011 실측) — 같은 레벨 안 이동만 부드럽게
+      if (animate && map.getLevel() === level(zoom)) map.panTo(c);
+      else { map.setCenter(c); map.setLevel(level(zoom)); }
     },
     pan(lat, lng) { map.panTo(new M.LatLng(lat, lng)); },
     clear(g) { items[g].forEach((x) => x.setMap(null)); items[g] = []; },
