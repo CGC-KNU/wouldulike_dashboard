@@ -4,6 +4,7 @@
  * 값은 전부 백엔드 문서 `hubble:<key>` 에 있다(이 저장소는 공개라 매장 데이터를 코드에 두지 않는다).
  *   campuses   대학가 목록 — 전국 4년제 캠퍼스, 정문 1km 영업 중 식당 · 카페 · 주점 수, 100곳 컷
  *   c:<key>    한 상권 매장 — 행안부 인허가(일반 · 휴게 · 제과) 원장에서 만든 것, 주 1회 다시 만든다
+ *   changes    주간 갱신이 쌓는 변동(최근 8주) — scripts/hubble/sync.py(백엔드 저장소)
  *   o:<key>    한 상권 팀 입력 — 관찰 등급 · 메모 · 사장님 성향(주간 갱신이 지우지 않게 따로 둔다)
  * 카카오 · 네이버 응답값(평점 · 리뷰 · 메뉴 · 영업시간)은 약관상 저장하지 않는다 — 화면에서 링크로만 연다.
  */
@@ -20,6 +21,7 @@ export interface CampusItem {
   addr: string;
   y: number; x: number;   // 위도 · 경도(정문 보정 전엔 캠퍼스 대표 좌표)
   gate: "manual" | "wikidata" | "osm" | null;
+  gates?: { n: string; y: number; x: number }[];   // 문마다 1km(1011 정문 보정) — 없으면 y · x 하나
   n: number;              // 정문 1km 안 영업 중 매장
   kinds: Record<string, number>;
   sa: number;             // 적합 S · A 수
@@ -29,6 +31,7 @@ export interface CampusItem {
 
 export interface CampusesDoc {
   built_at: string;
+  new_since?: string;
   fit_version: number;
   radius_m: number;
   cut: number;
@@ -47,7 +50,8 @@ export interface Store {
   t: string;    // 전화
   o: string;    // 인허가일
   y: number; x: number;
-  d: number;    // 정문 거리(m)
+  d: number;    // 정문 거리(m) — 문이 여럿이면 가장 가까운 문
+  gn?: string;  // 그 문 이름(문이 여럿일 때만)
   ch: string | null;   // 프랜차이즈 브랜드(이름 대조)
   dn: number;   // 반경 약 50m 매장 수(골목 집적도)
   g: Grade; sc: number;
@@ -70,10 +74,21 @@ export function finalGrade(s: Store, o?: Obs): { g: Grade; sc: number } {
   return { g: sc >= 74 ? "S" : sc >= 66 ? "A" : sc >= 54 ? "B" : "C", sc };
 }
 
-export const years = (o: string) => (o && /^\d{4}/.test(o) ? 2026 - Number(o.slice(0, 4)) : null);
-export const isNew = (o: string) => Boolean(o) && o.replaceAll("-", "") >= "20260712";
+export const years = (o: string) => (o && /^\d{4}/.test(o) ? new Date().getFullYear() - Number(o.slice(0, 4)) : null);
+/** 90일 안 인허가 — 수집 배치(hubble_build.NEW_SINCE)와 같은 기준 */
+const NEW_SINCE = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10).replaceAll("-", "");
+export const isNew = (o: string) => Boolean(o) && o.replaceAll("-", "") >= NEW_SINCE;
 export const normName = (s: string) => s.replace(/\s+|\(.*?\)|주식회사|㈜/g, "").toLowerCase();
 /** ASTRO 후보의 캠퍼스 칸(10자) — 「경북대학교」→「경북대」, 분교는 뒤에 캠퍼스 표시 */
 export const shortCampus = (c: Pick<CampusItem, "name" | "branch">) => (c.name.replace(/대학교$/, "대").replace(/교육대$/, "교대") + (c.branch !== "본교" ? `(${c.branch.replace("캠퍼", "캠")})` : "")).slice(0, 10);
 export const kakaoSearch = (s: Pick<Store, "n" | "a">) => `https://map.kakao.com/?q=${encodeURIComponent(`${s.n} ${s.a.split(" ").slice(0, 3).join(" ")}`)}`;
 export const naverSearch = (s: Pick<Store, "n" | "a">) => `https://map.naver.com/p/search/${encodeURIComponent(`${s.n} ${s.a.split(" ").slice(0, 2).join(" ")}`)}`;
+
+/** 주간 변동 한 줄 — 백엔드 scripts/hubble/sync.py 가 쓴다 */
+export type ChangeKind = "신규 오픈" | "새로 잡힘" | "폐업" | "빠짐" | "상호 변경" | "업태 변경" | "기준 통과" | "기준 미달" | "정문 보정";
+export interface Change { c: string; cn: string; kind: ChangeKind; id: string; n: string; cat?: string; d?: number; prev?: string; at?: string }
+export interface ChangeWeek {
+  built_at: string; first: boolean; count: Partial<Record<ChangeKind, number>>; total: number; items: Change[]; cut: number;
+  run: { campuses: number; uploaded: number; unchanged: number; stores: number };
+}
+export interface ChangesDoc { weeks: ChangeWeek[] }
