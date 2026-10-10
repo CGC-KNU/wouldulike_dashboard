@@ -6,7 +6,7 @@
  * 채널 ID 를 아는 곳은 ID 를 우선한다. 지금은 초안이라 링크만 두고, 실제 연동(알림·수집)은 뒤에 붙인다.
  */
 
-export type ToolKey = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | "libra";
+export type ToolKey = "papillon" | "astro" | "hubble" | "aether" | "probe" | "castor" | "atlas" | "libra";
 
 export interface ToolMeta {
   key: ToolKey;
@@ -54,6 +54,16 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     icon: "/satellite/probe.svg",
     status: "live",
   },
+  hubble: {
+    key: "hubble",
+    name: "Hubble",
+    subtitle: "파트너 탐색",
+    description: "전국 대학가 지도 · 정문 1km 매장 · 적합도 · 후보 추가",
+    users: "민희 · 수연",
+    slack: { channel: "sat-astro-세일즈", id: "C0BPP3ACEUA" },
+    icon: "/satellite/hubble.svg",
+    status: "live", // 1010 민열님 「개발 시작」 — 공공 인허가 원장 · 지도 첫판
+  },
   castor: {
     key: "castor",
     name: "Castor",
@@ -99,7 +109,7 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
 };
 
 /** 런처에 보이는 순서. 제작 순서(Papillon→Astro→Probe→Castor)와 같다. */
-export const TOOL_ORDER: ToolKey[] = ["papillon", "astro", "probe", "castor", "atlas", "aether", "libra"];
+export const TOOL_ORDER: ToolKey[] = ["papillon", "astro", "hubble", "probe", "castor", "atlas", "aether", "libra"];
 
 export function slackUrl(t: ToolMeta): string {
   return t.slack.id

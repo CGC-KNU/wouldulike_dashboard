@@ -18,6 +18,8 @@ import {
   IconClipboardList,
   IconClockHour4,
   IconDeviceMobile,
+  IconMap2,
+  IconTimelineEvent,
   IconZoomQuestion,
   IconPhotoSearch,
   IconFileDescription,
@@ -109,6 +111,8 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-quality": IconAlertTriangle,
   "probe-mileage": IconGift,
   "probe-reports": IconFileDescription,
+  "hubble-map": IconMap2,
+  "hubble-watch": IconTimelineEvent,
   "castor-map": IconSitemap,
   "castor-flow": IconChartArrowsVertical,
   "castor-screen": IconDeviceMobile,
@@ -276,7 +280,7 @@ export default function ToolShell({
  * 아이콘은 앱판(네이비 면) 그대로라 런처와 같은 얼굴이다. 누르면 그 툴의 첫 화면.
  */
 /** 앱 아이콘(/satellite/<key>_app.svg)이 있는 툴. 그 밖의 제품은 도크에서 기호로 그린다. */
-const SATELLITE_KEYS = new Set(["papillon", "astro", "aether", "probe", "castor", "libra"]);
+const SATELLITE_KEYS = new Set(["papillon", "astro", "hubble", "aether", "probe", "castor", "libra"]);
 
 export function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
   const [copied, setCopied] = useState(false);
