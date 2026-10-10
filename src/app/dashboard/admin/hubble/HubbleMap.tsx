@@ -159,11 +159,11 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
       <div ref={mapEl} className="absolute inset-0 bg-[#DCE7F2]" aria-label="대한민국 지도 — 대학가" />
 
       {/* 검색 카드 */}
-      <div className="absolute left-3 top-3 z-[500] w-[min(340px,calc(100%-24px))] rounded-xl bg-white/95 backdrop-blur border border-black/[0.08] shadow-lg p-3 text-[12.5px] dark:bg-[#12123A]/95 dark:border-white/10">
-        <div className="flex items-center gap-2 rounded-lg border-[1.5px] border-navy px-2.5 py-1.5 dark:border-[#9A96F2]">
+      <div className="absolute left-3 top-3 z-[500] w-[min(340px,calc(100%-24px))] rounded-xl bg-white border border-black/[0.08] shadow-lg p-3 text-[12.5px]">
+        <div className="flex items-center gap-2 rounded-lg border-[1.5px] border-navy px-2.5 py-1.5">
           <IconSearch size={15} className="text-gray-400" aria-hidden="true" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={sel ? `대학가 · ${sel.name} 매장 이름` : "대학가 이름 (상권을 고르면 매장도)"} aria-label="허블 검색"
-            className="flex-1 bg-transparent outline-none text-[13px] text-gray-900 dark:text-gray-100" />
+            className="flex-1 bg-transparent outline-none text-[13px] text-gray-900" />
           {q && <button type="button" onClick={() => setQ("")} aria-label="검색어 지우기"><IconX size={14} className="text-gray-400" /></button>}
         </div>
         {q && (
@@ -172,7 +172,7 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
             {hits.campuses.length > 0 && <p className="text-[10.5px] font-bold text-gray-400 mt-1">대학가</p>}
             {hits.campuses.map((c) => (
               <button key={c.key} type="button" onClick={() => { setQ(""); pick(c); }} className="w-full text-left flex justify-between gap-2 py-1.5 px-1 rounded hover:bg-navy/[0.05]">
-                <span><b className="text-gray-900 dark:text-gray-100">{c.name}</b> <span className="text-gray-400">{c.branch !== "본교" ? c.branch : ""} · {c.sido.replace(/특별자치|광역|특별/g, "")}</span></span>
+                <span><b className="text-gray-900">{c.name}</b> <span className="text-gray-400">{c.branch !== "본교" ? c.branch : ""} · {c.sido.replace(/특별자치|광역|특별/g, "")}</span></span>
                 <span className="tabular-nums text-gray-500">{c.n.toLocaleString()}</span>
               </button>
             ))}
@@ -184,7 +184,7 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
             {hits.stores.length > 0 && <p className="text-[10.5px] font-bold text-gray-400 mt-2">매장 · {sel?.name}</p>}
             {hits.stores.map((s) => (
               <button key={s.id} type="button" onClick={() => { setQ(""); setStoreId(s.id); }} className="w-full text-left flex justify-between gap-2 py-1.5 px-1 rounded hover:bg-navy/[0.05]">
-                <span><b className="text-gray-900 dark:text-gray-100">{s.n}</b> <span className="text-gray-400">{s.c || KIND_LABEL[s.k]} · {s.d}m</span></span>
+                <span><b className="text-gray-900">{s.n}</b> <span className="text-gray-400">{s.c || KIND_LABEL[s.k]} · {s.d}m</span></span>
                 <GradeChip g={finalGrade(s, obs?.data?.obs?.[s.id]).g} />
               </button>
             ))}
@@ -196,22 +196,22 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
         <div className="flex flex-wrap gap-1 mt-1">
           {SIZE.map((s) => <button key={s.key} type="button" onClick={() => setMinN(s.key)} className={chip(minN === s.key)}>식당 {s.label}</button>)}
         </div>
-        <p className="mt-2 pt-2 border-t border-black/[0.06] dark:border-white/10 text-gray-600 dark:text-gray-300">
+        <p className="mt-2 pt-2 border-t border-black/[0.06] text-gray-600">
           {meta === undefined ? "불러오는 중…" : meta ? <><b>파트너 상권 {visible.length}곳</b> · 기준 미달 {(meta.items.filter((c) => c.below)).length}곳 제외<br /><span className="text-[11px] text-gray-400">매장 데이터 {meta.built_at} 기준 · 행안부 인허가</span></> : "데이터가 아직 없습니다"}
         </p>
       </div>
 
       {/* 요약 띠 */}
       {meta && !sel && (
-        <div className="absolute right-14 top-3 z-[500] hidden md:flex rounded-xl bg-white/95 border border-black/[0.08] shadow-lg text-[11px] dark:bg-[#12123A]/95 dark:border-white/10">
+        <div className="absolute right-14 top-3 z-[500] hidden md:flex rounded-xl bg-white border border-black/[0.08] shadow-lg text-[11px]">
           {[["대학가", visible.length], ["영업 중 식당", total], ["적합 S·A", totalSA]].map(([k, v]) => (
-            <div key={k as string} className="px-3 py-1.5 border-r last:border-0 border-black/[0.06] dark:border-white/10"><span className="block text-gray-400">{k}</span><b className="text-[15px] tabular-nums text-gray-900 dark:text-gray-100">{(v as number).toLocaleString()}</b></div>
+            <div key={k as string} className="px-3 py-1.5 border-r last:border-0 border-black/[0.06]"><span className="block text-gray-400">{k}</span><b className="text-[15px] tabular-nums text-gray-900">{(v as number).toLocaleString()}</b></div>
           ))}
         </div>
       )}
 
       {/* 범례 */}
-      <div className="absolute left-3 bottom-6 z-[500] rounded-lg bg-white/95 border border-black/[0.08] px-2.5 py-1.5 text-[11px] text-gray-600 shadow dark:bg-[#12123A]/95 dark:text-gray-300 dark:border-white/10">
+      <div className="absolute left-3 bottom-6 z-[500] rounded-lg bg-white border border-black/[0.08] px-2.5 py-1.5 text-[11px] text-gray-600 shadow">
         {sel ? <>테두리 = 적합도 {(["S", "A", "B", "C"] as Grade[]).map((g) => <span key={g} className="inline-flex items-center gap-0.5 ml-1.5"><i className="inline-block w-2.5 h-2.5 rounded-full border-2 bg-white" style={{ borderColor: GRADE_COLOR[g] }} />{g}</span>)}</> : <>점 크기 = 정문 1km 식당 수 (200 · 500 · 1000+)</>}
       </div>
 
@@ -219,7 +219,7 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
 
       {/* 오른쪽 서랍 */}
       {sel && (
-        <aside className="absolute right-0 top-0 bottom-0 z-[550] w-[min(400px,100%)] bg-white dark:bg-[#0E0E2C] border-l border-black/[0.08] dark:border-white/10 shadow-xl flex flex-col" aria-label="상권">
+        <aside className="absolute right-0 top-0 bottom-0 z-[550] w-[min(400px,100%)] bg-white border-l border-black/[0.08] shadow-xl flex flex-col" aria-label="상권">
           {store ? (
             <StorePanel s={store} campus={sel} obs={obs?.data?.obs?.[store.id]} actor={actor} onBack={() => setStoreId(null)} onSave={(o) => saveObs(store.id, o)} onOpenLead={onOpenLead} />
           ) : (
@@ -231,7 +231,7 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
   );
 }
 
-const chip = (on: boolean) => `px-2 py-0.5 rounded-full border text-[11px] ${on ? "bg-navy text-white border-navy" : "border-black/10 text-gray-600 bg-white hover:border-navy/40 dark:bg-transparent dark:text-gray-300 dark:border-white/15"}`;
+const chip = (on: boolean) => `px-2 py-0.5 rounded-full border text-[11px] ${on ? "bg-navy text-white border-navy" : "border-black/10 text-gray-600 bg-white hover:border-navy/40"}`;
 
 function GradeChip({ g }: { g: Grade }) {
   return <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded text-[10.5px] font-extrabold" style={{ background: GRADE_COLOR[g], color: g === "C" ? "#3A3D4A" : "#fff" }}>{g}</span>;
@@ -264,17 +264,17 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
 
   return (
     <>
-      <div className="p-4 border-b border-black/[0.06] dark:border-white/10">
+      <div className="p-4 border-b border-black/[0.06]">
         <div className="flex justify-between items-start gap-2">
-          <div><h2 className="text-[17px] font-extrabold text-gray-900 dark:text-gray-100">{c.name} {c.branch !== "본교" && <span className="text-[13px] font-semibold text-gray-500">{c.branch}</span>}</h2>
+          <div><h2 className="text-[17px] font-extrabold text-gray-900">{c.name} {c.branch !== "본교" && <span className="text-[13px] font-semibold text-gray-500">{c.branch}</span>}</h2>
             <p className="text-[11.5px] text-gray-500">{c.addr} · 대표 좌표 기준 1km{c.gate !== "manual" && " (정문 보정 전)"}</p></div>
           <button type="button" onClick={onClose} aria-label="상권 닫기" className="p-1 rounded hover:bg-black/5"><IconX size={18} /></button>
         </div>
         <div className="grid grid-cols-4 gap-1.5 mt-3 text-[11px]">
-          {[["영업 중", c.n], ["적합 S·A", (dist.S + dist.A)], ["프랜차이즈", chains], ["90일 신규", fresh]].map(([k, v]) => <div key={k as string} className="rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-2 py-1.5"><span className="block text-gray-400">{k}</span><b className="text-[15px] tabular-nums text-gray-900 dark:text-gray-100">{(v as number).toLocaleString()}</b></div>)}
+          {[["영업 중", c.n], ["적합 S·A", (dist.S + dist.A)], ["프랜차이즈", chains], ["90일 신규", fresh]].map(([k, v]) => <div key={k as string} className="rounded-lg bg-black/[0.03] px-2 py-1.5"><span className="block text-gray-400">{k}</span><b className="text-[15px] tabular-nums text-gray-900">{(v as number).toLocaleString()}</b></div>)}
         </div>
-        <div className="flex gap-4 mt-3 text-[12.5px] border-b border-black/[0.06] dark:border-white/10" role="tablist">
-          {([["list", "매장"], ["notes", "특이사항"], ["fit", "적합도"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`pb-1.5 ${tab === k ? "text-navy dark:text-[#C7C9F7] font-bold border-b-2 border-navy dark:border-[#C7C9F7]" : "text-gray-400"}`}>{l}</button>)}
+        <div className="flex gap-4 mt-3 text-[12.5px] border-b border-black/[0.06]" role="tablist">
+          {([["list", "매장"], ["notes", "특이사항"], ["fit", "적합도"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`pb-1.5 ${tab === k ? "text-navy font-bold border-b-2 border-navy" : "text-gray-400"}`}>{l}</button>)}
         </div>
       </div>
       <div className="flex-1 overflow-auto p-3 text-[12.5px]">
@@ -289,8 +289,8 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
             <ul>
               {rows.slice(0, limit).map(({ s, f }) => (
                 <li key={s.id}>
-                  <button type="button" onClick={() => onPick(s.id)} className="w-full text-left flex justify-between items-center gap-2 py-2 border-b border-black/[0.05] dark:border-white/[0.06] hover:bg-navy/[0.03]">
-                    <span className="min-w-0"><b className="text-gray-900 dark:text-gray-100">{s.n}</b>
+                  <button type="button" onClick={() => onPick(s.id)} className="w-full text-left flex justify-between items-center gap-2 py-2 border-b border-black/[0.05] hover:bg-navy/[0.03]">
+                    <span className="min-w-0"><b className="text-gray-900">{s.n}</b>
                       <span className="block text-[11px] text-gray-400 truncate">{s.c || KIND_LABEL[s.k]} · {s.d}m · {isNew(s.o) ? "NEW" : years(s.o) !== null ? `${years(s.o)}년` : "—"}{s.ch ? ` · ${s.ch}` : ""}{obs[s.id]?.grade ? " · 팀 관찰" : ""}</span></span>
                     <GradeChip g={f.g} />
                   </button>
@@ -301,7 +301,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
             {rows.length === 0 && <p className="text-gray-500 py-4">조건에 맞는 매장이 없습니다.</p>}
           </>
         ) : tab === "notes" ? (
-          <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+          <ul className="space-y-2 text-gray-700">
             <li>업종: {Object.entries(c.kinds).map(([k, v]) => `${k} ${v}`).join(" · ")}</li>
             <li>프랜차이즈(이름 대조): {chains}곳 ({Math.round((chains / Math.max(1, c.n)) * 100)}%)</li>
             <li>90일 안 새로 연 곳: {fresh}곳</li>
@@ -363,13 +363,13 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
 
   return (
     <>
-      <div className="p-4 border-b border-black/[0.06] dark:border-white/10">
+      <div className="p-4 border-b border-black/[0.06]">
         <button type="button" onClick={onBack} className="flex items-center gap-1 text-[12px] text-gray-500 hover:text-navy"><IconArrowLeft size={14} /> {campus.name}</button>
         <div className="flex justify-between items-start gap-2 mt-1">
-          <h2 className="text-[17px] font-extrabold text-gray-900 dark:text-gray-100">{s.n}</h2><GradeChip g={f.g} />
+          <h2 className="text-[17px] font-extrabold text-gray-900">{s.n}</h2><GradeChip g={f.g} />
         </div>
         <p className="text-[11.5px] text-gray-500">{s.c || KIND_LABEL[s.k]} · 정문 {s.d}m · {s.o ? `인허가 ${s.o.slice(0, 10)}` : ""} · 영업 중</p>
-        <p className="text-[11.5px] text-gray-600 dark:text-gray-300 flex items-center gap-1 mt-0.5">{s.a}
+        <p className="text-[11.5px] text-gray-600 flex items-center gap-1 mt-0.5">{s.a}
           <button type="button" aria-label="주소 복사" onClick={async () => { await navigator.clipboard.writeText(s.a); setCopied(true); setTimeout(() => setCopied(false), 1500); }}><IconCopy size={13} /></button>{copied && <span className="text-[10.5px] text-green-700">복사함</span>}</p>
         <div className="flex flex-wrap gap-1.5 mt-2">
           <a href={kakaoSearch(s)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-black/10 text-[12px] font-semibold hover:border-navy/40"><IconExternalLink size={13} /> 카카오맵</a>
@@ -377,11 +377,11 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
           {s.t && <a href={`tel:${s.t}`} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-black/10 text-[12px] font-semibold"><IconPhone size={13} /> {s.t}</a>}
         </div>
         <p className="text-[10.5px] text-gray-400 mt-1.5">평점 · 리뷰 · 메뉴 · 영업시간은 카카오맵 · 네이버지도에서 봅니다(약관상 허블에 저장하지 않음).</p>
-        <div className="flex gap-4 mt-3 text-[12.5px] border-b border-black/[0.06] dark:border-white/10" role="tablist">
-          {([["info", "특이사항"], ["fit", "적합도"], ["obs", "팀 관찰"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`pb-1.5 ${tab === k ? "text-navy dark:text-[#C7C9F7] font-bold border-b-2 border-navy dark:border-[#C7C9F7]" : "text-gray-400"}`}>{l}</button>)}
+        <div className="flex gap-4 mt-3 text-[12.5px] border-b border-black/[0.06]" role="tablist">
+          {([["info", "특이사항"], ["fit", "적합도"], ["obs", "팀 관찰"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`pb-1.5 ${tab === k ? "text-navy font-bold border-b-2 border-navy" : "text-gray-400"}`}>{l}</button>)}
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4 text-[12.5px] text-gray-700 dark:text-gray-300">
+      <div className="flex-1 overflow-auto p-4 text-[12.5px] text-gray-700">
         {tab === "info" && (
           <ul className="space-y-1.5">
             <li>인허가 업종: {s.k === "일" ? "일반음식점" : s.k === "휴" ? "휴게음식점" : "제과점영업"} · {s.c || "—"}</li>
@@ -393,7 +393,7 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
         )}
         {tab === "fit" && (
           <table className="w-full text-[12px]"><tbody>
-            {fitRows.map(([k, v, p]) => <tr key={k} className="border-b border-black/[0.05] dark:border-white/[0.06]"><td className="py-1.5 font-semibold w-20">{k}</td><td className="py-1.5">{v}</td><td className="py-1.5 text-right tabular-nums text-gray-500">{p}</td></tr>)}
+            {fitRows.map(([k, v, p]) => <tr key={k} className="border-b border-black/[0.05]"><td className="py-1.5 font-semibold w-20">{k}</td><td className="py-1.5">{v}</td><td className="py-1.5 text-right tabular-nums text-gray-500">{p}</td></tr>)}
             <tr><td className="pt-2 font-bold">합계</td><td /><td className="pt-2 text-right font-bold tabular-nums">{f.sc} → {f.g}</td></tr>
           </tbody></table>
         )}
@@ -412,7 +412,7 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
           </div>
         )}
       </div>
-      <div className="p-3 border-t border-black/[0.06] dark:border-white/10">
+      <div className="p-3 border-t border-black/[0.06]">
         {add && typeof add === "object" ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[12px] text-amber-900 space-y-1.5">
             <p className="font-semibold">비슷한 이름이 이미 있습니다 — 같은 가게면 추가하지 마세요.</p>
