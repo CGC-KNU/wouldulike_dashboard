@@ -29,6 +29,9 @@ import DataQuality from "./probe/DataQuality";
 import MileageOps from "./probe/MileageOps";
 import Reports from "./probe/Reports";
 import CastorMap from "./castor/CastorMap";
+import dynamic from "next/dynamic";
+const HubbleMap = dynamic(() => import("./hubble/HubbleMap"), { ssr: false });
+import HubbleWatch from "./hubble/HubbleWatch";
 import CastorScreen from "./castor/CastorScreen";
 import CastorResearch from "./castor/CastorResearch";
 import CastorRefs from "./castor/CastorRefs";
@@ -86,6 +89,8 @@ type Tab =
   | "probe-reports"
   | "probe-mileage"
   // Castor(앱 구조·여정)
+  | "hubble-map"
+  | "hubble-watch"
   | "castor-home"
   | "castor-map"
   | "castor-flow"
@@ -2128,6 +2133,10 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "probe-reports", label: "매장 리포트", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-mileage", label: "마일리지 추첨", icon: "◍", allow: (me) => me.permissions.can_restaurants },
 
+  // ── Hubble — 파트너 탐색(1010). 영업 권한(Astro 와 같음).
+  { key: "hubble-map", label: "지도", icon: "◎", allow: (me) => me.permissions.can_restaurants },
+  { key: "hubble-watch", label: "이번 주 변동", icon: "◷", allow: (me) => me.permissions.can_restaurants },
+
   // ── Castor. 앱 구조를 바꾸는 제안을 만드는 곳이라 관리자만 본다.
   { key: "castor-home", label: "홈", icon: "⌂", allow: (me) => me.is_admin || me.is_superadmin },
   { key: "castor-map", label: "지도", icon: "◫", allow: (me) => me.is_admin || me.is_superadmin },
@@ -2157,7 +2166,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
  * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "aether" | "probe" | "castor" | "atlas" | "drive" | "playroom";
+type Product = "papillon" | "astro" | "hubble" | "aether" | "probe" | "castor" | "atlas" | "drive" | "playroom";
 
 /**
  * Astro 사이드바 묶음 (민열님 0928). 순서는 요청 그대로:
@@ -2213,6 +2222,14 @@ const PRODUCTS: {
     /* 0913 민열님: 식당 관리에서 하던 일(사진·플랜·PIN·제휴·포스터/QR)이 파트너 매장 상세로 옮겨져
        탭을 없앤다. 데이터 풀은 그대로 백엔드 매장 레코드다 — 화면만 하나로 합쳤다. */
     tabs: ["astro-home", "astro-calendar", "astro-ops", "astro-spots", "astro-leads", "astro-contracts", "astro-benefits", "astro-billing", "astro-tax", "astro-quotes", "astro-docs"],
+    ready: true,
+  },
+  {
+    key: "hubble",
+    name: "Hubble",
+    subtitle: "파트너 탐색",
+    description: "전국 대학가 지도 · 정문 1km 매장 · 적합도 · 후보 추가",
+    tabs: ["hubble-map", "hubble-watch"],
     ready: true,
   },
   {
@@ -2552,7 +2569,7 @@ export default function AdminHomePage() {
 
       {activeTab &&
         activeTab !== "satellite" &&
-        (selectedProduct === "astro" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
+        (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
         <ToolShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
           navItems={groupNav(productTabs.map((t) => ({ key: t.key, label: t.label })), selectedProduct === "astro" ? ASTRO_NAV_GROUPS : [])}
@@ -2597,6 +2614,8 @@ export default function AdminHomePage() {
           )}
 
           {/* Castor: 앱 구조·여정 — 기획안 Castor 절 메뉴(지도 · 흐름 · 화면 · 변경 · 실험 · 조사 · 레퍼런스). 지도에서 고른 화면은 화면 탭으로. */}
+          {activeTab === "hubble-map" && <HubbleMap actor={actorName} onOpenLead={() => { selectProduct("astro"); setTimeout(() => go("astro-leads"), 0); }} />}
+          {activeTab === "hubble-watch" && <HubbleWatch />}
           {activeTab === "castor-home" && <CastorHome onGo={(t) => setActiveTab(t as Tab)} />}
           {(activeTab === "atlas-team" || activeTab === "atlas-mission" || activeTab === "atlas-tools" || activeTab === "atlas-history") && (
             <Atlas tab={activeTab} onGo={(t) => { if (t === "launcher") backToProducts(); else if (PRODUCTS.some((p) => p.key === t)) selectProduct(t as Product); else go(t); }} />
