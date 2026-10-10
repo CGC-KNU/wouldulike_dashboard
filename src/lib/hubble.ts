@@ -92,3 +92,42 @@ export interface ChangeWeek {
   run: { campuses: number; uploaded: number; unchanged: number; stores: number };
 }
 export interface ChangesDoc { weeks: ChangeWeek[] }
+
+/** 허블 매장 ↔ 이미 파트너 · 이미 후보 (1011). 화면이 열릴 때 ASTRO 목록과 이름으로 맞춘다 — 원장 문서엔 안 박는다(계약은 매일 바뀐다). */
+export type Tie =
+  | { kind: "partner"; rid: number; name: string }
+  | { kind: "lead"; id: string; name: string; stage: string; owner: string | null };
+export interface PartnerRow { restaurant_id: number; name: string; is_affiliate: boolean | null }
+export interface LeadRow { id: string | number; name: string; stage: string; owner: string | null; campus?: string | null; memo?: string | null; converted_restaurant_id?: number | null }
+
+// 지점 꼬리 — 「랜돌프비어 대구계명대점」 「BHC 경대북문점」 「고씨네 대구경북대본점」. 브랜드 글자를 먹지 않게 알려진 말만 뗀다.
+const TAIL = /(?:대구|경산|경북대|경대|계명대|계대|영남대|영대|대구대|북문|정문|남문|동문|서문|후문|쪽문|캠퍼스|역)+본?점$|본점$/;   // 「연화반점」의 반점은 안 뗀다
+// 꼬리에 캠퍼스가 적혀 있으면 그 상권에서만 맞춘다 — 「고운라멘 영남대점」이 경북대 북문 고운라멘에 붙지 않게(1009 #220 교훈)
+const HINT: [RegExp, string][] = [[/경북대|경대/, "경북대"], [/계명대|계대/, "계명대"], [/영남대|영대|경산/, "영남대"]];
+const hint = (n: string) => { const t = normName(n).match(TAIL)?.[0] ?? ""; return HINT.find(([r]) => r.test(t))?.[1] ?? null; };
+const key = (n: string) => normName(n).replace(TAIL, "");
+function hits(stores: Store[], name: string) {
+  const k = key(name);
+  if (k.length < 2) return [];
+  const out = stores.filter((s) => {
+    const n = normName(s.n), nk = key(s.n);
+    return n === k || nk === k || (k.length >= 3 && (n.startsWith(k) || (nk.length >= 3 && k.startsWith(nk) && nk.length >= k.length - 1)));
+  });
+  return out.length <= 2 ? out : [];   // 셋 이상 걸리면 흔한 이름 — 표시하지 않는다
+}
+
+export function matchTies(stores: Store[], partners: PartnerRow[], leads: LeadRow[], campus: string): Record<string, Tie> {
+  const out: Record<string, Tie> = {};
+  const here = (name: string, c?: string | null) => { const h = c || hint(name); return !h || campus.startsWith(h); };
+  for (const l of leads) {
+    if (l.stage === "거절") continue;
+    const byId = l.memo?.match(/인허가 (\S+)/)?.[1];
+    const found = byId ? stores.filter((s) => s.id === byId) : here(l.name, l.campus) ? hits(stores, l.name) : [];
+    for (const s of found) out[s.id] = { kind: "lead", id: String(l.id), name: l.name, stage: l.stage, owner: l.owner };
+  }
+  for (const p of partners) {
+    if (p.is_affiliate === false || !here(p.name)) continue;
+    for (const s of hits(stores, p.name)) out[s.id] = { kind: "partner", rid: p.restaurant_id, name: p.name };   // 파트너가 후보보다 앞선다
+  }
+  return out;
+}
