@@ -4,7 +4,8 @@ import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconSearch, IconX, IconArrowLeft, IconCopy, IconExternalLink, IconPhone, IconPlus } from "@tabler/icons-react";
 import {
-  GRADE_COLOR, KIND_LABEL, finalGrade, isNew, kakaoSearch, naverSearch, normName, shortCampus, years,
+  GRADE_COLOR, KIND_LABEL, finalGrade, isNew, kakaoSearch, matchTies, naverSearch, normName, shortCampus, years,
+  type LeadRow, type PartnerRow, type Tie,
   type CampusItem, type CampusesDoc, type Grade, type Obs, type ObsDoc, type Store, type StoresDoc,
 } from "@/lib/hubble";
 import { Notice, Skeleton } from "../_shared/ui";
@@ -51,6 +52,15 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
   const map = useRef<Engine | null>(null);
   const [ready, setReady] = useState(false);
   const [mapNote, setMapNote] = useState<string | null>(null);
+  const [astro, setAstro] = useState<{ partners: PartnerRow[]; leads: LeadRow[] }>({ partners: [], leads: [] });
+
+  // 이미 파트너 · 후보 표시(1011) — ASTRO 목록을 한 번 받아 상권 매장과 이름으로 맞춘다
+  const loadAstro = useCallback(() => {
+    Promise.all([fetch("/api/astro/stores").then((r) => r.json()).catch(() => ({})), fetch("/api/astro/leads").then((r) => r.json()).catch(() => ({}))])
+      .then(([st, ld]) => setAstro({ partners: st.stores ?? [], leads: ld.leads ?? [] }));
+  }, []);
+  useEffect(loadAstro, [loadAstro]);
+  const ties = useMemo<Record<string, Tie>>(() => (stores && sel ? matchTies(stores.stores, astro.partners, astro.leads, shortCampus(sel)) : {}), [stores, sel, astro]);
 
   useEffect(() => { getDoc<CampusesDoc>("campuses").then((d) => setMeta(d.data)).catch((e) => { setErr(String(e.message ?? e)); setMeta(null); }); }, []);
 
@@ -105,10 +115,12 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
     for (const s of stores?.stores ?? []) {
       const f = finalGrade(s, obs?.data?.obs?.[s.id]);
       const on = s.id === storeId;
-      m.dot("store", s.y, s.x, { r: on ? 8 : f.g === "S" ? 5 : 4, stroke: on ? "#FF6A3D" : GRADE_COLOR[f.g], weight: on ? 3 : 2, fill: "#fff", title: `${s.n} · ${f.g}`, onClick: () => setStoreId(s.id) });
+      const t = ties[s.id];
+      m.dot("store", s.y, s.x, { r: on ? 8 : t ? 6 : f.g === "S" ? 5 : 4, stroke: on ? "#FF6A3D" : GRADE_COLOR[f.g], weight: on ? 3 : 2,
+        fill: t?.kind === "partner" ? PARTNER_FILL : t ? LEAD_FILL : "#fff", title: `${s.n} · ${f.g}${t ? ` · ${t.kind === "partner" ? "파트너" : `후보(${t.stage})`}` : ""}`, onClick: () => setStoreId(s.id) });
     }
     for (const g of gates) m.dot("store", g.y, g.x, { r: 6, stroke: "#fff", weight: 2, fill: "#060073", title: g.n, label: gates.length > 1 ? g.n : undefined });
-  }, [sel, stores, obs, storeId, ready]);
+  }, [sel, stores, obs, storeId, ready, ties]);
 
   // 매장 고르면 그 자리로
   useEffect(() => {
@@ -200,7 +212,9 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
 
       {/* 범례 */}
       <div className="absolute left-3 bottom-6 z-[500] rounded-lg bg-white border border-black/[0.08] px-2.5 py-1.5 text-[11px] text-gray-600 shadow">
-        {sel ? <>테두리 = 적합도 {(["S", "A", "B", "C"] as Grade[]).map((g) => <span key={g} className="inline-flex items-center gap-0.5 ml-1.5"><i className="inline-block w-2.5 h-2.5 rounded-full border-2 bg-white" style={{ borderColor: GRADE_COLOR[g] }} />{g}</span>)}</> : <>점 크기 = 정문 1km 식당 수 (200 · 500 · 1000+)</>}
+        {sel ? <>테두리 = 적합도 {(["S", "A", "B", "C"] as Grade[]).map((g) => <span key={g} className="inline-flex items-center gap-0.5 ml-1.5"><i className="inline-block w-2.5 h-2.5 rounded-full border-2 bg-white" style={{ borderColor: GRADE_COLOR[g] }} />{g}</span>)}
+          <span className="inline-flex items-center gap-0.5 ml-2.5"><i className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: PARTNER_FILL }} />파트너</span>
+          <span className="inline-flex items-center gap-0.5 ml-1.5"><i className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: LEAD_FILL }} />후보</span></> : <>점 크기 = 정문 1km 식당 수 (200 · 500 · 1000+)</>}
         {mapNote && <span className="block text-[10.5px] text-amber-700 mt-0.5">{mapNote}</span>}
       </div>
 
@@ -210,14 +224,23 @@ export default function HubbleMap({ actor, onOpenLead }: { actor: string; onOpen
       {sel && (
         <aside className="absolute right-0 top-0 bottom-0 z-[550] w-[min(400px,100%)] bg-white border-l border-black/[0.08] shadow-xl flex flex-col" aria-label="상권">
           {store ? (
-            <StorePanel s={store} campus={sel} obs={obs?.data?.obs?.[store.id]} actor={actor} onBack={() => setStoreId(null)} onSave={(o) => saveObs(store.id, o)} onOpenLead={onOpenLead} />
+            <StorePanel s={store} campus={sel} tie={ties[store.id]} onAdded={loadAstro} obs={obs?.data?.obs?.[store.id]} actor={actor} onBack={() => setStoreId(null)} onSave={(o) => saveObs(store.id, o)} onOpenLead={onOpenLead} />
           ) : (
-            <CampusPanel c={sel} doc={stores} obs={obs?.data?.obs ?? {}} onClose={() => { setSel(null); setStores(null); map.current?.view(36.2, 127.9, 7, true); }} onPick={setStoreId} />
+            <CampusPanel c={sel} doc={stores} ties={ties} obs={obs?.data?.obs ?? {}} onClose={() => { setSel(null); setStores(null); map.current?.view(36.2, 127.9, 7, true); }} onPick={setStoreId} />
           )}
         </aside>
       )}
     </div>
   );
+}
+
+const PARTNER_FILL = "#060073", LEAD_FILL = "#F2A93B";
+
+function TieChip({ t }: { t?: Tie }) {
+  if (!t) return null;
+  return t.kind === "partner"
+    ? <span className="shrink-0 px-1.5 h-[18px] inline-flex items-center rounded text-[10.5px] font-bold text-white" style={{ background: PARTNER_FILL }}>파트너</span>
+    : <span className="shrink-0 px-1.5 h-[18px] inline-flex items-center rounded text-[10.5px] font-bold text-[#5A3A00]" style={{ background: LEAD_FILL }}>후보 · {t.stage}</span>;
 }
 
 const chip = (on: boolean) => `px-2 py-0.5 rounded-full border text-[11px] ${on ? "bg-navy text-white border-navy" : "border-black/10 text-gray-600 bg-white hover:border-navy/40"}`;
@@ -227,17 +250,19 @@ function GradeChip({ g }: { g: Grade }) {
 }
 
 type Sort = "fit" | "dist" | "age";
-function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: StoresDoc | null; obs: Record<string, Obs>; onClose: () => void; onPick: (id: string) => void }) {
+function CampusPanel({ c, doc, ties, obs, onClose, onPick }: { c: CampusItem; doc: StoresDoc | null; ties: Record<string, Tie>; obs: Record<string, Obs>; onClose: () => void; onPick: (id: string) => void }) {
   const [tab, setTab] = useState<"list" | "notes" | "fit">("list");
   const [sort, setSort] = useState<Sort>("fit");
   const [kind, setKind] = useState<"all" | Store["k"]>("all");
   const [hideChain, setHideChain] = useState(true);
+  const [tieView, setTieView] = useState<"all" | "hide" | "only">("all");
   const [limit, setLimit] = useState(60);
   const rows = useMemo(() => {
-    const list = (doc?.stores ?? []).filter((s) => (kind === "all" || s.k === kind) && (!hideChain || !s.ch)).map((s) => ({ s, f: finalGrade(s, obs[s.id]) }));
+    const list = (doc?.stores ?? []).filter((s) => (kind === "all" || s.k === kind) && (!hideChain || !s.ch || ties[s.id]?.kind === "partner") && (tieView === "all" || (tieView === "hide" ? !ties[s.id] : !!ties[s.id]))).map((s) => ({ s, f: finalGrade(s, obs[s.id]) }));
     list.sort((a, b) => sort === "fit" ? b.f.sc - a.f.sc || a.s.d - b.s.d : sort === "dist" ? a.s.d - b.s.d : (years(a.s.o) ?? 99) - (years(b.s.o) ?? 99));
     return list;
-  }, [doc, obs, sort, kind, hideChain]);
+  }, [doc, obs, sort, kind, hideChain, ties, tieView]);
+  const nPartner = Object.values(ties).filter((t) => t.kind === "partner").length, nLead = Object.values(ties).length - nPartner;
   const dist = useMemo(() => {
     const m: Record<Grade, number> = { S: 0, A: 0, B: 0, C: 0 };
     for (const s of doc?.stores ?? []) m[finalGrade(s, obs[s.id]).g]++;
@@ -260,7 +285,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
           <button type="button" onClick={onClose} aria-label="상권 닫기" className="p-1 rounded hover:bg-black/5"><IconX size={18} /></button>
         </div>
         <div className="grid grid-cols-4 gap-1.5 mt-3 text-[11px]">
-          {[["영업 중", c.n], ["적합 S·A", (dist.S + dist.A)], ["프랜차이즈", chains], ["90일 신규", fresh]].map(([k, v]) => <div key={k as string} className="rounded-lg bg-black/[0.03] px-2 py-1.5"><span className="block text-gray-400">{k}</span><b className="text-[15px] tabular-nums text-gray-900">{(v as number).toLocaleString()}</b></div>)}
+          {[["영업 중", c.n], ["적합 S·A", (dist.S + dist.A)], ["이미 파트너", nPartner], ["후보", nLead]].map(([k, v]) => <div key={k as string} className="rounded-lg bg-black/[0.03] px-2 py-1.5"><span className="block text-gray-400">{k}</span><b className="text-[15px] tabular-nums text-gray-900">{(v as number).toLocaleString()}</b></div>)}
         </div>
         <div className="flex gap-4 mt-3 text-[12.5px] border-b border-black/[0.06]" role="tablist">
           {([["list", "매장"], ["notes", "특이사항"], ["fit", "적합도"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`pb-1.5 ${tab === k ? "text-navy font-bold border-b-2 border-navy" : "text-gray-400"}`}>{l}</button>)}
@@ -274,6 +299,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
               <span className="w-1" />
               {([["all", "전체"], ["일", "음식점"], ["휴", "카페 · 분식"], ["제", "제과"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} className={chip(kind === k)}>{l}</button>)}
               <button type="button" onClick={() => setHideChain((v) => !v)} className={chip(hideChain)}>프랜차이즈 숨김</button>
+              <button type="button" onClick={() => setTieView((v) => v === "all" ? "hide" : v === "hide" ? "only" : "all")} className={chip(tieView !== "all")}>{tieView === "hide" ? "파트너 · 후보 숨김" : tieView === "only" ? "파트너 · 후보만" : "파트너 · 후보 포함"}</button>
             </div>
             <ul>
               {rows.slice(0, limit).map(({ s, f }) => (
@@ -281,7 +307,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
                   <button type="button" onClick={() => onPick(s.id)} className="w-full text-left flex justify-between items-center gap-2 py-2 border-b border-black/[0.05] hover:bg-navy/[0.03]">
                     <span className="min-w-0"><b className="text-gray-900">{s.n}</b>
                       <span className="block text-[11px] text-gray-400 truncate">{s.c || KIND_LABEL[s.k]} · {s.gn ? `${s.gn} ` : ""}{s.d}m · {isNew(s.o) ? "NEW" : years(s.o) !== null ? `${years(s.o)}년` : "—"}{s.ch ? ` · ${s.ch}` : ""}{obs[s.id]?.grade ? " · 팀 관찰" : ""}</span></span>
-                    <GradeChip g={f.g} />
+                    <span className="flex items-center gap-1"><TieChip t={ties[s.id]} /><GradeChip g={f.g} /></span>
                   </button>
                 </li>
               ))}
@@ -292,8 +318,8 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
         ) : tab === "notes" ? (
           <ul className="space-y-2 text-gray-700">
             <li>업종: {Object.entries(c.kinds).map(([k, v]) => `${k} ${v}`).join(" · ")}</li>
-            <li>프랜차이즈(이름 대조): {chains}곳 ({Math.round((chains / Math.max(1, c.n)) * 100)}%)</li>
-            <li>90일 안 새로 연 곳: {fresh}곳</li>
+            <li>이미 파트너 {nPartner}곳 · 후보 {nLead}곳 (ASTRO 매장 · 후보 이름 대조 — 지점 꼬리에 캠퍼스가 있으면 그 상권만)</li>
+            <li>90일 안 새로 연 곳: {fresh}곳 · 프랜차이즈(이름 대조): {chains}곳 ({Math.round((chains / Math.max(1, c.n)) * 100)}%)</li>
             <li>매장이 몰린 길: {lanes.map(([r, n]) => `${r} ${n}`).join(" · ") || "—"}</li>
             <li className="text-[11.5px] text-gray-400 pt-2">팀 메모 · 상권 메모는 다음 업데이트(이번 주 변동 탭과 함께).</li>
           </ul>
@@ -314,7 +340,7 @@ function CampusPanel({ c, doc, obs, onClose, onPick }: { c: CampusItem; doc: Sto
 type Similar = { kind: "lead" | "store"; id: string | number; name: string; stage?: string; owner?: string | null; campus?: string; address?: string; why: string };
 type AddState = null | "check" | { similar: Similar[] } | { blocked: { name: string; stage: string; owner: string | null } } | { done: "created" | "linked" } | { error: string };
 
-function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: Store; campus: CampusItem; obs?: Obs; actor: string; onBack: () => void; onSave: (o: Obs | null) => Promise<boolean>; onOpenLead?: () => void }) {
+function StorePanel({ s, campus, tie, onAdded, obs, actor, onBack, onSave, onOpenLead }: { s: Store; campus: CampusItem; tie?: Tie; onAdded: () => void; obs?: Obs; actor: string; onBack: () => void; onSave: (o: Obs | null) => Promise<boolean>; onOpenLead?: () => void }) {
   const [tab, setTab] = useState<"info" | "fit" | "obs">("info");
   const [o, setO] = useState<Obs>(obs ?? {});
   const [saving, setSaving] = useState(false);
@@ -353,7 +379,7 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
         memo: `허블에서 추가 · ${s.a} · 인허가 ${s.id}`, ...extra,
       }) });
       const d = await r.json().catch(() => ({}));
-      if (r.ok) return setAdd({ done: d.linked ? "linked" : "created" });
+      if (r.ok) { onAdded(); return setAdd({ done: d.linked ? "linked" : "created" }); }
       if (r.status === 409 && d.blocked) return setAdd({ blocked: d.blocked });
       if (r.status === 409 && d.similar) return setAdd({ similar: d.similar });
       setAdd({ error: d.detail ?? `후보를 만들지 못했습니다(${r.status}).` });
@@ -367,7 +393,7 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
       <div className="p-4 border-b border-black/[0.06]">
         <button type="button" onClick={onBack} className="flex items-center gap-1 text-[12px] text-gray-500 hover:text-navy"><IconArrowLeft size={14} /> {campus.name}</button>
         <div className="flex justify-between items-start gap-2 mt-1">
-          <h2 className="text-[17px] font-extrabold text-gray-900">{s.n}</h2><GradeChip g={f.g} />
+          <h2 className="text-[17px] font-extrabold text-gray-900">{s.n}</h2><span className="flex items-center gap-1"><TieChip t={tie} /><GradeChip g={f.g} /></span>
         </div>
         <p className="text-[11.5px] text-gray-500">{s.c || KIND_LABEL[s.k]} · {s.gn ?? "정문"} {s.d}m · {s.o ? `인허가 ${s.o.slice(0, 10)}` : ""} · 영업 중</p>
         <p className="text-[11.5px] text-gray-600 flex items-center gap-1 mt-0.5">{s.a}
@@ -434,6 +460,11 @@ function StorePanel({ s, campus, obs, actor, onBack, onSave, onOpenLead }: { s: 
             <span>이미 후보입니다 — <b>{add.blocked.name}</b> · {add.blocked.stage}{add.blocked.owner ? ` · 담당 ${add.blocked.owner}` : ""}</span>{onOpenLead && <button type="button" onClick={onOpenLead} className="shrink-0 underline font-semibold">그 후보 열기</button>}</div>
         ) : add && typeof add === "object" && "done" in add ? (
           <div className="flex items-center justify-between text-[12.5px] text-green-800 bg-green-50 rounded-lg px-3 py-2">{add.done === "linked" ? "기존 후보에 이었습니다" : `후보로 추가했습니다 (미컨택 · ${actor})`}{onOpenLead && <button type="button" onClick={onOpenLead} className="underline font-semibold">ASTRO에서 보기</button>}</div>
+        ) : tie?.kind === "partner" ? (
+          <div className="text-[12.5px] text-white rounded-lg px-3 py-2" style={{ background: PARTNER_FILL }}>이미 파트너입니다 — {tie.name} (매장 #{tie.rid})</div>
+        ) : tie && add === null ? (
+          <div className="flex items-center justify-between gap-2 text-[12.5px] text-[#5A3A00] rounded-lg px-3 py-2" style={{ background: "#FCEBCB" }}>
+            <span>이미 후보입니다 — <b>{tie.name}</b> · {tie.stage}{tie.owner ? ` · 담당 ${tie.owner}` : ""}</span>{onOpenLead && <button type="button" onClick={onOpenLead} className="shrink-0 underline font-semibold">그 후보 열기</button>}</div>
         ) : (
           <>
             {add && typeof add === "object" && "error" in add && <p className="text-[12px] text-red-700 mb-1.5">{add.error}</p>}
