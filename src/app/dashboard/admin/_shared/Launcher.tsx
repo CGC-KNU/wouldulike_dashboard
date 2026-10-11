@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconArrowUpRight, IconBrandSlack, IconFolder, IconMessageChatbot } from "@tabler/icons-react";
+import { IconFolder } from "@tabler/icons-react";
 import { TOOLS, TOOL_ORDER, slackUrl, type ToolKey, type ToolMeta } from "@/lib/satellite";
 import { focusRing, periodLocal } from "./ui";
 import type { SatelliteStatus } from "./useSatelliteStatus";
@@ -9,9 +9,14 @@ import WeekIssues from "./WeekIssues";
 import { greetingFor, addressee } from "./greeting";
 import Polaris from "./Polaris";
 import Satty from "./Satty";
+import LibraHelp from "./LibraHelp";
+import OrbitCard from "../orbit/OrbitCard";
 
 /**
  * 세틀라이트 런처.
+ *
+ * 1011 민열님: 맨 위 Orbit(큰 일) + 이번 주(높이 고정) → 도구 한 줄(설명 없이) → 「그 밖」 줄(Atlas · Drive · 세티 · Libra).
+ * Libra 를 누르면 슬랙으로 넘기지 않고 사용법 팝업(LibraHelp).
  *
  * 0911(민열님): 툴 고르는 칸을 더 예쁘게, 갤러리 형태로. Libra 는 고르는 대상이 아니라 **전체를 보조하는 층**이라 하단 스트립.
  * Castor 는 VE(Visual Engineer) 영입 후 재검토 → '보류' 로 표시하되 열리긴 한다.
@@ -35,7 +40,9 @@ const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
 /** 세틀라이트 툴이 아니면서 런처에서 열어야 하는 제품(예: Drive — 파일 저장소). 카드 대신 하단 스트립. */
 export interface LauncherExtra { key: string; name: string; subtitle?: string; description?: string }
 
-export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, onPlayroom, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onPlayroom?: () => void; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
+const extraCls = "w-full h-full text-left rounded-[14px] border border-white/70 bg-white/70 backdrop-blur px-3 py-2 flex items-center gap-2.5 hover:border-navy/20 transition-colors";
+
+export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, onPlayroom, onOrbit, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onPlayroom?: () => void; onSelect: (key: string) => void; onOrbit?: (id?: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
   const [pulse, setPulse] = useState<Pulse>({});
 
   useEffect(() => {
@@ -72,7 +79,9 @@ export default function Launcher({ available, extras = [], userName, username = 
     );
   }, []);
 
-  const tools = TOOL_ORDER.map((k) => TOOLS[k]).filter((t) => t.status !== "external" && available.includes(t.key));
+  // Atlas 는 도구가 아니라 회사 소개라 「그 밖」 줄로, Orbit 은 맨 위 카드로 간다 (1011)
+  const tools = TOOL_ORDER.map((k) => TOOLS[k]).filter((t) => t.status !== "external" && t.key !== "atlas" && t.key !== "orbit" && available.includes(t.key));
+  const [libraOpen, setLibraOpen] = useState(false);
   const libra = TOOLS.libra;
   /**
    * 인사말은 **처음 그릴 때 한 번만** 정한다 (민열님 0919). 다시 그릴 때마다 계산하면
@@ -103,17 +112,16 @@ export default function Launcher({ available, extras = [], userName, username = 
         </div>
       </header>
 
-      {/* 왼쪽 이번 주 · 오른쪽 툴 (민열님 0919).
-          폰에서는 위아래로 선다. **이번 주가 위**다 — 무엇이 걸려 있는지 보고 툴을 고르는 순서다.
-          툴 칸은 좁아진 만큼 한 줄에 둘씩 간다(넓은 화면에서만 셋). */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
-        <WeekIssues onGo={onGo} onCount={setWeekCount} />
+      {/* 1011 민열님: 맨 위 = Orbit(큰 일) + 이번 주. 이번 주를 왼쪽 열에 두면 일정이 많을 때 끝없이 늘어나
+          아래가 밀렸다 — 이제 두 칸 높이를 묶고 넘치면 카드 안에서 스크롤한다. 폰에서는 Orbit → 이번 주 순서로 선다. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 lg:h-[17rem]">
+        <div className="min-h-0 h-[22rem] lg:h-auto"><OrbitCard onOpen={(id) => onOrbit?.(id)} /></div>
+        <div className="min-h-0 max-h-[22rem] lg:max-h-none"><WeekIssues onGo={onGo} onCount={setWeekCount} fill /></div>
+      </div>
 
-        <div className="min-w-0">
-      {/* 툴 — **작게, 한눈에** (민열님 0914). 갤러리를 쓰면 카드가 커서 화면의 절반을 먹고
-          여섯 개 중 셋만 보였다. 여기는 자리를 줄이고 아래 현황에 자리를 넘긴다.
-          카드에 남는 숫자는 **지금 막힌 것**뿐이다 — 총량은 아래 현황이 맡는다. */}
-      <ul aria-label="툴" className="sat-stagger grid grid-cols-2 xl:grid-cols-3 gap-2.5">
+      {/* 도구 — 앱 아이콘 · 이름 · 상태만(1011: 회색 설명 뺌). 한 줄에 여섯. */}
+      <p className="mt-6 mb-2 text-[12px] font-bold text-gray-500 tracking-[0.02em]">도구</p>
+      <ul aria-label="도구" className="sat-stagger grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {tools.map((t) => {
           const st = STATUS[t.status];
           const p = pulse[t.key as keyof Pulse];
@@ -126,81 +134,55 @@ export default function Launcher({ available, extras = [], userName, username = 
                 type="button"
                 onClick={() => onSelect(t.key)}
                 aria-label={`${t.name} 열기`}
-                className={`group relative w-full h-full text-left bg-white/85 backdrop-blur rounded-[18px] p-3.5 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)] transition-[transform,box-shadow] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-24px_rgba(5,0,114,0.45)] active:translate-y-0 motion-reduce:transition-none ${focusRing} ${hold ? "opacity-70 hover:opacity-100" : ""}`}
+                title={t.description}
+                className={`group w-full text-left bg-white/85 backdrop-blur rounded-[16px] px-3 py-2.5 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)] transition-[transform,box-shadow] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-24px_rgba(5,0,114,0.45)] active:translate-y-0 motion-reduce:transition-none flex items-center gap-2.5 min-w-0 ${focusRing} ${hold ? "opacity-70 hover:opacity-100" : ""}`}
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <img src={`/satellite/${t.key}_app.svg`} alt="" width={40} height={40} className="w-10 h-10 rounded-[12px] shrink-0 shadow-[0_6px_16px_-10px_rgba(5,0,114,0.6)]" aria-hidden="true" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-bold text-gray-900 tracking-[-0.015em] leading-tight truncate">{t.name}</span>
-                    <span className="block text-[11.5px] font-medium text-gray-500 truncate">{t.subtitle}</span>
-                  </span>
-                  {/* 막힌 게 있으면 숫자, 없으면 상태 한 마디. 둘 다 놓으면 눈이 갈 곳이 없다. */}
-                  {blocked > 0
-                    ? <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11.5px] font-bold tabular-nums grid place-content-center">{blocked}</span>
-                    : <span className={`shrink-0 text-[10.5px] font-semibold ${st.cls}`}>{st.label}</span>}
-                </div>
-                <p className="text-[11.5px] text-gray-400 mt-2.5 leading-[1.5] line-clamp-1">{t.description}</p>
+                <img src={`/satellite/${t.key}_app.svg`} alt="" width={36} height={36} className="w-9 h-9 rounded-[11px] shrink-0 shadow-[0_6px_16px_-10px_rgba(5,0,114,0.6)]" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-bold text-gray-900 tracking-[-0.015em] leading-tight truncate">{t.name}</span>
+                  <span className="block text-[11px] font-medium text-gray-500 truncate">{t.subtitle}</span>
+                </span>
+                {/* 막힌 게 있으면 숫자, 없으면 상태 점 하나. */}
+                {blocked > 0
+                  ? <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11.5px] font-bold tabular-nums grid place-content-center">{blocked}</span>
+                  : <span className={`shrink-0 w-2 h-2 rounded-full ${t.status === "live" ? "bg-emerald-500" : t.status === "draft" ? "bg-amber-500" : "bg-gray-300"}`} title={st.label} aria-label={st.label} />}
               </button>
             </li>
           );
         })}
       </ul>
 
-      {/* 세틀라이트 밖 제품(Drive 등) — 권한과 무관하게 모두가 여는 것이라 카드가 아니라 줄로. */}
-      {extras.length > 0 && (
-        <ul aria-label="그 밖의 제품" className="mt-2.5 grid grid-cols-1 gap-2">
-          {/* grid-cols-1 이 있어야 한다. 칸을 안 정하면 트랙이 내용 폭(max-content)으로 늘어나
-              폰에서 스트립이 화면 밖으로 나간다 — 390px 에서 24px 넘쳤다 (0914). */}
-          {extras.map((e) => (
-            <li key={e.key} className="min-w-0">
-              <button type="button" onClick={() => onSelect(e.key)} className={`w-full text-left rounded-[18px] border border-white/70 bg-white/70 backdrop-blur px-5 py-3.5 flex items-center gap-3 hover:border-navy/20 transition-colors ${focusRing}`}>
-                <IconFolder size={20} className="text-navy shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-bold text-gray-900 tracking-[-0.01em]">{e.name}{e.subtitle && <span className="text-[12px] font-medium text-gray-500 ml-1.5">{e.subtitle}</span>}</span>
-                  {e.description && <span className="block text-[12px] text-gray-500 mt-0.5 truncate">{e.description}</span>}
-                </span>
-                <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-navy shrink-0">열기 <IconArrowUpRight size={14} aria-hidden="true" /></span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* 세티랑 놀기 — 업무 툴이 아니라 쉬는 곳이다. 그래서 '가동 중' 배지가 없고, 얼굴이 아이콘이다 (민열님 0919). */}
-      {onPlayroom && (
-        <button type="button" onClick={onPlayroom}
-          className={`mt-2.5 w-full text-left rounded-[18px] border border-periwinkle/35 bg-[linear-gradient(90deg,rgba(99,102,224,0.08),rgba(255,255,255,0.6)_55%)] px-5 py-3.5 flex items-center gap-3 hover:border-periwinkle hover:-translate-y-0.5 transition-[transform,border-color] duration-150 ${focusRing}`}>
-          <span aria-hidden="true" className="w-9 h-9 rounded-[12px] shrink-0 bg-[linear-gradient(135deg,#7C7EF0,#2B28B8)] flex items-center justify-center shadow-[0_8px_18px_-10px_rgba(5,0,114,0.8)]">
-            <svg viewBox="0 0 160 160" className="w-6 h-6"><circle cx="80" cy="88" r="46" fill="#fff" opacity=".95" /><circle cx="66" cy="82" r="6" fill="#2B28B8" /><circle cx="94" cy="82" r="6" fill="#2B28B8" /><rect x="72" y="30" width="16" height="14" rx="6" fill="#fff" opacity=".95" /></svg>
+      {/* 그 밖 — 도구가 아닌 것(조직 · 파일 · 쉬는 곳 · 슬랙 비서)은 줄을 바꿔 작게 (1011 민열님). */}
+      <p className="mt-5 mb-2 text-[12px] font-bold text-gray-500 tracking-[0.02em]">그 밖</p>
+      <ul aria-label="그 밖" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {available.includes("atlas") && (
+          <li className="min-w-0"><button type="button" onClick={() => onSelect("atlas")} className={`${extraCls} ${focusRing}`}>
+            <img src="/satellite/atlas_app.svg" alt="" width={30} height={30} className="w-[30px] h-[30px] rounded-[9px] shrink-0" aria-hidden="true" />
+            <span className="min-w-0"><span className="block text-[13px] font-bold text-gray-900">Atlas</span><span className="block text-[11px] text-gray-500 truncate">조직도 · 미션 · 연혁</span></span>
+          </button></li>
+        )}
+        {extras.map((e) => (
+          <li key={e.key} className="min-w-0"><button type="button" onClick={() => onSelect(e.key)} className={`${extraCls} ${focusRing}`}>
+            <span className="w-[30px] h-[30px] rounded-[9px] shrink-0 bg-navy text-white grid place-items-center" aria-hidden="true"><IconFolder size={16} /></span>
+            <span className="min-w-0"><span className="block text-[13px] font-bold text-gray-900">{e.name}</span><span className="block text-[11px] text-gray-500 truncate">{e.subtitle}</span></span>
+          </button></li>
+        ))}
+        {onPlayroom && (
+          <li className="min-w-0"><button type="button" onClick={onPlayroom} className={`${extraCls} ${focusRing}`}>
+            <span aria-hidden="true" className="w-[30px] h-[30px] rounded-[9px] shrink-0 bg-[linear-gradient(135deg,#7C7EF0,#2B28B8)] flex items-center justify-center">
+              <svg viewBox="0 0 160 160" className="w-5 h-5"><circle cx="80" cy="88" r="46" fill="#fff" opacity=".95" /><circle cx="66" cy="82" r="6" fill="#2B28B8" /><circle cx="94" cy="82" r="6" fill="#2B28B8" /><rect x="72" y="30" width="16" height="14" rx="6" fill="#fff" opacity=".95" /></svg>
+            </span>
+            <span className="min-w-0"><span className="block text-[13px] font-bold text-gray-900">세티랑 놀기</span><span className="block text-[11px] text-gray-500 truncate">밥 주고 놀아 주기</span></span>
+          </button></li>
+        )}
+        <li className="min-w-0"><button type="button" onClick={() => setLibraOpen(true)} className={`${extraCls} !bg-[linear-gradient(135deg,rgba(43,190,155,0.10),rgba(127,233,203,0.18))] !border-libra/30 hover:!border-libra ${focusRing}`}>
+          <span aria-hidden="true" className="w-[30px] h-[30px] rounded-[9px] shrink-0 bg-[linear-gradient(135deg,#7FE9CB,#2BBE9B)] flex items-center justify-center">
+            <span className="block w-5 h-5 bg-white" style={{ WebkitMaskImage: "url(/satellite/libra.svg)", maskImage: "url(/satellite/libra.svg)", WebkitMaskSize: "contain", maskSize: "contain", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center" }} />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-bold text-gray-900 tracking-[-0.01em]">세티랑 놀기<span className="ml-1.5 align-[1px] text-[10.5px] font-bold text-white bg-[#FF8FB1] rounded-full px-1.5 py-[1px]">NEW</span></span>
-            <span className="block text-[12px] text-gray-500 mt-0.5 truncate">밥 주고 놀아 주기 · 대화 · 잘 챙겨준 팀원 — 팀이 하나를 같이 키웁니다</span>
-          </span>
-          <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-navy shrink-0">들어가기 <IconArrowUpRight size={14} aria-hidden="true" /></span>
-        </button>
-      )}
-
-        </div>
-      </div>
-
-      {/* Libra — 고르는 툴이 아니라 전체를 받치는 층. 그래서 카드가 아니라 스트립이다. */}
-      <section aria-label="Libra" className="mt-6 rounded-[22px] border border-libra/30 bg-[linear-gradient(135deg,rgba(43,190,155,0.10),rgba(127,233,203,0.16))] backdrop-blur px-5 py-4 flex flex-wrap items-center gap-4">
-        <span aria-hidden="true" className="w-11 h-11 rounded-[14px] shrink-0 bg-[linear-gradient(135deg,#7FE9CB,#2BBE9B)] shadow-[0_8px_20px_-12px_rgba(18,131,106,0.8)] flex items-center justify-center">
-          {/* 앱판 아이콘은 네이비 면이라 그대로 쓰면 민트가 가려진다 — 선 버전을 마스크로 삼아 흰 저울만 얹는다 */}
-          <span className="block w-7 h-7 bg-white" style={{ WebkitMaskImage: "url(/satellite/libra.svg)", maskImage: "url(/satellite/libra.svg)", WebkitMaskSize: "contain", maskSize: "contain", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center" }} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-bold text-libra-deep tracking-[-0.01em]">{libra.name} <span className="text-[12px] font-medium text-gray-500 ml-1">모든 툴을 슬랙에서 보조합니다</span></p>
-          <p className="text-[12px] text-gray-500 mt-0.5">
-            <code className="bg-white/80 px-1.5 py-0.5 rounded text-[11px] text-libra-deep font-semibold">?현황</code> <code className="bg-white/80 px-1.5 py-0.5 rounded text-[11px] text-libra-deep font-semibold">?매장</code> <code className="bg-white/80 px-1.5 py-0.5 rounded text-[11px] text-libra-deep font-semibold">@Libra</code> · 아침 브리핑 · 추첨 D-1 알림 · 리포트 시점 태그
-          </p>
-        </div>
-        <a href={slackUrl(libra)} target="_blank" rel="noreferrer" className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white text-[13px] font-semibold text-libra-deep border border-libra/30 hover:border-libra shadow-sm ${focusRing}`}>
-          <IconBrandSlack size={15} aria-hidden="true" /> #{libra.slack.channel}
-        </a>
-        <span className="hidden md:inline-flex items-center gap-1 text-[12px] text-gray-400"><IconMessageChatbot size={14} aria-hidden="true" /> 웹 화면 없음</span>
-      </section>
+          <span className="min-w-0"><span className="block text-[13px] font-bold text-libra-deep">{libra.name}</span><span className="block text-[11px] text-gray-500 truncate">슬랙 사용법</span></span>
+        </button></li>
+      </ul>
+      <LibraHelp open={libraOpen} onClose={() => setLibraOpen(false)} channelUrl={slackUrl(libra)} />
 
       {/* Polaris 현황 판 — 후보 깔때기·당월 청구·스팟·최근 후보를 뺐다 (민열님 0919).
           남는 건 숫자로 성장을 말하는 것뿐이다. 부품과 계산은 Polaris.tsx · lib/polaris.ts 에 있다. */}

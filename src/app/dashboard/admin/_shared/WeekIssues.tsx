@@ -38,12 +38,13 @@ const KIND_LABEL: Record<string, string> = {
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 const dow = (d: string) => DOW[new Date(`${d}T00:00:00`).getDay()];
 
-export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) => void; onCount?: (n: number) => void }) {
+/** fill: 런처 맨 위 줄처럼 높이가 정해진 칸 — 카드가 칸을 채우고 목록은 안에서 스크롤한다(1011). */
+export default function WeekIssues({ onGo, onCount, fill = false }: { onGo?: (target: string) => void; onCount?: (n: number) => void; fill?: boolean }) {
   const { from, to, items, campaigns, loading, failed } = useWeekIssues();
   // Satty 가 같은 숫자를 본다 — 두 번 읽지 않는다
   useEffect(() => { if (!loading) onCount?.(items.length); }, [loading, items.length, onCount]);
   const today = todayLocal();
-  const [openAll, setOpenAll] = useState(false);
+  const [openAll, setOpenAll] = useState(fill);
 
   // 날짜별로 묶는다. 아무것도 없는 날은 줄을 만들지 않는다 — 빈 줄 일곱 개는 정보가 아니다.
   const byDay = new Map<string, WeekIssue[]>();
@@ -74,7 +75,7 @@ export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) 
   return (
     <section
       aria-label="이번 주 이슈"
-      className="rounded-[20px] border border-white/70 bg-white/80 backdrop-blur shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)] p-4 lg:sticky lg:top-20"
+      className={`rounded-[20px] border border-white/70 bg-white/80 backdrop-blur shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)] p-4 ${fill ? "h-full min-h-0 flex flex-col" : "lg:sticky lg:top-20"}`}
     >
       <div className="flex items-baseline gap-2 mb-3">
         <IconCalendarWeek size={16} className="text-navy shrink-0 translate-y-0.5" aria-hidden="true" />
@@ -83,6 +84,7 @@ export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) 
         {!loading && <span className="ml-auto text-[11.5px] font-semibold text-gray-500 tabular-nums">{items.length}건</span>}
       </div>
 
+      <div className={fill ? "flex-1 min-h-0 overflow-auto -mr-1 pr-1" : ""}>
       {/* 캠페인 주간은 하루가 아니라 주 전체에 걸린 일이라 목록이 아니라 띠로 보여 준다 */}
       {campaigns.map((c) => (
         <p key={`${c.kind}${c.start}`}
@@ -148,6 +150,8 @@ export default function WeekIssues({ onGo, onCount }: { onGo?: (target: string) 
           )}
         </>
       )}
+
+      </div>
 
       {onGo && (
         <button type="button" onClick={() => onGo("astro-calendar")}
