@@ -3,6 +3,7 @@ import { readLastEventDate } from "@/lib/bigquery/appMetrics";
 import { FOLLOW_DAYS } from "@/lib/bigquery/couponFunnel";
 import { buildMonthlyAppReport, buildWeeklyAppReport, monthWindow } from "@/lib/draft/appReport";
 import { dash, fillAppReportTemplate, normalizeWeekEnd, shiftDay } from "@/lib/draft/appReportData";
+import { botReportData } from "@/lib/draft/appReportBot";
 import { appReportMessage, appReportSummary, renderAppReportStatic } from "@/lib/draft/appReportStatic";
 import { backendWithCronToken, checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 
@@ -19,6 +20,7 @@ import { backendWithCronToken, checkCronToken, plausibleCronToken } from "@/lib/
  * GET /api/probe/app-report/cron?type=monthly&month=2026-08
  * GET /api/probe/app-report/cron?check=1&week=2026-09-27   GA4 가 그 주 끝까지 들어왔나만 — { ready, through, end }
  * GET /api/probe/app-report/cron?check=1&type=monthly&month=2026-09   월간은 말일 + 7일까지 들어왔나
+ * GET /api/probe/app-report/cron?format=data&week=…                 HTML 없이 숫자·퍼널·주의점만 — 슬랙에서 Probe 에게 물을 때(백엔드 probe/slack_brain.py)
  *
  * `check=1` 은 보고서를 만들지 않고 GA4 확정 테이블 목록만 본다(쿼리 한 번). 월요일 정오 워크플로가 일요일
  * 데이터가 올 때까지 15분마다 부른다 — 보고서를 매번 만들면 BigQuery 쿼리 스무 개씩이다.
@@ -76,9 +78,19 @@ export async function GET(req: Request) {
     return NextResponse.json({ detail: e instanceof Error ? e.message : "보고서를 만들지 못했습니다." }, { status: 503 });
   }
 
-  const rendered = renderAppReportStatic(fillAppReportTemplate(built.data));
   const type = monthly ? "monthly" : "weekly";
   const range = { start: dash(built.week.start), end: dash(built.week.end) };
+  if (q.get("format") === "data") {
+    return NextResponse.json(
+      {
+        type, label: built.week.label, range,
+        ready: built.through !== null && built.through >= built.week.end, through: built.through,
+        warnings: built.warnings, data: botReportData(built.data),
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  }
+  const rendered = renderAppReportStatic(fillAppReportTemplate(built.data));
   // 사람이 읽을 사유 — 앞은 데이터를 못 읽은 것, 뒤는 양식이 남긴 경고
   const warnings = [...built.warnings, ...rendered.warnings];
   const summary = appReportSummary(built.data);
