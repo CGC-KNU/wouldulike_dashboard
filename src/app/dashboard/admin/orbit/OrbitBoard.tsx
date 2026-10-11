@@ -5,6 +5,7 @@ import { IconBrandSlack, IconPlus, IconTrash, IconX } from "@tabler/icons-react"
 import { STAGES, SIDE, blank, byUrgency, parseSlack, waiting, type Board, type Project, type Stage } from "@/lib/orbit";
 import { Notice, PageHeader, Skeleton, focusRing } from "../_shared/ui";
 import { StageChip, Steps } from "./OrbitCard";
+import OwnerPicker from "./OwnerPicker";
 
 /**
  * Orbit 보드 (1011, 시안 CGC/04_사내툴_개발/1011_대시보드_시안).
@@ -153,8 +154,8 @@ function Detail({ p, dirty, saving, actor, isNew, onEdit, onCommit, onCancel, on
         </div>
       </div>
 
-      <label className="block"><span className="text-[11.5px] font-bold text-gray-500">담당 <span className="font-normal text-gray-400">(쉼표로)</span></span>
-        <input value={p.owners.join(", ")} onChange={(e) => onEdit({ owners: list(e.target.value) })} placeholder="서지, 수연" className={input} /></label>
+      <div><span className="block text-[11.5px] font-bold text-gray-500 mb-0.5">담당 <span className="font-normal text-gray-400">(검색해서 체크)</span></span>
+        <OwnerPicker value={p.owners} onChange={(owners) => onEdit({ owners })} /></div>
       <div className="grid grid-cols-2 gap-2">
         <label className="block"><span className="text-[11.5px] font-bold text-gray-500">팀</span><input value={p.team} onChange={(e) => onEdit({ team: e.target.value })} placeholder="영업 · 마케팅" className={input} /></label>
         <label className="block"><span className="text-[11.5px] font-bold text-gray-500">언제까지</span><input value={p.due} onChange={(e) => onEdit({ due: e.target.value })} placeholder="11월 · 10/25" className={input} /></label>
