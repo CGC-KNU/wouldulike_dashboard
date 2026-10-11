@@ -1,0 +1,49 @@
+# Probe @안민찬 질문 정리 DM — 평일 09:00·18:00 KST (민찬 1011)
+#
+#   누가 @안민찬 을 부르면 Probe 가 대신 답하거나 넘기고, 백엔드가 그걸 기록해 둔다(wouldulike_backend probe/slack_digest.py).
+#   이 작업은 백엔드 정리 주소를 불러 쌓인 것을 민찬 DM 한 통으로 보내게 한다. 실을 게 없으면 DM 도 없다.
+#   슬랙 토큰은 백엔드가 가지고 있어서 여기에는 크론 토큰만 있으면 된다.
+#
+# **이 저장소는 공개다.** 응답이 개수뿐이라 로그에도 개수만 남긴다 — 질문 내용·사람 이름은 이 저장소를 지나지 않는다.
+# GitHub 정기 실행은 몇 시간씩 늦을 수 있다. 정리 DM 은 늦어도 괜찮다.
+#
+# 필요한 것 (Settings → Secrets and variables → Actions): BACKEND_BASE_URL · CRON_SECRET_TOKEN (이미 있다)
+name: Probe 질문 정리 DM
+
+on:
+  schedule:
+    - cron: "0 0 * * 1-5"   # 09:00 KST
+    - cron: "0 9 * * 1-5"   # 18:00 KST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "DM 을 보내지 않고 개수만 본다"
+        type: boolean
+        default: true
+
+concurrency:
+  group: probe-slack-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BACKEND: ${{ secrets.BACKEND_BASE_URL }}
+      CRON_TOKEN: ${{ secrets.CRON_SECRET_TOKEN }}
+      DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+    steps:
+      - name: 정리 DM
+        run: |
+          set -euo pipefail
+          [ -n "$BACKEND" ] && [ -n "$CRON_TOKEN" ] || { echo "::error::BACKEND_BASE_URL · CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
+          if [ "$DRY_RUN" = "true" ]; then Q=1; else Q=0; fi
+          CODE=$(curl -sS --max-time 60 -X POST -o d.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" \
+            "$BACKEND/api/probe/slack/digest/?dry_run=$Q") || CODE=000
+          if [ "$CODE" != "200" ]; then echo "::error::정리 주소가 응답하지 않았습니다(HTTP $CODE)"; exit 1; fi
+          echo "dry_run=$Q · 직접 답할 것 $(jq -r '.direct' d.json)건 · 대신 답함 $(jq -r '.answered' d.json)건 · 민찬이 이미 답함 $(jq -r '.resolved' d.json)건 · DM 보냄=$(jq -r '.sent' d.json)"
+          # 보낼 게 있는데 못 보냈으면 빨갛게 — 슬랙 오류(rate limit 등)를 Actions 탭에서도 보이게
+          if [ "$Q" = "0" ] && [ "$(jq -r '.direct + .answered' d.json)" -gt 0 ] && [ "$(jq -r '.sent' d.json)" != "true" ]; then
+            echo "::error::DM 을 보내지 못했습니다 — 백엔드 Koyeb Logs 의 [probe] 줄을 확인하세요"; exit 1
+          fi
