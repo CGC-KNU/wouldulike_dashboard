@@ -38,6 +38,7 @@ function ops(
     pay_cycle: null,
     contract_started_on: null,
     billing_start_period: null,
+    billing_months: null,
     map_url: null,
     map_name: null,
     contract_months: null,

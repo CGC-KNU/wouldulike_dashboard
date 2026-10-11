@@ -36,6 +36,46 @@ export interface StoreRow {
   ops: StoreOps | null;
 }
 
+/** "2026-11" → 달 번호. 연·월을 한 줄로 세어 두 달 사이를 뺄셈으로 잰다. */
+export function periodIndex(p: string): number {
+  return Number(p.slice(0, 4)) * 12 + Number(p.slice(5, 7)) - 1;
+}
+export function addPeriod(p: string, n: number): string {
+  const i = periodIndex(p) + n;
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
+}
+/** 계산서는 period(첫 달)부터 months 개월을 덮는다. 없으면 한 달. */
+export function invoiceMonths(i: { months?: number | null }): number {
+  return i.months && i.months > 0 ? i.months : 1;
+}
+export function invoiceCovers(i: { period: string; months?: number | null }, period: string): boolean {
+  const s = periodIndex(i.period), t = periodIndex(period);
+  return s <= t && t < s + invoiceMonths(i);
+}
+/** 한 번에 몇 개월분씩 끊는지. 비었거나 이상한 값이면 매월. */
+export function billingMonthsOf(o: { billing_months?: number | null } | null | undefined): number {
+  const n = o?.billing_months;
+  return n && n > 1 && n <= 12 ? n : 1;
+}
+/**
+ * 이 달이 그 매장의 계산서를 끊는 달인가. 청구 시작 월부터 billing_months 간격으로 센다.
+ * 시작 월을 모르면 1월을 기준으로 삼는다(분기라면 1·4·7·10월).
+ */
+export function isBillingMonth(o: { billing_months?: number | null; billing_start_period?: string | null; contract_started_on?: string | null } | null | undefined, period: string): boolean {
+  const n = billingMonthsOf(o);
+  if (n === 1) return true;
+  const anchor = o?.billing_start_period || (o?.contract_started_on ? o.contract_started_on.slice(0, 7) : `${period.slice(0, 4)}-01`);
+  return (((periodIndex(period) - periodIndex(anchor)) % n) + n) % n === 0;
+}
+/** 여러 달치 제목용: 1개월이면 "2026년 9월", 3개월이면 "2026년 9~11월", 해를 넘기면 "2026년 11월~2027년 1월". */
+export function periodRangeLabel(period: string, months: number): string {
+  const [y, m] = [Number(period.slice(0, 4)), Number(period.slice(5, 7))];
+  if (months <= 1) return `${y}년 ${m}월`;
+  const e = addPeriod(period, months - 1);
+  const [ey, em] = [Number(e.slice(0, 4)), Number(e.slice(5, 7))];
+  return ey === y ? `${y}년 ${m}~${em}월` : `${y}년 ${m}월~${ey}년 ${em}월`;
+}
+
 export function isPaidTier(t: string | null | undefined): boolean {
   return t === "BOOST" || t === "CONTENT";
 }
@@ -106,6 +146,8 @@ export interface StoreOps {
   biz_no: string | null; // 사업자등록번호
   monthly_fee: number | null;
   pay_cycle: PayCycle | null;
+  /** 한 번에 몇 개월분씩 계산서를 끊는지(1~12). null 이면 매월. */
+  billing_months: number | null;
   contract_started_on: string | null;
   contract_months: number | null;
   /** 청구를 시작하는 달 "YYYY-MM". 월 중간에 들어온 매장은 이번 달/다음 달 중 고른다 (민열님 0911). null 이면 계약 시작월. */
@@ -156,6 +198,7 @@ export function emptyStoreOps(id: number): StoreOps {
     biz_no: null,
     monthly_fee: null,
     pay_cycle: null,
+    billing_months: null,
     contract_started_on: null,
     contract_months: null,
     billing_start_period: null,
@@ -187,7 +230,7 @@ export const STORE_OPS_EDITABLE = [
   "campus", "semester_active", "vacation_active", "kit_delivered",
   "billing", "invoice", "quote_sent_at", "contract_returned_at",
   "owner_name", "owner_phone", "owner_email", "biz_no",
-  "monthly_fee", "pay_cycle", "contract_started_on", "contract_months", "billing_start_period", "map_url", "map_name",
+  "monthly_fee", "pay_cycle", "billing_months", "contract_started_on", "contract_months", "billing_start_period", "map_url", "map_name",
   "district", "contract_signed_on", "contract_ends_on", "coupon_basic", "coupon_limited", "stamp_count", "stamp_reward",
   "exclusions", "extra_quote", "kit_note", "pin", "contract_original", "sheet_owner", "sheet_synced_at",
   "is_test", "memo",
@@ -309,7 +352,8 @@ export interface TaxInvoice {
   restaurant_id: number;
   name: string; // 매장명 (공급받는자 상호)
   title: string; // "우주라이크 파트너 플랜 2026년 9월분"
-  period: string; // "2026-09"
+  period: string; // "2026-09" — 여러 달치면 첫 달
+  months?: number; // period 부터 덮는 개월 수 (없으면 1)
   supply: number; // 공급가액
   tax: number; // 세액
   total: number;

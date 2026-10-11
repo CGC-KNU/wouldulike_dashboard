@@ -297,6 +297,11 @@ export default function StoreDetailPanel({ row, invoice = null, actor, campusOpt
               <option value="">-</option><option value="MONTHLY">월납</option><option value="LUMP">일시납</option>
             </Select>
           </Field>
+          <Field label={<L src="ops">계산서 주기</L>} hint="몇 개월분씩 한 장으로 끊을지. 청구 시작 월부터 이 간격으로 만듭니다 (월 이용료 × 개월 수)">
+            <Select value={String(o.billing_months ?? 1)} onChange={(e) => stage("billing_months")(Number(e.target.value) > 1 ? Number(e.target.value) : null)}>
+              {[[1, "매월"], [2, "2개월마다"], [3, "3개월마다 (분기)"], [6, "6개월마다"], [12, "12개월마다 (연)"]].map(([n, l]) => <option key={n} value={n}>{l}</option>)}
+            </Select>
+          </Field>
           <Cell label={<L src="ops">개시일</L>} hint="이 날부터 최소 이용기간 1개월" value={o.contract_started_on} onCommit={set("contract_started_on")} placeholder="2026-10-01" />
           <Cell label={<L src="ops">종료일</L>} hint="해지했을 때만 적습니다. 계약은 기간의 정함이 없습니다" value={o.contract_ends_on} onCommit={set("contract_ends_on")} placeholder="해지 시에만" />
           <Cell label={<L src="ops">담당자</L>} value={o.sheet_owner} onCommit={set("sheet_owner")} placeholder="준영" />
