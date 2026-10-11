@@ -79,9 +79,9 @@ export default function OrbitBoard({ actor, initial }: { actor: string; initial?
         <button type="button" onClick={() => { const b = blank(actor); setSel(b.id); setDraft(b); }} className={`rounded-2xl border border-dashed border-navy/30 text-navy font-bold flex items-center justify-center gap-1.5 hover:bg-navy/[0.03] ${focusRing}`}><IconPlus size={16} /> 새 큰 일</button>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="overflow-x-auto">
-          <div className="grid grid-cols-4 gap-2.5 min-w-[760px]">
+          <div className="grid grid-cols-4 gap-2 min-w-[540px]">
             {cols.map((c) => {
               const list = active.filter((p) => p.stage === c).sort(byUrgency);
               return (
