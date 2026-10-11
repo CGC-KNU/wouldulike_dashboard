@@ -94,7 +94,7 @@ export default function OrbitBoard({ actor, initial }: { actor: string; initial?
                         <button type="button" onClick={() => setSel(p.id)} className={`w-full text-left rounded-xl bg-white border p-2.5 hover:border-navy/40 ${sel === p.id ? "border-navy ring-2 ring-navy/15" : "border-black/[0.07]"} ${focusRing}`}>
                           <span className="block text-[13px] font-bold text-gray-900">{p.name}</span>
                           <span className="flex flex-wrap gap-1 mt-1.5">{p.owners.map((o) => <span key={o} className="text-[11px] font-semibold px-1.5 rounded-full bg-black/[0.04] text-gray-600">{o}</span>)}</span>
-                          <span className="flex items-center justify-between gap-2 mt-1.5 text-[11px] text-gray-400"><span className="truncate">{p.due || p.team}</span>{waiting(p) > 0 && <StageChip p={p} />}</span>
+                          <span className="flex items-center justify-between gap-2 mt-1.5 text-[11px] text-gray-400"><span className="truncate">{p.due}</span>{waiting(p) > 0 && <StageChip p={p} />}</span>
                         </button>
                       </li>))}
                     {list.length === 0 && <li className="text-[12px] text-gray-400 px-1">없음</li>}
@@ -156,10 +156,8 @@ function Detail({ p, dirty, saving, actor, isNew, onEdit, onCommit, onCancel, on
 
       <div><span className="block text-[11.5px] font-bold text-gray-500 mb-0.5">담당 <span className="font-normal text-gray-400">(검색해서 체크)</span></span>
         <OwnerPicker value={p.owners} onChange={(owners) => onEdit({ owners })} /></div>
-      <div className="grid grid-cols-2 gap-2">
-        <label className="block"><span className="text-[11.5px] font-bold text-gray-500">팀</span><input value={p.team} onChange={(e) => onEdit({ team: e.target.value })} placeholder="영업 · 마케팅" className={input} /></label>
-        <label className="block"><span className="text-[11.5px] font-bold text-gray-500">언제까지</span><input value={p.due} onChange={(e) => onEdit({ due: e.target.value })} placeholder="11월 · 10/25" className={input} /></label>
-      </div>
+      {/* 팀 칸은 뺐다(1011 민열님) — 담당 팀원이 정해지면 팀은 따라온다 */}
+      <label className="block"><span className="text-[11.5px] font-bold text-gray-500">언제까지</span><input value={p.due} onChange={(e) => onEdit({ due: e.target.value })} placeholder="11월 · 10/25" className={input} /></label>
       <label className="block"><span className="text-[11.5px] font-bold text-gray-500">한 줄 설명</span><textarea rows={2} value={p.summary} onChange={(e) => onEdit({ summary: e.target.value })} className={input} /></label>
       <label className="block"><span className="text-[11.5px] font-bold text-gray-500">슬랙 스레드 링크 <span className="font-normal text-gray-400">(메시지 ⋮ → 링크 복사)</span></span>
         <input value={p.slack.url} onChange={(e) => onEdit({ slack: { url: e.target.value } })} placeholder="https://….slack.com/archives/C…/p…" className={input} /></label>
