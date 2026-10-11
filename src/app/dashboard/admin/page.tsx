@@ -32,6 +32,7 @@ import CastorMap from "./castor/CastorMap";
 import dynamic from "next/dynamic";
 const HubbleMap = dynamic(() => import("./hubble/HubbleMap"), { ssr: false });
 import HubbleWatch from "./hubble/HubbleWatch";
+import OrbitBoard from "./orbit/OrbitBoard";
 import CastorScreen from "./castor/CastorScreen";
 import CastorResearch from "./castor/CastorResearch";
 import CastorRefs from "./castor/CastorRefs";
@@ -91,6 +92,7 @@ type Tab =
   // Castor(앱 구조·여정)
   | "hubble-map"
   | "hubble-watch"
+  | "orbit-board"
   | "castor-home"
   | "castor-map"
   | "castor-flow"
@@ -2136,6 +2138,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   // ── Hubble — 파트너 탐색(1010). 영업 권한(Astro 와 같음).
   { key: "hubble-map", label: "지도", icon: "◎", allow: (me) => me.permissions.can_restaurants },
   { key: "hubble-watch", label: "이번 주 변동", icon: "◷", allow: (me) => me.permissions.can_restaurants },
+  { key: "orbit-board", label: "보드", icon: "◎", allow: () => true },
 
   // ── Castor. 앱 구조를 바꾸는 제안을 만드는 곳이라 관리자만 본다.
   { key: "castor-home", label: "홈", icon: "⌂", allow: (me) => me.is_admin || me.is_superadmin },
@@ -2166,7 +2169,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
  * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "hubble" | "aether" | "probe" | "castor" | "atlas" | "drive" | "playroom";
+type Product = "papillon" | "astro" | "hubble" | "aether" | "probe" | "castor" | "atlas" | "orbit" | "drive" | "playroom";
 
 /**
  * Astro 사이드바 묶음 (민열님 0928). 순서는 요청 그대로:
@@ -2257,6 +2260,14 @@ const PRODUCTS: {
     ready: true,
   },
   {
+    key: "orbit",
+    name: "Orbit",
+    subtitle: "큰 일 현황",
+    description: "여러 팀이 걸친 큰 일 · 4단계 보드 · 슬랙 소식",
+    tabs: ["orbit-board"],
+    ready: true,
+  },
+  {
     key: "atlas",
     name: "Atlas",
     subtitle: "ABOUT WOULDULIKE",
@@ -2305,6 +2316,8 @@ export default function AdminHomePage() {
   const [me, setMe] = useState<AdminMe | null>(null);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  // Orbit 에서 열 큰 일 — 런처 카드에서 누른 것, 또는 슬랙 「Orbit에서 보기」 링크의 ?p= (1011)
+  const [orbitPick, setOrbitPick] = useState<string | null>(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("p")));
   // Castor 화면 지도에서 블록 순서를 바꾼 뒤 "A/B 후보로" 를 누르면 여기에 담겨 A/B 탭으로 넘어간다
   const [castorScreen, setCastorScreen] = useState<string | null>(null);
 
@@ -2471,6 +2484,7 @@ export default function AdminHomePage() {
           userTitle={me.title}
           onSelect={(key) => selectProduct(key as Product)}
           onPlayroom={() => selectProduct("playroom")}
+          onOrbit={(id) => { setOrbitPick(id ?? null); selectProduct("orbit"); }}
           status={satStatus}
           onGo={go}
         />
@@ -2569,7 +2583,7 @@ export default function AdminHomePage() {
 
       {activeTab &&
         activeTab !== "satellite" &&
-        (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
+        (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "orbit" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
         <ToolShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
           navItems={groupNav(productTabs.map((t) => ({ key: t.key, label: t.label })), selectedProduct === "astro" ? ASTRO_NAV_GROUPS : [])}
@@ -2616,6 +2630,7 @@ export default function AdminHomePage() {
           {/* Castor: 앱 구조·여정 — 기획안 Castor 절 메뉴(지도 · 흐름 · 화면 · 변경 · 실험 · 조사 · 레퍼런스). 지도에서 고른 화면은 화면 탭으로. */}
           {activeTab === "hubble-map" && <HubbleMap actor={actorName} onOpenLead={() => { selectProduct("astro"); setTimeout(() => go("astro-leads"), 0); }} />}
           {activeTab === "hubble-watch" && <HubbleWatch />}
+          {activeTab === "orbit-board" && <OrbitBoard actor={actorName} initial={orbitPick} />}
           {activeTab === "castor-home" && <CastorHome onGo={(t) => setActiveTab(t as Tab)} />}
           {(activeTab === "atlas-team" || activeTab === "atlas-mission" || activeTab === "atlas-tools" || activeTab === "atlas-history") && (
             <Atlas tab={activeTab} onGo={(t) => { if (t === "launcher") backToProducts(); else if (PRODUCTS.some((p) => p.key === t)) selectProduct(t as Product); else go(t); }} />
