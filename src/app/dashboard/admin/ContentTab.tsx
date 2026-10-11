@@ -203,6 +203,22 @@ function isFeaturedLive(c: FeaturedCampaign) {
   const end = new Date(c.ends_at).getTime();
   return c.active && !Number.isNaN(start) && !Number.isNaN(end) && start <= now && now <= end && (c.items?.length ?? 0) > 0;
 }
+/* 게시 단계 검사 — 앱은 링크 없는 배너를 누르면 그 기획전 상세(매장 목록)를 연다.
+   매장이 하나도 연결되지 않은 기획전이면 그 화면이 "선별 매장 0곳"으로 비어 보인다. */
+const DEAD_END_MSG = "링크 없는 배너가 있어요. 앱에서 누르면 매장 0곳인 빈 기획전이 열려요. 배너에 링크를 넣어 주세요.";
+function hasStore(items: { restaurant_id: number | null }[]) {
+  return items.some((it) => it.restaurant_id != null);
+}
+function deadEndCount(items: { restaurant_id: number | null; link_url: string }[]) {
+  if (hasStore(items)) return 0;
+  return items.filter((it) => !(it.link_url ?? "").trim()).length;
+}
+function publishProblem(c: FeaturedCampaign): string {
+  const items = c.items ?? [];
+  if (items.length === 0) return "배너가 없어서 열 수 없어요. 배너를 먼저 추가해 주세요.";
+  if (deadEndCount(items) > 0) return DEAD_END_MSG;
+  return "";
+}
 function itemPayload(items: FeaturedItem[]) {
   return items.map((it, idx) => ({
     restaurant_id: it.restaurant_id,
@@ -267,7 +283,7 @@ function FeaturedItemForm({
       />
       <input
         className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-periwinkle"
-        placeholder="연결 링크 (https://..., 선택)"
+        placeholder="연결 링크 (https://... · 매장 없는 기획전은 필수)"
         value={form.link_url}
         onChange={(e) => setForm((f) => ({ ...f, link_url: e.target.value }))}
       />
@@ -361,6 +377,8 @@ function FeaturedCampaignSection() {
         await patchCampaign(c.id, { active: false });
         return;
       }
+      const problem = publishProblem(c);
+      if (problem) { setErr(`「${c.title || "기획전"}」 ${problem}`); return; }
       const now = nowKstInput();
       const ends = isoToKstInput(c.ends_at);
       await patchCampaign(c.id, {
@@ -397,6 +415,7 @@ function FeaturedCampaignSection() {
   }
 
   async function addItem(c: FeaturedCampaign, data: typeof EMPTY_FEATURED_ITEM) {
+    if (deadEndCount([...(c.items ?? []), data]) > 0) throw new Error(DEAD_END_MSG);
     await saveItems(c, [...(c.items ?? []), { ...data, sort_order: c.items?.length ?? 0 }]);
     setAddingItemFor(null);
   }
@@ -421,6 +440,7 @@ function FeaturedCampaignSection() {
   async function createCampaign() {
     if (!createForm.title.trim()) { setErr("제목을 입력해주세요."); return; }
     if (!createForm.image_url) { setErr("이미지를 업로드해주세요."); return; }
+    if (!createForm.link_url.trim()) { setErr(DEAD_END_MSG); return; }
     setErr("");
     const res = await fetch("/api/dashboard/admin/featured-campaigns", {
       method: "POST",
@@ -467,6 +487,7 @@ function FeaturedCampaignSection() {
         {campaigns.map((c, idx) => {
           const live = isFeaturedLive(c);
           const expanded = openId === c.id;
+          const deadEnds = deadEndCount(c.items ?? []);
           return (
             <div key={c.id} className="bg-gray-50 rounded-xl p-2.5">
               <div className="flex items-center gap-2">
@@ -504,6 +525,9 @@ function FeaturedCampaignSection() {
                       <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full shrink-0">기간 밖</span>
                     ) : (
                       <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full shrink-0">닫힘</span>
+                    )}
+                    {deadEnds > 0 && (
+                      <span title={DEAD_END_MSG} className="text-[10px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded-full shrink-0">링크 없음 {deadEnds}</span>
                     )}
                   </div>
                   <p className="text-[10px] text-gray-400 truncate">
@@ -563,7 +587,11 @@ function FeaturedCampaignSection() {
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-700 truncate">{it.benefit_title || (it.restaurant_id ? `식당 #${it.restaurant_id}` : "(제목 없음)")}</p>
-                        {it.link_url && <p className="text-[10px] text-periwinkle truncate">{it.link_url}</p>}
+                        {it.link_url ? (
+                          <p className="text-[10px] text-periwinkle truncate">{it.link_url}</p>
+                        ) : !it.restaurant_id && !hasStore(c.items ?? []) ? (
+                          <p className="text-[10px] text-red-500 truncate">링크 없음 — 앱에서 빈 기획전이 열려요</p>
+                        ) : null}
                       </div>
                       <button type="button" onClick={() => removeItem(c, idx)} className="text-[10px] text-gray-300 hover:text-red-400 px-1.5 py-1">삭제</button>
                     </div>
@@ -625,7 +653,7 @@ function FeaturedCampaignSection() {
           />
           <input
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
-            placeholder="연결 링크 (https://..., 선택)"
+            placeholder="연결 링크 (https://... · 필수)"
             value={createForm.link_url}
             onChange={(e) => setCreateForm((f) => ({ ...f, link_url: e.target.value }))}
           />
