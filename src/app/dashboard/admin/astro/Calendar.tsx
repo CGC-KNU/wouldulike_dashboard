@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconChevronLeft, IconChevronRight, IconFileDownload, IconMessage2, IconPlus, IconSearch } from "@tabler/icons-react";
 import type { Lead, StoreRow, TaxInvoice } from "@/lib/draft/types";
-import { isPaidTier } from "@/lib/draft/types";
+import { billingMonthsOf, invoiceCovers, invoiceMonths, isBillingMonth, isPaidTier, periodRangeLabel } from "@/lib/draft/types";
 import type { MsgContext } from "@/lib/draft/message";
 import { Input, focusRing, todayLocal } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
@@ -148,12 +148,15 @@ export function buildEvents(
       const billingStart = o?.billing_start_period ?? (start ? start.slice(0, 7) : null);
       if (billingStart && ym < billingStart) continue;
       // 이미 입금이 찍힌 달은 '예정'을 겹쳐 찍지 않는다 — 아래 '입금 완료'가 그 자리를 맡는다.
-      const invThis = invoices.find((i) => i.restaurant_id === s.restaurant_id && i.period === ym && !["CANCELED", "REJECTED"].includes(i.status));
+      const invThis = invoices.find((i) => i.restaurant_id === s.restaurant_id && invoiceCovers(i, ym) && !["CANCELED", "REJECTED"].includes(i.status));
       if (invThis?.paid_at) continue;
+      // 여러 달치 매장은 끊는 달에만 '입금 예정'을 찍는다 — 덮이는 달에 계산서가 있으면(미입금) 그 계산서 첫 달 것이 이미 떠 있다.
+      if (!invThis && !isBillingMonth(o, ym)) continue;
+      if (invThis && invThis.period !== ym) continue;
       const day = start ? Number(start.slice(8, 10)) : 1;
       const last = new Date(y, m, 0).getDate();
       const d = `${ym}-${String(Math.min(day, last)).padStart(2, "0")}`;
-      out.push({ date: d, kind: "payment", label: s.name, campus: cp, sub: o?.monthly_fee ? `${o.monthly_fee.toLocaleString()}원` : "월 이용료 미입력", onClick: go, msg: { ...base, dateLabel: `${Number(d.slice(5, 7))}/${Number(d.slice(8))}` } });
+      out.push({ date: d, kind: "payment", label: s.name, campus: cp, sub: o?.monthly_fee ? `${(o.monthly_fee * billingMonthsOf(o)).toLocaleString()}원${billingMonthsOf(o) > 1 ? ` (${billingMonthsOf(o)}개월분)` : ""}` : "월 이용료 미입력", onClick: go, msg: { ...base, dateLabel: `${Number(d.slice(5, 7))}/${Number(d.slice(8))}` } });
     }
   }
 
@@ -165,7 +168,7 @@ export function buildEvents(
     if (["CANCELED", "REJECTED"].includes(inv.status)) continue;
     const go = onTax ?? (() => onStore(inv.restaurant_id)), cp = campusOf.get(inv.restaurant_id) ?? null;
     const won = `${inv.total.toLocaleString()}원`;
-    const per = `${Number(inv.period.slice(5))}월분`;
+    const per = invoiceMonths(inv) > 1 ? `${periodRangeLabel(inv.period, invoiceMonths(inv)).replace(/^\d+년 /, "")}분` : `${Number(inv.period.slice(5))}월분`;
     const msg: MsgContext = { name: inv.name, targetType: "store", targetId: String(inv.restaurant_id), fee: inv.total, period: inv.period };
     const pd = ymd(inv.paid_at); if (pd) out.push({ date: pd, kind: "paid", label: inv.name, campus: cp, sub: `${won} · ${per} 입금`, onClick: go, msg });
     const isd = ymd(inv.issued_at); if (isd) out.push({ date: isd, kind: "issued", label: inv.name, campus: cp, sub: inv.nts_no ? `승인번호 ${inv.nts_no}` : `${won} · ${per}`, onClick: go });

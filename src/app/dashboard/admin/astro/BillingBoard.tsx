@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconArrowBackUp, IconCheck, IconCopy, IconExternalLink, IconFileInvoice, IconMessage2, IconPlus } from "@tabler/icons-react";
-import { TAX_STATUS_LABEL, isPaidTier, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
+import { TAX_STATUS_LABEL, billingMonthsOf, invoiceCovers, isBillingMonth, isPaidTier, type StoreRow, type TaxInvoice } from "@/lib/draft/types";
 import { Button, Card, Chip, DefList, DraftBadge, Empty, Field, Input, Notice, PageHeader, Select, Skeleton, SlideOver, StepTiles, Table, Td, Th, focusRing, rowClickable, periodLocal, todayLocal, type ChipTone } from "../_shared/ui";
 import MessageComposer from "./MessageComposer";
 import type { MsgContext } from "@/lib/draft/message";
@@ -57,14 +57,14 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
   const rows: Row[] = useMemo(() => {
     const byId = new Map(paid.map((s) => [s.restaurant_id, s]));
     const base: Row[] = paid.map((store) => {
-      const inv = invoices.find((i) => i.restaurant_id === store.restaurant_id && i.period === period && !["CANCELED", "REJECTED"].includes(i.status)) ?? null;
+      const inv = invoices.find((i) => i.restaurant_id === store.restaurant_id && invoiceCovers(i, period) && !["CANCELED", "REJECTED"].includes(i.status)) ?? null;
       const fee = store.ops?.monthly_fee ?? null;
-      const bucket: Row["bucket"] = !fee || store.ops?.pay_cycle === "LUMP" ? "skip" : !inv ? "none" : inv.paid_at ? "paid" : inv.status === "ISSUED" ? "issued" : "pending";
+      const bucket: Row["bucket"] = !fee || store.ops?.pay_cycle === "LUMP" || (!inv && !isBillingMonth(store.ops, period)) ? "skip" : !inv ? "none" : inv.paid_at ? "paid" : inv.status === "ISSUED" ? "issued" : "pending";
       return { store, inv, bucket };
     });
     // 매장 목록에 없는 청구 건 — 이름은 청구 건이 들고 있다
     const orphans: Row[] = invoices
-      .filter((i) => i.period === period && !["CANCELED", "REJECTED"].includes(i.status) && !byId.has(i.restaurant_id))
+      .filter((i) => invoiceCovers(i, period) && !["CANCELED", "REJECTED"].includes(i.status) && !byId.has(i.restaurant_id))
       .map((inv) => ({
         store: { restaurant_id: inv.restaurant_id, name: inv.name, tier: null, is_affiliate: true, ops: null, missing: true } as StoreRow & { missing?: boolean },
         inv,
@@ -74,7 +74,7 @@ export default function BillingBoard({ actor, onGo }: { actor: string; onGo?: (t
     return [...base, ...orphans].sort((a, b) => ORDER.indexOf(a.bucket) - ORDER.indexOf(b.bucket) || a.store.name.localeCompare(b.store.name, "ko"));
   }, [paid, invoices, period]);
   const counts = useMemo(() => ({ none: rows.filter((r) => r.bucket === "none").length, pending: rows.filter((r) => r.bucket === "pending").length, issued: rows.filter((r) => r.bucket === "issued").length, paid: rows.filter((r) => r.bucket === "paid").length, skip: rows.filter((r) => r.bucket === "skip").length }), [rows]);
-  const sums = useMemo(() => ({ expected: rows.filter((r) => r.bucket !== "skip").reduce((a, r) => a + (r.inv?.total ?? r.store.ops?.monthly_fee ?? 0), 0), paid: rows.filter((r) => r.bucket === "paid").reduce((a, r) => a + (r.inv?.total ?? 0), 0) }), [rows]);
+  const sums = useMemo(() => ({ expected: rows.filter((r) => r.bucket !== "skip").reduce((a, r) => a + (r.inv?.total ?? (r.store.ops?.monthly_fee ?? 0) * billingMonthsOf(r.store.ops)), 0), paid: rows.filter((r) => r.bucket === "paid").reduce((a, r) => a + (r.inv?.total ?? 0), 0) }), [rows]);
   const periods = useMemo(() => { const set = new Set([thisPeriod(), ...invoices.map((i) => i.period)]); const d = new Date(); for (let k = 1; k <= 2; k++) set.add(periodLocal(-k)); return [...set].sort().reverse(); }, [invoices]);
   const visible = bucket ? rows.filter((r) => r.bucket === bucket) : rows.filter((r) => r.bucket !== "skip");
   const openRow = useMemo(() => (open === null ? null : rows.find((r) => r.store.restaurant_id === open) ?? null), [open, rows]);

@@ -1,4 +1,4 @@
-import { isPaidTier, type Campus, type Lead, type StoreRow, type TaxInvoice } from "./types";
+import { invoiceCovers, isBillingMonth, isPaidTier, type Campus, type Lead, type StoreRow, type TaxInvoice } from "./types";
 import { defaultMonthlyFee } from "./pricing";
 
 /**
@@ -97,8 +97,8 @@ export function buildBlockers(
   const usesBizNo = inUse((s) => s.ops?.biz_no);
   const usesKit = inUse((s) => s.ops?.kit_delivered);
   const live = invoices.filter((i) => !["CANCELED", "REJECTED"].includes(i.status));
-  const paidThisPeriod = new Set(live.filter((i) => i.period === period && i.paid_at).map((i) => i.restaurant_id));
-  const billedThisPeriod = new Set(live.filter((i) => i.period === period).map((i) => i.restaurant_id));
+  const paidThisPeriod = new Set(live.filter((i) => invoiceCovers(i, period) && i.paid_at).map((i) => i.restaurant_id));
+  const billedThisPeriod = new Set(live.filter((i) => invoiceCovers(i, period)).map((i) => i.restaurant_id));
 
   // ── 파트너 매장
   for (const s of stores) {
@@ -116,7 +116,7 @@ export function buildBlockers(
       } else if (!o?.contract_started_on) {
         out.push({ id: `start:${s.restaurant_id}`, kind: "money", rank: 0, name: s.name, note: campus,
           why: "계약 시작일이 없어 청구가 나가지 않습니다.", action: store });
-      } else if (o?.pay_cycle !== "LUMP" && !billedThisPeriod.has(s.restaurant_id)) {
+      } else if (o?.pay_cycle !== "LUMP" && isBillingMonth(o, period) && !billedThisPeriod.has(s.restaurant_id)) {
         out.push({ id: `bill:${s.restaurant_id}`, kind: "money", rank: 1, name: s.name, note: campus,
           why: `${Number(period.slice(5))}월 청구가 아직 만들어지지 않았습니다.`, action: money });
       } else if (o?.pay_cycle !== "LUMP" && !paidThisPeriod.has(s.restaurant_id)) {

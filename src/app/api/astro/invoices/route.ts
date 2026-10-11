@@ -4,7 +4,7 @@ import { readDraft, writeDraft } from "@/lib/draft/store";
 import { seedInvoices, seedIssuer, seedStoreOps } from "@/lib/draft/seed";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
-import { emptyStoreOps, isPaidTier, type BackendRestaurant, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
+import { addPeriod, billingMonthsOf, emptyStoreOps, invoiceCovers, isBillingMonth, isPaidTier, periodRangeLabel, type BackendRestaurant, type IssuerSettings, type StoreOps, type TaxInvoice } from "@/lib/draft/types";
 import { notifyPartnerOps } from "@/lib/slack";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 
@@ -13,6 +13,7 @@ import { remoteGet, remoteSend } from "@/lib/draft/remote";
  *
  * 세발에서 가져온 것: 품의 → 승인 → 발행 세 단계, 단계마다 슬랙(📄/🧾/✅).
  * 우리가 더한 것: **월납 청구 자동 생성** — 유료 매장 × 월 이용료를 매월 한 번에 품의로 세운다.
+ * 매장이 "N개월분씩"(billing_months)으로 정해져 있으면 청구 시작 월부터 N달 간격의 달에만 만들고, 금액은 월 이용료 × N, 계산서는 첫 달(period)부터 N달을 덮는다.
  * 세발 분석(0830)이 말한 "만드는 이유의 80%"가 이것이다.
  */
 
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ invoices: r.data?.invoices ?? [], draft: false });
   }
   let list = readDraft<TaxInvoice[]>(KEY, seedInvoices);
-  if (period) list = list.filter((i) => i.period === period);
+  if (period) list = list.filter((i) => invoiceCovers(i, period));
   return NextResponse.json({ invoices: list, draft: true });
 }
 
@@ -62,13 +63,15 @@ export async function POST(req: NextRequest) {
   const remoteList = await remoteGet<{ invoices: TaxInvoice[] }>("/api/astro/invoices/");
   const onBackend = remoteList.handled && remoteList.ok;
   const existing = onBackend ? (remoteList.data?.invoices ?? []) : readDraft<TaxInvoice[]>(KEY, seedInvoices);
-  const have = new Set(existing.filter((i) => i.period === period && i.status !== "CANCELED" && i.status !== "REJECTED").map((i) => i.restaurant_id));
+  const live = existing.filter((i) => i.status !== "CANCELED" && i.status !== "REJECTED");
+  // 그 매장에서 [period, period+n) 중 한 달이라도 이미 덮인 계산서가 있으면 새로 만들지 않는다.
+  const hasOverlap = (rid: number, n: number) => live.some((i) => i.restaurant_id === rid && Array.from({ length: n }, (_, k) => addPeriod(period, k)).some((p) => invoiceCovers(i, p)));
 
   const actor = await actorName();
 
   // 이미 그 달 청구가 있는 매장에 입금만 찍으러 온 경우 — 새로 만들지 않고 그 건을 쓴다.
   if (paid_on !== undefined && only !== null) {
-    const found = existing.find((i) => i.restaurant_id === only && i.period === period && !["CANCELED", "REJECTED"].includes(i.status));
+    const found = existing.find((i) => i.restaurant_id === only && invoiceCovers(i, period) && !["CANCELED", "REJECTED"].includes(i.status));
     if (found) {
       if (found.paid_at) return NextResponse.json({ detail: "이미 입금 확인된 건입니다." }, { status: 409 });
       if (onBackend) {
@@ -102,18 +105,23 @@ export async function POST(req: NextRequest) {
     // 청구 시작 월 전이면 만들지 않는다 — 월 중간 합류 매장은 이번 달/다음 달을 고르게 했다
     const start = o?.billing_start_period ?? (o?.contract_started_on ? o.contract_started_on.slice(0, 7) : null);
     if (start && period < start) { skipped.push(`${s.name} (${Number(start.slice(5))}월부터)`); continue; }
-    if (have.has(s.restaurant_id)) continue;
+    // 여러 달치 매장은 끊는 달이 아니면 만들지 않는다 (앞 계산서가 이 달을 이미 덮고 있거나, 아직 차례가 아님)
+    const n = billingMonthsOf(o);
+    if (!isBillingMonth(o, period)) continue;
+    if (hasOverlap(s.restaurant_id, n)) continue;
     // 월 이용료는 VAT 포함(시트 열 이름). 공급가 = 합계 / 1.1, 세액 = 나머지.
-    const supply = Math.round(fee / 1.1);
-    const tax = fee - supply;
+    const total = fee * n;
+    const supply = Math.round(total / 1.1);
+    const tax = total - supply;
     created.push({
       // 반려·취소 뒤 재청구는 같은 id 를 두 번 만들면 안 된다 — 뒤에 -2, -3 을 붙인다.
       id: (() => { const base = `inv-${period}-${s.restaurant_id}`; let id = base; for (let k = 2; existing.some((i) => i.id === id); k++) id = `${base}-${k}`; return id; })(),
       restaurant_id: s.restaurant_id,
       name: s.name,
-      title: issuer.item_template.replace("{period}", label),
+      title: issuer.item_template.replace("{period}", periodRangeLabel(period, n)),
       period,
-      supply, tax, total: fee,
+      months: n,
+      supply, tax, total,
       tax_type: "TAXABLE",
       receipt_type: "CLAIM",
       write_date: now.slice(0, 10),
