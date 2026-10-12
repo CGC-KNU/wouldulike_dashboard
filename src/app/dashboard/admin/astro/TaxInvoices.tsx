@@ -91,6 +91,8 @@ export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; i
   // 딥링크 `?open=<id>` — 슬랙 알림에서 바로 이 항목을 연다
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
   const [settings, setSettings] = useState(false);
+  // 일괄 생성 때 몇 개월분씩 묶을지. "" 이면 매장 상세의 '계산서 주기'를 따른다.
+  const [bundle, setBundle] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -116,10 +118,10 @@ export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; i
     if (busy) return;
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/astro/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, requested_by: actor }) });
+      const res = await fetch("/api/astro/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period, requested_by: actor, ...(bundle ? { months: Number(bundle) } : {}) }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setMsg(d.detail); return; }
-      setMsg(`${period} 품의 ${d.created}건 생성${d.skipped?.length ? ` · 건너뜀 ${d.skipped.length}건 (${d.skipped.join(", ")})` : ""}`);
+      setMsg(`${period}${bundle ? ` 부터 ${bundle}개월분` : ""} 품의 ${d.created}건 생성${d.skipped?.length ? ` · 건너뜀 ${d.skipped.length}건 (${d.skipped.join(", ")})` : ""}`);
       load();
     } finally { setBusy(false); }
   }
@@ -149,7 +151,11 @@ export default function TaxInvoices({ actor, isAdmin, onGo }: { actor: string; i
           <>
             <DraftBadge note="볼타 미연결. 발행 완료는 사람이 표시합니다." />
             <Button icon={<IconSettings />} onClick={() => setSettings(true)}>발행 주체 설정</Button>
-            <Button variant="primary" icon={<IconPlus />} onClick={generate} disabled={busy}>{busy ? "생성 중…" : `${Number(period.slice(5))}월분 일괄 생성`}</Button>
+            <Select value={bundle} onChange={(e) => setBundle(e.target.value)} aria-label="묶음 단위" className="w-40" title="일괄 생성 때 몇 개월분씩 한 장으로 끊을지">
+              <option value="">매장 설정대로</option>
+              {[1, 2, 3, 6, 12].map((n) => <option key={n} value={n}>{n === 1 ? "1개월(매월)" : `${n}개월분 묶음`}</option>)}
+            </Select>
+            <Button variant="primary" icon={<IconPlus />} onClick={generate} disabled={busy}>{busy ? "생성 중…" : bundle && bundle !== "1" ? `${Number(period.slice(5))}월부터 ${bundle}개월분 생성` : `${Number(period.slice(5))}월분 일괄 생성`}</Button>
           </>
         }
       >
