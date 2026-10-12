@@ -33,12 +33,18 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ invoices: list, draft: true });
 }
 
-/** POST { period: "2026-09", requested_by } → 그 달 계산서가 없는 유료 매장마다 품의(PENDING) 생성 */
+/**
+ * POST { period: "2026-09", requested_by, months? } → 그 달 계산서가 없는 유료 매장마다 품의(PENDING) 생성.
+ * months(1~12)를 주면 이번 생성에 한해 모든 매장을 그 개월 수로 묶어 period 부터 끊는다(매장 설정·끊는 달 규칙을 무시).
+ * 안 주면 매장별 billing_months 를 따른다.
+ */
 export async function POST(req: NextRequest) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
-  const { period, requested_by, restaurant_id, paid_on } = (await req.json().catch(() => ({}))) as { period?: string; requested_by?: string; restaurant_id?: number; paid_on?: string };
+  const { period, requested_by, restaurant_id, paid_on, months: monthsIn } = (await req.json().catch(() => ({}))) as { period?: string; requested_by?: string; restaurant_id?: number; paid_on?: string; months?: number };
   if (!period || !/^\d{4}-\d{2}$/.test(period)) return NextResponse.json({ detail: "period 는 YYYY-MM 이어야 합니다." }, { status: 400 });
+  const forced = monthsIn === undefined || monthsIn === null ? null : Number(monthsIn);
+  if (forced !== null && (!Number.isInteger(forced) || forced < 1 || forced > 12)) return NextResponse.json({ detail: "months 는 1~12 사이 정수여야 합니다." }, { status: 400 });
   // restaurant_id 를 주면 그 매장 한 곳만 만든다 — 입금 현황 표에서 한 줄만 되살릴 때 (민열님 0914).
   const only = typeof restaurant_id === "number" ? restaurant_id : null;
   // paid_on 을 같이 주면 **만들고 곧바로 입금까지 찍는다.**
@@ -106,8 +112,8 @@ export async function POST(req: NextRequest) {
     const start = o?.billing_start_period ?? (o?.contract_started_on ? o.contract_started_on.slice(0, 7) : null);
     if (start && period < start) { skipped.push(`${s.name} (${Number(start.slice(5))}월부터)`); continue; }
     // 여러 달치 매장은 끊는 달이 아니면 만들지 않는다 (앞 계산서가 이 달을 이미 덮고 있거나, 아직 차례가 아님)
-    const n = billingMonthsOf(o);
-    if (!isBillingMonth(o, period)) continue;
+    const n = forced ?? billingMonthsOf(o);
+    if (forced === null && !isBillingMonth(o, period)) continue;
     if (hasOverlap(s.restaurant_id, n)) continue;
     // 월 이용료는 VAT 포함(시트 열 이름). 공급가 = 합계 / 1.1, 세액 = 나머지.
     const total = fee * n;
