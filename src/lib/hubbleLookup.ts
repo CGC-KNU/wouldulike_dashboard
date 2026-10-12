@@ -39,11 +39,20 @@ export function searchStores(stores: Store[], q: string, limit = 20): Store[] {
 }
 
 // 지점 꼬리 — 「랜돌프비어 대구계명대점」 「BHC 경대북문점」. 브랜드 글자를 먹지 않게 알려진 말만 뗀다(hubble.ts matchTies 와 같은 규칙).
-const TAIL = /(?:대구|경산|경북대|경대|계명대|계대|영남대|영대|대구대|북문|정문|남문|동문|서문|후문|쪽문|캠퍼스|역)+본?점$|본점$/;
+const TAIL = /(?:대구|경산|경북|경북대|경대|계명대|계대|영남대|영대|대구대|성서|대현|북문|정문|남문|동문|서문|후문|쪽문|캠퍼스|역)+본?점$|본점$/;
 const key = (n: string) => normName(n).replace(TAIL, "");
 
-/** 후보 이름 하나에 맞는 허블 매장 — 0 · 1 · 여러 곳 */
-export function matchName(stores: Store[], name: string): Store[] {
+const digits = (v?: string | null) => (v ?? "").replace(/\D/g, "");
+
+/** 후보 이름 하나에 맞는 허블 매장 — 0 · 1 · 여러 곳. 이름이 안 맞으면 전화번호(인허가 전화)로 한 번 더 */
+export function matchName(stores: Store[], name: string, phone?: string | null): Store[] {
+  const byName = matchByName(stores, name);
+  if (byName.length) return byName;
+  const t = digits(phone);
+  return t.length >= 9 ? stores.filter((s) => digits(s.t) === t) : [];
+}
+
+function matchByName(stores: Store[], name: string): Store[] {
   const k = key(name);
   if (k.length < 2) return [];
   const exact = stores.filter((s) => normName(s.n) === normName(name) || key(s.n) === k);

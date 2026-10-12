@@ -28,7 +28,7 @@ export default function LeadNameSync({ open, onClose, leads, onDone }: { open: b
         const stores = await campusStores(campus).catch(() => [] as Store[]);
         for (const l of leads.filter((x) => (x.campus ?? "") === campus)) {
           const byId = l.memo?.match(/인허가 (\S+)/)?.[1];
-          const hits = byId ? stores.filter((s) => s.id === byId) : matchName(stores, l.name);
+          const hits = byId ? stores.filter((s) => s.id === byId) : matchName(stores, l.name, l.phone);
           const same = hits.some((h) => h.n === l.name);
           if (!hits.length || same) { out.push({ lead: l, hits, pick: same ? l.name : "", on: false }); continue; }
           out.push({ lead: l, hits, pick: hits.length === 1 ? hits[0].n : "", on: hits.length === 1 });
