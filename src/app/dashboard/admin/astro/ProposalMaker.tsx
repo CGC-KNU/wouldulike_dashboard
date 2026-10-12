@@ -83,27 +83,19 @@ export default function ProposalMaker({ open, onClose, isAdmin }: { open: boolea
     f.onload = paint;
   }, [srcDoc, campus, title, storeName, pick]);
 
-  async function download() {
+  // PDF — 양식에 이미 있는 인쇄 설정(@page 1280×720, 한 장씩 끊기)을 그대로 쓴다. 이미지로 뜨면 첫 장에서 멈췄고(1012),
+  // 인쇄로 만들면 글자가 벡터라 더 선명하다. 파일 이름은 문서 제목으로 잡힌다.
+  function download() {
+    const w = frame.current?.contentWindow;
     const d = frame.current?.contentDocument;
-    if (!d) return;
-    setBusy("PDF 만드는 중…"); setErr(null);
-    try {
-      const pages = Array.from(d.querySelectorAll<HTMLElement>(".ms"));
-      if (!pages.length) throw new Error("양식에서 페이지(.ms)를 찾지 못했습니다.");
-      const { toJpeg } = await import("html-to-image");
-      const { jsPDF } = await import("jspdf");
-      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1280, 720], hotfixes: ["px_scaling"] });
-      for (let i = 0; i < pages.length; i++) {
-        setBusy(`PDF 만드는 중… ${i + 1}/${pages.length}`);
-        const img = await toJpeg(pages[i], { pixelRatio: 2, quality: 0.92, width: 1280, height: 720, cacheBust: true });
-        if (i) pdf.addPage([1280, 720], "landscape");
-        pdf.addImage(img, "JPEG", 0, 0, 1280, 720);
-      }
-      const safe = (storeName.trim() || "매장").replace(/[\\/:*?"<>|]/g, "");
-      pdf.save(`우주라이크_제안서_${safe}_${campus}.pdf`);
-    } catch (e) {
-      setErr(`PDF 를 만들지 못했습니다 — ${(e as Error).message}`);
-    } finally { setBusy(null); }
+    if (!w || !d) return;
+    const safe = (storeName.trim() || "매장").replace(/[\\/:*?"<>|]/g, "");
+    d.title = `우주라이크_제안서_${safe}_${campus}`;
+    const prev = document.title;
+    document.title = d.title;
+    w.focus();
+    w.print();
+    setTimeout(() => { document.title = prev; }, 1500);
   }
 
   async function upload(f: File) {
@@ -170,6 +162,7 @@ export default function ProposalMaker({ open, onClose, isAdmin }: { open: boolea
               </div>
             ) : <p className="p-4 text-gray-400">{tpl === undefined ? "양식을 불러오는 중…" : "양식이 없습니다."}</p>}
           </div>
+          <p className="text-[12px] text-navy bg-navy/[0.05] rounded-lg px-2.5 py-1.5 mt-1.5">「PDF 받기」 → 인쇄 창에서 대상을 <b>PDF로 저장</b>으로 두고 저장하세요. 크기 · 여백은 양식이 정해 둡니다(1280×720, 6장).</p>
           <p className="text-[11.5px] text-gray-400 mt-1">표지만 바뀝니다. 요금 · 실적 숫자는 양식(9/15판) 그대로입니다 — 구독 개편 v2 는 다음 학기 적용이라 이번 학기 제안서는 이 판을 씁니다.</p>
         </section>
       </div>
