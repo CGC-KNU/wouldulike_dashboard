@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport, IconTargetArrow } from "@tabler/icons-react";
+import { IconArrowRight, IconBuildingStore, IconDownload, IconExternalLink, IconLayoutKanban, IconPlus, IconSearch, IconTable, IconTableImport, IconTargetArrow, IconTelescope } from "@tabler/icons-react";
 import EndContractButton from "./EndContractButton";
 import DuplicateStoreChoice, { dupsOf, type DupStore } from "./DuplicateStoreChoice";
 import { ALL_LEAD_STAGES, APP_CATEGORIES, CAMPUSES, INTENT_LABEL, LEAD_SIDE_STAGES, LEAD_STAGES, PROPOSED_PLANS, type Campus, type Lead, type LeadIntent, type LeadStage } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
 import { INSTA_STATES, fitOf, type InstaState } from "@/lib/draft/fit";
+import LeadNameSync from "./LeadNameSync";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, PageHeader, PanelSection, Segmented, Select, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, daysSince, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 import ActivityLog from "./ActivityLog";
 import CampusPicker, { allCampuses } from "./CampusPicker";
@@ -68,6 +69,7 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -135,6 +137,8 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
           <>
             {draft.on && <DraftBadge note={draft.note} />}
             <Button icon={<IconTableImport />} onClick={() => setImporting(true)}>불러오기</Button>
+            {/* 1012: 허블 매장명(인허가 상호)이 공식 이름 — 후보 이름을 거기에 맞춘다 */}
+            <Button icon={<IconTelescope size={16} />} onClick={() => setSyncing(true)}>허블 매장명으로 맞추기</Button>
             <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>후보 추가</Button>
           </>
         }
@@ -149,6 +153,7 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
           </div>
         </div>
       </PageHeader>
+      <LeadNameSync open={syncing} onClose={() => setSyncing(false)} leads={leads} onDone={load} />
 
       <div className="sat-stagger grid grid-cols-3 gap-2.5 mb-5">
         <Kpi label="진행 중" value={loading ? "-" : active.length} hint={`연락 전 ${active.filter((l) => l.stage === "미컨택").length} · 합의 이후 ${active.filter((l) => l.stage === "구두 합의" || l.stage === "계약 완료").length}`} />
