@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconBuildingStore, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-react";
+import { IconBuildingStore, IconFileText, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-react";
 import { Button, Card, Chip, Empty, FilterPills, Input, PageHeader, Segmented, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
 import { allCampuses } from "./CampusPicker";
 import OnboardLink from "./OnboardLink";
@@ -11,6 +11,7 @@ import CampusMark from "./CampusMark";
 import NewStorePanel from "./NewStorePanel";
 import DuplicateStoreChoice, { dupsOf, type DupStore } from "./DuplicateStoreChoice";
 import EndContractButton from "./EndContractButton";
+import ProposalMaker from "./ProposalMaker";
 
 /**
  * 파트너 계약 — **매장 추가 → 링크 발급 → 계약 → 반영** 한 사이클을 한 화면에서.
@@ -148,6 +149,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
    * 팀원이 실제로 하는 일은 "추가 → 링크 발급 → 문안 전달" 한 줄인데 화면이 그 줄을 끊고 있었다.
    */
   const [adding, setAdding] = useState(false);
+  const [proposal, setProposal] = useState(false);
   const [justAdded, setJustAdded] = useState<{ rid: number; name: string } | null>(null);
   /** '후보' 행에서 매장 만들기 — 후보 탭의 "계약·매장 탭으로 보내기" 와 같은 경로(convert) */
   const [making, setMaking] = useState<string | null>(null);
@@ -225,7 +227,9 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
         actions={
           <>
             <Button icon={<IconRefresh size={16} />} disabled={busy} onClick={load}>{busy ? "읽는 중…" : "새로고침"}</Button>
-            <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>매장 추가</Button>
+            {/* 1012 민열님: 새로고침과 파트너 추가 사이 — 허블 매장명으로 표지를 채운 제안서 PDF */}
+            <Button icon={<IconFileText size={16} />} onClick={() => setProposal(true)}>제안서 만들기</Button>
+            <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>파트너 추가</Button>
           </>
         }
       >
@@ -340,6 +344,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
           conflicts={r?.conflicts ?? []} onTake={r ? (c) => takeOwnerValue(r, c) : undefined}
           canApprove={r?.stage === "승인대기"} onApprove={r ? () => { applyRow(r); setDetailOf(null); } : undefined} approving={applying === detailOf.rid} />;
       })()}
+      <ProposalMaker open={proposal} onClose={() => setProposal(false)} isAdmin />
       {adding && (
         <NewStorePanel
           actor={actor}
