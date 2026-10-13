@@ -23,6 +23,8 @@ export interface BackendRestaurant {
   is_affiliate?: boolean;
   /** 식당 앱 목록·검색·상세에서 빼 둔 상태. 제휴 여부와 별개다. */
   hidden_from_app?: boolean;
+  /** 앱이 보는 대학가(restaurants_affiliate.campus). 비면 "" — Astro 운영 필드의 캠퍼스와 다른 칸이다. */
+  campus?: string;
 }
 
 /** Astro 화면 한 행 = 백엔드 매장 + 운영 필드. */

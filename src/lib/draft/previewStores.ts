@@ -17,6 +17,8 @@ export interface PreviewRestaurant {
   tier: string | null;
   is_affiliate: boolean;
   hidden_from_app?: boolean;
+  /** 미리보기 스냅샷엔 앱 대학가가 없다 — 비워 두면 정합성의 대학가 규칙이 판정하지 않는다 */
+  campus?: string;
 }
 
 export const PREVIEW_SNAPSHOT_DATE = "2026-09-10";
