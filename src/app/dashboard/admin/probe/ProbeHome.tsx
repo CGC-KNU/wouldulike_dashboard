@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { IconBrandSlack } from "@tabler/icons-react";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import { Button, Card, Chip, Kpi, PageHeader, Skeleton, todayLocal } from "../_shared/ui";
+import { fetchJson } from "../_shared/fetchJson";
 
 /**
  * Probe · 홈. 세 화면(매장 지표 · 앱 지표 · 정합성)의 머리만 모아 놓는다.
@@ -25,10 +26,9 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const [failed, setFailed] = useState<string[]>([]);
 
   useEffect(() => {
+    // 런처의 현황(useSatelliteStatus)이 방금 읽은 주소는 fetchJson 이 30초 안의 값을 같이 쓴다 — 같은 걸 다시 부르지 않는다(1013)
     const j = (u: string, label: string) =>
-      fetch(u)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null)
+      fetchJson<Record<string, any>>(u) // eslint-disable-line @typescript-eslint/no-explicit-any
         .then((d) => {
           if (d === null) setFailed((prev) => (prev.includes(label) ? prev : [...prev, label]));
           return d;

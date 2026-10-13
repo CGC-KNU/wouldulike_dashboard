@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { IconFolder } from "@tabler/icons-react";
 import { TOOLS, TOOL_ORDER, slackUrl, type ToolKey, type ToolMeta } from "@/lib/satellite";
-import { focusRing, periodLocal } from "./ui";
+import { focusRing } from "./ui";
 import type { SatelliteStatus } from "./useSatelliteStatus";
 import WeekIssues from "./WeekIssues";
 import { greetingFor, addressee } from "./greeting";
@@ -25,10 +25,6 @@ import OrbitCard from "../orbit/OrbitCard";
  * 못 읽으면 자리를 비운다 — 0 을 지어내지 않는다. 장식은 없고 위계는 크기와 무게, 아이콘의 색면 하나로만 낸다.
  */
 
-interface Pulse {
-  astro?: { stuck: number; leads: number; stale: number };
-}
-
 const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
   live: { label: "가동 중", cls: "text-emerald-600" },
   draft: { label: "초안", cls: "text-amber-600" },
@@ -42,36 +38,6 @@ export interface LauncherExtra { key: string; name: string; subtitle?: string; d
 const extraCls = "w-full h-full text-left rounded-[14px] border border-white/70 bg-white/70 backdrop-blur px-3 py-2 flex items-center gap-2.5 hover:border-navy/20 transition-colors";
 
 export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, onPlayroom, onOrbit, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onPlayroom?: () => void; onSelect: (key: string) => void; onOrbit?: (id?: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
-  const [pulse, setPulse] = useState<Pulse>({});
-
-  useEffect(() => {
-    // 늦는 한 곳 때문에 카드 숫자가 통째로 안 뜨는 걸 막는다 (useSatelliteStatus 와 같은 이유)
-    const j = (u: string) =>
-      fetch(u, { signal: AbortSignal.timeout(8000) })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-    const period = periodLocal();
-    // Castor 는 보류 상태라 부르지 않는다. 안 쓰는 툴의 숫자를 매 로그인마다 받아 올 이유가 없다 (0914).
-    // Probe 숫자는 여기서 따로 세지 않는다 — 사이드바 배지·세티와 같은 `status`(useSatelliteStatus)를 쓴다 (아래 blocked).
-    Promise.all([j("/api/astro/stores"), j("/api/astro/leads"), j(`/api/astro/invoices?period=${period}`)]).then(
-      ([stores, leads, inv]) => {
-        const next: Pulse = {};
-        if (stores?.stores) {
-          type S = { restaurant_id: number; tier: string | null; is_affiliate: boolean; ops: { billing?: string; pay_cycle?: string | null; is_test?: boolean } | null };
-          const paid = (stores.stores as S[]).filter((s) => s.is_affiliate && (s.tier === "BOOST" || s.tier === "CONTENT") && !s.ops?.is_test && s.ops?.billing !== "EXEMPT");
-          const paidIds = new Set(((inv?.invoices ?? []) as { restaurant_id: number; paid_at: string | null; status: string }[]).filter((i) => i.paid_at && !["CANCELED", "REJECTED"].includes(i.status)).map((i) => i.restaurant_id));
-          // 월납은 이번 달 계산서 입금, 일시납은 매장 상태값 — 매장 현황 화면과 같은 기준
-          const stuck = paid.filter((s) => (s.ops?.pay_cycle === "LUMP" ? s.ops?.billing !== "PAID" : !paidIds.has(s.restaurant_id))).length;
-          const ls = (leads?.leads ?? []) as { stage: string; last_touch_at: string | null }[];
-          const activeLeads = ls.filter((l) => !["재컨택", "보류", "거절"].includes(l.stage));
-          const stale = activeLeads.filter((l) => l.stage !== "계약 완료" && l.last_touch_at && Date.now() - Date.parse(l.last_touch_at) > 7 * 86_400_000).length;
-          next.astro = { stuck, leads: activeLeads.length, stale };
-        }
-        setPulse(next);
-      }
-    );
-  }, []);
-
   // Atlas 는 도구가 아니라 회사 소개라 「그 밖」 줄로, Orbit 은 맨 위 카드로 간다 (1011)
   const tools = TOOL_ORDER.map((k) => TOOLS[k]).filter((t) => t.status !== "external" && t.key !== "atlas" && t.key !== "orbit" && available.includes(t.key));
   const [libraOpen, setLibraOpen] = useState(false);
@@ -117,13 +83,13 @@ export default function Launcher({ available, extras = [], userName, username = 
       <ul aria-label="도구" className="sat-stagger grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {tools.map((t) => {
           const st = STATUS[t.status];
-          const p = pulse[t.key as keyof Pulse];
           const hold = t.status === "hold";
           /**
-           * Probe = 리포트 만들 때(14일차 지났는데 리포트 없음) + 이번 달 보류 회차. Probe 홈·리포트·마일리지 화면과 같은 기준이다.
-           * 1013 전에는 여기서 따로 세면서 2~20일 된 게시물을 리포트가 있어도 다 셌다 — 런처 숫자만 혼자 컸다.
+           * 막힌 것 — 사이드바 배지·세티와 같은 `status`(useSatelliteStatus)에서 센다. 런처가 따로 부르지 않는다(1013).
+           *   Astro = 입금 안 된 유료 매장 + 7일 넘게 멈춘 후보 · Probe = 리포트 만들 때(14일차) + 이번 달 보류 회차
+           * 전에는 런처가 같은 주소를 fetchJson 밖에서 또 불렀다 — 겹친 요청이 백엔드를 503 으로 만든 0919 와 같은 모양.
            */
-          const blocked = t.key === "astro" && p ? p.stuck + p.stale
+          const blocked = t.key === "astro" ? (status?.billing?.unpaid ?? 0) + (status?.leads?.stale ?? 0)
             : t.key === "probe" && status?.probe ? status.probe.due + status.probe.held : 0;
           return (
             <li key={t.key} className="min-w-0">
