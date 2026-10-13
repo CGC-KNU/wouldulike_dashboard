@@ -16,11 +16,6 @@ const seed = (): StoreReport[] => [];
 const BASE = () => process.env.NEXT_PUBLIC_API_URL ?? "";
 export const reportsOnBackend = () => Boolean(BASE());
 
-/** 점주에게 링크를 내보내도 되는 저장소인가 — 재배포에도 살아남아야 한다 */
-export function reportStorePersistent(): boolean {
-  return reportsOnBackend() || Boolean(process.env.DRAFT_DATA_DIR) || process.env.REPORT_STORE === "persistent";
-}
-
 export class ReportStoreError extends Error {
   constructor(public status: number, detail: string) { super(detail); }
 }
