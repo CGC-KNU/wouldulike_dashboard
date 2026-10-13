@@ -42,9 +42,17 @@ export async function readCastorHealth(days = 7, env: Record<string, string | un
        FROM ${T} WHERE _TABLE_SUFFIX BETWEEN @start AND @end GROUP BY name ORDER BY d7 DESC`,
     { start, end }
   );
+  // 네이티브 자동 화면 기록(iOS FlutterViewController · Android MainActivity)은 앱이 열릴 때마다 이름 없이 찍힌다.
+  // 화면 ID 와 상관없는 잡음이라 화면 기록에서 빼고 건수만 따로 둔다(1013).
+  const NATIVE = `(SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'firebase_screen') IS NULL
+    AND REGEXP_CONTAINS(IFNULL((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'firebase_screen_class'), ''), r'(ViewController|Activity)$')`;
   const screenViews = await c.run<{ screen: string; views: number }>(
     `SELECT COALESCE((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'firebase_screen'), '(이름 없음)') AS screen, COUNT(*) AS views
-       FROM ${T} WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'screen_view' GROUP BY screen ORDER BY views DESC LIMIT 40`,
+       FROM ${T} WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'screen_view' AND NOT (${NATIVE}) GROUP BY screen ORDER BY views DESC LIMIT 40`,
+    { start, end }
+  );
+  const [auto] = await c.run<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM ${T} WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'screen_view' AND ${NATIVE}`,
     { start, end }
   );
   const [uid] = await c.run<{ share: number | null }>(
@@ -105,6 +113,7 @@ export async function readCastorHealth(days = 7, env: Record<string, string | un
     weekly: weekly.map((w) => ({ wk: w.wk, opened: Number(w.opened), redeemed: Number(w.redeemed) })),
     events: events.map((e) => ({ name: e.name, d7: Number(e.d7), last_day: Number(e.last_day), devices7: Number(e.devices7) })),
     screen_views: screenViews.map((s) => ({ screen: s.screen, views: Number(s.views) })),
+    auto_screen_views: Number(auto?.n ?? 0),
     user_id_share: uid?.share == null ? null : Number(uid.share),
     flows,
   };
