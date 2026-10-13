@@ -30,21 +30,6 @@ interface BackendStats {
   stamp_earned_this_month?: number;
 }
 
-/** 백엔드를 34번 동시에 때리지 않도록 한 번에 6개씩만 보낸다. */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (cursor < items.length) {
-        const i = cursor++;
-        out[i] = await fn(items[i]);
-      }
-    })
-  );
-  return out;
-}
-
 /** 탭을 오갈 때마다 백엔드를 35번 때리지 않도록 60초만 기억한다. 제자리는 Django 의 집계 쿼리다. */
 let cached: { at: number; body: unknown } | null = null;
 const TTL = 60_000;
@@ -87,20 +72,16 @@ export async function GET() {
   });
 
   /**
-   * 전 매장 지표는 한 번에 받는다 (백엔드 #37). 예전에는 매장마다 `/stats/` 를 불러 34번을 때렸고
-   * 응답이 25초를 넘겨 화면이 '읽지 못했습니다'로 떨어졌다. 집계가 성공하면 **줄이 없는 매장은
-   * 활동이 0인 것**이지 모름이 아니다. 옛 백엔드(404)면 예전 방식으로 내려간다.
+   * 전 매장 지표는 한 번에 받는다 (백엔드 #37). 집계가 성공하면 **줄이 없는 매장은 활동이 0인 것**이지 모름이 아니다.
+   * 못 읽으면 전부 '모름'(unavailable)이다. 1013 전에는 이때 매장마다 `/stats/` 를 34번 부르는 옛 길로 내려갔는데,
+   * 그 길이 25초를 넘겨 '읽지 못했습니다'로 떨어져서 bulk 를 만든 것이다 — 같은 실패를 한 번 더 기다릴 이유가 없다.
    */
   const bulk = await fetchBackendJson<{ stats?: Record<string, StatsEnvelope["stats"]> }>(
     "/api/dashboard/stats/bulk/"
   );
   const bulkStats = bulk?.stats ?? null;
 
-  const stores: StoreMetric[] = bulkStats
-    ? restaurants.map((r) => toMetric(r, bulkStats[String(r.restaurant_id)] ?? {}))
-    : await mapLimit(restaurants, 6, async (r) =>
-        toMetric(r, (await fetchBackendJson<StatsEnvelope>("/api/dashboard/stats/", `restaurant_id=${r.restaurant_id}`))?.stats ?? null)
-      );
+  const stores: StoreMetric[] = restaurants.map((r) => toMetric(r, bulkStats ? bulkStats[String(r.restaurant_id)] ?? {} : null));
 
   // 화면이 캠퍼스별로 다시 셀 때도 같은 함수를 쓴다 (storeMetrics.ts)
   const totals = summarizeStoreMetrics(stores);

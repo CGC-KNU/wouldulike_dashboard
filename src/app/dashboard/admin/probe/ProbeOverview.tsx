@@ -139,7 +139,7 @@ export default function ProbeOverview() {
           <Notice tone="amber" title="지표를 한 곳도 읽지 못했습니다">
             {source === "preview-snapshot"
               ? "미리보기 모드는 매장 목록만 갖고 있고 지표는 지어내지 않습니다. 백엔드에 붙이면 채워집니다."
-              : "백엔드의 /api/dashboard/stats 가 응답하지 않습니다. 아래 표의 '-' 는 0 이 아니라 '모름'입니다."}
+              : "백엔드의 매장 지표 집계(/api/dashboard/stats/bulk/)가 응답하지 않습니다. 아래 표의 '-' 는 0 이 아니라 '모름'입니다."}
           </Notice>
         </div>
       )}
