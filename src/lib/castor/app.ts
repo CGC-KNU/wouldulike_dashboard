@@ -147,6 +147,7 @@ export interface CastorHealth {
   redeem_lag: { d: number; n: number }[]; // 0..7(7=7일 이상)
   weekly: { wk: string; opened: number; redeemed: number }[];
   screen_views: { screen: string; views: number }[];
+  auto_screen_views?: number; // 네이티브 자동 화면 기록 — screen_views 에서 뺀 건수
   user_id_share: number | null; // 최근 7일 이벤트 중 user_id 가 붙은 비율(%)
   flows: Flow[];
 }

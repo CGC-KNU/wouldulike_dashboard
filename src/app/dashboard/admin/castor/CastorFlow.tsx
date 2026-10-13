@@ -108,7 +108,7 @@ export default function CastorFlow() {
               <div className="cx-card-h"><b>이벤트 감시</b><span className="cx-cap">코드엔 있는데 이 기간 0건 · {silent.length}개</span></div>
               {silent.length === 0 ? <p className="cx-cap">끊긴 이벤트가 없습니다.</p> : <div className="cx-chips">{silent.map((n) => <span key={n} style={{ borderColor: "var(--cx-bad)", color: "var(--cx-bad)", cursor: "default" }}><code style={{ background: "none", color: "inherit" }}>{n}</code></span>)}</div>}
               <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-[12.5px]">
-                <span className="cx-sub md:col-span-2">화면 기록(screen_view) — &apos;(이름 없음)&apos;이 많으면 지도 이동량을 못 그립니다</span>
+                <span className="cx-sub md:col-span-2">화면 기록(screen_view) — &apos;(이름 없음)&apos;이 많으면 지도 이동량을 못 그립니다{h.auto_screen_views ? ` · 앱 자동 기록 ${h.auto_screen_views.toLocaleString()}건은 뺌` : ""}</span>
                 {h.screen_views.slice(0, 12).map((s) => <div key={s.screen} className="flex justify-between gap-2"><span className={s.screen === "(이름 없음)" ? "text-red-600 font-semibold" : "font-mono"}>{s.screen}</span><span className="tabular-nums cx-cap">{s.views.toLocaleString()}</span></div>)}
               </div>
             </div>
