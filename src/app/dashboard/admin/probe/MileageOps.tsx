@@ -56,7 +56,8 @@ export default function MileageOps({ actor }: { actor: string }) {
 
   async function patch(id: string, body: Partial<Pick<Round, "pool_count" | "result" | "note">>) {
     const res = await fetch("/api/probe/mileage", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...body, by: actor }) });
-    if (res.ok) { const d = await res.json().catch(() => ({})); setData((prev) => prev && { ...prev, rounds: prev.rounds.map((r) => (r.id === id ? d.round : r)) }); }
+    // 저장한 뒤 다시 읽는다 — 백엔드가 돌려준 회차를 그대로 끼우면 앱 실측(응모·추첨 완료)과 좌석 규칙이 빠진 채 보였다(1013)
+    if (res.ok) load();
   }
 
   return (
