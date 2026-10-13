@@ -284,6 +284,16 @@ test("주간 값에서 못 센 칸은 0 이 아니라 비우고 이유를 적는
   assert.ok((d as { caveats: string[] }).caveats.some((c) => c.includes("못 센 칸이 있습니다")));
 });
 
+test("당첨과 교환 중 한쪽을 못 세면 합을 0 으로 메우지 않는다", () => {
+  // 교환만 알고 당첨을 모르면 예전의 합은 교환 건수였다 — 당첨이 0인 것처럼 읽힌다
+  const d = weekly({ week: week({ mileage_winners: null }, true, ["mileage_winners"]) });
+  const m = find(d, "mileage_winners");
+  assert.equal(m.value, null);
+  assert.equal(m.status, "pending");
+  assert.equal(m.prev, undefined, "이번 주가 비었는데 전주 대비를 붙이면 안 된다");
+  assert.match(m.note ?? "", /세지 못했습니다/);
+});
+
 test("app-stats 없이 주간 값만 있어도 DB 칸은 채워지고, 이번 달 칸만 비는다", () => {
   const d = weekly({ stats: null });
   assert.equal(find(d, "coupon_used").value, 12);
@@ -781,6 +791,21 @@ test("퍼널 SQL 이 앞 단계를 포개서 센다", async () => {
   // 캠페인 자동 지급을 빼는 조건도 같은 자리에 있어야 한다
   assert.match(src, /coupon_issued' AND src IN \(\$\{knownSources\}\)/,
     "캠페인을 빼지 않으면 이 칸이 몇 배로 부푼다");
+  // 세션만 맞추면 가게 A 를 보고 가입 환영 쿠폰을 받은 세션이 「그 자리에서 받았다」가 된다
+  assert.match(src, /GROUP BY user_pseudo_id, sid, rid/,
+    "매장이 다르면 같은 세션이어도 그 자리의 발급이 아니다");
+});
+
+test("찾기 퍼널의 매장 상세는 비율을 되돌려 세지 않는다", () => {
+  // 1006세션 중 상세 84(8.3%). 8.3% 를 다시 곱하면 83이 되고, 쿠폰 단계 84보다 작아 퍼널이 역전된다.
+  const g = { ...cur, sessions: 1006, open_to_store: 8.3, sessions_with_detail: 84, sessions_detail_to_coupon: 84 };
+  const d = buildAppReportData({ end: "20260920", cur: g, prev, stats, today: "2026-09-22" });
+  const steps = d.funnel as { label: string; value: number | null }[];
+  assert.equal(steps[1].value, 84);
+  assert.equal(steps[2].value, 84);
+  assert.ok((steps[1].value as number) >= (steps[2].value as number), "퍼널이 역전된다");
+  const r = render(fillAppReportTemplate(d));
+  assert.equal(r.warnings, "", `양식 경고: ${r.warnings}`);
 });
 
 // ── PROBE 크론 — 스크립트 없는 HTML · 메시지 세 줄 ─────────────────────

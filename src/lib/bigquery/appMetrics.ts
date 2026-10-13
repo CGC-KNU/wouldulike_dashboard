@@ -70,11 +70,20 @@ export interface Ga4AppMetrics {
   open_to_store: number | null;
   sessions: number;
   /**
-   * 퍼널 3단 — **상세를 열고 그 세션에서 쿠폰까지 받은** 세션 수.
+   * 매장 상세를 연 세션 수 — `open_to_store` 의 분자.
    *
-   * 앞 단계를 **포개서** 센다(`detail AND coupon`). 포개지 않고 「그 세션에 발급이 있었나」로
-   * 세면 상세를 안 열고 받은 세션이 섞여 **앞 단계보다 커질 수 있다** — 퍼널이 역전된다.
-   * 실측으로도 크게 벌어진다(9/14~20: 포개면 10, 안 포개면 39).
+   * 보고서 퍼널은 이 정수를 그대로 쓴다. 비율(소수 한 자리)을 세션 수에 다시 곱하면
+   * 1 어긋나고, 그 값이 쿠폰 단계보다 작아져 퍼널이 역전된 것처럼 보인다.
+   */
+  sessions_with_detail?: number | null;
+  /**
+   * 퍼널 3단 — **그 매장 상세를 연 세션에서, 같은 매장 쿠폰을 받은** 세션 수.
+   *
+   * 두 겹으로 가둔다.
+   *  1. 앞 단계를 포갠다(`detail AND coupon`). 포개지 않고 「그 세션에 발급이 있었나」로
+   *     세면 상세를 안 열고 받은 세션이 섞여 **앞 단계보다 커질 수 있다**.
+   *  2. 매장을 맞춘다(`restaurant_id`). 세션만 맞추면 가게 A 를 보고 가입 환영 쿠폰을
+   *     받은 세션이 「그 자리에서 받았다」가 된다. 「매장 상세 → 쿠폰 발급」 칸과 같은 경계다.
    *
    * 캠페인 자동 지급은 뺀다. `coupon_issued` 는 지갑에 새로 보인 쿠폰에 찍혀 사용자의 행동이
    * 아니고, 빼지 않으면 이 칸이 몇 배로 부푼다.
@@ -221,7 +230,11 @@ export async function readGa4AppMetrics(
   //    **단계를 포갠다**(detail AND coupon). 포개지 않고 각자 세면 상세를 안 열고 쿠폰을 받은
   //    세션이 섞여 3단이 2단보다 커질 수 있다 — 퍼널이 역전된다.
   //
-  //    발급은 캠페인 자동 지급을 뺀다. 가르는 기준은 couponSources.ts 하나를 같이 쓴다 —
+  //    **매장도 맞춘다.** coupon 은 「그 세션의 그 restaurant_id 에서 상세를 열고, 같은 자리의
+  //    캠페인이 아닌 쿠폰을 받았다」일 때만 참이다. 세션만 맞추면 가게 A 를 보고 가입 환영 쿠폰을
+  //    받은 경우가 「그 자리에서 받았다」가 된다.
+  //
+  //    발급은 캠페인 자동 지급을 뺀다. 가르는 기준은 knownSourcesSql() 한 곳이다 —
   //    두 곳에 적어 두면 한쪽만 고쳐져 같은 보고서 안에서 숫자가 어긋난다.
   const knownSources = knownSourcesSql();
   const [ses] = await run<{
@@ -230,6 +243,7 @@ export async function readGa4AppMetrics(
     `WITH ev AS (
        SELECT user_pseudo_id, event_name,
               (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS sid,
+              (SELECT COALESCE(CAST(value.int_value AS STRING), value.string_value) FROM UNNEST(event_params) WHERE key = 'restaurant_id') AS rid,
               (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'coupon_issue_source') AS src
        FROM ${events}
        WHERE _TABLE_SUFFIX BETWEEN @start AND @end
@@ -237,13 +251,24 @@ export async function readGa4AppMetrics(
      ), s AS (
        SELECT user_pseudo_id, sid,
               LOGICAL_OR(event_name = 'session_start') AS opened,
+              LOGICAL_OR(event_name = 'restaurant_detail_open') AS detail
+       FROM ev WHERE sid IS NOT NULL GROUP BY user_pseudo_id, sid
+     ), place AS (
+       SELECT user_pseudo_id, sid,
               LOGICAL_OR(event_name = 'restaurant_detail_open') AS detail,
               LOGICAL_OR(event_name = 'coupon_issued' AND src IN (${knownSources})) AS coupon
-       FROM ev WHERE sid IS NOT NULL GROUP BY user_pseudo_id, sid
+       FROM ev WHERE sid IS NOT NULL AND rid IS NOT NULL
+       GROUP BY user_pseudo_id, sid, rid
+     ), hit AS (
+       SELECT user_pseudo_id, sid, LOGICAL_OR(detail AND coupon) AS coupon
+       FROM place GROUP BY user_pseudo_id, sid
      )
      SELECT COUNT(*) AS sessions, COUNTIF(detail) AS with_detail,
             COUNTIF(detail AND coupon) AS detail_to_coupon
-     FROM s WHERE opened`,
+     FROM (
+       SELECT s.opened, s.detail, IFNULL(hit.coupon, FALSE) AS coupon
+       FROM s LEFT JOIN hit USING (user_pseudo_id, sid)
+     ) WHERE opened`,
     { start, end }
   );
 
@@ -348,6 +373,7 @@ export async function readGa4AppMetrics(
       mau: mauRow ? Number(mauRow.mau ?? 0) : null,
       open_to_store: pct(Number(ses?.with_detail ?? 0), sessions),
       sessions,
+      sessions_with_detail: ses ? Number(ses.with_detail ?? 0) : null,
       sessions_detail_to_coupon: ses ? Number(ses.detail_to_coupon ?? 0) : null,
       retention_w1: pct(Number(ret?.returned ?? 0), cohort),
       cohort: { from: dash(cStart), to: dash(cEnd), users: cohort },
