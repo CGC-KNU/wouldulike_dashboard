@@ -1,9 +1,7 @@
-import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { actorName, requireTool } from "@/lib/draft/guard";
-import { isPreview } from "@/lib/draft/previewStores";
 import { appendDraftItem, readDraft } from "@/lib/draft/store";
-import { ReportStoreError, deleteReport, getReport, patchReport, reportStorePersistent, reportsOnBackend } from "@/lib/draft/reportStore";
+import { ReportStoreError, deleteReport, getReport, patchReport, reportsOnBackend } from "@/lib/draft/reportStore";
 import { checkText, cohortNote, hasCurationMarker, ownerNumbers, refreshText, reportAllText } from "@/lib/draft/report";
 import { parseManual, type ManualInput } from "@/lib/draft/reportManual";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
@@ -100,7 +98,13 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   return new NextResponse(null, { status: 204 });
 }
 
-/** POST { action: "refresh" | "approve" | "finalize" | "link" | "sent" | "revoke" } */
+/**
+ * POST { action: "refresh" | "finalize" | "sent" | "revoke" }
+ *
+ * 1013: 「승인」(DRAFT→APPROVED)·「링크 발급」(→LINKED)은 뺐다. 1007 부터 승인 한 번이 finalize(DRAFT→SENT)이고,
+ * 0920 부터 사장님께는 링크 대신 파일을 보낸다. `sent` 는 그 전에 승인·링크까지만 간 옛 리포트를 끝내는 길로만 남긴다.
+ * 이미 나간 링크(/r/<토큰>)는 그대로 열리고 `revoke` 로 닫는다.
+ */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -130,21 +134,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (updated instanceof NextResponse) return updated;
     return NextResponse.json({ report: updated, draft: draft() });
   }
-  if (action === "approve") {
-    if (cur.status !== "DRAFT") return bad("초안만 승인할 수 있습니다.");
-    // 금지 표현·지어낸 숫자 — 경고가 아니라 차단
-    const check = checkText(reportAllText(cur), cur.snapshot);
-    if (!check.ok) return bad("발행할 수 없는 문장이 있습니다.", { problems: check.problems });
-    // 점주 화면(리포트 양식)의 필수 값 — 비면 양식이 빨간 칸을 띄운다. 성과를 못 읽은 스냅샷이 대부분이다.
-    const missing = templateMissing(cur);
-    if (missing.length) return bad("리포트에 꼭 들어가야 할 값이 비어 있습니다. 성과가 모인 뒤 갱신본을 만드세요.", { problems: missing.map((m) => `${m} 없음`) });
-    const updated = await save(id, { status: "APPROVED", approved_by: who, approved_at: now });
-    if (updated instanceof NextResponse) return updated;
-    return NextResponse.json({ report: updated, draft: draft() });
-  }
   if (action === "finalize") {
     // 1007: 승인 한 번으로 끝낸다 — 초안(DRAFT)에서 곧바로 최종 승인(SENT). 백엔드가 PNG 3장 + HTML 게시를 바로 깨운다.
-    // 검사는 approve 와 같다(막는 것). 손으로 넣는 값이 비었는지는 화면이 경고로 묻고, 그래도 누르면 여기서는 받는다.
+    // 금지 표현·지어낸 숫자, 양식 필수 값은 막는다. 손으로 넣는 값이 비었는지는 화면이 경고로 묻고, 그래도 누르면 여기서는 받는다.
     if (cur.status !== "DRAFT") return bad("초안만 승인할 수 있습니다.");
     const check = checkText(reportAllText(cur), cur.snapshot);
     if (!check.ok) return bad("발행할 수 없는 문장이 있습니다.", { problems: check.problems });
@@ -155,21 +147,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     logStore(cur, { kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 승인 (#ops-partner 에 PNG·HTML 게시)`, author: who, created_at: now });
     return NextResponse.json({ report: updated, draft: draft() });
   }
-  if (action === "link") {
-    if (cur.status !== "APPROVED") return bad("승인된 리포트만 링크를 만들 수 있습니다.");
-    // 공개 링크를 만드는 API 는 미리보기 우회가 없다 — 미리보기에서는 렌더까지만.
-    if (isPreview() && !process.env.NEXT_PUBLIC_API_URL) return NextResponse.json({ detail: "미리보기 모드에서는 공개 링크를 발급하지 않습니다. 미리보기 버튼으로 페이지 모양만 확인하세요." }, { status: 501 });
-    // 초안 저장소는 재배포 때 사라진다. 점주에게 나가는 링크는 영속 저장소가 붙기 전엔 만들지 않는다 (검토·미리보기까지는 파일로 다 된다).
-    if (!reportStorePersistent()) return NextResponse.json({ detail: "이 저장소는 재배포 시 사라집니다. 실제 발송 전에 영속 저장소(DRAFT_DATA_DIR 볼륨 또는 백엔드 StoreReport)를 연결하세요." }, { status: 409 });
-    // 40자 hex — 추측·열거 불가. 재발급하면 이전 링크는 죽는다(옛 숫자를 보게 두지 않는다).
-    const token = randomBytes(20).toString("hex");
-    const updated = await save(id, { token, status: "LINKED", linked_at: now, views: { count: 0, first_at: null, last_at: null } });
-    if (updated instanceof NextResponse) return updated;
-    logStore(cur, { kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 링크 발급 (/r/${token.slice(0, 6)}…)`, author: who, created_at: now });
-    return NextResponse.json({ report: updated, url: `/r/${token}`, draft: draft() });
-  }
   if (action === "sent") {
-    // 사람이 카톡으로 보낸 뒤 체크한다. 0920 부터는 링크 대신 PNG·HTML 파일로 보낸다 — 승인(APPROVED)에서 바로 보냄으로 간다.
+    // 1007 전에 승인(APPROVED)·링크 발급(LINKED)까지만 간 옛 리포트를 끝낸다 — 「최종 승인」 버튼. 새 리포트는 finalize 로 바로 SENT 가 된다.
     if (cur.status !== "APPROVED" && cur.status !== "LINKED") return bad("승인한 리포트만 '보냈음'으로 표시할 수 있습니다.");
     const updated = await save(id, { status: "SENT", sent_at: now });
     if (updated instanceof NextResponse) return updated;

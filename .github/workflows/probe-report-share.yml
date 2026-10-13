@@ -9,7 +9,7 @@
 #
 #   승인·최종 승인 순간 백엔드가 이 워크플로를 바로 깨운다(백엔드 #101, GITHUB_DISPATCH_TOKEN).
 #   10분 정기 실행은 놓친 것을 줍는 용도다 — GitHub 무료 정기 실행은 몇 시간씩 밀린다.
-#   백엔드 큐(slack-queue?stages=review,final)가 비어 있으면 바로 끝난다(크롬을 띄우지 않는다).
+#   백엔드 큐(slack-queue?stages=final)가 비어 있으면 바로 끝난다(크롬을 띄우지 않는다).
 #   있으면 러너의 크롬으로 대시보드 크론 미리보기를 열어 파일을 만들고(scripts/probe-report-share.mjs),
 #   메시지 하나로 올린 뒤 백엔드에 "올림"을 적는다 — 같은 승인·같은 단계는 두 번 안 올린다.
 #   문구를 고쳐 다시 승인하면 두 단계 다 「(수정본)」으로 다시 올린다.
@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           [ -n "$BACKEND" ] && [ -n "$CRON_TOKEN" ] || { echo "::error::BACKEND_BASE_URL · CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
-          CODE=$(curl -sS --max-time 30 -o q.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" "$BACKEND/api/probe/reports/slack-queue/?stages=review,final") || CODE=000
+          CODE=$(curl -sS --max-time 30 -o q.json -w '%{http_code}' -H "X-CRON-TOKEN: $CRON_TOKEN" "$BACKEND/api/probe/reports/slack-queue/?stages=final") || CODE=000
           [ "$CODE" = "200" ] || { echo "::error::큐 HTTP $CODE"; exit 1; }
           N=$(jq '.reports | length' q.json)
           echo "큐 ${N}건: $(jq -r '[.reports[] | "\(.id)[\(.stage // "-")]"] | join(", ")' q.json)"

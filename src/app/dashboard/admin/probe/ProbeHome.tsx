@@ -71,7 +71,7 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <Card title="매장 리포트" description="Papillon 게시물에 들어간 제휴 매장 · 사장님께 보내는 링크" actions={<Button size="sm" variant="ghost" onClick={() => onGo("probe-reports")}>열기</Button>}>
+        <Card title="매장 리포트" description="Papillon 게시물에 들어간 제휴 매장 · 사장님께 보내는 PNG·HTML" actions={<Button size="sm" variant="ghost" onClick={() => onGo("probe-reports")}>열기</Button>}>
           {!ins ? <Skeleton rows={3} cols={2} /> : ins.papillon_reachable === false ? <p className="text-[12px] text-red-600">Papillon 기획 목록을 못 읽었습니다.</p> : due.length === 0 ? <p className="text-[13px] text-gray-500">리포트 만들 때가 된 게시물이 없습니다.</p> : (
             <ul className="space-y-1.5 text-[13px]">{due.slice(0, 4).map((i, k) => <li key={k} className="flex items-center justify-between gap-2"><span className="text-gray-800 truncate"><b>{i.store}</b> · {i.topic}</span><Chip tone="amber">D+{i.age_days ?? "?"}</Chip></li>)}</ul>
           )}

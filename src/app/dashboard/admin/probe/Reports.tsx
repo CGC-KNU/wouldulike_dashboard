@@ -17,8 +17,9 @@ import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, 
  * 원할 때 애딧 리포트처럼 보고서를 만들 수 있으면. 홍보 인사이트와 매장 리포트가 따로 있을 필요가 없다."
  *
  * 위: **Papillon 에서 온 게시물** — 발행 게시물 중 제휴 매장 이름이 들어간 것(이름 매칭). 행마다 "만들기".
- * 아래: **리포트** — 만든 것의 편집실. 검토·문구 수정 → 승인(금지 표현·지어낸 숫자 검사) → PNG·HTML 받기 → 카톡은 사람 → 보냈음.
- * (0920 민찬: 링크 대신 파일로 보낸다. 링크 발급 API 는 남겨 두지만 화면에서는 뺐다.)
+ * 아래: **리포트** — 만든 것의 편집실. 지표 입력·문구 수정 → 승인 한 번(금지 표현·지어낸 숫자 검사, 1007) → #ops-partner 에 PNG·HTML → 카톡은 사람.
+ * (0920 민찬: 링크 대신 파일로 보낸다. 1013: 링크 발급·「승인 → 최종 승인」 두 단계 동작은 걷어냈다.
+ *  그 전에 승인·링크까지만 간 옛 리포트(APPROVED·LINKED)는 「최종 승인」 버튼 하나로 끝낸다. 이미 나간 링크는 그대로 열리고 회수할 수 있다.)
  * 스냅샷 숫자는 읽기 전용. 문구를 고치면 승인은 무효가 되고 다시 승인해야 한다.
  */
 
@@ -120,10 +121,10 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       <PageHeader title="매장 리포트" description="Papillon 이 올린 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 게시 14일차(09:00)에 초안이 자동으로 만들어져 #ops-partner 에 알림이 갑니다. 지표를 입력하고 승인하면 PNG 3장 + HTML 이 #ops-partner 에 올라갑니다. 시기와 상관없이 직접 만들 수도 있습니다."
         actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button>#{TOOLS.probe.slack.channel}</Button></a><Button variant="primary" icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>} />
 
-      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-3 gap-2.5 mb-5">
         <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+14 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
-        <Kpi label="입력 · 승인 대기" value={list ? counts.draft + counts.approved : "-"} tone="alert" hint="지표 입력 후 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
-        <Kpi label="최종 승인 대기" value={list ? counts.approved + counts.linked : "-"} tone="alert" hint="파일 받아 카톡 → '최종 승인'" />
+        {/* 1013: 「입력 · 승인 대기」와 「최종 승인 대기」가 옛 승인(APPROVED)을 둘 다 셌다 — 보내기 전인 것 하나로 */}
+        <Kpi label="승인 대기" value={list ? counts.draft + counts.approved + counts.linked : "-"} tone="alert" hint="지표 입력 후 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
         <Kpi label="슬랙으로 보낸 리포트" value={list ? counts.sent : "-"} tone="good" hint="최종 승인한 것" onClick={() => setFilter("sent")} active={filter === "sent"} />
       </div>
 
@@ -151,7 +152,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
                     <Td align="right">{cell("saved")}</Td><Td align="right">{cell("reach")}</Td><Td align="right">{cell("views")}</Td>
                     <Td align="center"><span onClick={(e) => e.stopPropagation()} className="inline-flex">
                       {p.sent_report ? (
-                        <button type="button" onClick={() => setOpenId(p.sent_report!.id)} className="inline-flex"><Chip tone={p.sent_report.status === "SENT" ? "green" : p.sent_report.status === "LINKED" ? "amber" : "blue"}>{p.sent_report.status === "SENT" ? `보냄 · 열람 ${p.sent_report.views}` : p.sent_report.status === "LINKED" ? "발급 · 미전송" : "검토 중"}</Chip></button>
+                        <button type="button" onClick={() => setOpenId(p.sent_report!.id)} className="inline-flex"><Chip tone={p.sent_report.status === "SENT" ? "green" : p.sent_report.status === "LINKED" ? "amber" : "blue"}>{p.sent_report.status === "SENT" ? `보냄${p.sent_report.views ? ` · 열람 ${p.sent_report.views}` : ""}` : p.sent_report.status === "LINKED" ? "발급 · 미전송" : "검토 중"}</Chip></button>
                       ) : askForce === k ? (
                         <Button size="sm" variant="primary" onClick={() => make(p, true)} disabled={making === k}>갱신본 만들기</Button>
                       ) : (
@@ -167,7 +168,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       </Card>
 
       <Card flush title="리포트" description="스냅샷 숫자는 고정, 문구는 사람이 다듬고, 승인해야 파일을 받을 수 있습니다."
-        actions={<FilterPills label="" value={filter} onChange={setFilter} options={[{ key: "todo", label: "검토 · 승인 · 미전송", count: counts.draft + counts.approved + counts.linked }, { key: "sent", label: "보낸 것", count: counts.sent }, { key: "all", label: "전체", count: list?.length }]} />}>
+        actions={<FilterPills label="" value={filter} onChange={setFilter} options={[{ key: "todo", label: "승인 대기", count: counts.draft + counts.approved + counts.linked }, { key: "sent", label: "보낸 것", count: counts.sent }, { key: "all", label: "전체", count: list?.length }]} />}>
         {!list ? <Skeleton rows={4} cols={6} /> : visible.length === 0 ? (
           <Empty title={filter === "todo" ? "검토할 리포트가 없습니다" : "리포트가 없습니다"} detail="위 게시물 목록에서 '만들기'를 누르면 여기로 옵니다." />
         ) : (
@@ -183,7 +184,8 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
                     <Td align="right" numeric>{m("saved")?.value.toLocaleString() ?? <span className="text-gray-300">—</span>}</Td>
                     <Td align="right" numeric>{m("reach")?.value.toLocaleString() ?? <span className="text-gray-300">—</span>}</Td>
                     <Td align="center" className="text-[12px] text-gray-600">{r.proposals.filter((p) => p.approved).length} / {r.proposals.length}</Td>
-                    <Td align="right" numeric className={r.views.count ? "text-emerald-700 font-semibold" : "text-gray-300"}>{r.views.count}</Td>
+                    {/* 열람은 링크로 보낸 것만 센다 — 파일로 보낸 리포트는 셀 수 없어 '—' */}
+                    <Td align="right" numeric className={r.views.count ? "text-emerald-700 font-semibold" : "text-gray-300"}>{r.token ? r.views.count : "—"}</Td>
                     <Td align="right" className="text-[12px] text-gray-500">{agoLabel(r.created_at)}<span className="block text-[11px] text-gray-400">{r.created_by}</span></Td>
                   </tr>
                 );
@@ -194,7 +196,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       </Card>
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-        숫자는 인스타그램 수치 그대로이고, 우리 채널의 다른 게시물과 견준 순위·판정은 보이지 않습니다. 링크는 40자 토큰이라 추측이 안 되고, 검색엔진에 잡히지 않으며, 회수하면 즉시 닫힙니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
+        숫자는 인스타그램 수치 그대로이고, 우리 채널의 다른 게시물과 견준 순위·판정은 보이지 않습니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
         {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-navy font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
       </p>
 
@@ -244,7 +246,7 @@ function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: 
         )}
         {p.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{p.co_stores}곳을 함께 소개한 게시물 — 수치는 게시물 전체 것입니다. 카톡 텍스트는 큐레이션이라고 밝힙니다.</p>}
       </PanelSection>
-      <PanelSection title="카톡용 텍스트 (링크 대신 글로 보낼 때)">
+      <PanelSection title="카톡용 텍스트 (파일 대신 글로 보낼 때)">
         {p.report ? <pre className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800 bg-gray-50 rounded-lg p-3 font-[inherit]">{p.report}</pre> : <p className="text-[13px] text-gray-500">지표가 모이면 자동으로 문장이 만들어집니다.</p>}
         <p className="text-[12px] text-gray-500 mt-2">리포트 해석 글과 같은 문장이고, 우리 채널의 다른 게시물과 견주지 않습니다. 리포트를 만들면 이 텍스트 대신 사진 · 게시물 성과 · 해석 글이 PNG 두 장으로 나갑니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
       </PanelSection>
@@ -304,12 +306,12 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       setMsg({ tone: "blue", text: "저장했습니다. 승인은 다시 받아야 합니다." }); onChanged();
     } finally { setBusy(false); }
   }
-  async function act(action: "refresh" | "approve" | "finalize" | "link" | "sent" | "revoke") {
+  async function act(action: "refresh" | "finalize" | "sent" | "revoke") {
     setBusy(true); setMsg(null);
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
-      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "approve" ? "승인했습니다. 'PNG·HTML 받기'에서 파일을 받아 카톡으로 보낸 뒤 '최종 승인'을 눌러 주세요." : action === "finalize" ? "승인했습니다. 잠시 뒤 #ops-partner 에 PNG 3장과 HTML 이 올라갑니다." : action === "link" ? "링크를 만들었습니다. 복사해서 카톡으로 보낸 뒤 '보냈음'을 눌러 주세요." : action === "sent" ? "최종 승인했습니다." : "링크를 회수했습니다." }); onChanged();
+      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "finalize" ? "승인했습니다. 잠시 뒤 #ops-partner 에 PNG 3장과 HTML 이 올라갑니다." : action === "sent" ? "최종 승인했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
   /**
@@ -356,7 +358,8 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           {(r.status === "APPROVED" || r.status === "LINKED" || r.status === "SENT") && !dirty && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer" title="미리보기 위 띠에서 PNG · HTML · 인쇄"><Button variant={r.status === "SENT" ? "secondary" : "primary"} icon={<IconDownload />}>PNG·HTML 받기</Button></a>}
           {(r.status === "APPROVED" || r.status === "LINKED") && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>최종 승인</Button>}
           {r.status === "DRAFT" && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>미리보기</Button></a>}
-          {(r.status === "LINKED" || r.status === "SENT") && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
+          {/* 회수는 링크가 나간 것만 — 파일로 보낸 리포트는 닫을 링크가 없다 */}
+          {(r.status === "LINKED" || r.status === "SENT") && r.token && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
           {(r.status === "DRAFT" || r.status === "APPROVED") && !r.token && <Button variant="ghost" icon={<IconTrash />} onClick={remove} disabled={busy} title="초안을 지우고 게시물 목록에서 다시 만들 수 있게 합니다">초안 지우기</Button>}
           <span className="ml-auto text-[12px] text-gray-400">{r.token ? `열람 ${r.views.count}회${r.views.last_at ? ` · ${agoLabel(r.views.last_at)}` : ""}` : r.approved_by ? `${r.approved_by} 승인` : `${r.created_by} 작성`}</span>
         </>
@@ -438,7 +441,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         <PanelSection title="카톡으로 보내기">
           <ol className="list-decimal pl-4 text-[13px] text-gray-700 space-y-1">
             <li>「PNG·HTML 받기」 → 미리보기 위 띠에서 <b>PNG 저장</b>(사진으로 바로 보임) · 필요하면 <b>HTML 저장</b></li>
-            <li>카톡으로 파일 전송 후 「최종 승인」</li>
+            {r.status === "APPROVED" ? <li>카톡으로 파일 전송 후 「최종 승인」</li> : <li>카톡으로 파일 전송</li>}
           </ol>
           <p className="text-[12px] text-gray-500 mt-2">함께 보낼 인사말: &quot;사장님, 안녕하세요. 우주라이크입니다. 지난 게시물 성과를 정리해 보내 드립니다. 사진으로 보시면 되고, 파일로도 함께 드립니다.&quot;</p>
         </PanelSection>
