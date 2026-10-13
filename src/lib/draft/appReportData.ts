@@ -223,15 +223,22 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
 
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
-  const sum = (...ks: string[]) => (ks.every((k) => n(k) === null) ? null : ks.reduce((a, k) => a + (n(k) ?? 0), 0));
+  // 한쪽이라도 모르면 합도 모른다. 못 센 칸을 0 으로 더하면 「당첨 5 · 교환 모름」이 5로 찍힌다.
+  const sum = (...ks: string[]): Num => {
+    const nums = ks.map((k) => n(k)).filter((v): v is number => v !== null);
+    return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
+  };
 
   // 그 주만 센 DB 칸. 전주 대비는 **두 주 모두 끝났을 때만** 붙인다 — 반쪽 주와 온전한 주를 비교하면 늘 줄어 보인다.
   const w = week?.stats ?? null;
   const weekly = w !== null;
   const weekOpen = weekly && week?.complete === false;
   const wp = weekly && !weekOpen && weekPrev?.complete ? weekPrev.stats ?? null : null;
-  const total = (src: Record<string, number | null> | null, ks: string[]): Num =>
-    !src || ks.every((k) => typeof src[k] !== "number") ? null : ks.reduce((a, k) => a + (typeof src[k] === "number" ? (src[k] as number) : 0), 0);
+  const total = (src: Record<string, number | null> | null, ks: string[]): Num => {
+    if (!src) return null;
+    const nums = ks.map((k) => src[k]).filter((v): v is number => typeof v === "number");
+    return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
+  };
 
   const monthLabel = stats?.since ? `${+stats.since.slice(5, 7)}월` : "이번 달";
   const win = `${md(start)}~${md(end)}`;
@@ -431,8 +438,8 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
   // 쓰기 퍼널(couponUseFunnelData)이 잇는다.
   const funnel = [
     { label: "앱 열기", value: g?.sessions ?? null, unit: "세션" },
-    { label: "매장 상세", value: g && g.open_to_store !== null ? Math.round((g.sessions * g.open_to_store) / 100) : null, unit: "세션" },
-    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "상세를 보고 그 자리에서 받은 세션. 캠페인 자동 지급은 뺍니다 — 받은 쿠폰이 쓰였는지는 아래 「쓰기 퍼널」이 봅니다" },
+    { label: "매장 상세", value: detailSessions(g), unit: "세션" },
+    { label: "쿠폰 발급", value: g?.sessions_detail_to_coupon ?? null, unit: "세션", note: "같은 세션에서 그 매장 상세를 열고 그 매장 쿠폰을 받은 세션. 캠페인 자동 지급은 뺍니다 — 받은 쿠폰이 쓰였는지는 아래 「쓰기 퍼널」이 봅니다" },
   ];
   const useFrom = couponUse ? bare(couponUse.window.from) : shiftDay(prevEnd, -6);
   const useTo = couponUse ? bare(couponUse.window.to) : prevEnd;
@@ -483,7 +490,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
         key: "push", label: "푸시 발송 기록", status: (weekly ? total(w, ["push_sent"]) : n("push_sent_this_month")) !== null ? "connected" : "pending",
         hint: weekly ? "발송 건수도 그 주만 센 값입니다. 열기 비율은 Firebase 칸" : "발송 건수는 app-stats 의 이번 달 누계입니다. 열기 비율은 Firebase 칸",
       },
-      { key: "ga4", label: "GA4", status: g ? "connected" : "pending", hint: g ? `BigQuery 확정 테이블 ${g.through} 까지. 배너 노출 1칸은 앱 릴리스를 기다립니다` : "BigQuery 를 읽지 못했습니다" },
+      { key: "ga4", label: "GA4", status: g ? "connected" : "pending", hint: g ? `BigQuery 확정 테이블 ${g.through} 까지.${(g.banner_view?.seen ?? 0) > 0 ? "" : " 배너 노출은 이 창에 아직 0건이라 그 칸만 앱 릴리스를 기다립니다"}` : "BigQuery 를 읽지 못했습니다" },
       { key: "firebase", label: "Firebase", status: g ? "connected" : "pending", hint: "자동 이벤트 — 푸시 수신·열기, first_open 코호트" },
     ],
     headline: ["wau", "open_to_store", "retention_w1", "dau_wau"],
@@ -492,6 +499,20 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
     coupon_funnel: couponFunnel,
     caveats,
   };
+}
+
+/**
+ * 매장 상세를 연 세션 수.
+ *
+ * BigQuery 가 센 정수(`sessions_with_detail`)를 쓴다. 비율은 소수 한 자리라, 세션 수에
+ * 다시 곱하면 1 이 어긋난다 — 1006세션·84상세(8.3%)를 되돌리면 83이 되고, 쿠폰 단계가
+ * 84면 퍼널이 역전된 것처럼 보인다. 옛 응답에 정수가 없을 때만 비율로 되돌린다.
+ */
+export function detailSessions(g: Ga4AppMetrics | null | undefined): number | null {
+  if (!g) return null;
+  if (typeof g.sessions_with_detail === "number") return g.sessions_with_detail;
+  if (g.open_to_store === null) return null;
+  return Math.round((g.sessions * g.open_to_store) / 100);
 }
 
 /** 파일 이름 — 미리보기 띠의 PNG·HTML 저장에 쓴다 */
