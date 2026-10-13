@@ -13,7 +13,7 @@ import { SourceStatusChip } from "./AppMetrics";
 
 export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const [ov, setOv] = useState<{ totals?: Record<string, number>; source?: string } | null>(null);
-  const [q, setQ] = useState<{ counts?: Record<string, number>; backend_reachable?: boolean; generated_at?: string } | null>(null);
+  const [q, setQ] = useState<{ counts?: Record<string, number>; backend_reachable?: boolean; ops_reachable?: boolean; leads_reachable?: boolean; generated_at?: string } | null>(null);
   const [app, setApp] = useState<{ sources?: { key: string; label: string; connected: boolean; status?: "connected" | "app_fix" | "pending" }[]; groups?: { metrics: { value: number | null }[] }[] } | null>(null);
   const [ins, setIns] = useState<{ insights?: { store: string; topic: string; checkpoint: string; age_days: number | null; due?: boolean }[]; papillon_reachable?: boolean } | null>(null);
   const [mil, setMil] = useState<{ rounds?: { id: string; date: string; weekday: string; result: string; pool_count: number | null; seats: { fixed: number; random: number } }[] } | null>(null);
@@ -91,7 +91,9 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
               <Row label="높음" value={q?.counts?.high ?? 0} tone="red" />
               <Row label="보통" value={q?.counts?.medium ?? 0} tone="amber" />
               <Row label="낮음" value={q?.counts?.low ?? 0} tone="gray" />
-              {q?.backend_reachable === false && <p className="text-[12px] text-red-600 pt-1">백엔드를 못 읽어 규칙이 침묵합니다.</p>}
+              {q?.backend_reachable === false
+                ? <p className="text-[12px] text-red-600 pt-1">백엔드를 못 읽어 규칙이 침묵합니다.</p>
+                : (q?.ops_reachable === false || q?.leads_reachable === false) && <p className="text-[12px] text-amber-700 pt-1">Astro 기록을 못 읽어 일부 규칙이 침묵합니다.</p>}
             </div>
           )}
         </Card>

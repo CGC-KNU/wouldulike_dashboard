@@ -30,13 +30,18 @@ const FIX_TAB: Record<string, { tab: string; label: string }> = {
   PAID_NO_KIT: { tab: "astro-ops", label: "매장 현황에서 체크" },
   SEASON_UNSET: { tab: "astro-ops", label: "매장 현황에서 설정" },
   LEAD_STALE: { tab: "astro-leads", label: "입점 후보에서 연락" },
+  APP_CAMPUS_MISSING: { tab: "astro-ops", label: "파트너 매장에서 캠퍼스 지정" },
+  CAMPUS_MISMATCH: { tab: "astro-ops", label: "파트너 매장에서 캠퍼스 확인" },
 };
 
 interface Payload {
   issues: QualityIssue[];
   counts: Record<QualitySeverity, number>;
-  checked: { restaurants: number; benefits: number; featured: number; leads: number };
+  checked: { restaurants: number; benefits: number; featured: number; leads: number; test_excluded?: number };
   backend_reachable: boolean;
+  /** 옛 응답엔 없다 — 없으면 읽은 것으로 본다 */
+  ops_reachable?: boolean;
+  leads_reachable?: boolean;
   generated_at: string;
   draft?: boolean;
   draft_note?: string;
@@ -92,7 +97,7 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
     <>
       <PageHeader
         title="데이터 정합성 점검"
-        description="매장·혜택·기획전·입금 기록을 서로 비교해 어긋난 곳을 찾습니다. 각 항목에 비교한 데이터와 고치는 자리가 같이 있습니다."
+        description="매장·혜택·기획전·입금 기록·캠퍼스를 서로 비교해 어긋난 곳을 찾습니다. 각 항목에 비교한 데이터와 고치는 자리가 같이 있습니다."
         actions={
           <>
             {data?.draft && <DraftBadge note={data.draft_note} />}
@@ -115,11 +120,22 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
         </div>
       )}
 
+      {/* 운영 기록·후보만 못 읽은 경우 — 그 규칙만 침묵한다. 1013 전에는 이때 9/3 시드로 판정했다 */}
+      {data && data.backend_reachable && (data.ops_reachable === false || data.leads_reachable === false) && (
+        <div className="mb-4">
+          <Notice tone="amber" title={`${[data.ops_reachable === false && "Astro 운영 기록", data.leads_reachable === false && "입점 후보"].filter(Boolean).join(" · ")}을(를) 읽지 못했습니다`}>
+            {data.ops_reachable === false && "입금·비치물·학기·캠퍼스 비교 규칙이 침묵합니다. "}
+            {data.leads_reachable === false && "방치된 컨택 규칙이 침묵합니다. "}
+            해당 항목이 없어도 <strong>이상 없음이 아닙니다.</strong>
+          </Notice>
+        </div>
+      )}
+
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         <Kpi label="높음" value={loading ? "-" : data?.counts.high ?? 0} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => setSev(sev === "high" ? "all" : "high")} active={sev === "high"} />
         <Kpi label="보통" value={loading ? "-" : data?.counts.medium ?? 0} hint="곧 문제가 됨" onClick={() => setSev(sev === "medium" ? "all" : "medium")} active={sev === "medium"} />
         <Kpi label="낮음" value={loading ? "-" : data?.counts.low ?? 0} hint="비어 있는 칸" onClick={() => setSev(sev === "low" ? "all" : "low")} active={sev === "low"} />
-        <Kpi label="점검 범위" value={loading ? "-" : data?.checked.restaurants ?? 0} suffix="매장" hint={data ? `혜택 ${data.checked.benefits} · 기획전 ${data.checked.featured} · 후보 ${data.checked.leads}` : undefined} />
+        <Kpi label="점검 범위" value={loading ? "-" : data?.checked.restaurants ?? 0} suffix="매장" hint={data ? `혜택 ${data.checked.benefits} · 기획전 ${data.checked.featured} · 후보 ${data.checked.leads}${data.checked.test_excluded ? ` · 테스트 매장 ${data.checked.test_excluded}곳 제외` : ""}` : undefined} />
       </div>
 
       {loading ? (
