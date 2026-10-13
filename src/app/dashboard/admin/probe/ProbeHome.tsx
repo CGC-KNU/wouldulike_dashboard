@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { IconBrandSlack } from "@tabler/icons-react";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import { Button, Card, Chip, Kpi, PageHeader, Skeleton, todayLocal } from "../_shared/ui";
-import { SourceStatusChip } from "./AppMetrics";
 
 /**
  * Probe · 홈. 세 화면(매장 지표 · 앱 지표 · 정합성)의 머리만 모아 놓는다.
@@ -14,7 +13,7 @@ import { SourceStatusChip } from "./AppMetrics";
 export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const [ov, setOv] = useState<{ totals?: Record<string, number>; source?: string } | null>(null);
   const [q, setQ] = useState<{ counts?: Record<string, number>; backend_reachable?: boolean; ops_reachable?: boolean; leads_reachable?: boolean; generated_at?: string } | null>(null);
-  const [app, setApp] = useState<{ sources?: { key: string; label: string; connected: boolean; status?: "connected" | "app_fix" | "pending" }[]; groups?: { metrics: { value: number | null }[] }[] } | null>(null);
+  const [app, setApp] = useState<{ groups?: { metrics: { key: string; label: string; value: number | null; unit?: string }[] }[] } | null>(null);
   const [ins, setIns] = useState<{ insights?: { store: string; topic: string; checkpoint: string; age_days: number | null; due?: boolean }[]; papillon_reachable?: boolean } | null>(null);
   const [mil, setMil] = useState<{ rounds?: { id: string; date: string; weekday: string; result: string; pool_count: number | null; seats: { fixed: number; random: number } }[] } | null>(null);
 
@@ -47,8 +46,11 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const held = (mil?.rounds ?? []).filter((r) => r.date.startsWith(today.slice(0, 7)) && r.result === "held").length;
 
   const loading = !ov || !q || !app;
-  const filled = app?.groups?.flatMap((g) => g.metrics).filter((m) => m.value !== null).length ?? 0;
-  const total = app?.groups?.flatMap((g) => g.metrics).length ?? 0;
+  /** 앱 지표 칸 하나 — 못 읽었으면 '-'(0 이 아니라 모름) */
+  const appValue = (key: string) => {
+    const m = app?.groups?.flatMap((g) => g.metrics).find((x) => x.key === key);
+    return !m || m.value === null ? "-" : `${m.value.toLocaleString()}${m.unit === "%" ? "%" : m.unit ? ` ${m.unit}` : ""}`;
+  };
   const probe = TOOLS.probe;
 
   return (
@@ -108,16 +110,14 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
             </div>
           )}
         </Card>
-        <Card title="앱 지표 출처" actions={<Button size="sm" variant="ghost" onClick={() => onGo("probe-app")}>열기</Button>}>
+        {/* 1013: 「앱 지표 출처」(연결됨/연결 전) 카드 자리 — 넷 다 붙어 있어 숫자를 보인다. 주간 보고서 머리 지표에서 셋 */}
+        <Card title="앱 지표" actions={<Button size="sm" variant="ghost" onClick={() => onGo("probe-app")}>열기</Button>}>
           {loading ? <Skeleton rows={3} cols={2} /> : (
-            <ul className="space-y-2">
-              {app?.sources?.map((s) => (
-                <li key={s.key} className="flex items-center justify-between text-[13px]">
-                  <span className="text-gray-700">{s.label}</span>
-                  <SourceStatusChip s={s} />
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-2 text-[13px]">
+              <Row label="주간 활성(WAU)" value={appValue("wau")} />
+              <Row label="앱 열기 → 매장 상세" value={appValue("open_to_store")} />
+              <Row label="가입 1주 후 복귀" value={appValue("retention_w1")} />
+            </div>
           )}
         </Card>
       </div>

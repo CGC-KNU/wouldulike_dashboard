@@ -9,26 +9,21 @@ import { readOnboardingFunnel, type OnboardingFunnel } from "@/lib/bigquery/onbo
 /**
  * Probe · 앱 지표.
  *
- * 매장 지표만으로는 반쪽이다(민열님 0910: "앱 지표도 포괄적으로, 추후 GA 등 연동"). 이 라우트는
- * **지표의 자리와 출처를 먼저 못 박는다.** 값이 없는 칸은 지어내지 않고 `source.connected=false` 로 내려서
- * 화면이 "어디에 붙이면 채워지는가"를 그대로 보여준다.
+ * 매장 지표만으로는 반쪽이다(민열님 0910: "앱 지표도 포괄적으로, 추후 GA 등 연동"). 값이 없는 칸은 지어내지 않고
+ * null 로 내린다 — 0 이 아니라 모름이다. 칸마다 출처(DB·푸시·GA4·Firebase)를 붙인다.
  *
- * 연결되는 순서(권장): ① 백엔드 이벤트(가입·쿠폰 발급/사용·스탬프 — 이미 DB 에 있다)
- * ② 푸시 발송/도달(백엔드 notifications) ③ GA4/Firebase(세션·화면 흐름·리텐션).
+ * 1013: 출처를 하나씩 붙이던 시기의 「연결 상태」(sources·connected·연결 방법 안내)는 걷어냈다. 넷 다 붙어 있고,
+ * 안내 문구가 실제와 어긋나기 시작했다. 대신 무엇을 못 읽었는지만 `backend_ok`·`ga4_ok`·`ga4_error` 로 내린다.
  *
  * DB 칸은 백엔드 `/api/dashboard/admin/app-stats/`(앱 전체 이번 달 합계, KST 기준)에서 읽는다. `stats/` 는 매장 하나
  * 단위라 매장 없이 부르면 400 이 나서 이 칸들이 늘 비어 있었다. 백엔드가 칸 하나를 못 세면 그 키만 null 로 온다.
  *
  * GA4/Firebase 4칸은 BigQuery 에서 읽는다(`GCP_SA_KEY` 가 있을 때만). 확정 테이블이 하루 한 번 늘어나므로
- * 6시간 캐시한다. 키가 없거나 조회가 실패하면 캐시하지 않고 칸을 비운 채 "연결 전"으로 둔다.
+ * 6시간 캐시한다. 키가 없거나 조회가 실패하면 캐시하지 않고 칸을 비운다.
  */
 
 export type Source = "backend" | "push" | "ga4" | "firebase";
-/**
- * 연결 상태 3단계. connected = 값이 들어온다 · app_fix = 앱 이벤트 수정·배포가 먼저 · pending = 연결 전.
- * "연결됨/연결 전" 둘로는 "BigQuery 에는 있는데 쿼리가 안 붙음"과 "앱에 이벤트가 없음"을 가를 수 없다.
- * 배지는 값과 같은 배포에서만 connected 로 올린다 — 값이 비었는데 배지만 초록이면 "채워진 지표 0 / 17" 과 다른 말을 한다.
- */
+/** 칸 단위 상태 — app_fix = 앱 이벤트 릴리스가 먼저인 칸 · pending = 아직 못 읽음 */
 export type SourceStatus = "connected" | "app_fix" | "pending";
 
 export interface AppMetric {
@@ -57,13 +52,6 @@ const SOURCE_KO: Record<string, string> = {
   EVENT_REWARD_SIGNUP: "이벤트 가입 보상", FLASH_8PM: "밤 8시 플래시", FINAL_EXAM_EVENT: "시험기간 이벤트",
   LIMITED_BONUS: "한정 보너스", LIMITED_CAMPAIGN: "한정 쿠폰 받기", KNUSCSEPT_EVENT: "학생회 추천코드",
   unknown: "발급 경로 기록 없음", other: "기타",
-};
-
-const SOURCE_LABEL: Record<Source, string> = {
-  backend: "백엔드 DB",
-  push: "푸시 발송 기록",
-  ga4: "GA4",
-  firebase: "Firebase",
 };
 
 // 성공만 캐시된다 — 실패는 throw 로 빠져나가 캐시에 남지 않는다
@@ -266,34 +254,14 @@ export async function GET() {
     },
   ];
 
-  const SOURCE_HINT: Record<Source, string> = {
-    backend: s
-      ? "백엔드 app-stats 에서 이번 달(KST) 합계를 읽는다. 「매장 상세 → 쿠폰 발급」은 DB 가 아니라 GA4 안에서 (기기·세션·매장)으로 잇는다 — 기획전 자동 지급은 뺀다."
-      : "쿠폰·스탬프·가입은 이미 DB 에 있다. 백엔드 /api/dashboard/admin/app-stats/ 가 배포되면 채워진다.",
-    push: s
-      ? "발송 건수는 notifications 테이블에서 센다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸."
-      : "발송 건수는 notifications 테이블 집계로 나온다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸.",
-    ga4: g
-      ? `BigQuery 확정 테이블(${md(g.through)}까지)에서 6시간마다 읽는다. 기기 단위라 재설치하면 새 사용자로 센다. 배너 노출은 노출 이벤트가 든 앱 버전을 쓰는 기기만 센다.`
-      : "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. 키(GCP_SA_KEY)가 없거나 조회가 실패하면 이 칸들이 빈다. 값과 배지는 같은 배포에.",
-    firebase: g
-      ? "GA4 와 같은 스트림이라 같은 BigQuery 에서 읽는다. 가입 1주 후 복귀 = first_open 코호트의 7~13일째 재방문. 푸시 열기 = FCM 자동 이벤트, 수신은 안드로이드만 남아 비율도 안드로이드 기준."
-      : "GA4 와 같은 스트림이라 같은 BigQuery 에 있다. 가입 1주 후 복귀는 first_open 코호트 쿼리로 읽는다.",
-  };
-  // 배지는 값이 실제로 들어온 칸이 있을 때만 올린다
-  const live: Record<Source, boolean> = { backend: n("coupon_issued_this_month") !== null || n("signups_this_month") !== null, push: n("push_sent_this_month") !== null, ga4: g?.wau != null, firebase: g?.retention_w1 != null };
-  const sources = (Object.keys(SOURCE_LABEL) as Source[]).map((k) => {
-    const connected = live[k];
-    const status: SourceStatus = connected ? "connected" : "pending";
-    const failed = gErr && (k === "ga4" || k === "firebase") ? ` (BigQuery 조회 실패: ${gErr})` : "";
-    return { key: k, label: SOURCE_LABEL[k], connected, status, hint: SOURCE_HINT[k] + failed };
-  });
-
   return NextResponse.json({
     groups,
-    sources,
     generated_at: new Date().toISOString(),
-    draft: !live.backend,
-    draft_note: "값이 비어 있는 칸은 데이터 소스가 아직 연결되지 않은 것입니다. 0 이 아닙니다.",
+    // 무엇을 못 읽었나 — 화면이 「0 이 아니라 모름」을 그 출처에 대해서만 말한다
+    backend_ok: s !== null,
+    ga4_ok: g !== null,
+    ga4_error: gErr,
+    /** GA4 확정 테이블이 어디까지 왔나(YYYY-MM-DD) */
+    ga4_through: g?.through ?? null,
   });
 }
