@@ -95,7 +95,9 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
           out.reports = { draft: rs.filter((r) => r.status === "DRAFT" || r.status === "APPROVED").length, linked: rs.filter((r) => r.status === "LINKED").length, sent: rs.filter((r) => r.status === "SENT").length, viewed: rs.filter((r) => r.status === "SENT" && r.views.count > 0).length };
         }
         if (quality?.counts || ins?.insights || mil?.rounds) {
-          out.probe = { high: quality?.counts?.high ?? 0, due: ((ins?.insights ?? []) as { due?: boolean }[]).filter((i) => i.due).length, held: ((mil?.rounds ?? []) as { result: string }[]).filter((r) => r.result === "held").length };
+          // 보류는 이번 달 회차만 — 회차 표에는 지난달(9월)도 같이 온다. Probe 홈 「이번 달 보류」·마일리지 화면과 같은 기준 (1013)
+          const held = ((mil?.rounds ?? []) as { date: string; result: string }[]).filter((r) => r.date.startsWith(period) && r.result === "held").length;
+          out.probe = { high: quality?.counts?.high ?? 0, due: ((ins?.insights ?? []) as { due?: boolean }[]).filter((i) => i.due).length, held };
         }
         if (spots?.spots) {
           type P = { stage: string; product: string | null; price: number | null; paid_at: string | null };

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkQuality, type Benefit, type QualityInput } from "../src/lib/draft/quality";
+import { checkQuality, storeFixTarget, type Benefit, type QualityInput } from "../src/lib/draft/quality";
 import { seedStoreOps } from "../src/lib/draft/seed";
 import type { BackendRestaurant, Lead, StoreOps } from "../src/lib/draft/types";
 
@@ -88,4 +88,22 @@ test("높음이 먼저, 개수는 심각도별로 센다", () => {
   });
   assert.equal(r.issues[0].rule, "APP_CAMPUS_MISSING");
   assert.deepEqual(r.counts, { high: 1, medium: 1, low: 0 });
+});
+
+test("매장 이름은 그 매장을 고치는 자리로 간다 — 혜택은 쿠폰 편집, 기획전 노출은 없음, 나머지는 매장 상세", () => {
+  const r = run({
+    restaurants: [store(1, { tier: null }), store(2, { tier: "BOOST" }), store(3, { is_affiliate: false })],
+    benefits: [benefit(3)],
+    featured: [{ id: 9, restaurant_id: 3, is_active: true }],
+    ops: [ops(1), ops(2), ops(3)],
+    leads: [lead(7, "미팅 예정", "2026-09-01T00:00:00Z")],
+  });
+  const at = (rule: string) => storeFixTarget(r.issues.find((i) => i.rule === rule)!);
+  assert.deepEqual(at("TIER_MISSING"), { tab: "astro-ops?open=1" });
+  assert.deepEqual(at("PAID_NO_BENEFIT"), { href: "/dashboard/owner/coupons?rid=2" });
+  assert.deepEqual(at("INACTIVE_HAS_BENEFIT"), { href: "/dashboard/owner/coupons?rid=3" });
+  assert.equal(at("INACTIVE_STILL_EXPOSED"), null);
+  // 후보는 매장이 아니다 — 매장 id 를 싣지 않는다
+  assert.equal(r.issues.find((i) => i.rule === "LEAD_STALE")!.restaurant_id, undefined);
+  assert.equal(at("LEAD_STALE"), null);
 });

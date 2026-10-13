@@ -67,6 +67,9 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
   // id 는 이름이 아니라 레코드 키로 — 같은 상호가 두 상권에 있으면 이름은 겹친다
   const push = (i: Omit<QualityIssue, "id">, key: string | number) =>
     issues.push({ ...i, id: `${i.rule}:${key}` });
+  // 매장 규칙은 매장 id 를 싣는다 — 화면에서 매장 이름을 누르면 그 매장을 고치는 자리로 바로 간다
+  const pushStore = (i: Omit<QualityIssue, "id" | "restaurant_id">, r: BackendRestaurant) =>
+    push({ ...i, restaurant_id: r.restaurant_id }, r.restaurant_id);
 
   for (const r of restaurants) {
     const paid = r.tier === "BOOST" || r.tier === "CONTENT";
@@ -75,28 +78,28 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
 
     // ① 앱에 노출되는데 플랜이 없다 — 어떤 혜택을 줘야 하는지 시스템이 모른다
     if (affiliate && !r.tier) {
-      push({
+      pushStore({
         severity: "medium",
         rule: "TIER_MISSING",
         title: "제휴 매장인데 플랜이 지정되지 않았습니다",
         subject: r.name,
         detail: "앱에는 노출되지만 FREE/BOOST/CONTENT 중 어느 것도 지정돼 있지 않습니다.",
-        hint: "Astro → 매장 상세 → 플랜에서 지정하세요. 슬랙 메시징의 '유료 식당' 판정도 이 값을 씁니다.",
+        hint: "매장 이름을 누르면 Astro 매장 상세가 열립니다. 「계약」 블록의 플랜에서 지정하세요. 슬랙 메시징의 '유료 식당' 판정도 이 값을 씁니다.",
         source: "restaurants.tier",
-      }, r.restaurant_id);
+      }, r);
     }
 
     // ② 돈은 받는데 앱에서 줄 게 없다 — 가장 아픈 종류의 불일치
     if (paid && affiliate && (benefitCount.get(r.restaurant_id) ?? 0) === 0 && benefits.length > 0) {
-      push({
+      pushStore({
         severity: "high",
         rule: "PAID_NO_BENEFIT",
         title: "유료 매장인데 등록된 혜택이 0건입니다",
         subject: r.name,
         detail: `플랜 ${r.tier} 인데 활성 쿠폰·스탬프 혜택이 하나도 없습니다. 앱 사용자에게는 빈 매장으로 보입니다.`,
-        hint: "Astro → 혜택 조회 → 관리하기에서 일반/한정 쿠폰을 등록하세요.",
+        hint: "매장 이름을 누르면 그 매장의 쿠폰 & 스탬프 편집 화면이 새 탭으로 열립니다. 일반/한정 쿠폰을 등록하세요.",
         source: "restaurants.tier × restaurant_benefits",
-      }, r.restaurant_id);
+      }, r);
     }
 
     // ③ 제휴가 끝났는데 앱 어딘가에 아직 살아 있다 (하카타 파스타 케이스)
@@ -107,7 +110,7 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
           (f.restaurant_id === r.restaurant_id || f.restaurant_name === r.name)
       );
       if (stillFeatured) {
-        push({
+        pushStore({
           severity: "high",
           rule: "INACTIVE_STILL_EXPOSED",
           title: "비활성 매장이 아직 기획전·배너에 걸려 있습니다",
@@ -115,25 +118,25 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
           detail: "제휴가 끝난 매장인데 활성 기획전 캠페인에 남아 있습니다. 앱에서 누르면 갈 곳이 없습니다.",
           hint: "Papillon → 배너/팝업에서 해당 기획전을 내리거나 매장을 교체하세요.",
           source: "restaurants.is_affiliate × featured_campaigns",
-        }, r.restaurant_id);
+        }, r);
       }
       if ((benefitCount.get(r.restaurant_id) ?? 0) > 0) {
-        push({
+        pushStore({
           severity: "medium",
           rule: "INACTIVE_HAS_BENEFIT",
           title: "비활성 매장에 활성 혜택이 남아 있습니다",
           subject: r.name,
           detail: "제휴가 끝났는데 쿠폰·스탬프 혜택이 아직 활성 상태입니다.",
-          hint: "혜택을 비활성 처리하거나 매장을 다시 활성화하세요.",
+          hint: "매장 이름을 누르면 쿠폰 & 스탬프 편집 화면이 새 탭으로 열립니다. 혜택을 끄거나, 제휴를 다시 이어 갈 매장이면 그대로 두세요.",
           source: "restaurants.is_affiliate × restaurant_benefits",
-        }, r.restaurant_id);
+        }, r);
       }
     }
 
     // ④ 유료인데 입금이 확인되지 않았다 — 우리 쪽이 잡고 있는 일. 운영 기록을 못 읽었으면 판정하지 않는다
     if (paid && affiliate && opsList) {
       if (!ops) {
-        push({
+        pushStore({
           severity: "medium",
           rule: "OPS_ROW_MISSING",
           title: "유료 매장인데 영업 운영 기록이 없습니다",
@@ -141,9 +144,9 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
           detail: "입금·계약서·비치물 상태를 아무도 기록하지 않았습니다.",
           hint: "Astro → 매장 상세 → 이행 블록에서 첫 값을 넣으면 행이 생깁니다.",
           source: "astro_store_ops",
-        }, r.restaurant_id);
+        }, r);
       } else if (ops.billing !== "PAID" && ops.billing !== "EXEMPT") {
-        push({
+        pushStore({
           severity: ops.invoice === "NO_REPLY" ? "high" : "medium",
           rule: "PAID_TIER_UNSETTLED",
           title: "유료 매장의 입금이 확인되지 않았습니다",
@@ -154,9 +157,9 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
               : "입금 상태가 아직 '대기' 또는 '미확인'입니다.",
           hint: "통장을 확인한 뒤 Astro → 입금 현황에서 체크하세요. 체크한 사람과 시각이 함께 남습니다.",
           source: "restaurants.tier × astro_store_ops.billing",
-        }, r.restaurant_id);
+        }, r);
       } else if (ops.billing === "PAID" && !ops.kit_delivered) {
-        push({
+        pushStore({
           severity: "low",
           rule: "PAID_NO_KIT",
           title: "입금은 됐는데 비치물이 전달되지 않았습니다",
@@ -164,13 +167,13 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
           detail: "포스터·QR 스티커 전달이 체크되지 않았습니다.",
           hint: "전달했다면 Astro → 매장 상세 → 운영에서 체크하세요.",
           source: "astro_store_ops.kit_delivered",
-        }, r.restaurant_id);
+        }, r);
       }
     }
 
     // ⑤ 학기/방학 활성 여부가 아직 아무도 정하지 않은 채로 남아 있다
     if (paid && affiliate && ops && ops.semester_active === null && ops.vacation_active === null) {
-      push({
+      pushStore({
         severity: "low",
         rule: "SEASON_UNSET",
         title: "학기/방학 운영 구분이 비어 있습니다",
@@ -178,7 +181,7 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
         detail: "2026-08-12 에 '기획팀이 확인해서 수동 설정'으로 정해졌지만 아직 값이 없습니다.",
         hint: "방학 전에 점주에게 확인해서 Astro → 매장 상세 → 운영에 넣으세요.",
         source: "astro_store_ops.semester_active",
-      }, r.restaurant_id);
+      }, r);
     }
 
     // ⑦ 앱 대학가가 비었다 — 앱은 이 칸으로 매장을 거르므로 대학가를 고른 학생에게 이 매장이 안 보인다(1009 에 실제로 있었다).
@@ -186,7 +189,7 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
     //    응답에 campus 칸이 없는(옛 백엔드·미리보기) 매장은 판정하지 않는다.
     const appCampus = typeof r.campus === "string" ? r.campus.trim() : null;
     if (affiliate && r.hidden_from_app !== true && appCampus === "") {
-      push({
+      pushStore({
         severity: "high",
         rule: "APP_CAMPUS_MISSING",
         title: "제휴 매장인데 앱 대학가가 비어 있습니다",
@@ -198,12 +201,12 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
           ? "백엔드 `python manage.py sync_store_campus --apply` 가 Astro 값으로 채웁니다(한쪽만 빈 매장만 건드림)."
           : "Astro → 파트너 매장 → 매장 상세에서 캠퍼스를 고르면 앱 대학가도 같이 바뀝니다.",
         source: "restaurants_affiliate.campus",
-      }, r.restaurant_id);
+      }, r);
     }
 
     // ⑧ Astro 캠퍼스와 앱 대학가가 다르다 — 숫자(Astro·Probe)와 노출(앱)이 서로 다른 대학가를 본다
     if (affiliate && ops?.campus && appCampus && ops.campus !== appCampus) {
-      push({
+      pushStore({
         severity: "medium",
         rule: "CAMPUS_MISMATCH",
         title: "Astro 캠퍼스와 앱 대학가가 다릅니다",
@@ -211,7 +214,7 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
         detail: `Astro 는 ${ops.campus}, 앱은 ${appCampus} 입니다. 매장 지표는 Astro 쪽으로 세고, 학생에게는 앱 쪽 대학가에서 보입니다.`,
         hint: "어느 쪽이 맞는지 확인한 뒤 Astro → 매장 상세에서 캠퍼스를 고치세요(바꾸면 앱도 같이 바뀝니다). 둘 다 값이 있으면 sync_store_campus 는 건드리지 않습니다.",
         source: "astro_store_ops.campus × restaurants_affiliate.campus",
-      }, r.restaurant_id);
+      }, r);
     }
   }
 
@@ -244,4 +247,18 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
     },
     test_excluded: excluded,
   };
+}
+
+/** 혜택 규칙 — Astro 에는 혜택 편집 칸이 없다. 관리자용 카탈로그 편집기는 `/dashboard/owner/coupons?rid=` 하나뿐이다(그 파일 머리말). */
+const COUPON_RULES = new Set(["PAID_NO_BENEFIT", "INACTIVE_HAS_BENEFIT"]);
+
+/**
+ * 매장 하나를 고치는 자리 — 정합성 화면에서 매장 이름을 누르면 간다.
+ * 혜택은 쿠폰 & 스탬프 편집 화면(새 탭), 나머지는 Astro 매장 상세. 기획전 노출은 Papillon 에서 고치므로 매장으로 보내지 않는다.
+ */
+export function storeFixTarget(i: Pick<QualityIssue, "rule" | "restaurant_id">): { href: string } | { tab: string } | null {
+  if (i.restaurant_id == null) return null;
+  if (COUPON_RULES.has(i.rule)) return { href: `/dashboard/owner/coupons?rid=${i.restaurant_id}` };
+  if (i.rule === "INACTIVE_STILL_EXPOSED") return null;
+  return { tab: `astro-ops?open=${i.restaurant_id}` };
 }

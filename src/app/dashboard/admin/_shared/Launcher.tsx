@@ -27,7 +27,6 @@ import OrbitCard from "../orbit/OrbitCard";
 
 interface Pulse {
   astro?: { stuck: number; leads: number; stale: number };
-  probe?: { high: number; due: number; held: number };
 }
 
 const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
@@ -53,8 +52,9 @@ export default function Launcher({ available, extras = [], userName, username = 
         .catch(() => null);
     const period = periodLocal();
     // Castor 는 보류 상태라 부르지 않는다. 안 쓰는 툴의 숫자를 매 로그인마다 받아 올 이유가 없다 (0914).
-    Promise.all([j("/api/astro/stores"), j("/api/astro/leads"), j(`/api/astro/invoices?period=${period}`), j("/api/probe/quality"), j("/api/probe/insights"), j("/api/probe/mileage")]).then(
-      ([stores, leads, inv, quality, ins, mil]) => {
+    // Probe 숫자는 여기서 따로 세지 않는다 — 사이드바 배지·세티와 같은 `status`(useSatelliteStatus)를 쓴다 (아래 blocked).
+    Promise.all([j("/api/astro/stores"), j("/api/astro/leads"), j(`/api/astro/invoices?period=${period}`)]).then(
+      ([stores, leads, inv]) => {
         const next: Pulse = {};
         if (stores?.stores) {
           type S = { restaurant_id: number; tier: string | null; is_affiliate: boolean; ops: { billing?: string; pay_cycle?: string | null; is_test?: boolean } | null };
@@ -66,13 +66,6 @@ export default function Launcher({ available, extras = [], userName, username = 
           const activeLeads = ls.filter((l) => !["재컨택", "보류", "거절"].includes(l.stage));
           const stale = activeLeads.filter((l) => l.stage !== "계약 완료" && l.last_touch_at && Date.now() - Date.parse(l.last_touch_at) > 7 * 86_400_000).length;
           next.astro = { stuck, leads: activeLeads.length, stale };
-        }
-        if (quality?.counts || ins?.insights || mil?.rounds) {
-          next.probe = {
-            high: quality?.counts?.high ?? 0,
-            due: ((ins?.insights ?? []) as { checkpoint: string }[]).filter((i) => ["D2", "D7", "D14"].includes(i.checkpoint)).length,
-            held: ((mil?.rounds ?? []) as { result: string }[]).filter((r) => r.result === "held").length,
-          };
         }
         setPulse(next);
       }
@@ -126,8 +119,12 @@ export default function Launcher({ available, extras = [], userName, username = 
           const st = STATUS[t.status];
           const p = pulse[t.key as keyof Pulse];
           const hold = t.status === "hold";
-          const blocked = t.key === "astro" && p && "stuck" in p ? p.stuck + p.stale
-            : t.key === "probe" && p && "high" in p ? p.due + p.held : 0;
+          /**
+           * Probe = 리포트 만들 때(14일차 지났는데 리포트 없음) + 이번 달 보류 회차. Probe 홈·리포트·마일리지 화면과 같은 기준이다.
+           * 1013 전에는 여기서 따로 세면서 2~20일 된 게시물을 리포트가 있어도 다 셌다 — 런처 숫자만 혼자 컸다.
+           */
+          const blocked = t.key === "astro" && p ? p.stuck + p.stale
+            : t.key === "probe" && status?.probe ? status.probe.due + status.probe.held : 0;
           return (
             <li key={t.key} className="min-w-0">
               <button

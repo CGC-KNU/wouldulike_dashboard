@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconCopy, IconRefresh, IconArrowRight } from "@tabler/icons-react";
 import type { QualityIssue, QualitySeverity } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Kpi, Notice, PageHeader, Skeleton, type ChipTone } from "../_shared/ui";
+import { storeFixTarget } from "@/lib/draft/quality";
+import { Button, Card, Chip, DraftBadge, Empty, Kpi, Notice, PageHeader, Skeleton, focusRing, type ChipTone } from "../_shared/ui";
 
 /**
  * Probe · 데이터 정합성 점검.
@@ -19,12 +20,14 @@ import { Button, Card, Chip, DraftBadge, Empty, Kpi, Notice, PageHeader, Skeleto
 const SEV_LABEL: Record<QualitySeverity, string> = { high: "높음", medium: "보통", low: "낮음" };
 const SEV_TONE: Record<QualitySeverity, ChipTone> = { high: "red", medium: "amber", low: "gray" };
 
-/** 규칙별 "어디서 고치나" 딥링크. 화면이 문제만 말하고 끝나면 "그래서 뭐?" 가 된다. */
+/**
+ * 규칙별 "어디서 고치나" 딥링크. 화면이 문제만 말하고 끝나면 "그래서 뭐?" 가 된다.
+ * 1013: 플랜·혜택이 숨은 「식당 관리」 탭(0913 에 Astro 로 합쳐져 어느 제품에도 없다)으로 가고 있었다.
+ * 혜택 두 규칙은 탭 단위로 갈 곳이 없어 버튼을 빼고, 매장 이름이 그 매장의 쿠폰 편집 화면을 연다(storeFixTarget).
+ */
 const FIX_TAB: Record<string, { tab: string; label: string }> = {
-  TIER_MISSING: { tab: "restaurants", label: "식당 관리에서 플랜 지정" },
-  PAID_NO_BENEFIT: { tab: "restaurants", label: "식당 관리에서 혜택 등록" },
+  TIER_MISSING: { tab: "astro-ops", label: "파트너 매장에서 플랜 지정" },
   INACTIVE_STILL_EXPOSED: { tab: "satellite", label: "Papillon 배너/팝업에서 내리기" },
-  INACTIVE_HAS_BENEFIT: { tab: "restaurants", label: "식당 관리에서 혜택 끄기" },
   OPS_ROW_MISSING: { tab: "astro-ops", label: "매장 현황에서 기록" },
   PAID_TIER_UNSETTLED: { tab: "astro-billing", label: "입금 현황에서 처리" },
   PAID_NO_KIT: { tab: "astro-ops", label: "매장 현황에서 체크" },
@@ -171,11 +174,25 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
                 </div>
 
                 <ul className="flex flex-wrap gap-1.5 mt-3">
-                  {list.map((i) => (
-                    <li key={i.id} className="text-[12px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
-                      {i.subject}
-                    </li>
-                  ))}
+                  {list.map((i) => {
+                    // 매장 이름을 누르면 그 매장을 고치는 자리로 — 갈 곳이 없는 항목(후보·기획전)은 글자만
+                    const to = storeFixTarget(i);
+                    const href = to && "href" in to ? to.href : null;
+                    const tab = to && "tab" in to ? to.tab : null;
+                    const cls = "block text-[12px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1";
+                    const link = `${cls} hover:border-navy/30 hover:text-navy ${focusRing}`;
+                    return (
+                      <li key={i.id}>
+                        {href ? (
+                          <a href={href} target="_blank" rel="noreferrer" className={link} title="쿠폰 & 스탬프 편집 화면을 새 탭으로 엽니다">{i.subject}</a>
+                        ) : tab && onGo ? (
+                          <button type="button" onClick={() => onGo(tab)} className={link} title="Astro 매장 상세를 엽니다">{i.subject}</button>
+                        ) : (
+                          <span className={cls}>{i.subject}</span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
 
                 <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-gray-500">

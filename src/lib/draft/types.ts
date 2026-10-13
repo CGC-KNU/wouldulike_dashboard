@@ -420,6 +420,7 @@ export interface QualityIssue {
   rule: string; // 규칙 코드 — 슬랙 알림·이력 추적용
   title: string;
   subject: string; // 대상 (식당명 등)
+  restaurant_id?: number; // 매장 규칙이면 그 매장 — 화면이 매장 이름에서 바로 고치는 자리로 보낸다
   detail: string;
   hint: string; // 어떻게 고치나
   source: string; // 어느 데이터를 비교해서 나온 판정인지
