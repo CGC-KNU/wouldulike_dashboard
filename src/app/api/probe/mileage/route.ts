@@ -12,7 +12,7 @@ import { accessToken, clearBackendCache, fetchBackendJson } from "@/lib/draft/to
  * `mileageDrawManual` 을 돌린다. 9/2·9/4·9/9 세 번 연속 응모풀이 비어 추첨이 보류됐다 — 이 화면이 그걸 먼저 보이게 한다.
  *
  * 회차 기록은 백엔드 `probe.MileageRound`. 시트가 정본이고 여기는 '확인했다'는 사람의 기록이다.
- * 달마다 수·금 회차는 이 파일이 만들어(roundsFor) 백엔드에 없는 것만 넣는다 — 9월의 예외(1주차 미운용·추석)가 여기 있어서다.
+ * 달마다 수·금 회차 자리는 이 파일이 계산한다(roundsFor) — 9월의 예외(1주차 미운용·추석)가 여기 있어서다. 백엔드에는 사람이 기록을 저장할 때 그 회차만 들어간다.
  * 백엔드가 없는 로컬·미리보기에서만 예전 초안 파일을 쓴다.
  */
 
@@ -96,22 +96,25 @@ function ensureCurrentMonth(rounds: MileageRound[]): MileageRound[] {
 
 const onBackend = () => Boolean(process.env.NEXT_PUBLIC_API_URL);
 
-/** 백엔드에 이번 달·9월 회차가 없으면 만들어 넣고, 전체를 날짜순으로 돌려준다. */
+/**
+ * 9월·이번 달 회차 **자리**(roundsFor)에 백엔드에 저장된 사람 기록을 얹어 날짜순으로 돌려준다. **읽기만 한다.**
+ *
+ * 1013 전에는 빠진 자리를 여기서 백엔드에 POST 로 만들어 넣었다 — 화면을 열 때마다, 런처·홈이 이 주소를 읽을 때도.
+ * 읽기에 쓰기가 붙어 있었다. 자리는 계산으로 충분하고, 백엔드에는 사람이 기록을 저장할 때(PATCH) 그 회차만 만든다.
+ */
 async function loadRounds(): Promise<MileageRound[]> {
   if (!onBackend()) return ensureCurrentMonth(readDraft<MileageRound[]>(KEY, seedRounds));
   const now = new Date();
-  const want = [...seedRounds(), ...roundsFor(now.getFullYear(), now.getMonth())];
+  const byId = new Map([...seedRounds(), ...roundsFor(now.getFullYear(), now.getMonth())].map((r) => [r.id, r]));
   const have = (await fetchBackendJson<{ rounds: MileageRound[] }>("/api/probe/mileage/rounds/"))?.rounds ?? [];
-  const missing = want.filter((w) => !have.some((h) => h.id === w.id));
-  if (missing.length) {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/probe/mileage/rounds/`, {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await accessToken()}` },
-      body: JSON.stringify({ rounds: missing }), cache: "no-store",
-    }).catch(() => undefined);
-    const after = (await fetchBackendJson<{ rounds: MileageRound[] }>("/api/probe/mileage/rounds/", undefined, true))?.rounds;
-    if (after) return [...after].sort((a, b) => a.id.localeCompare(b.id));
-  }
-  return [...have].sort((a, b) => a.id.localeCompare(b.id));
+  for (const h of have) byId.set(h.id, h); // 저장된 기록이 자리를 덮는다
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** 그 날짜의 회차 자리 — 수·금이 아니거나 날짜가 아니면 null */
+function slotFor(id: string): MileageRound | null {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(id);
+  return m ? roundsFor(Number(m[1]), Number(m[2]) - 1).find((r) => r.id === id) ?? null : null;
 }
 
 /** 회차에 실제로 무슨 일이 있었나 — 앱 DB(응모·당첨). 사람이 시트에서 세던 숫자를 대신한다. */
@@ -197,6 +200,14 @@ export async function PATCH(req: NextRequest) {
   if (body.result && !["scheduled", "drawn", "held", "skipped"].includes(body.result)) return NextResponse.json({ detail: "result 값이 올바르지 않습니다." }, { status: 400 });
   if (body.pool_count !== undefined && body.pool_count !== null && (!Number.isInteger(body.pool_count) || body.pool_count < 0)) return NextResponse.json({ detail: "pool_count 는 0 이상 정수여야 합니다." }, { status: 400 });
   if (onBackend()) {
+    // 처음 기록하는 회차면 자리부터 만든다 — 백엔드 POST 는 이미 있는 회차를 건드리지 않는다(읽을 때는 만들지 않는다, loadRounds)
+    const slot = slotFor(body.id);
+    if (slot) {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/probe/mileage/rounds/`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await accessToken()}` },
+        body: JSON.stringify({ rounds: [slot] }), cache: "no-store",
+      }).catch(() => undefined);
+    }
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/probe/mileage/rounds/`, {
       method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await accessToken()}` },
       body: JSON.stringify({ id: body.id, ...(body.pool_count !== undefined ? { pool_count: body.pool_count } : {}), ...(body.result ? { result: body.result } : {}), ...(body.note !== undefined ? { note: body.note } : {}) }),
