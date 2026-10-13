@@ -43,7 +43,8 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const today = todayLocal();
   const due = (ins?.insights ?? []).filter((i) => i.due);
   const nextRound = (mil?.rounds ?? []).find((r) => r.date >= today && r.result === "scheduled") ?? null;
-  const held = (mil?.rounds ?? []).filter((r) => r.result === "held").length;
+  // 회차 표에는 지난달(9월)도 같이 온다 — 「이번 달 보류」는 이번 달 회차만 센다
+  const held = (mil?.rounds ?? []).filter((r) => r.date.startsWith(today.slice(0, 7)) && r.result === "held").length;
 
   const loading = !ov || !q || !app;
   const filled = app?.groups?.flatMap((g) => g.metrics).filter((m) => m.value !== null).length ?? 0;
@@ -61,8 +62,8 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
       />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
-        <Kpi label="리포트 만들 때" value={!ins ? "-" : due.length} tone="alert" hint="D+7 지났는데 리포트 없음" onClick={() => onGo("probe-reports")} />
-        <Kpi label="추첨 응모풀" value={!mil ? "-" : nextRound ? (nextRound.pool_count === null ? "미확인" : nextRound.pool_count) : "-"} tone={nextRound && nextRound.pool_count === null ? "alert" : "plain"} hint={nextRound ? `다음 ${Number(nextRound.date.slice(5, 7))}/${Number(nextRound.date.slice(8))}(${nextRound.weekday}) 20시 · 보류 ${held}회` : "이번 달 남은 회차 없음"} onClick={() => onGo("probe-mileage")} />
+        <Kpi label="리포트 만들 때" value={!ins ? "-" : due.length} tone="alert" hint="14일차 지났는데 리포트 없음" onClick={() => onGo("probe-reports")} />
+        <Kpi label="추첨 응모풀" value={!mil ? "-" : nextRound ? (nextRound.pool_count === null ? "미확인" : nextRound.pool_count) : "-"} tone={nextRound && nextRound.pool_count === null ? "alert" : "plain"} hint={nextRound ? `다음 ${Number(nextRound.date.slice(5, 7))}/${Number(nextRound.date.slice(8))}(${nextRound.weekday}) 11시 마감 · 보류 ${held}회` : "이번 달 남은 회차 없음"} onClick={() => onGo("probe-mileage")} />
         <Kpi label="정합성 · 높음" value={loading ? "-" : q?.counts?.high ?? 0} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => onGo("probe-quality")} />
         <Kpi label="조용한 매장" value={loading ? "-" : ov?.totals?.silent ?? 0} tone="alert" hint="이번 달 쿠폰·스탬프 0" onClick={() => onGo("probe-metrics")} />
       </div>

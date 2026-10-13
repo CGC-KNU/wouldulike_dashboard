@@ -264,14 +264,14 @@ export async function GET() {
 
   const SOURCE_HINT: Record<Source, string> = {
     backend: s
-      ? "백엔드 app-stats 에서 이번 달(KST) 합계를 읽는다. 「매장 상세 → 쿠폰 발급」은 정의를 다시 정하는 중이라 비워 둔다 — 앱의 coupon_issued 는 자동 지급 쿠폰이 보일 때도 찍혀 매장을 보고 받은 쿠폰과 섞인다."
+      ? "백엔드 app-stats 에서 이번 달(KST) 합계를 읽는다. 「매장 상세 → 쿠폰 발급」은 DB 가 아니라 GA4 안에서 (기기·세션·매장)으로 잇는다 — 기획전 자동 지급은 뺀다."
       : "쿠폰·스탬프·가입은 이미 DB 에 있다. 백엔드 /api/dashboard/admin/app-stats/ 가 배포되면 채워진다.",
     push: s
       ? "발송 건수는 notifications 테이블에서 센다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸."
       : "발송 건수는 notifications 테이블 집계로 나온다. 열기는 Firebase 자동 이벤트로 — 위 「푸시 → 앱 열기」 칸.",
     ga4: g
-      ? `BigQuery 확정 테이블(${md(g.through)}까지)에서 6시간마다 읽는다. 기기 단위라 재설치하면 새 사용자로 센다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저.`
-      : "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. WAU · DAU/WAU · 앱 열기 → 매장 상세는 쿼리만 붙이면 된다. 배너 노출은 앱에 이벤트가 없어 앱 수정이 먼저. 값과 배지는 같은 배포에.",
+      ? `BigQuery 확정 테이블(${md(g.through)}까지)에서 6시간마다 읽는다. 기기 단위라 재설치하면 새 사용자로 센다. 배너 노출은 노출 이벤트가 든 앱 버전을 쓰는 기기만 센다.`
+      : "앱은 3월부터 GA4 로 이벤트를 보내고 BigQuery 에 쌓인다. 키(GCP_SA_KEY)가 없거나 조회가 실패하면 이 칸들이 빈다. 값과 배지는 같은 배포에.",
     firebase: g
       ? "GA4 와 같은 스트림이라 같은 BigQuery 에서 읽는다. 가입 1주 후 복귀 = first_open 코호트의 7~13일째 재방문. 푸시 열기 = FCM 자동 이벤트, 수신은 안드로이드만 남아 비율도 안드로이드 기준."
       : "GA4 와 같은 스트림이라 같은 BigQuery 에 있다. 가입 1주 후 복귀는 first_open 코호트 쿼리로 읽는다.",

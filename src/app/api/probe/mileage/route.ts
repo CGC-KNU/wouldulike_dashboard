@@ -48,6 +48,15 @@ const KEY = "probe_mileage";
  * 지어낸 결과는 걷어낸다. 회차 자리만 만들고 결과는 비워 둔다 —
  * 사람이 앱 DB 실측을 보고 채우는 것이 이 화면의 일이다.
  */
+/**
+ * 회차 좌석 — 9월은 둘 다 랜덤, 10월부터 5,000원은 확정권(그 회차 최다 응모자, 0920 운영 방침). 화면의 회차 만들기 기본값과 같다.
+ * 백엔드에 저장된 좌석은 회차 자리를 처음 만들 때의 값이고 사람이 고치는 칸이 아니라서, 보여 줄 때도 이 규칙으로 맞춘다
+ * (1013 — 10월 회차가 옛 기본값 「확정 0 · 랜덤 2」로 나왔다). 실제 래플의 방식(pick_mode)은 백엔드가 아직 안 내려 준다.
+ */
+function seatsFor(date: string): MileageRound["seats"] {
+  return date >= "2026-10-01" ? { fixed: 1, random: 1 } : { fixed: 0, random: 2 };
+}
+
 function roundsFor(y: number, m0: number): MileageRound[] {
   const known: Record<string, Partial<MileageRound>> = {};
   const out: MileageRound[] = [];
@@ -61,7 +70,7 @@ function roundsFor(y: number, m0: number): MileageRound[] {
     const k = known[id] ?? {};
     out.push({
       id, date: id, weekday: wd === 3 ? "수" : "금",
-      seats: k.seats ?? { fixed: 0, random: 2 },
+      seats: k.seats ?? seatsFor(id),
       prizes: "5,000원 1 · 10,000원 1",
       pool_count: k.pool_count ?? null,
       pool_checked_by: null, pool_checked_at: null,
@@ -137,7 +146,7 @@ export async function GET() {
   const live = onBackend() ? await fetchBackendJson<{ days: Record<string, DayProgress>; vouchers: VoucherSummary }>("/api/probe/mileage/progress/") : null;
   const progress = live?.days ?? null;
   return NextResponse.json({
-    rounds: rounds.map((r) => withAppFacts(r, progress?.[r.date] ?? null)),
+    rounds: rounds.map((r) => withAppFacts({ ...r, seats: seatsFor(r.date) }, progress?.[r.date] ?? null)),
     // 회차 날짜별 실제 응모·당첨. 못 읽으면 null — 0 이 아니다(사람이 적은 숫자와 섞이면 안 된다).
     progress,
     // 당첨 식사권이 매장에서 쓰였나 — 뽑힌 것과 쓴 것은 다르다
@@ -153,7 +162,8 @@ export async function GET() {
     },
     sheet_url: MILEAGE_SHEET,
     slack_channel: MILEAGE_SLACK,
-    pool_source: "manual", // 앱 DB → 시트 자동화 전
+    // 응모·당첨을 앱 DB 에서 읽었으면 "app". 못 읽었을 때만 "manual" — 화면이 시트를 직접 보라고 말한다
+    pool_source: progress ? "app" : "manual",
     draft: !onBackend(),
     draft_note: "회차 표는 #ops-mileage 게시 기준으로 채웠습니다. 시트가 정본이고, 여기는 사람이 확인한 기록입니다.",
   });

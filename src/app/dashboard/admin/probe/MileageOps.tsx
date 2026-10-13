@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconBrandSlack, IconExternalLink, IconRefresh } from "@tabler/icons-react";
-import { Button, Card, Chip, DraftBadge, Field, Input, Kpi, Notice, PageHeader, PanelSection, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, rowClickable, todayLocal, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, rowClickable, todayLocal, type ChipTone } from "../_shared/ui";
 
 /**
  * Probe · 마일리지 추첨 운영.
@@ -37,8 +37,14 @@ export default function MileageOps({ actor }: { actor: string }) {
   const today = todayLocal();
   const rounds = data?.rounds ?? [];
   const next = useMemo(() => rounds.find((r) => r.date >= today && r.result === "scheduled") ?? null, [rounds, today]);
-  const held = rounds.filter((r) => r.result === "held").length;
-  const drawn = rounds.filter((r) => r.result === "drawn").length;
+  // 표는 한 달씩 — 서버는 9월과 이번 달을 같이 준다. 이번 달이 없으면(아직 못 읽음) 마지막 달
+  const months = useMemo(() => [...new Set(rounds.map((r) => r.date.slice(0, 7)))].sort(), [rounds]);
+  const [pickedMonth, setPickedMonth] = useState<string | null>(null);
+  const month = pickedMonth ?? (months.includes(today.slice(0, 7)) ? today.slice(0, 7) : months[months.length - 1] ?? today.slice(0, 7));
+  const monthNo = Number(month.slice(5, 7));
+  const monthRounds = rounds.filter((r) => r.date.startsWith(month));
+  const held = monthRounds.filter((r) => r.result === "held").length;
+  const drawn = monthRounds.filter((r) => r.result === "drawn").length;
   const progress = data?.progress ?? null;
   const v = data?.vouchers ?? null;
   /** 이 회차에 실제로 무슨 일이 있었나 — 앱 DB. 못 읽었으면 null. */
@@ -59,7 +65,7 @@ export default function MileageOps({ actor }: { actor: string }) {
         actions={<>{data?.draft && <DraftBadge note={data.draft_note} />}{data && <a href={data.sheet_url} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>운영 시트</Button></a>}{data && <a href={`https://slack.com/app_redirect?channel=${data.slack_channel}`} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{data.slack_channel}</Button></a>}<Button variant="primary" icon={<IconRefresh />} onClick={load} disabled={loading}>다시 읽기</Button></>} />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
-        <Kpi label="다음 회차" value={loading ? "-" : next ? `${Number(next.date.slice(5, 7))}/${Number(next.date.slice(8))} ${next.weekday}` : "없음"} hint={next ? `20:00 · 확정 ${next.seats.fixed} · 랜덤 ${next.seats.random}` : "이번 달 남은 회차 없음"} />
+        <Kpi label="다음 회차" value={loading ? "-" : next ? `${Number(next.date.slice(5, 7))}/${Number(next.date.slice(8))} ${next.weekday}` : "없음"} hint={next ? `11:00 마감 · 확정 ${next.seats.fixed} · 랜덤 ${next.seats.random}` : "이번 달 남은 회차 없음"} />
         {/* 다음 회차 응모 — 앱 DB 실측이 있으면 그걸 먼저 보여 준다(사람이 시트에서 세던 숫자를 대신한다) */}
         {/* 뽑힌 것과 쓴 것은 다르다 — 안 쓰고 만료되면 학생에게도 매장에게도 아무 일이 없었던 것이다 */}
         <Kpi label="식사권 사용" value={loading ? "-" : v ? `${v.redeemed}/${v.issued}` : "-"} tone={v && v.expired > 0 ? "alert" : "plain"}
@@ -68,26 +74,28 @@ export default function MileageOps({ actor }: { actor: string }) {
           tone={nextEmpty || poolUnknown ? "alert" : "plain"}
           hint={!next ? "" : prog(next) ? `${prog(next)!.people}명 · 앱 기록${nextEmpty ? " · 이대로면 11시 마감 때 뽑을 게 없다" : ""}` : next.pool_checked_at ? `${next.pool_checked_by ?? ""} 확인` : "앱 기록을 못 읽었습니다 — 시트 확인"}
           onClick={next ? () => setOpenId(next.id) : undefined} />
-        <Kpi label="보류된 회차" value={loading ? "-" : held} tone="alert" hint="응모풀 비어 추첨 못 함" />
-        <Kpi label="추첨 완료" value={loading ? "-" : drawn} hint={`이번 달 ${rounds.filter((r) => r.result !== "skipped").length}회차 중`} tone="good" />
+        <Kpi label="보류된 회차" value={loading ? "-" : held} tone="alert" hint={`${monthNo}월 · 응모풀 비어 추첨 못 함`} />
+        <Kpi label="추첨 완료" value={loading ? "-" : drawn} hint={`${monthNo}월 ${monthRounds.filter((r) => r.result !== "skipped").length}회차 중`} tone="good" />
       </div>
 
+      {/* 응모·당첨은 앱 DB 실측으로 채운다. 그걸 못 읽었을 때만 사람이 시트를 본다 (1013 — 전에는 이 경고가 늘 떴다) */}
       {data && data.pool_source === "manual" && (
         <div className="mb-4">
-          <Notice tone="amber" title="응모풀 정본 소스가 아직 없습니다">
-            회차마다 앱 DB 스냅샷을 사람이 시트 '응모풀' 탭에 붙여넣고 <code className="bg-black/[0.05] px-1 rounded text-[12px]">mileageDrawManual</code> 을 돌립니다.
-            9/2 · 9/4 · 9/9 가 이래서 보류됐습니다. <strong>앱 DB → 시트 자동 적재</strong>(재민)가 붙으면 이 알림은 사라집니다.
+          <Notice tone="amber" title="앱 기록(응모·당첨)을 읽지 못했습니다">
+            아래 응모 칸이 비어 있는 것은 0 이 아니라 모름입니다. 이번 회차는 운영 시트의 &apos;응모풀&apos; 탭을 직접 확인해 사람 확인 칸에 적어 주세요.
           </Notice>
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)] gap-4 items-start">
-        <Card flush title="9월 회차" description="1주차 없음 · 4주차는 추석 적립분 몰아 방출 + 상품 2배 (0902 확정)">
+        <Card flush title={`${monthNo}월 회차`}
+          description={month === "2026-09" ? "1주차 없음 · 4주차는 추석 적립분 몰아 방출 + 상품 2배 (0902 확정)" : "수 · 금 11:00 마감 · 행을 누르면 응모 · 식사권 · 결과를 봅니다"}
+          actions={months.length > 1 ? <FilterPills label="달" value={month} onChange={setPickedMonth} options={months.map((m) => ({ key: m, label: `${Number(m.slice(5, 7))}월` }))} /> : undefined}>
           {loading ? <Skeleton rows={8} cols={5} /> : (
             <Table minWidth="40rem">
               <thead><tr><Th width="6rem">회차</Th><Th width="8rem">좌석</Th><Th width="11rem">상품</Th><Th width="7rem" align="right">응모 (앱)</Th><Th width="5rem" align="right">당첨</Th><Th width="5rem" align="right">사람 확인</Th><Th width="6.5rem">결과</Th><Th>메모</Th></tr></thead>
               <tbody>
-                {rounds.map((r) => (
+                {monthRounds.map((r) => (
                   <tr key={r.id} className={`${rowClickable} ${r.id === next?.id ? "bg-navy/[0.03]" : ""}`} onClick={() => setOpenId(r.id)}>
                     <Td><span className="font-semibold text-gray-900 whitespace-nowrap">{Number(r.date.slice(5, 7))}/{Number(r.date.slice(8))} ({r.weekday})</span>{r.id === next?.id && <span className="block text-[11px] text-navy font-semibold">다음</span>}</Td>
                     <Td className="text-[12px] text-gray-600 whitespace-nowrap">확정 {r.seats.fixed} · 랜덤 {r.seats.random}</Td>
