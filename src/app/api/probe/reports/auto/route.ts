@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
-import { buildInsights, liveReportFor } from "@/lib/draft/insights";
+import { buildInsights } from "@/lib/draft/insights";
 import { fetchReportData } from "@/lib/draft/papillon";
 import { createReportDraft } from "@/lib/draft/reportCreate";
 import { draftMessage, reporterMentions } from "@/lib/draft/reportAutoMessage";
 import { originOf } from "@/lib/draft/reportPage";
 import { listReports } from "@/lib/draft/reportStore";
 import { mintServiceToken, withServiceToken } from "@/lib/draft/serviceAuth";
+import { normName } from "@/lib/draft/sheet";
 import type { StoreReport } from "@/lib/draft/types";
 
 /**
@@ -22,8 +23,9 @@ import type { StoreReport } from "@/lib/draft/types";
  *  · 14일차 숫자(report-data 의 day=14)가 아직 없으면 만들지 않는다 — 7일차 숫자로 굳으면 「14일차 보고」가 거짓이 된다.
  *    정밀 수집이 3시간마다 돌아 게시 14일이 지난 직후에 찍힌다. 내일 다시 보면 된다.
  *  · 14~16일차만 본다. 더 오래된 게시물을 지금 와서 채우지 않고, 사람이 지운 초안이 몇 주 뒤 되살아나지도 않는다.
- *  · 같은 게시물·매장에 리포트가 있으면 만들지 않는다 — 사람이 이미 다뤘다. 회수된 것은 없는 것으로 본다(1014 — 화면 「만들 때」와
- *    같은 판정 `liveReportFor`. 전에는 회수본도 세서 화면엔 「만들 때」인 게시물을 자동은 건너뛰었다).
+ *  · 같은 게시물·매장에 리포트가 있으면(회수된 것 포함) 만들지 않는다 — 사람이 이미 다뤘다.
+ *    회수는 링크가 나간(LINKED·SENT) 리포트에만 있다 = 이미 보낸 게시물이다. 화면 「만들 때」(insights)와 만들기(reportCreate)는
+ *    회수본을 빼지만(사람이 갱신본을 다시 만들 수 있게) 자동은 세야 한다 — 1014 #315 에서 맞췄다가 보낸 게시물에 초안이 또 생겨 되돌렸다.
  *  · 앱 매장이거나 협찬 매장으로 잡힌 게시물만. 매장 표에서 이름을 못 찾은 괄호는 사람이 정리해야 한다.
  *
  * 14일차 #ops-partner 알림은 이 메시지 하나다(1008) — 백엔드의 「14일 경과」 알림을 여기로 합쳤다(reportAutoMessage.ts).
@@ -59,7 +61,8 @@ export async function POST(req: Request) {
     const failed: { plan_id: number; detail: string }[] = [];
     let had = 0;
     for (const i of due) {
-      if (liveReportFor(reports, i.plan_id, i.restaurant_id, i.store)) { had++; continue; }
+      const mine = reports.some((x) => x.plan_id === i.plan_id && (i.restaurant_id !== null ? x.restaurant_id === i.restaurant_id : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(i.store)));
+      if (mine) { had++; continue; }
       const rd = await fetchReportData(i.plan_id);
       if (!rd?.available || rd.day !== 14) { wait.push(i.plan_id); continue; }
       if (dry) { created.push({ id: `(dry) plan ${i.plan_id}`, text: "" }); continue; }
