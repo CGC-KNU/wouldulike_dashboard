@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { IconFileDescription, IconRefresh } from "@tabler/icons-react";
-import { Button, Card, Chip, Kpi, Notice, PageHeader, Skeleton, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, Kpi, Notice, PageHeader, Skeleton, surface, type ChipTone } from "../_shared/ui";
+import { PERIOD_LABEL, type AppPeriod, type AppPeriodKey } from "@/lib/draft/appPeriods";
 
 /**
  * Probe · 앱 지표.
@@ -12,11 +13,14 @@ import { Button, Card, Chip, Kpi, Notice, PageHeader, Skeleton, type ChipTone } 
  *
  * 1013: 출처를 하나씩 붙이던 시기의 안내판(채워진 지표 · 연결된 출처 · 주요 지표 후보 KPI, 「데이터 출처」 표)을 걷어냈다.
  * 넷 다 붙어 있다. 위 KPI 는 주간 보고서 머리 지표와 같은 넷이다(appReportData `headline`).
+ *
+ * 1014: 칸마다 센 구간이 다르다(이번 달 · 7일 · 30일 …). 날짜를 설명 문장마다 따로 적던 것을 걷고, 숫자 밑 칩에
+ * 「출처 · 기간」을 달고, 기간 → 날짜는 위 기간 줄 한 곳에 적는다. 구간 자체는 그대로다.
  */
 
 type Source = "backend" | "push" | "ga4" | "firebase";
 type SourceStatus = "connected" | "app_fix" | "pending";
-interface Metric { key: string; label: string; value: number | null; unit?: string; source: Source; note?: string; status?: SourceStatus }
+interface Metric { key: string; label: string; value: number | null; unit?: string; source: Source; period?: AppPeriodKey; note?: string; status?: SourceStatus }
 interface Group { key: string; title: string; description: string; metrics: Metric[] }
 interface Payload {
   groups: Group[];
@@ -25,14 +29,18 @@ interface Payload {
   ga4_ok?: boolean;
   ga4_error?: string | null;
   ga4_through?: string | null;
+  periods?: AppPeriod[];
 }
 
-/** 위 KPI — 주간 보고서 머리 지표와 같은 넷(appReportData `headline`). 값·단위는 아래 칸에서 그대로 가져온다. */
+/**
+ * 위 KPI — 주간 보고서 머리 지표와 같은 넷(appReportData `headline`). 값·단위는 아래 칸에서 그대로 가져온다.
+ * 힌트 앞에 그 칸의 구간을 붙인다 — 넷 중 복귀만 7일 창이 아니라 첫 실행 코호트다. 힌트는 한 줄(잘림)이라 짧게.
+ */
 const HEADLINE: { key: string; hint: string }[] = [
-  { key: "wau", hint: "최근 7일 앱을 켠 기기" },
-  { key: "open_to_store", hint: "세션 중 매장 상세를 연 비율" },
-  { key: "retention_w1", hint: "첫 실행 7~13일째 다시 켠 비율" },
-  { key: "dau_wau", hint: "20% 넘으면 습관이 붙은 것" },
+  { key: "wau", hint: "앱을 켠 기기" },
+  { key: "open_to_store", hint: "세션 기준" },
+  { key: "retention_w1", hint: "7~13일째" },
+  { key: "dau_wau", hint: "20% 넘으면 습관" },
 ];
 
 const SOURCE_TONE: Record<Source, ChipTone> = { backend: "navy", push: "blue", ga4: "amber", firebase: "amber" };
@@ -58,6 +66,7 @@ export default function AppMetrics() {
   useEffect(load, []);
 
   const metric = (key: string) => data?.groups.flatMap((g) => g.metrics).find((m) => m.key === key);
+  const period = (key?: AppPeriodKey) => (key ? data?.periods?.find((p) => p.key === key) : undefined);
 
   return (
     <>
@@ -82,7 +91,8 @@ export default function AppMetrics() {
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         {HEADLINE.map(({ key, hint }) => {
           const m = metric(key);
-          return <Kpi key={key} label={m?.label ?? key} value={loading || !m || m.value === null ? "-" : m.value.toLocaleString()} suffix={m?.value != null ? m.unit : undefined} hint={hint} />;
+          const range = period(m?.period)?.range;
+          return <Kpi key={key} label={m?.label ?? key} value={loading || !m || m.value === null ? "-" : m.value.toLocaleString()} suffix={m?.value != null ? m.unit : undefined} hint={range ? `${range} · ${hint}` : hint} />;
         })}
       </div>
 
@@ -103,6 +113,8 @@ export default function AppMetrics() {
         </div>
       )}
 
+      {!loading && data?.periods && <PeriodStrip periods={data.periods} through={data.ga4_through ?? null} />}
+
       {loading ? (
         <Card flush><Skeleton rows={6} cols={4} /></Card>
       ) : (
@@ -111,16 +123,21 @@ export default function AppMetrics() {
             <Card key={g.key} title={g.title} description={g.description}>
               <dl className="divide-y divide-gray-100">
                 {g.metrics.map((m) => (
-                  <div key={m.key} className="flex items-center gap-3 py-2.5">
+                  <div key={m.key} className="flex items-start gap-3 py-2.5">
                     <dt className="flex-1 min-w-0">
                       <span className="block text-[13px] text-gray-800">{m.label}</span>
                       {m.note && <span className="block text-[12px] text-gray-500 mt-0.5">{m.note}</span>}
                     </dt>
-                    {m.status === "app_fix" && <Chip tone="amber">앱 수정 대기</Chip>}
-                    <Chip tone={SOURCE_TONE[m.source]}>{SOURCE_SHORT[m.source]}</Chip>
-                    <dd className={`w-24 text-right text-[16px] font-bold tabular-nums ${m.value === null ? "text-gray-300" : "text-gray-900"}`}>
-                      {m.value === null ? "-" : m.value.toLocaleString()}
-                      {m.value !== null && m.unit && <span className="text-[12px] font-medium text-gray-400 ml-1">{m.unit}</span>}
+                    {/* 숫자 바로 밑에 「출처 · 기간」 — 이 숫자가 어디서, 언제 것인지. 날짜는 위 기간 줄에 */}
+                    <dd className="shrink-0 flex flex-col items-end gap-1">
+                      <span className={`text-right text-[16px] font-bold tabular-nums ${m.value === null ? "text-gray-300" : "text-gray-900"}`}>
+                        {m.value === null ? "-" : m.value.toLocaleString()}
+                        {m.value !== null && m.unit && <span className="text-[12px] font-medium text-gray-400 ml-1">{m.unit}</span>}
+                      </span>
+                      <span className="flex flex-wrap justify-end gap-1" title={period(m.period)?.range ?? undefined}>
+                        {m.status === "app_fix" && <Chip tone="amber">앱 수정 대기</Chip>}
+                        <Chip tone={SOURCE_TONE[m.source]}>{SOURCE_SHORT[m.source]}{m.period && ` · ${PERIOD_LABEL[m.period]}`}</Chip>
+                      </span>
                     </dd>
                   </div>
                 ))}
@@ -132,8 +149,40 @@ export default function AppMetrics() {
 
       <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
         GA4 · Firebase 칸은 기기 단위라 재설치하면 새 사용자로 셉니다 — 계정 수와 1:1 이 아닙니다.
-        {data?.ga4_through && ` BigQuery 확정 테이블 ${Number(data.ga4_through.slice(5, 7))}/${Number(data.ga4_through.slice(8, 10))}까지, 6시간마다 다시 읽습니다.`}
       </p>
     </>
+  );
+}
+
+/**
+ * 기간 줄 — 칩의 기간 이름 → 실제로 센 날짜. 출처마다 한 줄이다.
+ * DB 는 읽을 때마다 오늘까지 세고, GA4 는 확정 테이블의 마지막 날(보통 어제)에서 거꾸로 잡는다 — 두 줄의 끝 날짜가 다른 까닭.
+ */
+function PeriodStrip({ periods, through }: { periods: AppPeriod[]; through: string | null }) {
+  const lines: { group: AppPeriod["group"]; title: string; sub: string; tone: ChipTone }[] = [
+    { group: "db", title: "DB · 푸시", sub: "읽을 때마다 새로 셉니다", tone: "navy" },
+    { group: "ga4", title: "GA4 · Firebase", sub: through ? `확정 테이블 ${+through.slice(5, 7)}/${+through.slice(8, 10)}까지 · 6시간마다 다시 읽습니다` : "BigQuery 를 읽지 못했습니다", tone: "amber" },
+  ];
+  return (
+    <section className={`${surface} px-4 py-3 mb-4`} aria-label="칸마다 센 기간">
+      <dl className="space-y-2.5">
+        {lines.map((l) => (
+          <div key={l.group} className="flex flex-col lg:flex-row lg:items-start gap-x-4 gap-y-1.5">
+            <dt className="lg:w-44 shrink-0">
+              <span className="block text-[12px] font-semibold text-gray-700">{l.title}</span>
+              <span className="block text-[11px] text-gray-500">{l.sub}</span>
+            </dt>
+            <dd className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {periods.filter((p) => p.group === l.group).map((p) => (
+                <span key={p.key} className="inline-flex items-center gap-1.5 text-[12px]" title={p.note}>
+                  <Chip tone={l.tone}>{p.label}</Chip>
+                  <span className={`tabular-nums ${p.range ? "text-gray-800 font-medium" : "text-gray-300"}`}>{p.range ?? "-"}</span>
+                </span>
+              ))}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

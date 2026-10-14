@@ -5,6 +5,7 @@ import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { credentialsFromEnv, readGa4AppMetrics, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { readStoreToCoupon, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 import { readOnboardingFunnel, type OnboardingFunnel } from "@/lib/bigquery/onboarding";
+import { appPeriods, type AppPeriodKey } from "@/lib/draft/appPeriods";
 
 /**
  * Probe · 앱 지표.
@@ -20,6 +21,9 @@ import { readOnboardingFunnel, type OnboardingFunnel } from "@/lib/bigquery/onbo
  *
  * GA4/Firebase 4칸은 BigQuery 에서 읽는다(`GCP_SA_KEY` 가 있을 때만). 확정 테이블이 하루 한 번 늘어나므로
  * 6시간 캐시한다. 키가 없거나 조회가 실패하면 캐시하지 않고 칸을 비운다.
+ *
+ * 1014: 칸마다 센 구간이 다르다(이번 달 · 7일 · 30일 · 14일 · 코호트 · 4주 · 지금). 날짜를 설명 문장 앞에 따로 붙이던 것을
+ * 걷고, 칸은 `period` 이름만 단다. 이름 → 날짜는 `periods`(appPeriods.ts 한 곳)로 내려 화면 위 기간 줄에 한 번 적는다.
  */
 
 export type Source = "backend" | "push" | "ga4" | "firebase";
@@ -32,6 +36,8 @@ export interface AppMetric {
   value: number | null;
   unit?: string;
   source: Source;
+  /** 이 칸을 센 구간 — 날짜는 응답의 `periods` 에 */
+  period: AppPeriodKey;
   note?: string;
   status?: SourceStatus; // 칸 단위 예외 — 출처와 별개로 앱 수정이 먼저인 칸
 }
@@ -120,15 +126,12 @@ async function ga4(): Promise<{ data: Ga4AppMetrics | null; error: string | null
   }
 }
 
-const shiftDay = (d: string, days: number) => new Date(Date.parse(d) + days * 86_400_000).toISOString().slice(0, 10);
-const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
-
 export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
 
   // 백엔드 집계가 없거나 칸 하나가 실패하면 null 로 둔다 — 0 이 아니다.
-  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/");
+  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; generated_at?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/");
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   // 한쪽이라도 모르면 합도 모른다 — 교환을 못 셌는데 당첨만 더하면 그 합이 사실처럼 보인다 (#283)
@@ -136,7 +139,6 @@ export async function GET() {
     const nums = ks.map((k) => n(k)).filter((v): v is number => v !== null);
     return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
   };
-  const month = stats?.since ? `${md(stats.since)}~ 이번 달` : "이번 달";
   // 쿠폰 발급 경로 — 「발급 → 사용」이 자동 지급 쿠폰에 묻히지 않게 상위 경로를 설명에 적는다
   const bySource: [string, { issued: number; redeemed: number; expiring?: number; label?: string }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
   const issuedTotal = bySource.reduce((a, [, v]) => a + v.issued, 0);
@@ -157,7 +159,6 @@ export async function GET() {
   const { data: g, error: gErr } = await ga4();
   const s2c = await storeToCoupon(g);
   const ob = await onboarding(g);
-  const week = g ? `${md(g.week.from)}~${md(g.week.to)}` : "";
 
   const groups: AppMetricGroup[] = [
     {
@@ -165,24 +166,24 @@ export async function GET() {
       title: "앱 이용",
       description: "얼마나 많은 학생이 앱을 켜고, 돌아오는가.",
       metrics: [
-        { key: "signups_month", label: "이번 달 가입", value: n("signups_this_month"), unit: "명", source: "backend", note: s ? `${month} 새로 만든 계정` : undefined },
-        { key: "signups_total", label: "누적 가입자", value: n("signups_total"), unit: "명", source: "backend", note: s ? "지금 남아 있는 계정 수(탈퇴 제외). 위 「이번 달 가입」과 WAU 의 분모" : undefined },
-        { key: "wau", label: "주간 활성(WAU)", value: g?.wau ?? null, unit: "명", source: "ga4", note: g ? `${week} 앱을 켠 기기 수. 재설치하면 새로 센다` : "BigQuery 원본 — 최근 7일 고유 사용자. 쿼리 연결 전" },
-        { key: "dau", label: "일간 활성(DAU)", value: g?.dau ?? null, unit: "명", source: "ga4", note: g ? `${week} 하루 평균 앱을 켠 기기 수. 9/20 개발 회의 목표는 평균 150명` : "BigQuery 원본 — 7일 하루 평균. 쿼리 연결 전" },
-        { key: "dau_wau", label: "DAU/WAU", value: g?.dau_wau ?? null, unit: "%", source: "ga4", note: "끈적함. 20% 넘으면 습관이 붙은 것" },
+        { key: "signups_month", label: "이번 달 가입", value: n("signups_this_month"), unit: "명", source: "backend", period: "month", note: s ? "새로 만든 계정" : undefined },
+        { key: "signups_total", label: "누적 가입자", value: n("signups_total"), unit: "명", source: "backend", period: "now", note: s ? "지금 남아 있는 계정 수(탈퇴 제외). 위 「이번 달 가입」과 WAU 의 분모" : undefined },
+        { key: "wau", label: "주간 활성(WAU)", value: g?.wau ?? null, unit: "명", source: "ga4", period: "week", note: g ? "앱을 켠 기기 수. 재설치하면 새로 센다" : "BigQuery 원본 — 최근 7일 고유 사용자. 쿼리 연결 전" },
+        { key: "dau", label: "일간 활성(DAU)", value: g?.dau ?? null, unit: "명", source: "ga4", period: "week", note: g ? "하루 평균 앱을 켠 기기 수. 개발 회의(9/20) 목표는 평균 150명" : "BigQuery 원본 — 7일 하루 평균. 쿼리 연결 전" },
+        { key: "dau_wau", label: "DAU/WAU", value: g?.dau_wau ?? null, unit: "%", source: "ga4", period: "week", note: "끈적함. 20% 넘으면 습관이 붙은 것" },
         // 분자는 기기, 분모는 계정이라 비율은 근사다 — 한 사람이 기기 둘이면 높게, 재설치해도 높게 나온다. 100% 를 넘을 수 있다.
-        { key: "wau_per_signup", label: "가입자 중 이번 주 활성", value: g?.wau != null && signupsTotal ? Math.round((g.wau / signupsTotal) * 1000) / 10 : null, unit: "%", source: "ga4",
-          note: g?.wau != null && signupsTotal ? `WAU ${g.wau.toLocaleString()}기기 ÷ 누적 가입자 ${signupsTotal.toLocaleString()}명. 기기와 계정을 나눈 근사값 — 재설치·기기 여러 대면 높게 나온다` : "WAU(GA4)와 누적 가입자(DB)가 둘 다 들어와야 나온다" },
-        { key: "mau", label: "월간 활성(MAU)", value: g?.mau ?? null, unit: "명", source: "ga4", note: g ? `${md(shiftDay(g.week.to, -29))}~${md(g.week.to)} 30일간 앱을 켠 기기 수. 재설치하면 새로 센다` : "BigQuery 원본 — 최근 30일 고유 사용자. 쿼리 연결 전" },
-        { key: "wau_mau", label: "WAU/MAU", value: g?.wau != null && g.mau ? Math.round((g.wau / g.mau) * 1000) / 10 : null, unit: "%", source: "ga4", note: "한 달에 온 사람 중 이번 주에도 온 비율. 높을수록 단골이 쌓이는 중이고, 낮으면 한 번 쓰고 떠나는 사람이 많다" },
-        { key: "onboarding", label: "온보딩 완료율", value: ob?.rate ?? null, unit: "%", source: "ga4",
+        { key: "wau_per_signup", label: "가입자 중 이번 주 활성", value: g?.wau != null && signupsTotal ? Math.round((g.wau / signupsTotal) * 1000) / 10 : null, unit: "%", source: "ga4", period: "week",
+          note: g?.wau != null && signupsTotal ? `WAU ${g.wau.toLocaleString()}기기(7일) ÷ 누적 가입자 ${signupsTotal.toLocaleString()}명(지금). 기기와 계정을 나눈 근사값 — 재설치·기기 여러 대면 높게 나온다` : "WAU(GA4)와 누적 가입자(DB)가 둘 다 들어와야 나온다" },
+        { key: "mau", label: "월간 활성(MAU)", value: g?.mau ?? null, unit: "명", source: "ga4", period: "mau", note: g ? "30일간 앱을 켠 기기 수. 재설치하면 새로 센다" : "BigQuery 원본 — 최근 30일 고유 사용자. 쿼리 연결 전" },
+        { key: "wau_mau", label: "WAU/MAU", value: g?.wau != null && g.mau ? Math.round((g.wau / g.mau) * 1000) / 10 : null, unit: "%", source: "ga4", period: "mau", note: "30일 안에 온 기기 중 같은 날 끝나는 7일에도 온 비율. 높을수록 단골이 쌓이는 중이고, 낮으면 한 번 쓰고 떠나는 사람이 많다" },
+        { key: "onboarding", label: "온보딩 완료율", value: ob?.rate ?? null, unit: "%", source: "ga4", period: "week",
           ...(ob ? {} : { status: "pending" as const }),
           note: ob
-            ? `${md(ob.window.from)}~${md(ob.window.to)} 인삿말을 본 ${ob.started.toLocaleString()}대 중 마친 ${ob.completed.toLocaleString()}대(건너뛰기 포함). 첫 쿠폰까지 본 건 ${ob.revealed.toLocaleString()}대${ob.started < 30 ? " · 표본이 얕다" : ""}`
+            ? `인삿말을 본 ${ob.started.toLocaleString()}대 중 마친 ${ob.completed.toLocaleString()}대(건너뛰기 포함). 첫 쿠폰까지 본 건 ${ob.revealed.toLocaleString()}대${ob.started < 30 ? " · 표본이 얕다" : ""}`
             : "인삿말을 본 기기 중 온보딩을 마친 비율 — BigQuery 조회 전" },
-        { key: "invite_share", label: "친구 초대 공유", value: null, unit: "건", source: "ga4", status: "app_fix",
+        { key: "invite_share", label: "친구 초대 공유", value: null, unit: "건", source: "ga4", period: "week", status: "app_fix",
           note: "공유 결과 이벤트(invite_share)를 앱에 심었고 스토어 릴리스를 기다리는 중 — 카카오 공유·코드 복사. 릴리스 2주 뒤에 읽는다" },
-        { key: "retention_w1", label: "가입 1주 후 복귀", value: g?.retention_w1 ?? null, unit: "%", source: "firebase", note: g ? `${md(g.cohort.from)}~${md(g.cohort.to)} 첫 실행 ${g.cohort.users.toLocaleString()}대 중 7~13일째 다시 켠 비율` : "first_open 코호트의 7일 뒤 재방문. BigQuery 쿼리 연결 전" },
+        { key: "retention_w1", label: "가입 1주 후 복귀", value: g?.retention_w1 ?? null, unit: "%", source: "firebase", period: "cohort", note: g ? `첫 실행 ${g.cohort.users.toLocaleString()}대 중 7~13일째 다시 켠 비율` : "first_open 코호트의 7일 뒤 재방문. BigQuery 쿼리 연결 전" },
       ],
     },
     {
@@ -190,25 +191,25 @@ export async function GET() {
       title: "전환 퍼널",
       description: "앱을 켠 사람이 실제로 매장에서 쓰기까지.",
       metrics: [
-        { key: "open_to_store", label: "앱 열기 → 매장 상세", value: g?.open_to_store ?? null, unit: "%", source: "ga4", note: g ? `${week} 세션 ${g.sessions.toLocaleString()}개 중 매장 상세를 연 비율` : "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
+        { key: "open_to_store", label: "앱 열기 → 매장 상세", value: g?.open_to_store ?? null, unit: "%", source: "ga4", period: "week", note: g ? `세션 ${g.sessions.toLocaleString()}개 중 매장 상세를 연 비율` : "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
         // 예전 주석은 "DB 와 BigQuery 를 합쳐야 한다" 였는데 틀린 전제였다 —
         // restaurant_detail_open 과 coupon_issued 가 둘 다 restaurant_id 를 실어서 GA4 안에서 이어진다.
         // 캠페인 자동 지급은 분자에서 뺀다. 그걸 넣으면 "상세를 보면 10%가 받는다"로 읽히는데 사실이 아니다.
-        { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: s2c?.rate ?? null, unit: "%", source: "ga4",
+        { key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", value: s2c?.rate ?? null, unit: "%", source: "ga4", period: "week",
           ...(s2c ? {} : { status: "pending" as const }),
           note: s2c
-            ? `${week} 매장 상세 ${s2c.views.toLocaleString()}번 중 같은 자리에서 그 매장 쿠폰을 받은 ${s2c.claimed.toLocaleString()}번.`
+            ? `매장 상세 ${s2c.views.toLocaleString()}번 중 같은 자리에서 그 매장 쿠폰을 받은 ${s2c.claimed.toLocaleString()}번.`
               + ` 기획전 자동 지급은 뺐습니다 — 넣으면 ${s2c.claimed_including_campaign.toLocaleString()}번이지만 상세를 본 것과 무관합니다`
               + (s2c.claimed < 10 ? " · 표본이 얕어 비율보다 건수를 보십시오" : "")
             : "매장 상세와 쿠폰 발급을 (기기·세션·매장)으로 잇는다 — BigQuery 조회 전" },
-        { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend", note: issuedList ? `경로: ${issuedList}${bySource.length > 3 ? ` 외 ${bySource.length - 3}개 경로` : ""}` : undefined },
-        { key: "coupon_code_share", label: "코드 입력으로 받은 비중", value: s && issuedTotal > 0 ? Math.round((codeIssued / issuedTotal) * 1000) / 10 : null, unit: "%", source: "backend",
-          note: s && issuedTotal > 0 ? `${month} 발급 ${issuedTotal.toLocaleString()}건 중 ${codeIssued.toLocaleString()}건(${codeParts.map(([k, v]) => `${ko(k)} ${v.issued.toLocaleString()}`).join(" · ") || "없음"}). 그중 쓰인 건 ${codeRedeemed.toLocaleString()}장 — 높을수록 「발급 → 사용」이 이 경로 얘기다` : undefined },
-        { key: "coupon_used", label: "쿠폰 사용", value: n("coupon_redeemed_this_month"), unit: "건", source: "backend" },
+        { key: "coupon_issued", label: "쿠폰 발급", value: n("coupon_issued_this_month"), unit: "건", source: "backend", period: "month", note: issuedList ? `경로: ${issuedList}${bySource.length > 3 ? ` 외 ${bySource.length - 3}개 경로` : ""}` : undefined },
+        { key: "coupon_code_share", label: "코드 입력으로 받은 비중", value: s && issuedTotal > 0 ? Math.round((codeIssued / issuedTotal) * 1000) / 10 : null, unit: "%", source: "backend", period: "month",
+          note: s && issuedTotal > 0 ? `발급 ${issuedTotal.toLocaleString()}건 중 ${codeIssued.toLocaleString()}건(${codeParts.map(([k, v]) => `${ko(k)} ${v.issued.toLocaleString()}`).join(" · ") || "없음"}). 그중 쓰인 건 ${codeRedeemed.toLocaleString()}장 — 높을수록 「발급 → 사용」이 이 경로 얘기다` : undefined },
+        { key: "coupon_used", label: "쿠폰 사용", value: n("coupon_redeemed_this_month"), unit: "건", source: "backend", period: "month", note: s ? "지난달 발급분을 이번 달에 쓴 것도 센다" : undefined },
         // 0920: 학생회 쿠폰 513장이 한 장도 안 쓰인 채 만료를 이틀 앞두고 있던 것을 늦게 알았다. "안 쓴다"와 "아직 안 썼다"는 다르다.
-        { key: "coupon_expiring", label: "7일 안에 만료", value: n("coupon_expiring_7d"), unit: "장", source: "backend", note: expiringList ? `아직 안 쓴 쿠폰 · ${expiringList} — 만료 전에 알리면 살릴 수 있다` : s ? "곧 사라질 미사용 쿠폰이 없다" : undefined },
-        { key: "coupon_rate", label: "발급 → 사용", value: n("coupon_redeem_rate"), unit: "%", source: "backend", note: s ? [
-          `${month} 발급분 중 이미 쓴 비율. 달 초엔 낮게 나온다`,
+        { key: "coupon_expiring", label: "7일 안에 만료", value: n("coupon_expiring_7d"), unit: "장", source: "backend", period: "now", note: expiringList ? `지금부터 7일 안에 사라질 미사용 쿠폰 · ${expiringList} — 만료 전에 알리면 살릴 수 있다` : s ? "곧 사라질 미사용 쿠폰이 없다" : undefined },
+        { key: "coupon_rate", label: "발급 → 사용", value: n("coupon_redeem_rate"), unit: "%", source: "backend", period: "month", note: s ? [
+          "이번 달 발급분 중 이미 쓴 비율. 달 초엔 낮게 나온다",
           top && issuedTotal > 0 && top[1].issued / issuedTotal >= 0.3 ? `발급의 ${Math.round((top[1].issued / issuedTotal) * 100)}%가 「${ko(top[0])}」 한 경로 — 이 숫자는 사실상 그 경로 얘기다` : null,
           rateList ? `경로별: ${rateList}` : null,
           "배너 A/B 주요 지표 (Castor)",
@@ -220,20 +221,20 @@ export async function GET() {
       title: "스탬프 · 마일리지",
       description: "재방문 장치가 실제로 도는가.",
       metrics: [
-        { key: "stamp_earned", label: "스탬프 적립", value: n("stamp_earned_this_month"), unit: "건", source: "backend" },
-        { key: "stamp_earners", label: "스탬프 적립한 사람", value: n("stamp_earners_this_month"), unit: "명", source: "backend",
+        { key: "stamp_earned", label: "스탬프 적립", value: n("stamp_earned_this_month"), unit: "건", source: "backend", period: "month" },
+        { key: "stamp_earners", label: "스탬프 적립한 사람", value: n("stamp_earners_this_month"), unit: "명", source: "backend", period: "month",
           note: n("stamp_earners_this_month") && n("stamp_earned_this_month") !== null ? `적립 ${n("stamp_earned_this_month")!.toLocaleString()}건 ÷ ${n("stamp_earners_this_month")!.toLocaleString()}명 = 1인당 ${(Math.round((n("stamp_earned_this_month")! / n("stamp_earners_this_month")!) * 10) / 10).toLocaleString()}번` : undefined },
-        { key: "stamp_reward", label: "스탬프 보상 수령", value: n("stamp_reward_this_month"), unit: "건", source: "backend", note: s ? "스탬프를 채워 발급된 보상 쿠폰" : undefined },
+        { key: "stamp_reward", label: "스탬프 보상 수령", value: n("stamp_reward_this_month"), unit: "건", source: "backend", period: "month", note: s ? "스탬프를 채워 발급된 보상 쿠폰" : undefined },
         // 응모(쓰는 쪽)만 있고 풀린 양(주는 쪽)이 없었다. 활동 적립만 센다 — 미션 보상·관리자 지급·교환은 뺀다.
-        { key: "mileage_earned", label: "마일리지 적립", value: n("mileage_earned_this_month"), unit: "P", source: "backend",
+        { key: "mileage_earned", label: "마일리지 적립", value: n("mileage_earned_this_month"), unit: "P", source: "backend", period: "month",
           note: s ? `스탬프 방문·쿠폰 사용·QR 방문 적립만. 미션 보상·관리자 지급은 뺐다${n("mileage_earners_this_month") !== null ? ` · ${n("mileage_earners_this_month")!.toLocaleString()}명이 적립` : ""}` : undefined },
-        { key: "mileage_earners", label: "마일리지 적립한 사람", value: n("mileage_earners_this_month"), unit: "명", source: "backend",
+        { key: "mileage_earners", label: "마일리지 적립한 사람", value: n("mileage_earners_this_month"), unit: "명", source: "backend", period: "month",
           note: n("mileage_earned_this_month") && n("mileage_earners_this_month") ? `1인당 평균 ${Math.round(n("mileage_earned_this_month")! / n("mileage_earners_this_month")!).toLocaleString()}P` : undefined },
-        { key: "mileage_entries", label: "마일리지 응모", value: n("mileage_entries_this_month"), unit: "건", source: "backend" },
+        { key: "mileage_entries", label: "마일리지 응모", value: n("mileage_entries_this_month"), unit: "건", source: "backend", period: "month" },
         // 식사권은 당첨되면 쿠폰함의 일반 쿠폰(RAFFLE_WIN:)이 되어 PIN 으로 쓴다 — 별도 승인 화면이 없다
-        { key: "voucher_redeemed", label: "식사권 사용", value: n("voucher_redeemed_this_month"), unit: "장", source: "backend",
+        { key: "voucher_redeemed", label: "식사권 사용", value: n("voucher_redeemed_this_month"), unit: "장", source: "backend", period: "month",
           note: n("voucher_issued_this_month") !== null ? `이번 달 당첨으로 발급된 식사권 ${n("voucher_issued_this_month")!.toLocaleString()}장 · 사용은 지난달 발급분 포함` : undefined },
-        { key: "mileage_winners", label: "당첨 · 교환", value: sum("mileage_winners_this_month", "mileage_exchanges_this_month"), unit: "건", source: "backend", note: s ? `당첨 ${n("mileage_winners_this_month") ?? "-"} · 마일리지로 쿠폰 교환 ${n("mileage_exchanges_this_month") ?? "-"}. 월 발급 한도 대비 (재무 캡)` : "월 발급 한도 대비 (재무 캡)" },
+        { key: "mileage_winners", label: "당첨 · 교환", value: sum("mileage_winners_this_month", "mileage_exchanges_this_month"), unit: "건", source: "backend", period: "month", note: s ? `당첨 ${n("mileage_winners_this_month") ?? "-"} · 마일리지로 쿠폰 교환 ${n("mileage_exchanges_this_month") ?? "-"}. 월 발급 한도 대비 (재무 캡)` : "월 발급 한도 대비 (재무 캡)" },
       ],
     },
     {
@@ -241,15 +242,15 @@ export async function GET() {
       title: "푸시 · 배너",
       description: "보낸 알림이 사람을 앱으로 데려오는가. 09-09 '알림 보내도 접속률이 낮다'의 답이 여기 있어야 한다.",
       metrics: [
-        { key: "push_sent", label: "푸시 발송", value: n("push_sent_this_month"), unit: "건", source: "push", note: s ? "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺐다" : undefined },
-        { key: "push_open", label: "푸시 → 앱 열기", value: g?.push_open ?? null, unit: "%", source: "firebase", note: g ? `${md(g.push.from)}~${md(g.push.to)} 안드로이드 수신 ${g.push.received.toLocaleString()}건 중 ${g.push.opened_android}건 열림 (iOS 는 수신을 못 세 열기 ${g.push.opened_ios}건만)` : "Firebase 자동 이벤트(notification_receive/open) — BigQuery 쿼리 연결 전" },
+        { key: "push_sent", label: "푸시 발송", value: n("push_sent_this_month"), unit: "건", source: "push", period: "month", note: s ? "전체 알림 + 매장 예약 알림. 개발자 테스트 발송은 뺐다" : undefined },
+        { key: "push_open", label: "푸시 → 앱 열기", value: g?.push_open ?? null, unit: "%", source: "firebase", period: "push", note: g ? `안드로이드 수신 ${g.push.received.toLocaleString()}건 중 ${g.push.opened_android}건 열림 (iOS 는 수신을 못 세 열기 ${g.push.opened_ios}건만)` : "Firebase 자동 이벤트(notification_receive/open) — BigQuery 쿼리 연결 전" },
         // 노출 이벤트는 앱 2.5.8 부터 나간다. 노출을 보낸 기기가 없으면 분모가 없는 칸으로 둔다.
         g && (g.banner_view?.seen ?? 0) > 0
-          ? { key: "banner_ctr", label: "배너 노출 → 클릭", value: g.banner_ctr ?? null, unit: "%", source: "ga4",
-              note: `${md(g.week.from)}~${md(g.week.to)} 배너 노출을 보낸 기기 ${g.banner_view!.seen.toLocaleString()}대 중 ${g.banner_view!.clicked.toLocaleString()}대가 눌렀다. 노출 이벤트가 없는 구버전 기기는 제외` }
-          : { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", status: "app_fix",
+          ? { key: "banner_ctr", label: "배너 노출 → 클릭", value: g.banner_ctr ?? null, unit: "%", source: "ga4", period: "week",
+              note: `배너 노출을 보낸 기기 ${g.banner_view!.seen.toLocaleString()}대 중 ${g.banner_view!.clicked.toLocaleString()}대가 눌렀다. 노출 이벤트가 없는 구버전 기기는 제외` }
+          : { key: "banner_ctr", label: "배너 노출 → 클릭", value: null, unit: "%", source: "ga4", period: "week", status: "app_fix",
               note: g ? "앱에 노출 이벤트를 심었고 스토어 릴리스를 기다리는 중 — 이 창에는 아직 노출 0건" : "배너 노출 이벤트 — BigQuery 를 읽지 못했다" },
-        { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: g?.banner_to_coupon ?? null, unit: "%", source: "ga4", note: g ? `${md(g.banner.from)}~${md(g.banner.to)} 배너를 누른 기기 ${g.banner.clicked}대 중 7일 안에 쿠폰을 쓴 ${g.banner.redeemed}대. 표본이 작다` : "배너 클릭 기기의 7일 내 coupon_redeemed — BigQuery 쿼리 연결 전" },
+        { key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", value: g?.banner_to_coupon ?? null, unit: "%", source: "ga4", period: "banner", note: g ? `배너를 누른 기기 ${g.banner.clicked}대 중 7일 안에 쿠폰을 쓴 ${g.banner.redeemed}대. 표본이 작다` : "배너 클릭 기기의 7일 내 coupon_redeemed — BigQuery 쿼리 연결 전" },
       ],
     },
   ];
@@ -263,5 +264,7 @@ export async function GET() {
     ga4_error: gErr,
     /** GA4 확정 테이블이 어디까지 왔나(YYYY-MM-DD) */
     ga4_through: g?.through ?? null,
+    /** 칸의 `period` → 실제로 센 구간. 화면 위 기간 줄 */
+    periods: appPeriods({ since: stats?.since, countedAt: s ? (stats?.generated_at ?? new Date().toISOString()) : null, ga4: g }),
   });
 }
