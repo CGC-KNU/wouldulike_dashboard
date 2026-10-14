@@ -439,6 +439,8 @@ export interface StoreMetric {
   unavailable?: boolean;
   /** Astro 운영 필드의 캠퍼스. 안 적은 매장은 null — 화면에서 경북대로 센다(storeMetrics.ts). */
   campus?: Campus | null;
+  /** 식당 앱 목록·검색·상세에서 빼 둔 매장. 학생이 못 보니 0 이 당연하다 — 조용한 매장에서 뺀다(storeMetrics.ts). */
+  hidden_from_app?: boolean;
 }
 
 /* ═══════════ Castor ═══════════ */

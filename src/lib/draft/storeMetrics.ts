@@ -15,9 +15,12 @@ export const campusOfMetric = (s: Pick<StoreMetric, "campus">): Campus => s.camp
 
 const isPaid = (s: StoreMetric) => s.tier === "BOOST" || s.tier === "CONTENT";
 
-/** 이번 달 쿠폰도 스탬프도 0 인 제휴 매장. 못 읽은 매장은 0 이 아니라 모름이라 빠진다. */
+/**
+ * 이번 달 쿠폰도 스탬프도 0 인 제휴 매장. 못 읽은 매장은 0 이 아니라 모름이라 빠진다.
+ * 앱에서 숨긴 매장도 빠진다 — 학생이 매장을 볼 수 없으니 0 이 당연하고, 영업이 전화할 이유가 아니다(1014).
+ */
 export const isSilent = (s: StoreMetric) =>
-  s.is_affiliate && !s.unavailable && s.coupon_redeemed_this_month === 0 && s.stamp_earned_this_month === 0;
+  s.is_affiliate && !s.unavailable && !s.hidden_from_app && s.coupon_redeemed_this_month === 0 && s.stamp_earned_this_month === 0;
 
 export function summarizeStoreMetrics(stores: StoreMetric[]) {
   const live = stores.filter((s) => !s.unavailable);
@@ -35,6 +38,8 @@ export function summarizeStoreMetrics(stores: StoreMetric[]) {
     unavailable: stores.length - live.length,
     /** 이번 달 활동이 0인 제휴 매장 — 총합보다 이 숫자가 먼저다. */
     silent: stores.filter(isSilent).length,
+    /** 앱에서 숨긴 제휴 매장. 제휴 수에는 남는다(Astro 파트너 매장과 같은 기준). */
+    hidden: affiliate.filter((s) => s.hidden_from_app).length,
   };
 }
 
