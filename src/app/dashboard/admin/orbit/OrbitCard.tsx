@@ -37,7 +37,7 @@ export default function OrbitCard({ onOpen }: { onOpen: (id?: string) => void })
   const wait = active.reduce((a, p) => a + waiting(p), 0);
 
   return (
-    <section aria-label="Orbit" className="h-full min-h-0 flex flex-col rounded-[20px] border border-white/70 bg-white/85 backdrop-blur shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)] p-4">
+    <section aria-label="Orbit" className="orbit h-full min-h-0 flex flex-col rounded-[20px] border border-white/70 bg-white/85 backdrop-blur shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)] p-4">
       <div className="flex items-center gap-2 mb-3">
         <img src="/satellite/orbit_app.svg" alt="" width={22} height={22} className="w-[22px] h-[22px] rounded-[6px]" aria-hidden="true" />
         <h2 className="text-[14px] font-bold text-gray-900 tracking-[-0.01em]">Orbit</h2>
