@@ -95,6 +95,13 @@ export const MIN_OWNER_VALUE = 10;
 /** 제목 끝 "(정든밤 포함)" 은 우리끼리의 표시라 점주에게 보이지 않는다 — 공개 양식·카톡 텍스트가 같이 쓴다 */
 export const stripMarker = (t: string) => t.replace(/\s*[(（][^()（）]*포함\s*[)）]\s*/g, " ").trim();
 
+/**
+ * 점주에게 보이는 게시물 제목 — 「(… 포함)」 표시에 더해 끝의 「협찬」도 뗀다. Papillon 기획 이름의 내부 구분이라
+ * 앱 매장 콘텐츠가 「통통주먹구이 협찬」으로 점주 리포트·카톡 글에 나갔다(1015 민찬). 다 떼서 비면 표시만 뗀 제목.
+ * 큐레이션 문단(curationIntro)은 stripMarker 그대로 — 옛 자동 문단을 알아보는 비교가 같은 글을 다시 만들어야 해서.
+ */
+export const ownerPostTitle = (t: string) => { const base = stripMarker(t); return base.replace(/\s*협찬\s*$/, "").trim() || base; };
+
 /** 받침에 맞는 조사 — 한글로 끝나지 않으면 "이(가)" 꼴로 둔다 */
 export function josa(word: string, withBatchim: string, without: string): string {
   const c = word.trim().charCodeAt(word.trim().length - 1);
@@ -544,7 +551,7 @@ export function buildReportText(s: ReportSnapshot, checkpoint: "D2" | "D7" | "D1
   const lines: string[] = [
     "사장님, 안녕하세요. 우주라이크입니다.",
     "",
-    `지난 ${when} 저희 인스타그램 '${stripMarker(s.post.topic)}' 게시물에 ${josa(s.store.name, "을", "를")} 소개해 드렸습니다.${co}${s.age_days !== null ? ` ${s.age_days}일이 지나 정리해 보내드립니다.` : ""}`,
+    `지난 ${when} 저희 인스타그램 '${ownerPostTitle(s.post.topic)}' 게시물에 ${josa(s.store.name, "을", "를")} 소개해 드렸습니다.${co}${s.age_days !== null ? ` ${s.age_days}일이 지나 정리해 보내드립니다.` : ""}`,
     "",
   ];
   if (!s.metrics.length) {

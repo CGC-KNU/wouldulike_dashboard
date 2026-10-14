@@ -1,4 +1,4 @@
-import { curationIntro, isAutoSummary, josa, ownerParagraphs, ownerProposalText, stripMarker } from "./report";
+import { curationIntro, isAutoSummary, josa, ownerParagraphs, ownerPostTitle, ownerProposalText } from "./report";
 import { isEmbedded } from "./coverImage";
 import type { StoreReport } from "./types";
 
@@ -101,7 +101,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
     store: { name: s.store.name },
     account: { handle: "@w_ouldulike", name: "우주라이크", avatar: "" },
     post: {
-      title: stripMarker(s.post.topic),
+      title: ownerPostTitle(s.post.topic),
       type_label: multi ? "큐레이션" : null,
       format: s.post.format === "reel" ? "reels" : "feed",
       posted_at: posted,
@@ -155,7 +155,7 @@ export function toTemplateData(r: StoreReport, opts: { origin?: string } = {}): 
       // 여러 가게를 함께 실은 편이면 양식이 "이번 도달은 {store} 혼자 받은 숫자가 아닙니다" 를 붙인다.
       // 큐레이션이라는 사실은 그대로 밝히되, 약점으로 말하지 않는다(0925).
       limitation: multi && !introShown
-        ? `이번 편은 「${stripMarker(s.post.topic)}」 주제로 ${storeCount}곳을 함께 소개한 큐레이션입니다. ${josa(s.store.name, "이", "가")} 추천 가게 중 한 곳으로 실렸습니다.`
+        ? `이번 편은 「${ownerPostTitle(s.post.topic)}」 주제로 ${storeCount}곳을 함께 소개한 큐레이션입니다. ${josa(s.store.name, "이", "가")} 추천 가게 중 한 곳으로 실렸습니다.`
         : null,
     },
     upsell: { enabled: false },
