@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { campusOfMetric, failReasonLabel, isFailing, isSilent, summarizeActivity, summarizeStoreMetrics, withoutTestStores } from "../src/lib/draft/storeMetrics";
+import { campusOfMetric, failReasonLabel, isFailing, isSilent, previousPeriod, summarizeActivity, summarizeStoreMetrics, withoutTestStores } from "../src/lib/draft/storeMetrics";
 import type { StoreActivity, StoreMetric } from "../src/lib/draft/types";
 
 /** 매장 지표 합계 — 서버(/api/probe/overview)와 캠퍼스로 좁힌 화면이 같은 함수로 센다. */
@@ -93,4 +93,24 @@ test("실패 이유는 화면 말로 바꾸고, 모르는 값은 그대로 보�
   assert.equal(failReasonLabel("invalid_pin"), "PIN 불일치");
   assert.equal(failReasonLabel("http_403"), "PIN 등(403)");
   assert.equal(failReasonLabel("brand_new_reason"), "brand_new_reason");
+});
+
+test("지난달은 한국 시간으로 센다 — 1일 0~9시(UTC 로는 아직 전달)에도 바로 전달이다", () => {
+  assert.equal(previousPeriod(Date.parse("2026-10-14T03:00:00Z")), "2026-09");
+  assert.equal(previousPeriod(Date.parse("2026-09-30T15:30:00Z")), "2026-09", "KST 10/1 00:30 — UTC 로 세면 8월이 된다");
+  assert.equal(previousPeriod(Date.parse("2026-12-31T16:00:00Z")), "2026-12", "KST 1/1 01:00 → 작년 12월");
+  assert.equal(previousPeriod(Date.parse("2027-01-15T00:00:00Z")), "2026-12");
+});
+
+test("지난달 합 — 모든 매장에 지난달 값이 있을 때만 더한다", () => {
+  const withPrev = [
+    store(21, { prev: { coupon_redeemed: 4, stamp_earned: 1 } }),
+    store(22, { prev: { coupon_redeemed: 0, stamp_earned: 3 }, unavailable: true }), // 이번 달을 못 읽어도 지난달은 있다
+  ];
+  const t = summarizeStoreMetrics(withPrev);
+  assert.equal(t.prev_coupon_redeemed, 4);
+  assert.equal(t.prev_stamp_earned, 4);
+  const missing = summarizeStoreMetrics([...withPrev, store(23, { prev: null })]);
+  assert.equal(missing.prev_coupon_redeemed, null, "스냅샷을 못 읽은 매장이 섞이면 일부만 더한 합을 내지 않는다");
+  assert.equal(missing.prev_stamp_earned, null);
 });
