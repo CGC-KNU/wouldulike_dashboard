@@ -84,8 +84,8 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
           <ul className="divide-y divide-black/[0.05]">
             {rows.map((r) => (
               <li key={r.key} className="flex items-center gap-3 py-2">
-                <span className="flex-1 text-[12.5px] font-medium text-gray-900">{r.label}</span>
-                <span className="text-[12px] tabular-nums text-gray-500">{r.before === undefined ? "—" : r.money ? won(r.before) : r.before} → <b className="text-gray-900">{r.now === undefined ? "—" : r.money ? won(r.now) : r.now}</b>{r.unit && r.now !== undefined ? r.unit : ""}</span>
+                <span className="flex-1 text-[12.5px] font-medium text-gray-900" title={r.hint}>{r.label}</span>
+                <span className="text-[12px] tabular-nums text-gray-500" title={r.hint}>{r.before === undefined ? "—" : r.before.toLocaleString()} → <b className="text-gray-900">{r.now === undefined ? "—" : r.now.toLocaleString()}</b>{r.unit && r.now !== undefined ? r.unit : ""}</span>
                 <span className="w-[5.5rem] text-right"><Delta pct={r.pct} note={r.note} /></span>
               </li>
             ))}
