@@ -24,6 +24,10 @@ import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skelet
  *   · 상세 열람: 조용한 매장을 「안 보임」(열어 본 기기 0)과 「보고 안 씀」으로 가른다. 할 일이 다르다.
  *   · 사용 실패: 쿠폰 사용·스탬프 적립에 실패한 학생. DB 에는 흔적이 없다. 영업이 연락할 이유가 가장 분명한 숫자다.
  * GA4 는 `/api/probe/store-activity` 에서 따로 읽는다 — 늦거나 실패해도 DB 칸은 먼저 뜬다. 못 읽으면 '-'(모름).
+ *
+ * 지난달(1014) — 쿠폰 사용·스탬프 숫자 밑에 작은 줄로 「9월 N」. 백엔드 월별 스냅샷(한 달 전체)이다.
+ * 이번 달 누계만 있으면 월초에 모든 매장이 「조용함」으로 뜨는데, 옆에 지난달이 있으면 달이 막 시작해서인지 바로 보인다.
+ * 이번 달은 아직 다 안 흘렀으니 둘을 빼거나 나누지 않는다 — 나란히 놓기만 한다.
  */
 
 type SortKey = "name" | "coupon" | "stamp" | "detail" | "failed" | "loyal" | "revisit";
@@ -38,6 +42,16 @@ interface ActivityState {
 
 const NO_ACTIVITY: StoreActivity = { detail_devices: 0, failed_devices: 0, coupon_failed: 0, coupon_unresolved: 0, stamp_failed: 0, reasons: [] };
 const md = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
+/** "2026-09" → "9월" */
+const monthLabel = (period: string) => `${Number(period.slice(5, 7))}월`;
+
+/** 지난달 줄의 출처 — `/api/probe/overview` 의 previous */
+interface PreviousState {
+  period: string;
+  state: "ok" | "missing" | "unreadable";
+  complete?: boolean;
+  counted_at?: string | null;
+}
 
 export default function ProbeOverview() {
   const [stores, setStores] = useState<StoreMetric[]>([]);
@@ -51,6 +65,7 @@ export default function ProbeOverview() {
   const [storesUnreadable, setStoresUnreadable] = useState(false);
   const [testExcluded, setTestExcluded] = useState(0);
   const [truncated, setTruncated] = useState(false);
+  const [previous, setPrevious] = useState<PreviousState | null>(null);
   /** GA4 칸 — null 은 부르는 중. DB 표와 따로 채운다 */
   const [activity, setActivity] = useState<ActivityState | null>(null);
 
@@ -70,6 +85,7 @@ export default function ProbeOverview() {
         setStoresUnreadable(Boolean(d.stores_unreadable));
         setTestExcluded(Number(d.test_excluded) || 0);
         setTruncated(Boolean(d.stores_truncated));
+        setPrevious(d.previous ?? null);
       })
       .catch(() => setStores([]))
       .finally(() => setLoading(false));
@@ -201,8 +217,8 @@ export default function ProbeOverview() {
           onClick={() => setScope("failing")}
           active={scope === "failing"}
         />
-        <Kpi label="쿠폰 사용" value={loading ? "-" : (totals?.coupon_redeemed ?? 0).toLocaleString()} suffix="건" hint="이번 달, 읽은 매장만" />
-        <Kpi label="스탬프 적립" value={loading ? "-" : (totals?.stamp_earned ?? 0).toLocaleString()} suffix="건" hint="이번 달, 읽은 매장만" />
+        <Kpi label="이번 달 쿠폰 사용" value={loading ? "-" : (totals?.coupon_redeemed ?? 0).toLocaleString()} suffix="건" hint={prevHint(totals?.prev_coupon_redeemed, previous)} />
+        <Kpi label="이번 달 스탬프 적립" value={loading ? "-" : (totals?.stamp_earned ?? 0).toLocaleString()} suffix="건" hint={prevHint(totals?.prev_stamp_earned, previous)} />
       </div>
 
       <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description={`합계는 지표를 읽은 매장만으로 계산합니다. 앱에서 숨긴 매장은 조용한 매장에서 뺍니다. 상세 열람·사용 실패는 GA4 기기 수입니다.${testExcluded ? ` 테스트 매장 ${testExcluded}곳은 뺐습니다(Astro 와 같은 기준).` : ""}`}>
@@ -254,8 +270,14 @@ export default function ProbeOverview() {
                         {s.hidden_from_app && <Chip tone="amber">앱에서 숨김</Chip>}
                       </span>
                     </Td>
-                    <Td align="right"><Bar value={s.coupon_redeemed_this_month} max={max.coupon} unavailable={s.unavailable} /></Td>
-                    <Td align="right"><Bar value={s.stamp_earned_this_month} max={max.stamp} unavailable={s.unavailable} /></Td>
+                    <Td align="right">
+                      <Bar value={s.coupon_redeemed_this_month} max={max.coupon} unavailable={s.unavailable} />
+                      <PrevLine n={s.prev?.coupon_redeemed} previous={previous} />
+                    </Td>
+                    <Td align="right">
+                      <Bar value={s.stamp_earned_this_month} max={max.stamp} unavailable={s.unavailable} />
+                      <PrevLine n={s.prev?.stamp_earned} previous={previous} />
+                    </Td>
                     <Td align="right" numeric className={!a || !a.detail_devices ? "text-gray-300" : "text-gray-800"}>{a ? a.detail_devices : "-"}</Td>
                     <Td align="right"><Failed a={a} /></Td>
                     <Td align="right" numeric className={s.unavailable ? "text-gray-300" : "text-gray-800"}>{s.unavailable ? "-" : s.revisit_this_month}</Td>
@@ -273,6 +295,15 @@ export default function ProbeOverview() {
           {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(generatedAt))} 기준 · 60초 캐시
         </p>
       )}
+      {previous && !loading && (
+        <p className="text-[12px] text-gray-400 mt-1">
+          {previous.state === "ok"
+            ? `숫자 밑 「${monthLabel(previous.period)} N」은 지난달 한 달 전체(월별 스냅샷${previous.counted_at ? ` · ${md(previous.counted_at)} 기준` : ""}${previous.complete ? "" : " · 아직 굳기 전"})입니다.`
+            : previous.state === "missing"
+              ? `${monthLabel(previous.period)} 월별 스냅샷이 아직 없어 지난달 줄을 비웠습니다.`
+              : "월별 스냅샷을 읽지 못해 지난달 줄을 비웠습니다 — 0 이 아니라 모름입니다."}
+        </p>
+      )}
       <p className="text-[12px] text-gray-400 mt-1">
         {!activity
           ? "상세 열람·사용 실패(GA4)를 읽는 중입니다."
@@ -284,6 +315,19 @@ export default function ProbeOverview() {
       </p>
     </>
   );
+}
+
+/** KPI 밑 「9월 전체 N건」. 지난달을 못 읽었으면 그렇다고만 — 0 으로 적지 않는다. */
+function prevHint(n: number | null | undefined, previous: PreviousState | null): string {
+  if (!previous) return "";
+  if (previous.state !== "ok" || n == null) return "지난달 모름";
+  return `${monthLabel(previous.period)} 전체 ${n.toLocaleString()}건`;
+}
+
+/** 숫자 밑 작은 줄 「9월 12」 — 지난달 한 달 전체. 못 읽었으면 안 그린다(아래 기간 줄이 이유를 말한다). */
+function PrevLine({ n, previous }: { n: number | undefined; previous: PreviousState | null }) {
+  if (previous?.state !== "ok" || n === undefined) return null;
+  return <span className={`block text-[11px] tabular-nums mt-0.5 ${n ? "text-gray-500" : "text-gray-300"}`}>{monthLabel(previous.period)} {n.toLocaleString()}</span>;
 }
 
 /**

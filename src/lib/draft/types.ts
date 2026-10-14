@@ -441,6 +441,8 @@ export interface StoreMetric {
   campus?: Campus | null;
   /** 식당 앱 목록·검색·상세에서 빼 둔 매장. 학생이 못 보니 0 이 당연하다 — 조용한 매장에서 뺀다(storeMetrics.ts). */
   hidden_from_app?: boolean;
+  /** 지난달 한 달 전체(백엔드 월별 스냅샷). 스냅샷을 못 읽었거나 그 달 것이 없으면 null — 0 이 아니라 모름이다. */
+  prev?: { coupon_redeemed: number; stamp_earned: number } | null;
 }
 
 /**

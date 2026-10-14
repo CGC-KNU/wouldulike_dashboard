@@ -40,7 +40,30 @@ export function summarizeStoreMetrics(stores: StoreMetric[]) {
     silent: stores.filter(isSilent).length,
     /** 앱에서 숨긴 제휴 매장. 제휴 수에는 남는다(Astro 파트너 매장과 같은 기준). */
     hidden: affiliate.filter((s) => s.hidden_from_app).length,
+    /** 지난달 합(월별 스냅샷). 한 곳이라도 지난달 값이 없으면 null — 스냅샷을 못 읽은 것이라 일부만 더하면 틀린 합이 된다 */
+    prev_coupon_redeemed: prevSum(stores, "coupon_redeemed"),
+    prev_stamp_earned: prevSum(stores, "stamp_earned"),
   };
+}
+
+function prevSum(stores: StoreMetric[], key: "coupon_redeemed" | "stamp_earned"): number | null {
+  let sum = 0;
+  for (const s of stores) {
+    if (!s.prev) return null;
+    sum += s.prev[key];
+  }
+  return sum;
+}
+
+/**
+ * 한국 시간 기준 지난달 "YYYY-MM" — 매장 지표의 지난달 줄이 읽는 월별 스냅샷의 달.
+ * 서버(Vercel)는 UTC 라 그대로 달을 세면 매달 1일 0~9시에 「지난달」이 두 달 전이 된다.
+ */
+export function previousPeriod(now: number = Date.now()): string {
+  const kst = new Date(now + 9 * 3600_000);
+  const y = kst.getUTCFullYear();
+  const m = kst.getUTCMonth(); // 0 = 1월 → 지난달은 작년 12월
+  return m === 0 ? `${y - 1}-12` : `${y}-${String(m).padStart(2, "0")}`;
 }
 
 export type StoreMetricTotals = ReturnType<typeof summarizeStoreMetrics>;
