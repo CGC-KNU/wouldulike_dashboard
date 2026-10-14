@@ -443,6 +443,25 @@ export interface StoreMetric {
   hidden_from_app?: boolean;
 }
 
+/**
+ * 매장 하나의 GA4 칸 — `/api/probe/store-activity`. 기기 단위(출시 앱이 setUserId 를 안 부른다).
+ * 화면(클라이언트)도 이 타입을 쓰므로 BigQuery 모듈이 아니라 여기 둔다.
+ */
+export interface StoreActivity {
+  /** 매장 상세를 연 기기 */
+  detail_devices: number;
+  /** 쿠폰 사용이나 스탬프 적립에 실패한 기기 */
+  failed_devices: number;
+  /** 쿠폰 사용 실패(건) */
+  coupon_failed: number;
+  /** 사용에 실패한 뒤 창 끝까지 사용 기록이 없는 쿠폰(장) */
+  coupon_unresolved: number;
+  /** 스탬프 적립 실패(건) */
+  stamp_failed: number;
+  /** 앱이 남긴 실패 이유(fail_reason) 그대로 */
+  reasons: string[];
+}
+
 /* ═══════════ Castor ═══════════ */
 
 export interface CastorScreen {

@@ -1,4 +1,4 @@
-import type { Campus, StoreMetric } from "./types";
+import type { Campus, StoreActivity, StoreMetric } from "./types";
 
 /**
  * 매장 지표 합계 — `/api/probe/overview` 와 매장 지표 화면이 **같은 함수**로 센다.
@@ -44,6 +44,39 @@ export function summarizeStoreMetrics(stores: StoreMetric[]) {
 }
 
 export type StoreMetricTotals = ReturnType<typeof summarizeStoreMetrics>;
+
+/** 쿠폰 사용·스탬프 적립에 실패한 기기가 있는 매장. 조용함과 따로 센다 — 쓰이는 매장에서도 실패는 난다. */
+export const isFailing = (s: StoreMetric, a: StoreActivity | undefined) => s.is_affiliate && (a?.failed_devices ?? 0) > 0;
+
+/**
+ * GA4 칸으로 매장 지표를 한 겹 더 가른다(1014).
+ *   · 조용한 매장 → 상세를 연 기기가 0 이면 「안 보임」, 있으면 「보고 안 씀」. 할 일이 다르다(노출 vs 혜택·안내).
+ *   · 사용 실패 → 실패를 겪은 매장 수와, 실패한 뒤 아직 못 쓴 쿠폰.
+ * `activity` 가 null 이면 GA4 를 못 읽은 것이라 전부 null 이다 — 0 이 아니라 모름.
+ */
+export function summarizeActivity(stores: StoreMetric[], activity: Record<string, StoreActivity> | null) {
+  if (!activity) return { unseen: null, seen_unused: null, failing: null, coupon_unresolved: null };
+  const of = (s: StoreMetric) => activity[String(s.restaurant_id)];
+  const silent = stores.filter(isSilent);
+  const failing = stores.filter((s) => isFailing(s, of(s)));
+  return {
+    unseen: silent.filter((s) => !(of(s)?.detail_devices ?? 0)).length,
+    seen_unused: silent.filter((s) => (of(s)?.detail_devices ?? 0) > 0).length,
+    failing: failing.length,
+    coupon_unresolved: failing.reduce((a, s) => a + (of(s)?.coupon_unresolved ?? 0), 0),
+  };
+}
+
+/** 앱이 남기는 실패 이유(fail_reason) → 화면 말. 서버 403 은 PIN 불일치가 대부분이지만 다른 매장 쿠폰(restaurant_mismatch)도 섞인다. */
+const FAIL_REASON_KO: Record<string, string> = {
+  http_403: "PIN 등(403)",
+  invalid_pin: "PIN 불일치",
+  pin_locked: "PIN 잠김",
+  network: "네트워크",
+  server_error: "서버 오류",
+};
+/** 모르는 값은 그대로 보인다 — 새 이유가 생겨도 숨지 않게. */
+export const failReasonLabel = (r: string) => FAIL_REASON_KO[r] ?? r;
 
 /**
  * 테스트 매장은 뺀다 — Astro 「파트너 매장」과 같은 기준(제휴이고 테스트가 아닌 매장). 운영 필드의 is_test 로 안다.

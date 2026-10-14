@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { campusOfMetric, isSilent, summarizeStoreMetrics, withoutTestStores } from "../src/lib/draft/storeMetrics";
-import type { StoreMetric } from "../src/lib/draft/types";
+import { campusOfMetric, failReasonLabel, isFailing, isSilent, summarizeActivity, summarizeStoreMetrics, withoutTestStores } from "../src/lib/draft/storeMetrics";
+import type { StoreActivity, StoreMetric } from "../src/lib/draft/types";
 
 /** 매장 지표 합계 — 서버(/api/probe/overview)와 캠퍼스로 좁힌 화면이 같은 함수로 센다. */
 
@@ -60,4 +60,37 @@ test("테스트 매장은 뺀다 — Astro 파트너 매장과 같은 기준", (
   assert.deepEqual(rows.map((s) => s.restaurant_id), [1, 3, 4, 5, 6]);
   assert.equal(excluded, 1, "목록에 없는 테스트 매장(99)은 세지 않는다");
   assert.equal(withoutTestStores(stores, []).excluded, 0, "운영 행이 없으면 아무것도 안 뺀다");
+});
+
+const act = (o: Partial<StoreActivity> = {}): StoreActivity => ({
+  detail_devices: 0, failed_devices: 0, coupon_failed: 0, coupon_unresolved: 0, stamp_failed: 0, reasons: [], ...o,
+});
+
+test("GA4 칸 — 조용한 매장을 안 보임·보고 안 씀으로 가르고, 실패 매장과 아직 못 쓴 쿠폰을 센다", () => {
+  const list = [
+    store(11), // 조용함 · GA4 에 줄이 없다(성공한 조회라 0) → 안 보임
+    store(12), // 조용함 · 열어 본 기기가 있다 → 보고 안 씀
+    store(13, { coupon_redeemed_this_month: 2 }), // 쓰이는 매장인데 실패도 났다 — 조용함과 따로 센다
+    store(14, { hidden_from_app: true }), // 숨김 — 조용함이 아니라 안 보임에도 안 들어간다
+    store(15, { is_affiliate: false }), // 비제휴 — 실패가 있어도 안 센다
+  ];
+  const a = {
+    "12": act({ detail_devices: 4 }),
+    "13": act({ detail_devices: 9, failed_devices: 2, coupon_failed: 3, coupon_unresolved: 1 }),
+    "15": act({ failed_devices: 1, coupon_unresolved: 5 }),
+  };
+  assert.deepEqual(summarizeActivity(list, a), { unseen: 1, seen_unused: 1, failing: 1, coupon_unresolved: 1 });
+  assert.equal(isFailing(list[2], a["13"]), true);
+  assert.equal(isFailing(list[0], undefined), false);
+  assert.equal(isFailing(list[4], a["15"]), false);
+});
+
+test("GA4 를 못 읽으면 전부 모름(null) — 0 으로 채우면 조용한 매장이 전부 「안 보임」이 된다", () => {
+  assert.deepEqual(summarizeActivity([store(1)], null), { unseen: null, seen_unused: null, failing: null, coupon_unresolved: null });
+});
+
+test("실패 이유는 화면 말로 바꾸고, 모르는 값은 그대로 보인다", () => {
+  assert.equal(failReasonLabel("invalid_pin"), "PIN 불일치");
+  assert.equal(failReasonLabel("http_403"), "PIN 등(403)");
+  assert.equal(failReasonLabel("brand_new_reason"), "brand_new_reason");
 });
