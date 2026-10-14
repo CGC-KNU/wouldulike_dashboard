@@ -41,3 +41,23 @@ test("읽는 중 · 못 읽음은 「연결 전」이라 하지 않는다", () =
   assert.equal(wau({ wauAgo: 120 }).note, "읽지 못함");
   assert.equal(wau({ wauAgo: 120 }).pct, null);
 });
+
+/** 인스타 도달 줄 — 백엔드가 Meta 계정 도달을 읽는다. WAU 와 같은 규칙(주 = 4주 전, 월은 견주지 않음). */
+const reach = (r: PolarisInput["reach"], period: "week" | "month" = "week") =>
+  growth({ ...base({}), reach: r }, period).find((x) => x.key === "reach")!;
+
+test("인스타 도달 — 4주 전 7일과 견주고 센 날짜를 알려 준다", () => {
+  const r = reach({ last7: 1200, ago: 1000, window: { from: "2026-10-06", to: "2026-10-12" } });
+  assert.equal(r.pct, 20);
+  assert.equal(r.note, undefined);
+  assert.match(r.hint ?? "", /^10\/6~10\/12 /);
+  assert.equal(reach({ last7: 1200, ago: 1000 }, "month").note, "주 단위로만 비교");
+});
+
+test("인스타 도달 — 읽는 중 · 못 읽음 · Meta 가 값을 안 줌은 「연결 전」이 아니다", () => {
+  assert.equal(reach({ state: "loading" }).note, "읽는 중");
+  assert.equal(reach({ state: "failed" }).note, "읽지 못함");
+  assert.equal(reach({ ago: 1000 }).note, "읽지 못함");
+  assert.equal(reach({ last7: 1200 }).note, "4주 전 값 없음");
+  assert.equal(reach({ last7: 1200 }).pct, null);
+});

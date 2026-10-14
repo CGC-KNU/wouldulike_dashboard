@@ -11,6 +11,9 @@
 
 export type Period = "week" | "month";
 
+/** Probe 응답을 아직 읽는 중이거나 통째로 못 읽었을 때만 붙는다. 없으면 읽은 것이다. */
+export type ProbeState = "loading" | "failed";
+
 /** 화면이 읽는 원자료 — usePolaris 가 채운다. undefined = 못 읽음(0 아님). */
 export interface PolarisInput {
   stores: { total: number; paid: number; totalAgo: { week?: number; month?: number }; paidAgo: { week?: number; month?: number } };
@@ -19,8 +22,12 @@ export interface PolarisInput {
    * Probe 앱 지표(GA4). wauAgo = 4주 전 같은 7일의 WAU — 성장률 「주」의 비교 기준.
    * state 는 그 응답을 아직 읽는 중이거나 통째로 못 읽었을 때만 붙는다.
    */
-  app: { wau?: number; dauWau?: number; openToStore?: number; retentionW1?: number; wauAgo?: number; state?: "loading" | "failed" };
-  reach: { last7?: number; prev7?: number };
+  app: { wau?: number; dauWau?: number; openToStore?: number; retentionW1?: number; wauAgo?: number; state?: ProbeState };
+  /**
+   * 인스타 계정 도달(Meta) — last7 = 그저께로 끝나는 7일, ago = 그 4주 전 7일. window 는 last7 의 날짜(YYYY-MM-DD).
+   * Meta 인사이트가 최대 48시간 늦게 차서 끝이 어제가 아니라 그저께다.
+   */
+  reach: { last7?: number; ago?: number; window?: { from: string; to: string }; state?: ProbeState };
   coupon: { rate?: number };
 }
 
@@ -32,25 +39,28 @@ export interface Growth {
   /** 백분율. 둘 다 있을 때만. */
   pct: number | null;
   unit?: string;
-  money?: boolean;
   /** 왜 못 냈는지 — 사람이 읽는다 */
   note?: string;
+  /** 무엇을 언제부터 언제까지 셌는지 — 마우스를 올리면 보인다 */
+  hint?: string;
 }
 
 const pctOf = (now?: number, before?: number): number | null =>
   now === undefined || before === undefined || before === 0 ? null : Math.round(((now - before) / before) * 1000) / 10;
 
 /**
- * WAU 줄이 증감률을 못 낼 때 그 까닭. 「연결 전」은 쓰지 않는다 — GA4 는 붙어 있어서 비어 있으면 못 읽은 것이다.
- * 1014: 앱 지표 응답을 못 받은 화면이 「Probe 연결 전」이라고 적어 아직 안 붙은 것처럼 읽혔다.
+ * Probe 에서 오는 줄(WAU · 인스타 도달)이 증감률을 못 낼 때 그 까닭. 「연결 전」은 쓰지 않는다 — 둘 다 붙어 있어서
+ * 비어 있으면 못 읽은 것이다. 1014: 앱 지표 응답을 못 받은 화면이 「Probe 연결 전」이라고 적어 아직 안 붙은 것처럼 읽혔다.
  */
-function wauNote(a: PolarisInput["app"], wk: boolean): string | undefined {
-  if (a.state === "loading") return "읽는 중";
-  if (a.state === "failed" || a.wau === undefined) return "읽지 못함";
+function probeNote(state: ProbeState | undefined, now: number | undefined, ago: number | undefined, wk: boolean): string | undefined {
+  if (state === "loading") return "읽는 중";
+  if (state === "failed" || now === undefined) return "읽지 못함";
   if (!wk) return "주 단위로만 비교";
-  if (a.wauAgo === undefined) return "4주 전 값 없음";
+  if (ago === undefined) return "4주 전 값 없음";
   return undefined;
 }
+
+const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 
 /** 성장률 인자 5개. 순서가 화면 순서다. */
 export function growth(i: PolarisInput, period: Period): Growth[] {
@@ -60,10 +70,11 @@ export function growth(i: PolarisInput, period: Period): Growth[] {
     { key: "stores", label: "파트너 매장", now: i.stores.total, before: i.stores.totalAgo[ago], pct: pctOf(i.stores.total, i.stores.totalAgo[ago]), unit: "곳" },
     { key: "paid", label: "유료 매장", now: i.stores.paid, before: i.stores.paidAgo[ago], pct: pctOf(i.stores.paid, i.stores.paidAgo[ago]), unit: "곳" },
     wk
-      ? { key: "revenue", label: "월 수익 (입금)", now: i.revenue.paid, before: undefined, pct: null, money: true, note: "월 단위로만 비교" }
-      : { key: "revenue", label: "월 수익 (입금)", now: i.revenue.paid, before: i.revenue.paidPrevMonth, pct: pctOf(i.revenue.paid, i.revenue.paidPrevMonth), money: true, note: i.revenue.paidPrevMonth === undefined ? "전월 값 없음" : i.revenue.paidPrevMonth === 0 ? "첫 달" : undefined },
-    { key: "wau", label: "WAU", now: i.app.wau, before: wk ? i.app.wauAgo : undefined, pct: wk ? pctOf(i.app.wau, i.app.wauAgo) : null, unit: "명", note: wauNote(i.app, wk) },
-    { key: "reach", label: "인스타 도달 (7일)", now: i.reach.last7, before: i.reach.prev7, pct: pctOf(i.reach.last7, i.reach.prev7), note: i.reach.last7 === undefined ? "연결 전" : undefined },
+      ? { key: "revenue", label: "월 수익 (입금)", now: i.revenue.paid, before: undefined, pct: null, note: "월 단위로만 비교" }
+      : { key: "revenue", label: "월 수익 (입금)", now: i.revenue.paid, before: i.revenue.paidPrevMonth, pct: pctOf(i.revenue.paid, i.revenue.paidPrevMonth), note: i.revenue.paidPrevMonth === undefined ? "전월 값 없음" : i.revenue.paidPrevMonth === 0 ? "첫 달" : undefined },
+    { key: "wau", label: "WAU", now: i.app.wau, before: wk ? i.app.wauAgo : undefined, pct: wk ? pctOf(i.app.wau, i.app.wauAgo) : null, unit: "명", note: probeNote(i.app.state, i.app.wau, i.app.wauAgo, wk) },
+    { key: "reach", label: "인스타 도달 (7일)", now: i.reach.last7, before: wk ? i.reach.ago : undefined, pct: wk ? pctOf(i.reach.last7, i.reach.ago) : null, note: probeNote(i.reach.state, i.reach.last7, i.reach.ago, wk),
+      hint: i.reach.window ? `${md(i.reach.window.from)}~${md(i.reach.window.to)} 우리 콘텐츠를 본 계정 수(Meta). 인사이트가 늦게 차서 그저께까지 셉니다` : undefined },
   ];
 }
 
