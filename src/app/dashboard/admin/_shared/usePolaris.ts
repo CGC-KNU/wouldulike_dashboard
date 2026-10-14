@@ -37,8 +37,11 @@ export interface PolarisData {
   loading: boolean;
   /** Probe 쪽(앱 지표·매장 지표·게시물)만 아직 읽는 중. 위쪽 매장·수익은 먼저 그린다. */
   probeLoading: boolean;
-  /** 원자료를 못 읽은 곳. true 면 그 칸의 숫자는 0 이 아니라 모름이다. */
-  failed: { stores: boolean; invoices: boolean; insights: boolean };
+  /**
+   * 원자료를 못 읽은 곳. true 면 그 칸의 숫자는 0 이 아니라 모름이다.
+   * app = Probe 앱 지표 응답 통째로, backend = 그 안의 백엔드 집계(쿠폰 전환율), ga4 = 그 안의 GA4(WAU).
+   */
+  failed: { stores: boolean; invoices: boolean; insights: boolean; app: boolean; backend: boolean; ga4: boolean };
 }
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -58,15 +61,15 @@ export function usePolaris(enabled = true): PolarisData {
   const period = periodLocal();
   const prev = periodLocal(-1);
   const [d, setD] = useState<PolarisData>({
-    input: { stores: { total: 0, paid: 0, totalAgo: {}, paidAgo: {} }, revenue: { paid: 0, billed: 0 }, app: {}, reach: {}, coupon: {} },
+    input: { stores: { total: 0, paid: 0, totalAgo: {}, paidAgo: {} }, revenue: { paid: 0, billed: 0 }, app: { state: "loading" }, reach: {}, coupon: {} },
     period, posts: [], topStores: undefined, unpaid: 0, campuses: [], loading: true, probeLoading: true,
-    failed: { stores: false, invoices: false, insights: false },
+    failed: { stores: false, invoices: false, insights: false, app: false, backend: false, ga4: false },
   });
 
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    const j = (u: string) => fetchJson<Record<string, unknown>>(u);
+    const j = (u: string, timeout?: number) => fetchJson<Record<string, unknown>>(u, { timeout });
 
     /**
      * **한 번에 다 기다리지 않는다** (0919). Promise.all 로 여섯을 묶었더니 제일 느린 Probe 한 곳(8~13초)이
@@ -74,7 +77,8 @@ export function usePolaris(enabled = true): PolarisData {
      * 1판 Astro(매장·계산서) → 바로 그린다. 2판 Probe(앱·매장 지표·게시물) → 오는 대로 얹는다.
      */
     const astro = Promise.all([j("/api/astro/stores"), j(`/api/astro/invoices?period=${period}`), j(`/api/astro/invoices?period=${prev}`)]);
-    const probe = Promise.all([j("/api/probe/app"), j("/api/probe/overview"), j("/api/probe/insights")]);
+    // 앱 지표는 GA4 와 백엔드를 같이 읽어 식은 캐시에서 20초를 넘길 때가 있다 — 25초에 끊으면 「모름」이 된다
+    const probe = Promise.all([j("/api/probe/app", 45000), j("/api/probe/overview"), j("/api/probe/insights")]);
 
     astro.then(([stores, inv, invPrev]) => {
       if (!alive) return;
@@ -113,7 +117,7 @@ export function usePolaris(enabled = true): PolarisData {
 
     probe.then(([app, overview, ins]) => {
       if (!alive) return;
-      // 앱 지표 — probe/app 의 그룹/메트릭에서 키로 뽑는다. 값이 null 이면 undefined(연결 전).
+      // 앱 지표 — probe/app 의 그룹/메트릭에서 키로 뽑는다. 값이 null 이면 undefined(모름 — 0 아님).
       const metrics = new Map<string, number | null>();
       for (const g of (app?.groups ?? []) as { metrics: { key: string; value: number | null }[] }[]) for (const m of g.metrics) metrics.set(m.key, m.value);
       const num = (k: string) => { const v = metrics.get(k); return typeof v === "number" ? v : undefined; };
@@ -132,12 +136,13 @@ export function usePolaris(enabled = true): PolarisData {
         ...old,
         input: {
           ...old.input,
-          app: { wau: num("wau"), dauWau: num("dau_wau"), openToStore: num("open_to_store"), retentionW1: num("retention_w1"), wauPrevWeek: undefined },
+          app: app === null ? { state: "failed" }
+            : { wau: num("wau"), dauWau: num("dau_wau"), openToStore: num("open_to_store"), retentionW1: num("retention_w1"), wauAgo: (app.wau_4w_ago as { wau?: number } | null)?.wau },
           coupon: { rate: num("coupon_rate") },
         },
         posts, topStores,
         probeLoading: false,
-        failed: { ...old.failed, insights: ins === null },
+        failed: { ...old.failed, insights: ins === null, app: app === null, backend: app !== null && app.backend_ok === false, ga4: app !== null && app.ga4_ok === false },
       }));
     });
     return () => { alive = false; };

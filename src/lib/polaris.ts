@@ -15,7 +15,11 @@ export type Period = "week" | "month";
 export interface PolarisInput {
   stores: { total: number; paid: number; totalAgo: { week?: number; month?: number }; paidAgo: { week?: number; month?: number } };
   revenue: { paid: number; billed: number; paidPrevMonth?: number };
-  app: { wau?: number; dauWau?: number; openToStore?: number; retentionW1?: number; wauPrevWeek?: number };
+  /**
+   * Probe 앱 지표(GA4). wauAgo = 4주 전 같은 7일의 WAU — 성장률 「주」의 비교 기준.
+   * state 는 그 응답을 아직 읽는 중이거나 통째로 못 읽었을 때만 붙는다.
+   */
+  app: { wau?: number; dauWau?: number; openToStore?: number; retentionW1?: number; wauAgo?: number; state?: "loading" | "failed" };
   reach: { last7?: number; prev7?: number };
   coupon: { rate?: number };
 }
@@ -36,6 +40,18 @@ export interface Growth {
 const pctOf = (now?: number, before?: number): number | null =>
   now === undefined || before === undefined || before === 0 ? null : Math.round(((now - before) / before) * 1000) / 10;
 
+/**
+ * WAU 줄이 증감률을 못 낼 때 그 까닭. 「연결 전」은 쓰지 않는다 — GA4 는 붙어 있어서 비어 있으면 못 읽은 것이다.
+ * 1014: 앱 지표 응답을 못 받은 화면이 「Probe 연결 전」이라고 적어 아직 안 붙은 것처럼 읽혔다.
+ */
+function wauNote(a: PolarisInput["app"], wk: boolean): string | undefined {
+  if (a.state === "loading") return "읽는 중";
+  if (a.state === "failed" || a.wau === undefined) return "읽지 못함";
+  if (!wk) return "주 단위로만 비교";
+  if (a.wauAgo === undefined) return "4주 전 값 없음";
+  return undefined;
+}
+
 /** 성장률 인자 5개. 순서가 화면 순서다. */
 export function growth(i: PolarisInput, period: Period): Growth[] {
   const ago = period === "week" ? "week" : "month";
@@ -46,7 +62,7 @@ export function growth(i: PolarisInput, period: Period): Growth[] {
     wk
       ? { key: "revenue", label: "월 수익 (입금)", now: i.revenue.paid, before: undefined, pct: null, money: true, note: "월 단위로만 비교" }
       : { key: "revenue", label: "월 수익 (입금)", now: i.revenue.paid, before: i.revenue.paidPrevMonth, pct: pctOf(i.revenue.paid, i.revenue.paidPrevMonth), money: true, note: i.revenue.paidPrevMonth === undefined ? "전월 값 없음" : i.revenue.paidPrevMonth === 0 ? "첫 달" : undefined },
-    { key: "wau", label: "WAU", now: i.app.wau, before: wk ? i.app.wauPrevWeek : undefined, pct: wk ? pctOf(i.app.wau, i.app.wauPrevWeek) : null, unit: "명", note: i.app.wau === undefined ? "Probe 연결 전" : wk && i.app.wauPrevWeek === undefined ? "기준선 생성 중" : !wk ? "주 단위로만 비교" : undefined },
+    { key: "wau", label: "WAU", now: i.app.wau, before: wk ? i.app.wauAgo : undefined, pct: wk ? pctOf(i.app.wau, i.app.wauAgo) : null, unit: "명", note: wauNote(i.app, wk) },
     { key: "reach", label: "인스타 도달 (7일)", now: i.reach.last7, before: i.reach.prev7, pct: pctOf(i.reach.last7, i.reach.prev7), note: i.reach.last7 === undefined ? "연결 전" : undefined },
   ];
 }
