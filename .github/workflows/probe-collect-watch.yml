@@ -33,16 +33,25 @@ jobs:
     steps:
       - name: 백엔드 깨우기
         # 백엔드 #156(1013)부터 Koyeb 가 한가하면 잠든다. 잠든 서버의 첫 요청은 503 「Your service is almost ready!」로 튕긴다 —
-        # 1014 수집 감시·질문 정리 DM 이 그렇게 빨갛게 났다(수집은 정상). 첫 화면(/)이 200 이 될 때까지 최대 2분 기다린다.
+        # 1014 수집 감시·질문 정리 DM 이 그렇게 빨갛게 났다(수집은 정상). 첫 화면(/)을 불러 깨운다(최대 3분쯤).
+        # 1015: 백엔드는 두 지역(도쿄·싱가포르)에 떠 있고 지역마다 따로 잠든다 — 요청이 번갈아 간다(x-koyeb-backend).
+        #   200 한 번은 한쪽만 깬 것이라 다음 요청이 잠든 쪽에 가서 503 이 났다(승인한 리포트가 안 올라감).
+        #   **연속 8번 200** 이어야 다 깬 것으로 본다(잠든 쪽에 가면 그 요청이 깨우고 수를 다시 센다).
         env:
           BACKEND: ${{ secrets.BACKEND_BASE_URL }}
         run: |
-          for i in $(seq 1 24); do
+          OK=0
+          for i in $(seq 1 40); do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$BACKEND/") || CODE=000
-            [ "$CODE" = "200" ] && { echo "백엔드 깨어 있음 (${i}번째 확인)"; exit 0; }
-            echo "HTTP $CODE — 깨어나는 중"; sleep 5
+            if [ "$CODE" = "200" ]; then
+              OK=$((OK + 1))
+              [ "$OK" -ge 8 ] && { echo "백엔드 깨어 있음 (${i}번째 확인 · 연속 ${OK}번)"; exit 0; }
+              sleep 1
+            else
+              OK=0; echo "HTTP $CODE — 깨어나는 중"; sleep 5
+            fi
           done
-          echo "::warning::백엔드가 2분 안에 깨어나지 않았습니다(HTTP $CODE) — 그대로 진행합니다"
+          echo "::warning::백엔드가 다 깨어나지 않았습니다(마지막 HTTP $CODE) — 그대로 진행합니다"
       - name: 오늘 일일 수집 확인
         run: |
           set -euo pipefail

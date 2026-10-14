@@ -54,11 +54,24 @@ if (!BACKEND) die("BACKEND(백엔드 주소)가 없습니다");
 if (!CRON_TOKEN) die("CRON_TOKEN 이 없습니다");
 if (!DRY_RUN && (!SLACK_TOKEN || !CHANNEL)) die("SLACK_TOKEN · CHANNEL 이 없습니다");
 
+/**
+ * 백엔드는 두 지역에 떠 있고 지역마다 따로 잠든다(1015) — 잠든 쪽에 가면 Koyeb 가 앱에 넘기지 않고
+ * 「Your service is almost ready!」 503 을 준다. 앱에 닿지 않은 요청이라 POST 도 다시 보내도 안전하다. 5초 간격으로 여섯 번까지.
+ */
 async function backend(pathname, init = {}) {
-  const res = await fetch(`${BACKEND}${pathname}`, { ...init, headers: { "X-CRON-TOKEN": CRON_TOKEN, "Content-Type": "application/json", ...(init.headers ?? {}) } });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`백엔드 ${pathname} HTTP ${res.status} — ${body.detail ?? ""}`);
-  return body;
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(`${BACKEND}${pathname}`, { ...init, headers: { "X-CRON-TOKEN": CRON_TOKEN, "Content-Type": "application/json", ...(init.headers ?? {}) } });
+    const text = await res.text();
+    if (res.status === 503 && text.includes("almost ready") && attempt < 6) {
+      console.log(`백엔드 ${pathname} — 잠든 지역(503), 5초 뒤 다시 (${attempt})`);
+      await new Promise((r) => setTimeout(r, 5000));
+      continue;
+    }
+    let body = {};
+    try { body = JSON.parse(text); } catch {}
+    if (!res.ok) throw new Error(`백엔드 ${pathname} HTTP ${res.status} — ${body.detail ?? ""}`);
+    return body;
+  }
 }
 
 // ── 파일 만들기 ────────────────────────────────────────────────────────
