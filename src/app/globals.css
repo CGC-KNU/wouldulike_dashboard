@@ -47,6 +47,32 @@
 :root[data-theme="dark"] .sat-bg { background: radial-gradient(1200px 520px at 18% -8%, rgba(99,102,224,0.10), transparent 60%), radial-gradient(900px 400px at 92% 0%, rgba(99,102,224,0.07), transparent 60%), #0A0A22; }
 :root[data-theme="dark"] .shadow-sm { --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.4); }
 
+/* Orbit 다크 (1014 민열님 — 밤에 선이 안 보인다). 단계 막대·진행 막대·카드 테두리가 정보 자체라서
+   공통 0.09 테두리로는 묻힌다. 그래서 .orbit 안에서만 한 단계 더 밝힌다 — 다른 툴과 낮 화면은 그대로.
+   네이비 칠(bg-navy)은 다크 카드(#12123A)와 거의 같은 밝기라 페리윙클로 바꾼다. */
+:root[data-theme="dark"] .orbit .border-black\/\[0\.05\], :root[data-theme="dark"] .orbit .border-black\/\[0\.06\], :root[data-theme="dark"] .orbit .border-black\/\[0\.07\], :root[data-theme="dark"] .orbit .border-black\/10, :root[data-theme="dark"] .orbit .border-black\/20 { border-color: rgb(255 255 255 / 0.18); }
+:root[data-theme="dark"] .orbit li.border-black\/\[0\.05\] { border-color: rgb(255 255 255 / 0.13); } /* 런처 카드 목록 줄 — 칸보다 한 단계 옅게 */
+:root[data-theme="dark"] .orbit.border-white\/70 { border-color: rgb(255 255 255 / 0.14); }
+:root[data-theme="dark"] .orbit .bg-black\/10, :root[data-theme="dark"] .orbit .bg-black\/\[0\.08\] { background-color: rgb(255 255 255 / 0.18); } /* 단계 막대 빈 칸 · 진행 막대 바탕 */
+:root[data-theme="dark"] .orbit .bg-black\/\[0\.025\] { background-color: rgb(255 255 255 / 0.05); }
+:root[data-theme="dark"] .orbit .bg-navy { background-color: #7275EA; }
+:root[data-theme="dark"] .orbit .border-navy { border-color: #9A9CF2; }
+:root[data-theme="dark"] .orbit .border-navy\/30 { border-color: rgb(154 156 242 / 0.5); }
+:root[data-theme="dark"] .orbit .ring-navy\/15 { --tw-ring-color: rgb(154 156 242 / 0.35); }
+:root[data-theme="dark"] .orbit .text-navy\/60 { color: rgb(199 201 247 / 0.7); }
+:root[data-theme="dark"] .orbit .text-gray-400 { color: rgb(150 152 194); } /* 흐린 글자 — 다크 카드 위 대비 4.2 → 6.4 */
+:root[data-theme="dark"] .orbit .text-\[\#4A154B\] { color: #E2B3E3; } /* 슬랙 보라는 밤에 안 보인다 */
+:root[data-theme="dark"] .orbit .accent-\[\#060073\] { accent-color: #7275EA; }
+:root[data-theme="dark"] .orbit .bg-red-50 { background-color: rgb(239 68 68 / 0.2); }
+:root[data-theme="dark"] .orbit .text-red-700 { color: #FCA5A5; }
+:root[data-theme="dark"] .orbit .text-red-600 { color: #F87171; }
+:root[data-theme="dark"] .orbit .bg-amber-50 { background-color: rgb(245 158 11 / 0.2); }
+:root[data-theme="dark"] .orbit .text-amber-800 { color: #FCD34D; }
+/* 마우스·포커스 테두리는 위 칠보다 뒤에 둬야 이긴다 */
+:root[data-theme="dark"] .orbit .hover\:border-navy\/40:hover, :root[data-theme="dark"] .orbit .focus-within\:border-navy\/40:focus-within, :root[data-theme="dark"] .orbit .focus\:border-navy\/30:focus { border-color: rgb(154 156 242 / 0.6); }
+:root[data-theme="dark"] .orbit .hover\:bg-navy\/\[0\.03\]:hover, :root[data-theme="dark"] .orbit .hover\:bg-navy\/10:hover { background-color: rgb(99 102 224 / 0.16); }
+:root[data-theme="dark"] .orbit .hover\:bg-black\/5:hover { background-color: rgb(255 255 255 / 0.08); }
+
 /* ── 브랜드 디스플레이 서체 · Ria Sans ──────────────────────────────
    logo.png 워드마크("wouldulike")를 그린 그 서체다. 그동안 배너랩 캔버스에서만
    FontFace 로 쓰고 있었는데, 점주 온보딩처럼 브랜드를 내세우는 화면에서는

@@ -70,7 +70,7 @@ export default function OrbitBoard({ actor, initial }: { actor: string; initial?
   const wait = active.reduce((a, p) => a + waiting(p), 0);
 
   return (
-    <>
+    <div className="orbit">
       <PageHeader title="Orbit" description="구독 개편 · 팝업 · 점주 퍼널처럼 여러 팀원과 팀이 같이 움직이는 큰 일. 단계는 필독 글의 4단계, 소식은 리브라가 슬랙에서 모읍니다." />
       {err && <div className="mb-3"><Notice tone="amber" title={err}><button type="button" className="underline" onClick={() => setErr(null)}>닫기</button></Notice></div>}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-4">
@@ -120,7 +120,7 @@ export default function OrbitBoard({ actor, initial }: { actor: string; initial?
           )}
         </aside>
       </div>
-    </>
+    </div>
   );
 }
 
