@@ -168,6 +168,23 @@ export async function readLastEventDate(env: Record<string, string | undefined> 
 }
 
 /**
+ * `end`(YYYYMMDD)로 끝나는 7일의 WAU **하나만** — 아래 ① 과 같은 정의(user_engagement 고유 기기).
+ * 메인 Polaris 의 「4주 전 WAU」. 지표 전체를 다시 뽑으면 쿼리 여덟 개(로컬 8초)라 이 한 줄만 센다.
+ * 키가 없으면 null, 조회 실패는 throw — 부르는 쪽이 성공만 캐시한다.
+ */
+export async function readWau(end: string, env: Record<string, string | undefined> = process.env): Promise<{ from: string; to: string; wau: number } | null> {
+  const c = clientFromEnv(env);
+  if (!c) return null;
+  const start = shift(end, -6);
+  const [row] = await c.run<{ wau: number }>(
+    `SELECT COUNT(DISTINCT user_pseudo_id) AS wau FROM \`${c.dataset}.events_*\`
+     WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'user_engagement'`,
+    { start, end }
+  );
+  return { from: dash(start), to: dash(end), wau: Number(row?.wau ?? 0) };
+}
+
+/**
  * 창(窓)을 받아 센다.
  *
  *  - 아무것도 안 주면 예전 그대로 — 마지막 확정 테이블 기준 **최근 7일**(Probe 앱 지표 화면).

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
-import { credentialsFromEnv, readGa4AppMetrics, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
+import { credentialsFromEnv, readGa4AppMetrics, readWau, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { readStoreToCoupon, type StoreToCoupon } from "@/lib/bigquery/couponFunnel";
 import { readOnboardingFunnel, type OnboardingFunnel } from "@/lib/bigquery/onboarding";
 import { appPeriods, type AppPeriodKey } from "@/lib/draft/appPeriods";
@@ -116,6 +116,30 @@ async function storeToCoupon(g: Ga4AppMetrics | null): Promise<StoreToCoupon | n
   }
 }
 
+/**
+ * 4주 전 같은 7일의 WAU — 메인 Polaris 성장률의 비교 기준(「4주 전 / 전월」). 지난 창은 바뀌지 않아 하루 캐시한다.
+ * Probe 앱 지표 화면은 이 값을 그리지 않는다.
+ */
+const cachedWau = unstable_cache(
+  async (end: string) => {
+    const r = await readWau(end);
+    if (!r) throw new Error("no_key");
+    return r;
+  },
+  ["probe-app-wau-v1"],
+  { revalidate: 24 * 60 * 60 }
+);
+
+async function wauAgo(g: Ga4AppMetrics | null): Promise<{ from: string; to: string; wau: number } | null> {
+  if (!g) return null;
+  try {
+    return await cachedWau(new Date(Date.parse(g.week.to) - 28 * 86_400_000).toISOString().slice(0, 10).replace(/-/g, ""));
+  } catch (e) {
+    console.error("[probe/app] 4주 전 WAU 조회 실패", e);
+    return null;
+  }
+}
+
 async function ga4(): Promise<{ data: Ga4AppMetrics | null; error: string | null }> {
   try {
     if (!credentialsFromEnv()) return { data: null, error: null };
@@ -131,7 +155,12 @@ export async function GET() {
   if (deny) return deny;
 
   // 백엔드 집계가 없거나 칸 하나가 실패하면 null 로 둔다 — 0 이 아니다.
-  const stats = await fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; generated_at?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/");
+  // 백엔드와 BigQuery 는 서로 기다리지 않는다 — 줄 세우면 잠든 백엔드를 깨우는 시간에 GA4 조회(로컬 약 10초)가 더해져
+  // 메인 Polaris 의 25초 제한을 넘긴다.
+  const [stats, { data: g, error: gErr }] = await Promise.all([
+    fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; generated_at?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/"),
+    ga4(),
+  ]);
   const s = stats?.stats ?? null;
   const n = (k: string) => (s && typeof s[k] === "number" ? (s[k] as number) : null);
   // 한쪽이라도 모르면 합도 모른다 — 교환을 못 셌는데 당첨만 더하면 그 합이 사실처럼 보인다 (#283)
@@ -156,9 +185,7 @@ export async function GET() {
   const codeIssued = codeParts.reduce((a, [, v]) => a + v.issued, 0);
   const codeRedeemed = codeParts.reduce((a, [, v]) => a + v.redeemed, 0);
   const signupsTotal = n("signups_total");
-  const { data: g, error: gErr } = await ga4();
-  const s2c = await storeToCoupon(g);
-  const ob = await onboarding(g);
+  const [s2c, ob, ago] = await Promise.all([storeToCoupon(g), onboarding(g), wauAgo(g)]);
 
   const groups: AppMetricGroup[] = [
     {
@@ -266,5 +293,7 @@ export async function GET() {
     ga4_through: g?.through ?? null,
     /** 칸의 `period` → 실제로 센 구간. 화면 위 기간 줄 */
     periods: appPeriods({ since: stats?.since, countedAt: s ? (stats?.generated_at ?? new Date().toISOString()) : null, ga4: g }),
+    // 메인 Polaris 성장률의 「4주 전」 — groups 의 wau 와 같은 정의로 28일 앞선 7일. 이 화면은 그리지 않는다
+    wau_4w_ago: ago,
   });
 }

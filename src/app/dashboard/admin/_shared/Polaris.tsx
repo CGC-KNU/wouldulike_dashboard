@@ -48,6 +48,11 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
     </button>
   );
 
+  // 1014: 둘 다 Probe 앱 지표에서 온다. 비어 있으면 「연결 전」이 아니라 못 읽은 것이다 — 어디를 못 읽었는지 적는다.
+  const appUnread = d.failed.app ? "앱 지표를 읽지 못했습니다 — 0 이 아니라 모름" : null;
+  const wauSub = appUnread ?? (i.app.wau === undefined ? "GA4 를 읽지 못했습니다 — 0 이 아니라 모름" : i.app.dauWau === undefined ? "최근 7일 앱을 켠 기기" : `DAU/WAU ${i.app.dauWau}% · 20% 넘으면 습관`);
+  const couponSub = appUnread ?? (i.coupon.rate !== undefined ? "이번 달 발급 → 사용" : d.failed.backend ? "백엔드 집계를 읽지 못했습니다 — 0 이 아니라 모름" : "이번 달 발급이 아직 없습니다");
+
   const paidPct = i.revenue.billed > 0 ? Math.round((i.revenue.paid / i.revenue.billed) * 100) : 0;
   const shipLeft = gate.pct === null ? 8 : 8 + (50 - 8) * gate.pct;
 
@@ -63,8 +68,8 @@ export default function Polaris({ onGo }: { onGo?: (target: string) => void }) {
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpi("파트너 매장", d.loading ? "…" : d.failed.stores ? "—" : `${i.stores.total}곳`, d.failed.stores ? "매장 목록을 읽지 못했습니다 — 0 이 아니라 모름" : `유료 ${i.stores.paid} · 무료 ${i.stores.total - i.stores.paid}`, <Delta pct={rows[0].pct} note={rows[0].note} />, "Astro", i.stores.total ? (i.stores.paid / i.stores.total) * 100 : 0, "astro-ops")}
         {kpi(`${month}월 수익`, d.loading ? "…" : d.failed.invoices ? "—" : `${won(i.revenue.paid)}원`, d.failed.invoices ? "계산서 목록을 읽지 못했습니다 — 0 이 아니라 모름" : `청구 ${won(i.revenue.billed)} · 미수 ${won(Math.max(0, i.revenue.billed - i.revenue.paid))}`, <span className={`text-[11.5px] font-semibold ${d.failed.invoices ? "text-gray-400" : d.unpaid ? "text-red-600" : "text-gray-400"}`}>{d.failed.invoices ? "—" : d.unpaid ? `미입금 ${d.unpaid}곳` : "회수 완료"}</span>, d.failed.invoices ? "—" : `회수 ${paidPct}%`, d.failed.invoices ? undefined : paidPct, "astro-billing")}
-        {kpi("주간 활성 (WAU)", d.probeLoading ? "…" : i.app.wau === undefined ? "—" : `${i.app.wau}명`, i.app.dauWau === undefined ? "Probe 연결 전" : `DAU/WAU ${i.app.dauWau}% · 20% 넘으면 습관`, <span className="text-[11.5px] text-gray-400">{i.app.openToStore !== undefined ? `앱→매장 ${i.app.openToStore}%` : ""}</span>, i.app.wau === undefined ? "연결 전" : "GA4", i.app.dauWau, "probe-app")}
-        {kpi("쿠폰·스탬프 전환율", d.probeLoading ? "…" : i.coupon.rate === undefined ? "—" : `${i.coupon.rate}%`, i.coupon.rate === undefined ? "발급 → 사용 · Probe 집계 붙으면 자동" : "발급 → 사용", <span className="text-[11.5px] text-gray-400">{i.coupon.rate === undefined ? "민찬 설계 중" : ""}</span>, i.coupon.rate === undefined ? "연결 전" : "Probe", i.coupon.rate, "probe-metrics")}
+        {kpi("주간 활성 (WAU)", d.probeLoading ? "…" : i.app.wau === undefined ? "—" : `${i.app.wau}명`, d.probeLoading ? "" : wauSub, <span className="text-[11.5px] text-gray-400">{i.app.openToStore !== undefined ? `앱→매장 ${i.app.openToStore}%` : ""}</span>, "GA4", i.app.dauWau, "probe-app")}
+        {kpi("쿠폰·스탬프 전환율", d.probeLoading ? "…" : i.coupon.rate === undefined ? "—" : `${i.coupon.rate}%`, d.probeLoading ? "" : couponSub, null, "Probe", i.coupon.rate, "probe-metrics")}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
