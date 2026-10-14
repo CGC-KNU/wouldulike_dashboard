@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { measuredPoint, toTemplateData, templateMissing } from "../src/lib/draft/reportTemplateData";
 import { fillReportTemplate, insertAfterBody } from "../src/lib/draft/reportTemplate";
-import { DEFAULT_SUMMARY, VERDICT_FRACTION, buildReportText, cardValue, checkText, cohortNote, curationIntro, day7Line, headlineBefore1005, isAutoSummary, ownerHeadline, ownerNumbers, ownerParagraphs, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, stripChannelCompare, verdict } from "../src/lib/draft/report";
+import { DEFAULT_SUMMARY, VERDICT_FRACTION, buildReportText, cardValue, checkText, cohortNote, curationIntro, day7Line, headlineBefore1005, isAutoSummary, ownerHeadline, ownerNumbers, ownerParagraphs, ownerPostTitle, ownerStory, propose, reelWatchLine, refreshText, storyBefore1002, storyBefore1003, stripChannelCompare, verdict } from "../src/lib/draft/report";
 import { downloadBar, PLACEHOLDER_GIF } from "../src/lib/draft/reportDownload";
 import { DOWNLOADABLE, reportFilename, reportPageHtml, reportPermalink } from "../src/lib/draft/reportPage";
 import type { ReportData, ReportMetric, StoreReport } from "../src/lib/draft/types";
@@ -845,4 +845,18 @@ test("1009 — Probe 성과 지표가 14일차(basis D14)면 7일차 작은 줄�
   // report-data 가 없으면 basis 가 며칠차를 말한다
   const bare = report({}, { basis: "D14", report_data: undefined }).snapshot;
   assert.deepEqual(measuredPoint(bare), { day: 14, date: "2026-09-18" });
+});
+
+test("점주에게 보이는 제목은 끝의 「협찬」을 뗀다 — 앱 매장 콘텐츠가 「통통주먹구이 협찬」으로 나갔다(1015)", () => {
+  assert.equal(ownerPostTitle("통통주먹구이 협찬"), "통통주먹구이");
+  assert.equal(ownerPostTitle("교동 서서 협찬 "), "교동 서서");
+  assert.equal(ownerPostTitle("대구 면 요리 맛집 (라라더 포함)"), "대구 면 요리 맛집");
+  assert.equal(ownerPostTitle("협찬 받은 가게 추천"), "협찬 받은 가게 추천", "끝이 아니면 그대로");
+  assert.equal(ownerPostTitle("협찬"), "협찬", "다 떼서 비면 그대로");
+  const snap = { store: { name: "통통주먹구이 경북대점", campus: null }, post: { plan_id: 9, topic: "통통주먹구이 협찬", posted_at: "2026-09-10T11:00:00+09:00", permalink: "https://ig/p/x", format: "reel" as const, caption: null, cover_url: null, owner_name: "아윤", co_stores: 1 } };
+  const d = toTemplateData(report({}, snap)) as { post: { title: string } };
+  assert.equal(d.post.title, "통통주먹구이");
+  const t = buildReportText(report({}, snap).snapshot, "D14");
+  assert.match(t, /저희 인스타그램 '통통주먹구이' 게시물에/);
+  assert.doesNotMatch(t, /협찬/);
 });
