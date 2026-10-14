@@ -16,6 +16,7 @@ import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skelet
  * 두 가지를 지킨다.
  *   · 0 과 '모름'을 섞지 않는다. 못 읽은 매장은 '-' 이고 합계에서도 뺀다. 0 으로 채우면 "이 매장 망했네" 같은 오판이 난다.
  *   · 총합보다 '조용한 매장'이 먼저다. 쿠폰도 스탬프도 0 인 제휴 매장. 영업이 다음 주에 전화 돌릴 목록이다.
+ *     앱에서 숨긴 매장은 학생이 못 보니 0 이 당연하다 — 조용한 매장에서 빼고 「앱에서 숨김」으로 따로 모은다.
  *
  * 캠퍼스를 고르면 범위 숫자·KPI·표가 전부 그 캠퍼스 매장만으로 다시 센다 — "영남대 조용한 매장" 처럼 겹쳐 본다.
  */
@@ -26,7 +27,7 @@ export default function ProbeOverview() {
   const [stores, setStores] = useState<StoreMetric[]>([]);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "coupon", dir: "desc" });
-  const [scope, setScope] = useState<"all" | "paid" | "free" | "silent">("all");
+  const [scope, setScope] = useState<"all" | "paid" | "free" | "silent" | "hidden">("all");
   const [campus, setCampus] = useState<string>("all");
   const [generatedAt, setGeneratedAt] = useState("");
   const [source, setSource] = useState("");
@@ -67,6 +68,7 @@ export default function ProbeOverview() {
     if (scope === "paid") list = list.filter(paid);
     if (scope === "free") list = list.filter((s) => !paid(s));
     if (scope === "silent") list = list.filter(isSilent);
+    if (scope === "hidden") list = list.filter((s) => s.hidden_from_app);
     const dir = sort.dir === "asc" ? 1 : -1;
     const num = (s: StoreMetric) =>
       sort.key === "coupon" ? s.coupon_redeemed_this_month : sort.key === "stamp" ? s.stamp_earned_this_month : sort.key === "loyal" ? s.loyal_total : s.revisit_this_month;
@@ -106,6 +108,7 @@ export default function ProbeOverview() {
               { key: "paid", label: "유료", count: totals?.paid },
               { key: "free", label: "무료", count: totals?.free },
               { key: "silent", label: "조용한 매장", count: totals?.silent },
+              { key: "hidden", label: "앱에서 숨김", count: totals?.hidden },
             ]}
           />
           <span className="hidden sm:block w-px h-5 bg-gray-200" aria-hidden />
@@ -152,7 +155,7 @@ export default function ProbeOverview() {
         <Kpi label="지표 못 읽음" value={loading ? "-" : totals?.unavailable ?? 0} suffix="곳" hint="0 이 아니라 모름" />
       </div>
 
-      <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description={`합계는 지표를 읽은 매장만으로 계산합니다.${testExcluded ? ` 테스트 매장 ${testExcluded}곳은 뺐습니다(Astro 와 같은 기준).` : ""}`}>
+      <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description={`합계는 지표를 읽은 매장만으로 계산합니다. 앱에서 숨긴 매장은 조용한 매장에서 뺍니다.${testExcluded ? ` 테스트 매장 ${testExcluded}곳은 뺐습니다(Astro 와 같은 기준).` : ""}`}>
         {loading ? (
           <Skeleton rows={8} cols={5} />
         ) : rows.length === 0 ? (
@@ -161,6 +164,8 @@ export default function ProbeOverview() {
             <Empty title="지표를 불러오지 못했습니다" detail="백엔드 연결을 확인하세요." />
           ) : scope === "silent" ? (
             <Empty title="조용한 매장이 없습니다" detail={`${campus === "all" ? "모든" : campus} 제휴 매장에 이번 달 활동이 있습니다.`} />
+          ) : scope === "hidden" ? (
+            <Empty title="앱에서 숨긴 매장이 없습니다" detail={`${campus === "all" ? "모든" : campus} 제휴 매장이 앱에 보입니다.`} />
           ) : (
             <Empty title="이 조건에 해당하는 매장이 없습니다" detail={campus === "all" ? "다른 범위를 눌러 보세요." : `${campus} 에는 아직 이 범위의 제휴 매장이 없습니다.`} />
           )
@@ -186,6 +191,8 @@ export default function ProbeOverview() {
                         {/* Astro 매장 목록과 같은 이름 · 색 — Boost 남색 · Premium 주황 (types.ts planLabel) */}
                         {s.tier && <span className={`text-[12px] font-semibold ${planTextClass(s.tier)}`}>{planLabel(s.tier)}</span>}
                         {silent && <Chip tone="red">조용함</Chip>}
+                        {/* Astro 매장 목록과 같은 이름 · 색 */}
+                        {s.hidden_from_app && <Chip tone="amber">앱에서 숨김</Chip>}
                       </span>
                     </Td>
                     <Td align="right"><Bar value={s.coupon_redeemed_this_month} max={max.coupon} unavailable={s.unavailable} /></Td>

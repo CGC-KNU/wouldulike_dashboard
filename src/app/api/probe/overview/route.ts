@@ -69,6 +69,7 @@ export async function GET() {
     stamp_earned_this_month: stats?.stamp_earned_this_month ?? 0,
     unavailable: stats === null,
     campus: campusById.get(r.restaurant_id) ?? null,
+    hidden_from_app: r.hidden_from_app === true,
   });
 
   /**
