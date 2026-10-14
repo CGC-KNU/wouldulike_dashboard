@@ -73,6 +73,16 @@ export interface InsightsResult {
   draft_note?: string;
 }
 
+/**
+ * 이 게시물·매장의 살아 있는 리포트 — 회수(REVOKED)된 것은 없는 것으로 본다. 화면의 「만들 때」와 14일차 자동 초안이
+ * 같은 판정을 쓴다(1014: 자동만 회수본을 「이미 있음」으로 세서, 화면은 만들라는데 자동은 건너뛰었다). 만들기(reportCreate)도 같은 규칙.
+ */
+export function liveReportFor(reports: StoreReport[], planId: number, rid: number | null, store: string): StoreReport | null {
+  return reports.find((x) => x.plan_id === planId && x.status !== "REVOKED" && (rid !== null
+    ? x.restaurant_id === rid
+    : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(store))) ?? null;
+}
+
 /** 목록을 처음부터 만든다(10초쯤). 화면용 5분 기억은 라우트에, 크론(자동 초안)은 늘 새로 읽는다. */
 export async function buildInsights(): Promise<InsightsResult> {
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");
@@ -146,9 +156,7 @@ export async function buildInsights(): Promise<InsightsResult> {
       app: st ? { month, coupon_redeemed: st.coupon_redeemed_this_month ?? 0, stamp_earned: st.stamp_earned_this_month ?? 0, revisit: st.revisit_this_month ?? 0, loyal_total: st.loyal_total ?? 0 } : null,
     };
     const reportable = rid !== null || by === "sponsor";
-    const sent = !reportable ? null : reports.find((x) => x.plan_id === plan.id && x.status !== "REVOKED" && (rid !== null
-      ? x.restaurant_id === rid
-      : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(label))) ?? null;
+    const sent = !reportable ? null : liveReportFor(reports, plan.id, rid, label);
     const reason = !reportable
       ? "괄호에 적힌 매장을 매장 표에서 찾지 못했습니다 — 이름을 매장 표와 맞추면 리포트를 만들 수 있습니다"
       : denied.has(plan.id)
