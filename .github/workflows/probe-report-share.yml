@@ -51,6 +51,18 @@ jobs:
       DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
       ONLY_ID: ${{ inputs.id }}
     steps:
+      - name: 백엔드 깨우기
+        # 백엔드 #156(1013)부터 Koyeb 가 한가하면 잠든다. 잠든 서버의 첫 요청은 503 「Your service is almost ready!」로 튕긴다 —
+        # 1014 수집 감시·질문 정리 DM 이 그렇게 빨갛게 났다(수집은 정상). 첫 화면(/)이 200 이 될 때까지 최대 2분 기다린다.
+        env:
+          BACKEND: ${{ secrets.BACKEND_BASE_URL }}
+        run: |
+          for i in $(seq 1 24); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$BACKEND/") || CODE=000
+            [ "$CODE" = "200" ] && { echo "백엔드 깨어 있음 (${i}번째 확인)"; exit 0; }
+            echo "HTTP $CODE — 깨어나는 중"; sleep 5
+          done
+          echo "::warning::백엔드가 2분 안에 깨어나지 않았습니다(HTTP $CODE) — 그대로 진행합니다"
       - name: 큐 확인
         id: queue
         run: |
