@@ -108,3 +108,18 @@ test("비율의 선은 끝나지 않은 칸을 긋지 않는다 — 막대는 �
   assert.doesNotMatch(card.split("<details>")[0], />60<\/text>/);
   assert.match(card, /<td>60<\/td>/); // 표에는 있다
 });
+
+test("주요 지표 — 쿠폰 받기 · 받은 쿠폰 → 사용 · 매장 목록 카드 → 클릭 그래프가 붙는다", () => {
+  const s = buildSeries({
+    spec: spec("week", "2026-10-05", "2026-10-18"), through: "20261014", today: TODAY,
+    cells: [full(), full({ ga4: ga4({ list_ctr: 7.5, list_view: { seen: 120, clicked: 9 } }) })],
+    total: full(),
+  });
+  const html = renderKeyReport(s, "");
+  for (const t of ["쿠폰 받기", "받은 쿠폰 → 사용", "매장 목록 카드 → 클릭"]) assert.match(html, new RegExp(`<h3>${t}</h3>`), t);
+  // 쿠폰 묶음 안에, 목록 클릭은 전환 묶음 안에
+  const sec = (h: string) => html.split('<section class="sec">').find((x) => x.includes(`<h2>${h}</h2>`))!;
+  assert.match(sec("쿠폰"), /<h3>쿠폰 받기<\/h3>/);
+  assert.match(sec("전환 · 재방문"), /<h3>매장 목록 카드 → 클릭<\/h3>/);
+  assert.doesNotMatch(html, /NaN|undefined/);
+});

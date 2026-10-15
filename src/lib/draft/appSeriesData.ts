@@ -212,6 +212,14 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
         pick: needs("restaurant_detail_open", fromGa4((g) => rate(g.open_to_store, g.sessions))),
       },
       {
+        key: "list_ctr", label: "매장 목록 카드 → 클릭", unit: "%", source: "ga4", kind: "rate",
+        note: "매장 목록에서 카드가 보인(절반 이상 · 1초) 세션·매장 중 같은 세션에 그 카드를 누른 비율. 노출은 앱 2.6.0 부터라 그 기기만 셉니다",
+        pick: needs("restaurant_list_impression", fromGa4((g) => {
+          if (!g.list_view) return { v: null, why: "못 셈" };
+          return g.list_view.seen === 0 ? { v: null, why: "노출 이벤트 없음", n: 0 } : rate(g.list_ctr, g.list_view.seen);
+        })),
+      },
+      {
         key: "store_to_coupon", label: "매장 상세 → 쿠폰 발급", unit: "%", source: "ga4", kind: "rate",
         note: "매장 상세를 연 (기기·세션·매장) 중 그 자리에서 캠페인이 아닌 쿠폰을 받은 비율",
         pick: needs("restaurant_detail_open", (c) => (c.ga4Pending ? PENDING : c.s2c ? rate(c.s2c.rate, c.s2c.views) : MISSING)),
@@ -238,6 +246,19 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
         key: "coupon_rate_campaign", label: "쿠폰 사용률 (캠페인)", unit: "%", source: "ga4", kind: "rate",
         note: "기획전으로 뿌린 쿠폰 중 같은 칸 안에 쓰인 비율",
         pick: fromCoupons((f) => (f.campaign.issued === 0 ? { v: null, why: "발급 없음", n: 0 } : rate(f.campaign.rate, f.campaign.issued))),
+      },
+      {
+        key: "coupon_claimed", label: "쿠폰 받기", unit: "장", source: "ga4", kind: "count",
+        note: "학생이 「받기」를 눌러 받은 쿠폰 — 한정쿠폰 · 추천코드 · 환영 미션 · 스탬프 보상. 자동 지급은 빠집니다. 앱 2.6.0(10/12~)부터라 보급 중에는 구버전 기기 몫이 빠집니다",
+        pick: needs("coupon_claim", fromCoupons((f) => (f.claim ? { v: f.claim.claimed } : { v: null, why: "못 셈" }))),
+      },
+      {
+        key: "claim_to_use", label: "받은 쿠폰 → 사용", unit: "%", source: "ga4", kind: "rate",
+        note: "그 칸에 「받기」로 받은 쿠폰 중 같은 칸 안에 쓰인 비율(coupon_code 로 잇습니다). 한정쿠폰도 학생이 고른 것이라 캠페인/그 외를 가르지 않습니다",
+        pick: needs("coupon_claim", fromCoupons((f) => {
+          if (!f.claim) return { v: null, why: "못 셈" };
+          return f.claim.claimed === 0 ? { v: null, why: "받기 없음", n: 0 } : rate(f.claim.rate, f.claim.claimed);
+        })),
       },
       {
         key: "wallet_to_use", label: "쿠폰함 → 사용 화면", unit: "%", source: "ga4", kind: "rate",

@@ -130,3 +130,50 @@ test("매장 상세 이벤트(5/5~) 전에 걸친 칸은 0 이 아니라 「이�
   assert.equal(seriesRow(s, "sessions")!.cells[0].v, 400); // 세션은 그대로 센다
   assert.equal(seriesRow(s, "open_to_store")!.total.why, "이벤트 중간 배포");
 });
+
+test("앱 2.6.0 이벤트(받기 10/12~ · 목록 노출 10/11~) — 생기기 전 칸은 비우고, 뒤 칸은 센다", () => {
+  const s = buildSeries({
+    spec: spec("week", "2026-10-05", "2026-10-18"), through: "20261014", today: TODAY,
+    cells: [
+      full(),
+      full({
+        ga4: ga4({ list_ctr: 7.5, list_view: { seen: 120, clicked: 9 } }),
+        coupons: coupons({ claim: { claimed: 30, redeemed: 3, rate: 10 } }),
+      }),
+    ],
+    total: full(),
+  });
+  const cells = (k: string) => seriesRow(s, k)!.cells;
+  assert.equal(cells("coupon_claimed")[0].why, "이벤트 없던 기간"); // 10/5~10/11 — 받기는 10/12 에 생겼다
+  assert.equal(cells("claim_to_use")[0].why, "이벤트 없던 기간");
+  assert.equal(cells("list_ctr")[0].why, "이벤트 중간 배포"); // 노출은 10/11 에 먼저 보였다
+  assert.deepEqual(cells("coupon_claimed")[1], { v: 30 });
+  assert.deepEqual(cells("claim_to_use")[1], { v: 10, n: 30 });
+  assert.deepEqual(cells("list_ctr")[1], { v: 7.5, n: 120 });
+  assert.equal(seriesRow(s, "coupon_claimed")!.total.why, "이벤트 중간 배포"); // 기간 전체가 생기기 전에 걸친다
+});
+
+test("받기 · 목록 노출 — 0 이면 「없음」, 못 읽었으면 「못 셈」", () => {
+  const s = buildSeries({
+    spec: spec("day", "2026-10-12", "2026-10-13"), through: "20261014", today: TODAY,
+    cells: [
+      full({ ga4: ga4({ list_ctr: null, list_view: { seen: 0, clicked: 0 } }), coupons: coupons({ claim: { claimed: 0, redeemed: 0, rate: null } }) }),
+      full(), // 받기·노출 값을 안 실은 응답
+    ],
+    total: full(),
+  });
+  const cell = (k: string, i: number) => seriesRow(s, k)!.cells[i];
+  assert.deepEqual(cell("coupon_claimed", 0), { v: 0 });
+  assert.equal(cell("claim_to_use", 0).why, "받기 없음");
+  assert.equal(cell("list_ctr", 0).why, "노출 이벤트 없음");
+  assert.equal(cell("coupon_claimed", 1).why, "못 셈");
+  assert.equal(cell("claim_to_use", 1).why, "못 셈");
+  assert.equal(cell("list_ctr", 1).why, "못 셈");
+  // 분모가 얕으면 흐리게
+  const weak = buildSeries({
+    spec: spec("week", "2026-10-12", "2026-10-18"), through: "20261014", today: TODAY,
+    cells: [full({ coupons: coupons({ claim: { claimed: 12, redeemed: 1, rate: 8.3 } }) })],
+    total: full(),
+  });
+  assert.equal(seriesRow(weak, "claim_to_use")!.cells[0].weak, true);
+});
