@@ -14,7 +14,7 @@ import { seriesRow, type AppSeries, type Cell, type SeriesRow } from "./appSerie
  * 색을 칠하지 않는다 — 주간 보고서와 같은 규칙(첫 실행 비중 25%p).
  */
 
-const PREV: Record<RangeUnit, string> = { day: "전날", week: "전주", month: "전월" };
+export const PREV: Record<RangeUnit, string> = { day: "전날", week: "전주", month: "전월" };
 /** 활성 기기의 구성(처음 온 기기 비중)이 이만큼 달라지면 두 칸을 그대로 견줄 수 없다 — appReportData returningBase 와 같은 값 */
 const MIX_SHIFT = 0.25;
 
@@ -53,13 +53,25 @@ details td.na{color:var(--mut)}
 `;
 
 // ── KPI ────────────────────────────────────────────────────────────
-interface Pick { i: number; cell: Cell; open: boolean }
+/** 위 여섯 칸 — 슬랙 주간·월간 게시의 본문 여섯 줄도 이것이다(민찬 1015) */
+export const KEY_KPIS: { key: string; label: string }[] = [
+  { key: "active", label: "활성 기기" },
+  { key: "signups", label: "가입" },
+  { key: "coupon_used", label: "쿠폰 사용" },
+  { key: "stamp_earned", label: "스탬프 적립" },
+  { key: "open_to_store", label: "앱 열기 → 매장 상세" },
+  { key: "retention_w1", label: "가입 1주 후 복귀" },
+];
 
-/** 마지막으로 끝난 칸(값이 있는). 없으면 진행 중인 칸이라도 */
-function latest(s: AppSeries, r: SeriesRow): Pick | null {
-  for (let i = r.cells.length - 1; i >= 0; i--) if (!s.buckets[i].open && r.cells[i].v !== null) return { i, cell: r.cells[i], open: false };
-  for (let i = r.cells.length - 1; i >= 0; i--) if (r.cells[i].v !== null) return { i, cell: r.cells[i], open: true };
-  return null;
+export const isGa4Row = (r: SeriesRow) => r.source === "ga4" || r.source === "firebase";
+
+/**
+ * 그 칸이 **이 행에서** 아직 안 끝났나. GA4 는 확정 테이블이 칸 끝까지 왔나, DB 는 칸 끝이 오늘(KST)보다 앞인가.
+ * 월요일 오전엔 DB 는 지난주를 다 셌지만 GA4 일요일분은 아직이다 — 한데 묶으면 DB 칸까지 지난주를 못 쓴다.
+ */
+export function cellOpen(s: AppSeries, r: SeriesRow, i: number): boolean {
+  if (isGa4Row(r)) return s.buckets[i].open;
+  return s.buckets[i].end >= s.generatedAt.slice(0, 10).replace(/-/g, "");
 }
 
 function delta(r: SeriesRow, cur: Cell, prev: Cell | undefined): { text: string; tone: "up" | "down" | "" } | null {
@@ -74,41 +86,80 @@ function delta(r: SeriesRow, cur: Cell, prev: Cell | undefined): { text: string;
   return { text: pct === 0 ? "변화 없음" : `${pct > 0 ? "▲" : "▼"} ${Math.abs(pct)}%`, tone: pct > 0 ? "up" : pct < 0 ? "down" : "" };
 }
 
-function kpi(s: AppSeries, key: string, label: string): string {
+export interface KpiFacts {
+  key: string;
+  label: string;
+  row: SeriesRow;
+  /** 보여 줄 칸. null 이면 칸마다 못 세는 지표라 기간 전체 값으로 대신한다(일 단위의 복귀 등) */
+  i: number | null;
+  cell: Cell;
+  open: boolean;
+  /** 앞 칸 대비 — 진행 중이거나 앞 칸이 비면 null */
+  delta: { text: string; tone: "up" | "down" | "" } | null;
+  /** 색을 빼고 판정을 미룬 까닭 — 없으면 "" */
+  hold: string;
+}
+
+/**
+ * KPI 한 칸의 사실. `focus` 를 주면 그 칸(슬랙 게시 — 「10월 2주차」를 말하는 글이라 그 주에 묶는다),
+ * 안 주면 **마지막으로 끝난 칸**(진행 중인 칸을 앞 칸과 견주면 늘 줄어 보인다).
+ * 표본이 얕거나 활성 기기의 구성이 크게 달라진 칸은 색을 뺀다 — 주간 보고서와 같은 규칙(첫 실행 비중 25%p).
+ */
+export function kpiFacts(s: AppSeries, key: string, label: string, focus?: number): KpiFacts | null {
   const r = seriesRow(s, key);
-  if (!r) return "";
-  const at = latest(s, r);
+  if (!r) return null;
+  let i: number | null = focus ?? null;
+  if (focus === undefined) {
+    for (let k = r.cells.length - 1; k >= 0 && i === null; k--) if (!cellOpen(s, r, k) && r.cells[k].v !== null) i = k;
+    for (let k = r.cells.length - 1; k >= 0 && i === null; k--) if (r.cells[k].v !== null) i = k;
+  }
+  if (i === null) return { key, label, row: r, i: null, cell: r.total, open: false, delta: null, hold: "" };
+
+  const cell = r.cells[i];
+  const open = cellOpen(s, r, i);
+  const prev = i > 0 ? r.cells[i - 1] : undefined;
+  let d = open ? null : delta(r, cell, prev);
+  let hold = "";
+  if (d && (cell.weak || prev?.weak)) { d = { ...d, tone: "" }; hold = "표본이 얕습니다"; }
+  if (d && key === "active") {
+    // 설치가 몰린 칸과 그렇지 않은 칸은 「같은 사람들이 더/덜 왔다」로 읽으면 안 된다 — 색을 빼고 다시 온 기기로 적는다
+    const nw = seriesRow(s, "new_devices"), rt = seriesRow(s, "returning");
+    const a = cell.v, b = prev?.v, na = nw?.cells[i].v, nb = nw?.cells[i - 1]?.v;
+    if (a && b && na != null && nb != null && Math.abs(na / a - nb / b) >= MIX_SHIFT) {
+      d = { ...d, tone: "" };
+      const ra = rt?.cells[i].v, rb = rt?.cells[i - 1]?.v;
+      hold = ra != null && rb != null ? `처음 온 기기 비중이 크게 달라 같은 조건이 아닙니다 — 다시 온 기기 ${fmtNum(rb, "count")} → ${fmtNum(ra, "count")}명` : "처음 온 기기 비중이 크게 달라 같은 조건이 아닙니다";
+    }
+  }
+  return { key, label, row: r, i, cell, open, delta: d, hold };
+}
+
+function kpi(s: AppSeries, key: string, label: string, focus?: number): string {
+  const f = kpiFacts(s, key, label, focus);
+  if (!f) return "";
+  const r = f.row;
   const unit = r.unit;
   const totalHint = r.total.v === null ? "" : r.kind === "rate" ? `기간 전체 ${fmtNum(r.total.v, "rate")}%` : key === "active" ? `기간 전체 고유 ${fmtNum(r.total.v, "count")}${unit}` : `기간 합계 ${fmtNum(r.total.v, "count")}${unit}`;
 
   // 칸마다 못 세는 지표(일 단위의 복귀 등) — 기간 전체 값을 대신 크게
-  if (!at) {
+  if (f.i === null) {
     const why = r.cells.find((c) => c.why)?.why ?? "값 없음";
     const v = r.total.v === null ? "–" : `${fmtCell(r.total, r.kind)}<small>${esc(unit)}</small>`;
     return `<div class="kpi"><p class="kl">${esc(label)}</p><p class="kv">${v}</p><p class="kd">${r.total.v === null ? "" : "기간 전체"}<span>${esc(why)}</span></p><p class="kh">${esc(rangeLabel(s.spec))}</p></div>`;
   }
 
-  const prev = at.i > 0 ? r.cells[at.i - 1] : undefined;
-  let d = at.open ? null : delta(r, at.cell, prev);
-  let note = "";
-  if (d && (at.cell.weak || prev?.weak)) { d = { ...d, tone: "" }; note = "표본이 얕아 판정하지 않습니다"; }
-  if (d && key === "active") {
-    // 설치가 몰린 칸과 그렇지 않은 칸은 「같은 사람들이 더/덜 왔다」로 읽으면 안 된다 — 색을 빼고 다시 온 기기로 적는다
-    const nw = seriesRow(s, "new_devices"), rt = seriesRow(s, "returning");
-    const a = at.cell.v, b = prev?.v, na = nw?.cells[at.i].v, nb = nw?.cells[at.i - 1]?.v;
-    if (a && b && na != null && nb != null && Math.abs(na / a - nb / b) >= MIX_SHIFT) {
-      d = { ...d, tone: "" };
-      const ra = rt?.cells[at.i].v, rb = rt?.cells[at.i - 1]?.v;
-      note = ra != null && rb != null ? `처음 온 기기 비중이 크게 달라 같은 조건이 아닙니다 — 다시 온 기기 ${fmtNum(rb, "count")} → ${fmtNum(ra, "count")}명` : "처음 온 기기 비중이 크게 달라 같은 조건이 아닙니다";
-    }
-  }
-  const b = s.buckets[at.i];
-  const when = `${b.label}${at.open ? " · 진행 중" : ""}`;
+  const d = f.delta;
+  const b = s.buckets[f.i];
+  const when = `${b.label}${f.open ? " · 진행 중" : ""}`;
+  const value = f.cell.v === null ? "–" : `${fmtCell(f.cell, r.kind)}<small>${esc(unit)}</small>`;
+  const sub = d
+    ? `${esc(d.text)}<span>${PREV[s.spec.unit]} 대비${f.hold ? " · 판정 유보" : ""}</span>`
+    : `<span>${f.cell.v === null ? esc(f.cell.why ?? "값 없음") : f.open ? "아직 끝나지 않은 칸" : `${PREV[s.spec.unit]} 값 없음`}</span>`;
   return `<div class="kpi" title="${esc(r.note)}">
   <p class="kl">${esc(label)}</p>
-  <p class="kv">${fmtCell(at.cell, r.kind)}<small>${esc(unit)}</small></p>
-  <p class="kd${d?.tone ? ` ${d.tone}` : ""}"${note ? ` title="${esc(note)}"` : ""}>${d ? `${esc(d.text)}<span>${PREV[s.spec.unit]} 대비${note ? " · 판정 유보" : ""}</span>` : `<span>${at.open ? "아직 끝나지 않은 칸" : `${PREV[s.spec.unit]} 값 없음`}</span>`}</p>
-  <div class="sp">${sparkline(r.cells.map((c, i) => (s.buckets[i].open ? null : c.v)))}</div>
+  <p class="kv">${value}</p>
+  <p class="kd${d?.tone ? ` ${d.tone}` : ""}"${f.hold ? ` title="${esc(f.hold)}"` : ""}>${sub}</p>
+  <div class="sp">${sparkline(r.cells.map((c, i) => (cellOpen(s, r, i) ? null : c.v)))}</div>
   <p class="kh">${esc(when)}${totalHint ? ` · ${esc(totalHint)}` : ""}</p>
 </div>`;
 }
@@ -176,25 +227,29 @@ function section(title: string, desc: string, cards: string[]): string {
   return `<section class="sec"><h2>${esc(title)}</h2><p class="desc">${esc(desc)}</p><div class="charts">${cards.join("")}</div></section>`;
 }
 
-export function renderKeyReport(s: AppSeries, bar: string): string {
+export interface KeyReportOpts {
+  /** 머리 칩 — 기본 「Probe · 앱 주요 지표」 */
+  chip?: string;
+  /** 제목 — 기본 「앱 주요 지표 보고서」. 슬랙 게시는 「앱 지표 주간 보고서 · 10월 2주차」 */
+  title?: string;
+  /** KPI 를 이 칸에 묶는다 — 슬랙 게시는 그 주·그 달 */
+  focus?: number;
+}
+
+export function renderKeyReport(s: AppSeries, bar: string, opts: KeyReportOpts = {}): string {
   const u = s.spec.unit;
   const stick = u === "month" ? "DAU/MAU" : "DAU/WAU";
   const through = s.through ? `GA4 ${dashed(s.through)}까지` : "GA4 미연결";
 
   const body = `
 <header class="head">
-  <span class="chip">Probe · 앱 주요 지표</span>
-  <h1>앱 주요 지표 보고서</h1>
+  <span class="chip">${esc(opts.chip ?? "Probe · 앱 주요 지표")}</span>
+  <h1>${esc(opts.title ?? "앱 주요 지표 보고서")}</h1>
   <p class="sub">${esc(rangeLabel(s.spec))} · ${esc(through)} · 만든 시각 ${esc(s.generatedAt)}</p>
 </header>
 ${s.warnings.length ? `<div class="warn"><b>읽지 못한 값이 있습니다</b><ul>${s.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
 <div class="kpis">
-  ${kpi(s, "active", "활성 기기")}
-  ${kpi(s, "signups", "가입")}
-  ${kpi(s, "coupon_used", "쿠폰 사용")}
-  ${kpi(s, "stamp_earned", "스탬프 적립")}
-  ${kpi(s, "open_to_store", "앱 열기 → 매장 상세")}
-  ${kpi(s, "retention_w1", "가입 1주 후 복귀")}
+  ${KEY_KPIS.map((k) => kpi(s, k.key, k.label, opts.focus)).join("\n  ")}
 </div>
 ${section("이용", "학생이 앱을 켜는가, 새로 오는가 돌아오는가", [
   activeChart(s),
@@ -215,7 +270,9 @@ ${section("전환 · 재방문", "앱을 켠 사람이 매장으로 가고, 다�
   single(s, "stickiness", stick, "% · 하루 평균 활성 ÷ 칸 전체 활성 — 습관의 정도(GA4)", "line", true),
 ])}
 <section class="card"><h2>읽는 법</h2><ul class="notes">${[
-    `**위 여섯 칸은 마지막으로 끝난 칸의 값**이고, 그 앞 칸(${PREV[u]}) 대비입니다. 표본이 얕거나 처음 온 기기 비중이 크게 달라진 칸은 색을 칠하지 않습니다.`,
+    opts.focus === undefined
+      ? `**위 여섯 칸은 마지막으로 끝난 칸의 값**이고, 그 앞 칸(${PREV[u]}) 대비입니다. 표본이 얕거나 처음 온 기기 비중이 크게 달라진 칸은 색을 칠하지 않습니다.`
+      : `**위 여섯 칸은 ${s.buckets[opts.focus]?.label ?? "이 칸"}의 값**이고, 그 앞 칸(${PREV[u]}) 대비입니다. 표본이 얕거나 처음 온 기기 비중이 크게 달라진 칸은 색을 칠하지 않습니다.`,
     "**옅은 막대**는 아직 끝나지 않은 칸(＊), **속 빈 점**은 표본 30 미만인 칸입니다. 비율의 선은 끝나지 않은 칸을 긋지 않습니다.",
     "**그래프가 끊긴 곳은 0 이 아니라 못 센 칸**입니다. 그래프에 마우스를 올리면 값과 이유가, 「표로 보기」에 숫자가 있습니다.",
     "**기기 단위**입니다 — 재설치하면 새 기기로 셉니다. 모든 지표와 정의는 위 「지표 원본」 탭에서 같은 기간으로 봅니다.",
