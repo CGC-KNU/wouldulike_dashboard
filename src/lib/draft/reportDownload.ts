@@ -22,13 +22,30 @@ export const PLACEHOLDER_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///y
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const js = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
 
-export function downloadBar(opts: { filename: string; canDownload: boolean; statusLabel: string }): string {
+/**
+ * PNG 장 나누기 — 양식의 구획 id 로 자른다. 기본은 매장(게시물) 리포트 두 장.
+ * 그 id 가 없는 양식에 기본값을 쓰면 아무것도 안 숨겨져 **같은 전체 화면이 장 수만큼** 찍힌다 —
+ * 다른 양식은 자기 구획을 넘기거나 `[{ no: 1, ids: [] }]`(한 장 통째로)를 넘긴다.
+ */
+export interface PngPage { no: number; ids: string[] }
+const POST_PAGES: PngPage[] = [
+  { no: 1, ids: ["r-head", "r-post"] },
+  { no: 2, ids: ["r-key", "r-insight", "r-change", "r-app", "r-compare", "r-upsell", "r-foot"] },
+];
+
+/** 스크립트에 박을 장 목록 — 사람이 읽는 여러 줄 모양 그대로(테스트가 이 모양으로 읽는다) */
+const pagesJs = (pages: PngPage[]) =>
+  `[\n${pages.map((p) => `    { no: ${p.no}, ids: ${js(p.ids).replace(/","/g, '", "')} }`).join(",\n")}\n  ]`;
+
+export function downloadBar(opts: { filename: string; canDownload: boolean; statusLabel: string; pages?: PngPage[]; pngSkip?: string[] }): string {
+  const pages = opts.pages ?? POST_PAGES;
+  const pngSkip = opts.pngSkip ?? (opts.pages ? [] : ["r-metrics"]);
   const btn = "display:inline-block;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;border:0;cursor:pointer;font-family:inherit";
   const off = opts.canDownload ? "" : " disabled";
   return `
 <div data-preview-bar style="background:#FFF7E6;border-bottom:1px solid #F3D9A4;padding:8px 16px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;font:600 12px/1.4 -apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;color:#9A6414">
   <span>미리보기 · ${esc(opts.statusLabel)}</span>
-  <button type="button" data-dl="png" style="${btn};background:#312E81;color:#fff"${off}>PNG 저장 (2장)</button>
+  <button type="button" data-dl="png" style="${btn};background:#312E81;color:#fff"${off}>PNG 저장 (${pages.length}장)</button>
   <button type="button" data-dl="html" style="${btn};background:#fff;color:#312E81;box-shadow:inset 0 0 0 1px #C7CCFB"${off}>HTML 저장</button>
   <button type="button" data-dl="print" style="${btn};background:#fff;color:#312E81;box-shadow:inset 0 0 0 1px #C7CCFB"${off}>인쇄(PDF)</button>
   <span data-dl-msg>${opts.canDownload ? "카톡으로 보낼 파일을 받습니다" : "승인한 리포트만 받을 수 있습니다 (금지 표현·필수 값 검사)"}</span>
@@ -165,12 +182,10 @@ export function downloadBar(opts: { filename: string; canDownload: boolean; stat
   // 빈 구획(앱 카드·업셀은 없을 때가 있고, 지난 보고·비교는 0925 부터 늘 비어 있다)은 그냥 아무것도 안 그린다.
   // 1002: 세 장 → **두 장**(마케팅 피드백). 1장 = 게시물(사진 · 릴스 썸네일),
   // 2장 = 게시물 성과(조회수 · 반응 수) + 설명(해석) + 추이 — 숫자와 그 뜻을 한 장에서 같이 읽게.
-  var PAGES = [
-    { no: 1, ids: ["r-head", "r-post"] },
-    { no: 2, ids: ["r-key", "r-insight", "r-change", "r-app", "r-compare", "r-upsell", "r-foot"] }
-  ];
+  // 장 목록은 부르는 쪽이 고른다(PngPage) — 기본은 위 두 장.
+  var PAGES = ${pagesJs(pages)};
   // 어느 장에도 안 넣는 구획 — 세부 지표는 필요할 때만 화면·HTML 에서 펼쳐 본다(1002). 숨길 목록에는 들어가야 한다.
-  var PNG_SKIP = ["r-metrics"];
+  var PNG_SKIP = ${js(pngSkip)};
   var ALL_IDS = PAGES.reduce(function (a, p) { return a.concat(p.ids); }, []).concat(PNG_SKIP);
 
   /** 이 장에 안 들어가는 구획만 숨긴다. 되돌리는 함수를 준다. */
