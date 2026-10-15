@@ -45,6 +45,9 @@ export const EVENT_LIVE_FROM: Record<string, string> = {
   coupon_use_screen_view: "20260831",
   coupon_redeem_attempt: "20260831",
   coupon_redeem_failed: "20260907",
+  // 1015 실측 — 앱 2.6.0(iOS 10/12 · 안드로이드 10/14)과 함께 들어온다. 노출은 하루 먼저 iOS 2.5.8 에서 보였다
+  restaurant_list_impression: "20261011",
+  coupon_claim: "20261012",
 };
 
 /** 창 전체가 이벤트가 살아 있던 뒤인가. 걸쳐 있으면 false — 값을 내되 「일부 기간만」이라고 알린다. */
@@ -80,6 +83,14 @@ export interface CouponFunnel {
   attempt: { attempts: number; ok: number; failed: number; rate: number | null; reasons: { reason: string; n: number }[] };
   /** PIN 이 안 맞은 매장 — 지표가 아니라 오늘 연락할 곳 */
   pinFailStores: { restaurant_id: string; n: number }[];
+  /**
+   * 사용자가 「받기」를 눌러 서버가 성공을 준 쿠폰(`coupon_claim`) — 그중 같은 창 안에 쓰인 것.
+   *
+   * `coupon_issued` 는 지갑에 **새로 보인** 쿠폰이라 자동 지급이 섞인다. 이쪽은 사용자의 행동이라 분모로 쓸 수 있다.
+   * 캠페인/그 외로 가르지 않는다 — 한정쿠폰은 캠페인 코드로 나가지만(1015 확인) 학생이 직접 고르고 받은 것이다.
+   * 앱 2.6.0 부터 찍혀서, 보급 중에는 구버전 기기의 받기가 빠진다. 없던 창은 부르는 쪽이 EVENT_LIVE_FROM 으로 비운다.
+   */
+  claim?: { claimed: number; redeemed: number; rate: number | null };
   /** 창이 이벤트 생일보다 앞서는 칸 — 부르는 쪽이 값을 비우거나 「일부 기간만」을 붙인다 */
   coverage: { wallet_to_use: "full" | "partial" | "none"; redeem_outcome: "full" | "partial" | "none" };
 }
@@ -168,8 +179,25 @@ export async function readCouponFunnel(
       { start, end }
     );
 
-    const [rows, funnelRows, reasons, stores] = await Promise.all([rowsP, funnelP, reasonsP, storesP]);
+    // ⑥ 받기 → 사용 — 받은 쿠폰을 coupon_code 로 사용과 잇는다(①과 같은 방식, 같은 창 안).
+    const claimP = run<{ claimed: number; redeemed: number }>(
+      `WITH c AS (
+         SELECT DISTINCT ${S("coupon_code")} AS code FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_claim'
+           AND ${S("coupon_code")} IS NOT NULL
+       ), red AS (
+         SELECT DISTINCT ${S("coupon_code")} AS code FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_redeemed'
+           AND ${S("coupon_code")} IS NOT NULL
+       )
+       SELECT COUNT(*) AS claimed, COUNTIF(r.code IS NOT NULL) AS redeemed
+       FROM c LEFT JOIN red r USING (code)`,
+      { start, end }
+    );
+
+    const [rows, funnelRows, reasons, stores, claimRows] = await Promise.all([rowsP, funnelP, reasonsP, storesP, claimP]);
     const funnel = funnelRows[0];
+    const claim = claimRows[0];
 
     const bySource: SourceRow[] = rows.map((r) => {
       const source = r.source ?? "unknown";
@@ -197,6 +225,10 @@ export async function readCouponFunnel(
           reasons: reasons.map((r) => ({ reason: r.reason ?? "(없음)", n: num(r.n) })).filter((r) => r.n > 0),
         },
         pinFailStores: stores.filter((r) => r.restaurant_id).map((r) => ({ restaurant_id: r.restaurant_id as string, n: num(r.n) })),
+        claim: {
+          claimed: num(claim?.claimed), redeemed: num(claim?.redeemed),
+          rate: pct(num(claim?.redeemed), num(claim?.claimed)),
+        },
         coverage: {
           wallet_to_use: eventCoverage("coupon_use_screen_view", start, end),
           // 실패 이벤트가 더 늦게(9/7) 생겨서 둘 중 늦은 쪽을 따른다

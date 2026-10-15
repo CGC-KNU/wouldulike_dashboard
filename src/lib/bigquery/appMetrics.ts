@@ -109,6 +109,14 @@ export interface Ga4AppMetrics {
    */
   banner_ctr?: number | null;
   banner_view?: { seen: number; clicked: number };
+  /**
+   * 매장 목록 카드 노출 → 클릭, % — 목록에서 카드가 보인 (기기·세션·매장·목록) 중 같은 세션에 그 카드를 누른 비율.
+   * 노출(restaurant_list_impression)은 앱 2.6.0 부터 세션마다 카드당 한 번 찍힌다. 클릭도 노출이 있는 카드만 세므로
+   * 구버전 기기의 클릭은 저절로 빠진다(1015 확인 — 2.6.0 클릭은 빠짐없이 같은 세션에 그 카드 노출이 있었다).
+   * 목록은 불러올 때마다 섞여서 자리(position)별로는 읽지 않는다.
+   */
+  list_ctr?: number | null;
+  list_view?: { seen: number; clicked: number };
 }
 
 export type Ga4Read = { ok: true; data: Ga4AppMetrics } | { ok: false; reason: "no_key" | "error"; detail?: string };
@@ -361,6 +369,28 @@ export async function readGa4AppMetrics(
     { start, end }
   );
 
+  // ⑤-3 매장 목록 카드 노출 → 클릭 — (기기 · 세션 · 매장 · 목록) 하나를 카드 한 장으로 본다.
+  //      ② 의 「매장 상세 → 쿠폰」과 같은 잇기다. 목록 이름까지 맞춰 검색 결과에서 누른 것이 섞이지 않게 한다.
+  const listP = run<{ seen: number; clicked: number }>(
+    `WITH ev AS (
+       SELECT user_pseudo_id, event_name,
+              (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id') AS sid,
+              (SELECT COALESCE(CAST(value.int_value AS STRING), value.string_value) FROM UNNEST(event_params) WHERE key = 'restaurant_id') AS rid,
+              (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'list_name') AS list
+       FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end
+         AND event_name IN ('restaurant_list_impression', 'affiliate_restaurant_click')
+     ), card AS (
+       SELECT user_pseudo_id,
+              LOGICAL_OR(event_name = 'restaurant_list_impression') AS seen,
+              LOGICAL_OR(event_name = 'affiliate_restaurant_click') AS clicked
+       FROM ev WHERE sid IS NOT NULL AND rid IS NOT NULL
+       GROUP BY user_pseudo_id, sid, rid, list
+     )
+     SELECT COUNTIF(seen) AS seen, COUNTIF(seen AND clicked) AS clicked FROM card`,
+    { start, end }
+  );
+
   // ⑥ 이번 주 활성 중 신규 — 같은 창에서 first_open 이 있는 기기. WAU 가 뛴 주에 "유입인가 복귀인가"를 가른다.
   const freshP = run<{ new_devices: number }>(
     `WITH a AS (
@@ -375,9 +405,9 @@ export async function readGa4AppMetrics(
     { start, end }
   );
 
-  // 여덟 쿼리는 서로 독립이라 같이 쏜다(1015). 순서대로 기다리면 합이 벽시계가 된다 —
+  // 쿼리는 서로 독립이라 같이 쏜다(1015). 순서대로 기다리면 합이 벽시계가 된다 —
   // 7개월 창에서 44초(가장 느린 하나는 8초)라, 기간 × 단위 보고서의 「기간 전체」 열이 60초 한도에 걸렸다.
-  const [[act], [mauRow], [ses], [ret], [push], [ban], [view], [fresh]] = await Promise.all([actP, mauP, sesP, retP, pushP, banP, viewP, freshP]);
+  const [[act], [mauRow], [ses], [ret], [push], [ban], [view], [list], [fresh]] = await Promise.all([actP, mauP, sesP, retP, pushP, banP, viewP, listP, freshP]);
 
   const wau = Number(act?.wau ?? 0);
   const sessions = Number(ses?.sessions ?? 0);
@@ -409,6 +439,8 @@ export async function readGa4AppMetrics(
       banner: { from: dash(bStart), to: dash(bEnd), clicked: Number(ban?.clicked ?? 0), redeemed: Number(ban?.redeemed ?? 0) },
       banner_ctr: pct(Number(view?.clicked ?? 0), Number(view?.seen ?? 0)),
       banner_view: { seen: Number(view?.seen ?? 0), clicked: Number(view?.clicked ?? 0) },
+      list_ctr: pct(Number(list?.clicked ?? 0), Number(list?.seen ?? 0)),
+      list_view: { seen: Number(list?.seen ?? 0), clicked: Number(list?.clicked ?? 0) },
     },
   };
 }
