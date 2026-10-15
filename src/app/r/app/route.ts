@@ -5,7 +5,10 @@ import { insertAfterBody } from "@/lib/draft/reportTemplate";
 import { downloadBar } from "@/lib/draft/reportDownload";
 
 /**
- * Probe · 앱 지표 **주간 보고서** — 화면의 「주간 보고서 만들기」가 여는 곳.
+ * Probe · 앱 지표 **주간 보고서** — 슬랙 주간·월간 게시(PROBE)와 같은 양식을 브라우저로 여는 곳.
+ *
+ * 1015: 화면의 「주간 보고서」·「월간 보고서」 버튼은 기간 × 단위로 고르는 보고서(`/r/app/raw`)로 옮겼다.
+ * 이 경로는 옛 링크와 슬랙 게시 양식 확인용으로 남긴다.
  *
  * 매장 리포트(`/r/<token>`)와 달리 **내부 전용**이다. 점주에게 나가지 않으므로 공개 토큰·열람 비콘이 없고,
  * 로그인한 담당자(매장 권한)만 본다. 위 띠에서 PNG·HTML·인쇄로 받아 슬랙·문서에 붙인다 — reportDownload.ts.

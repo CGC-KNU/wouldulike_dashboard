@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconFileDescription, IconRefresh } from "@tabler/icons-react";
+import { IconRefresh } from "@tabler/icons-react";
 import { Button, Card, Chip, Kpi, Notice, PageHeader, Skeleton, surface, type ChipTone } from "../_shared/ui";
 import { PERIOD_LABEL, type AppPeriod, type AppPeriodKey } from "@/lib/draft/appPeriods";
+import AppReportPicker from "./AppReportPicker";
 
 /**
  * Probe · 앱 지표.
@@ -16,6 +17,8 @@ import { PERIOD_LABEL, type AppPeriod, type AppPeriodKey } from "@/lib/draft/app
  *
  * 1014: 칸마다 센 구간이 다르다(이번 달 · 7일 · 30일 …). 날짜를 설명 문장마다 따로 적던 것을 걷고, 숫자 밑 칩에
  * 「출처 · 기간」을 달고, 기간 → 날짜는 위 기간 줄 한 곳에 적는다. 구간 자체는 그대로다.
+ *
+ * 1015: 「주간 보고서」·「월간 보고서」 버튼을 걷고 기간 × 단위로 고르는 보고서(AppReportPicker)로 바꿨다.
  */
 
 type Source = "backend" | "push" | "ga4" | "firebase";
@@ -73,20 +76,11 @@ export default function AppMetrics() {
       <PageHeader
         title="앱 지표"
         description="학생이 앱을 켜고, 매장으로 가고, 다시 돌아오는지를 봅니다. 빈 칸은 0 이 아니라 읽지 못한 값입니다."
-        actions={
-          <>
-            {/* 보고서는 서버가 그 자리에서 만든다(스냅샷 없음) — 양식에 끼워 파일 한 장으로 나온다. 위 띠에서 PNG·HTML·인쇄. */}
-            <a href="/r/app" target="_blank" rel="noreferrer" title="마지막으로 다 끝난 주(월~일)의 주간 보고서를 새 탭에서 엽니다">
-              <Button variant="primary" icon={<IconFileDescription />}>주간 보고서</Button>
-            </a>
-            {/* 월간은 DB 칸을 백엔드 월별 스냅샷에서 읽어 전월 대비를 붙인다. 스냅샷이 없는 달은 그 칸이 빈다(0 아님). */}
-            <a href="/r/app?type=monthly" target="_blank" rel="noreferrer" title="마지막으로 다 끝난 달의 월간 보고서를 새 탭에서 엽니다 — DB 칸에 전월 대비가 붙습니다">
-              <Button icon={<IconFileDescription />}>월간 보고서</Button>
-            </a>
-            <Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>
-          </>
-        }
+        actions={<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>}
       />
+
+      {/* 1015: 주간·월간 보고서 두 버튼 → 기간 × 단위로 고르는 보고서. 옛 /r/app 은 슬랙 주간·월간 게시가 그대로 쓴다 */}
+      <AppReportPicker />
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
         {HEADLINE.map(({ key, hint }) => {
