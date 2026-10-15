@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>사장님께 · 우주라이크 가게 월간 보고</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<!--
+  ▣ 우주라이크 · 가게 월간 보고서 양식 v1.0 (1015)
+  ────────────────────────────────────────────────────────────
+  아래 report-data JSON 블록에 값을 끼우면 그려진다.
+  ※ 이 주석에 그 여는 태그를 **글자 그대로 쓰지 않는다.** 채우는 정규식이 주석 쪽을 먼저 잡는다
+    (사장님 공통 월간 양식 머리말 참고).
+  만드는 곳은 src/lib/draft/storeMonthly.ts, 끼우는 곳은 storeMonthlyTemplate.ts.
+
+  받는 사람은 **그 가게 사장님 한 분**이다. 앱 숫자만 쓴다(인스타는 게시물 리포트가 맡는다).
+  0 인 칸은 만드는 쪽에서 이미 뺐다 — 여기 오는 카드는 모두 그릴 값이 있다.
+  지난달 숫자는 % 없이 옆에 작게만 둔다.
+
+  발송 전 검사: 렌더 후 <body data-report-status="ok|error">. error 면 맨 위에 빠진 값이 뜬다.
+-->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --navy:#050072; --peri:#6366E0; --peri2:#A5B0FC; --soft:#EEF0FB; --soft2:#F6F7FF;
+    --ink:#111827; --tx:#374151; --sub:#6B7280; --mut:#9CA3AF; --line:#E5E7EB; --line2:#F3F4F6; --bg:#F4F4F9;
+    color-scheme:light;
+  }
+  body{background:var(--bg);color:var(--ink);line-height:1.75;font-size:15px;word-break:keep-all;overflow-wrap:break-word;
+    font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+    padding:0 16px calc(56px + env(safe-area-inset-bottom,0px));-webkit-text-size-adjust:100%}
+  .wrap{max-width:720px;margin:0 auto;padding-top:calc(28px + env(safe-area-inset-top,0px))}
+  .chip{display:inline-block;font-size:11.5px;font-weight:700;color:var(--peri);background:var(--soft);padding:5px 11px;border-radius:999px}
+  h1{font-size:25px;font-weight:800;letter-spacing:-.6px;line-height:1.4;margin:14px 0 8px}
+  .sub{font-size:13px;color:var(--sub)}
+  .hello{font-size:15px;color:var(--tx);margin:18px 0 0;line-height:1.85}
+  .sum{background:var(--soft2);border:1px solid var(--soft);border-radius:14px;padding:14px 16px;margin:16px 0 0;font-size:15px;font-weight:600;color:var(--navy);line-height:1.8}
+  h2{font-size:17px;font-weight:800;letter-spacing:-.4px;margin:36px 0 4px}
+  .gd{font-size:13px;color:var(--sub);margin-bottom:12px}
+  p{margin:11px 0}
+  .card{background:#fff;border:1px solid var(--line2);border-radius:16px;padding:18px 20px;margin:10px 0;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0 0}
+  .kpis.n2{grid-template-columns:repeat(2,1fr)} .kpis.n1{grid-template-columns:1fr}
+  .kpi{background:var(--navy);color:#fff;border-radius:14px;padding:16px 14px}
+  .kpi .k{font-size:11.5px;color:var(--peri2);margin-bottom:5px;line-height:1.5}
+  .kpi .v{font-size:25px;font-weight:800;letter-spacing:-.8px;font-variant-numeric:tabular-nums;line-height:1.2}
+  .kpi .v small{font-size:13px;font-weight:600;margin-left:2px;opacity:.85}
+  .row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .row .lb{font-size:14.5px;font-weight:700;color:var(--tx)}
+  .num{font-size:24px;font-weight:800;letter-spacing:-.7px;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;line-height:1.3}
+  .num small{font-size:13px;font-weight:600;color:var(--sub);margin-left:3px}
+  .pv{display:block;font-size:12px;font-weight:600;color:var(--mut);letter-spacing:0;margin-top:2px}
+  .d{font-size:12.5px;color:var(--sub);margin-top:6px;line-height:1.8}
+  .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut);line-height:1.9}
+  #err{display:none;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:12px;padding:14px 16px;margin:14px 0;font-size:13px}
+  body[data-report-status="error"] #err{display:block}
+  @media (max-width:520px){ .kpis,.kpis.n2{grid-template-columns:1fr} .num{font-size:21px} }
+</style>
+</head>
+<body data-report-status="ok">
+<div class="wrap">
+  <div id="err"></div>
+  <div id="s-head"></div>
+  <div id="s-kpi"></div>
+  <div id="s-groups"></div>
+  <div id="s-close"></div>
+  <div id="s-foot"></div>
+</div>
+
+<script type="application/json" id="report-data">
+{
+  "report": { "type": "store_monthly", "label": "2026년 9월", "month": 9, "prev_month": 8, "period": "2026-09",
+              "range": { "start": "2026-09-01", "end": "2026-09-30" }, "generated_at": "2026-10-02", "through": null },
+  "store": { "name": "", "stamp_enabled": true },
+  "summary": null,
+  "headline": ["viewers", "coupons", "stamps", "revisit", "wishlist"],
+  "groups": []
+}
+</script>
+
+<script>
+(function () {
+  var D = {};
+  var MISSING = [];
+  try { D = JSON.parse(document.getElementById("report-data").textContent || "{}"); }
+  catch (e) { MISSING.push("report-data 를 읽지 못했습니다"); }
+
+  var has = function (v) { return v !== null && v !== undefined && v !== ""; };
+  var esc = function (s) {
+    return String(s === null || s === undefined ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  };
+  var n = function (v) { return has(v) ? Number(v).toLocaleString("ko-KR") : "—"; };
+  var put = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; };
+  var need = function (v, name) { if (!has(v)) MISSING.push(name); };
+
+  var R = D.report || {}, S = D.store || {};
+  need(R.label, "report.label");
+  need(R.generated_at, "report.generated_at");
+  need(S.name, "store.name");
+
+  var cards = [];
+  (D.groups || []).forEach(function (g) { (g.cards || []).forEach(function (c) { cards.push(c); }); });
+  var byKey = {};
+  cards.forEach(function (c) { byKey[c.key] = c; });
+
+  // ── 머리말 ──
+  var range = R.range && has(R.range.start) ? esc(R.range.start) + " ~ " + esc(R.range.end) : "";
+  put("s-head",
+    '<span class="chip">우주라이크 · 가게 월간 보고</span>' +
+    "<h1>" + esc(S.name) + "<br>" + esc(R.label) + " 앱 기록을 전해드립니다</h1>" +
+    '<p class="sub">' + range + "</p>" +
+    '<p class="hello">안녕하세요, 사장님. 우주라이크입니다.<br>' +
+    esc(R.month) + "월 한 달 동안 우주라이크 앱에 남은 가게 기록을 정리해 드립니다.</p>" +
+    (has(D.summary) ? '<p class="sum">' + esc(D.summary) + "</p>" : ""));
+
+  // ── 머리 숫자 (셋까지) ── 칸이 하나뿐이면 띄우지 않는다(머리 한 줄 · 칸과 같은 숫자를 세 번 쓰게 된다)
+  var picked = (D.headline || []).map(function (k) { return byKey[k]; }).filter(Boolean).slice(0, 3);
+  put("s-kpi", picked.length > 1
+    ? '<div class="kpis n' + picked.length + '">' + picked.map(function (c) {
+        return '<div class="kpi"><p class="k">' + esc(c.label) + '</p><p class="v">' + n(c.value) +
+          "<small>" + esc(c.unit) + "</small></p></div>";
+      }).join("") + "</div>"
+    : "");
+
+  // ── 묶음 ── 지난달은 숫자 밑 회색 한 줄, % 없이
+  put("s-groups", (D.groups || []).map(function (g) {
+    var rows = (g.cards || []).map(function (c) {
+      var pv = has(c.prev) ? '<span class="pv">' + esc(R.prev_month) + "월 " + n(c.prev) + esc(c.unit) + "</span>" : "";
+      return '<div class="card"><div class="row"><span class="lb">' + esc(c.label) + '</span><p class="num">' + n(c.value) +
+        "<small>" + esc(c.unit) + "</small>" + pv + '</p></div><p class="d">' + esc(c.note) + "</p></div>";
+    }).join("");
+    return "<h2>" + esc(g.title) + '</h2><p class="gd">' + esc(g.description) + "</p>" + rows;
+  }).join(""));
+
+  // ── 맺음말 ──
+  put("s-close",
+    "<h2>다음 달에도</h2>" +
+    "<p>메뉴나 사진, 혜택이 바뀌었거나 앱에서 불편하셨던 점이 있으면 언제든 편하게 말씀해 주세요. " +
+    "다음 달에도 " + esc(S.name) + "의 기록을 정리해 드리겠습니다.</p>");
+
+  // ── 각주 ──
+  var notes = [];
+  if (has(R.range && R.range.start)) notes.push(esc(R.range.start) + " ~ " + esc(R.range.end) + " 기록입니다. " + esc(R.generated_at) + " 에 정리했습니다.");
+  if (has(R.through) && byKey.viewers) notes.push("가게 화면을 열어 본 학생은 " + esc(R.through) + " 까지만 집계돼 달 전체가 아닙니다.");
+  if (byKey.viewers) notes.push("가게 화면을 열어 본 학생은 <b>사람이 아니라 기기</b>를 셉니다. 같은 분이 앱을 지웠다 깔면 새로 셉니다.");
+  if (cards.some(function (c) { return has(c.prev); })) {
+    notes.push("작은 회색 숫자는 " + esc(R.prev_month) + "월 한 달 전체입니다. 사장님 화면의 「지난달」은 이번 달과 같은 날수만큼만 센 값이라 다를 수 있습니다.");
+  }
+  put("s-foot", '<div class="foot">' + notes.join("<br>") + (notes.length ? "<br>" : "") + "우주라이크</div>");
+
+  if (MISSING.length) {
+    document.body.setAttribute("data-report-status", "error");
+    put("err", "<b>빠진 값이 있어 그대로 보내면 안 됩니다</b><br>" + MISSING.map(esc).join("<br>"));
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconRefresh } from "@tabler/icons-react";
+import { IconExternalLink, IconRefresh } from "@tabler/icons-react";
 import { planLabel, planTextClass, type StoreActivity, type StoreMetric } from "@/lib/draft/types";
-import { campusOfMetric, failReasonLabel, isFailing, isSilent, summarizeActivity, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
+import { campusOfMetric, failReasonLabel, isFailing, isSilent, previousPeriod, summarizeActivity, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
 import { allCampuses } from "../astro/CampusPicker";
 import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, Table, Td, Th } from "../_shared/ui";
 
@@ -136,6 +136,8 @@ export default function ProbeOverview() {
     }),
     [rows]
   );
+  /** 사장님 보고서는 다 끝난 달만 — 지난달(KST) */
+  const reportPeriod = previousPeriod();
 
   const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
   const allUnavailable = !loading && stores.length > 0 && stores.every((s) => s.unavailable);
@@ -268,6 +270,12 @@ export default function ProbeOverview() {
                         {silent && <Chip tone="red">조용함</Chip>}
                         {/* Astro 매장 목록과 같은 이름 · 색 */}
                         {s.hidden_from_app && <Chip tone="amber">앱에서 숨김</Chip>}
+                        {/* 사장님용 지난달 보고서(1015) — 숨긴 매장은 학생이 못 봐서 만들지 않는다 */}
+                        {s.is_affiliate && !s.hidden_from_app && (
+                          <a href={`/r/store/${s.restaurant_id}?month=${reportPeriod}`} target="_blank" rel="noreferrer" title="사장님께 보낼 지난달 앱 기록 — 미리보기 위 띠에서 PNG · HTML" className="inline-flex items-center gap-0.5 text-[12px] font-medium text-navy hover:underline">
+                            {monthLabel(reportPeriod)} 보고서 <IconExternalLink size={11} aria-hidden="true" />
+                          </a>
+                        )}
                       </span>
                     </Td>
                     <Td align="right">

@@ -1,10 +1,11 @@
 /**
- * 양식 HTML → TS 문자열. 지금 두 벌을 싣는다.
+ * 양식 HTML → TS 문자열. 지금 세 벌을 싣는다.
  *
  *   templates/app-report-template.html      → src/lib/draft/appReportTemplateHtml.ts      (앱 지표, 내부용)
- *   templates/partner-monthly-template.html → src/lib/draft/partnerTemplateHtml.ts        (사장님 월간)
+ *   templates/partner-monthly-template.html → src/lib/draft/partnerTemplateHtml.ts        (사장님 공통 월간)
+ *   templates/store-monthly-template.html   → src/lib/draft/storeMonthlyTemplateHtml.ts   (가게 하나 월간)
  *
- * 인수 없이 돌리면 **둘 다** 만든다.
+ * 인수 없이 돌리면 **전부** 만든다.
  *
  * 매장 리포트 양식(reportTemplateHtml.ts)은 String.raw`...` 로 원문을 그대로 박아 두었다. 그게 되는 건
  * 인스타 양식 안에 백틱이 **하나도 없어서**다. 앱 지표 양식은 렌더러를 템플릿 리터럴로 써서 백틱 136개 ·
@@ -35,6 +36,14 @@ const TEMPLATES = [
     title: "우주라이크 제휴 가게 사장님 월간 보고서 양식",
     bodyTag: '<body data-report-status="ok">',
     filler: "fillPartnerTemplate()(partnerTemplate.ts)",
+  },
+  {
+    src: "templates/store-monthly-template.html",
+    out: "src/lib/draft/storeMonthlyTemplateHtml.ts",
+    name: "STORE_MONTHLY_TEMPLATE_HTML",
+    title: "우주라이크 가게 월간 보고서 양식",
+    bodyTag: '<body data-report-status="ok">',
+    filler: "fillStoreMonthlyTemplate()(storeMonthlyTemplate.ts)",
   },
 ];
 
