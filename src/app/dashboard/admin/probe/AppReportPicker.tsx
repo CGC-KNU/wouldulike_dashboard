@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { IconTable } from "@tabler/icons-react";
+import { IconChartBar, IconTable } from "@tabler/icons-react";
 import { Button, FilterPills, Input, Segmented, surface } from "../_shared/ui";
 import { DATA_FROM, dashed, defaultRange, kstToday, parseDay, parseRange, rangeLabel, rangePresets, rangeQuery, UNIT_LABEL, type RangeUnit } from "@/lib/draft/appRange";
 
@@ -57,11 +57,19 @@ export default function AppReportPicker() {
           <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
             {/* 서버가 그 자리에서 칸마다 센다(스냅샷 없음) — 처음 뽑는 기간은 10~20초. 지난 칸은 캐시돼 다음부터 빠르다 */}
             {parsed.ok ? (
-              <a href={`/r/app/raw?${q}`} target="_blank" rel="noreferrer" title="모든 지표를 칸마다 늘어놓은 표 — CSV 로도 받습니다">
-                <Button variant="primary" icon={<IconTable />}>지표 보고서 원본</Button>
-              </a>
+              <>
+                <a href={`/r/app/key?${q}`} target="_blank" rel="noreferrer" title="중요한 지표만 그래프로 — 마지막 칸과 그 앞 칸 대비">
+                  <Button variant="primary" icon={<IconChartBar />}>주요 지표 보고서</Button>
+                </a>
+                <a href={`/r/app/raw?${q}`} target="_blank" rel="noreferrer" title="모든 지표를 칸마다 늘어놓은 표 — CSV 로도 받습니다">
+                  <Button icon={<IconTable />}>지표 보고서 원본</Button>
+                </a>
+              </>
             ) : (
-              <Button variant="primary" icon={<IconTable />} disabled>지표 보고서 원본</Button>
+              <>
+                <Button variant="primary" icon={<IconChartBar />} disabled>주요 지표 보고서</Button>
+                <Button icon={<IconTable />} disabled>지표 보고서 원본</Button>
+              </>
             )}
           </div>
         </div>

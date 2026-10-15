@@ -1,55 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Ga4AppMetrics } from "../src/lib/bigquery/appMetrics";
-import type { CouponFunnel, CouponUseFunnel } from "../src/lib/bigquery/couponFunnel";
-import { parseRange } from "../src/lib/draft/appRange";
-import { buildSeries, seriesRow, type CellInput } from "../src/lib/draft/appSeriesData";
+import { buildSeries, seriesRow } from "../src/lib/draft/appSeriesData";
 import { renderRawReport, seriesCsv } from "../src/lib/draft/appRawReport";
+import { coupons, db, full, ga4, spec, TODAY, use } from "./_appSeriesFixtures";
 
 /** 앱 지표 기간 × 단위 표 — 칸마다 읽은 값을 지표 행으로(1015). 숫자는 지어낸 것이다. */
-
-const TODAY = "20261015";
-
-function ga4(over: Partial<Ga4AppMetrics> = {}): Ga4AppMetrics {
-  return {
-    through: "2026-10-13", week: { from: "2026-10-05", to: "2026-10-11" },
-    wau: 100, new_devices: 20, dau: 25, dau_wau: 25, mau: 300,
-    open_to_store: 10, sessions: 400, sessions_with_detail: 40, sessions_detail_to_coupon: 4,
-    retention_w1: 12.5, cohort: { from: "2026-09-21", to: "2026-09-27", users: 40 },
-    push_open: 5, push: { from: "2026-09-28", to: "2026-10-11", received: 200, opened_android: 10, opened_ios: 2 },
-    banner_to_coupon: 10, banner: { from: "2026-09-07", to: "2026-10-04", clicked: 20, redeemed: 2 },
-    banner_ctr: 0, banner_view: { seen: 0, clicked: 0 },
-    ...over,
-  };
-}
-
-function coupons(over: Partial<CouponFunnel> = {}): CouponFunnel {
-  return {
-    window: { from: "2026-10-05", to: "2026-10-11" },
-    bySource: [],
-    campaign: { issued: 0, redeemed: 0, rate: null },
-    organic: { issued: 50, redeemed: 5, rate: 10 },
-    wallet: { saw: 60, opened_use: 30, rate: 50 },
-    attempt: { attempts: 10, ok: 8, failed: 2, reasons: [], rate: 80 },
-    pinFailStores: [],
-    coverage: { wallet_to_use: "full", redeem_outcome: "full" },
-    ...over,
-  };
-}
-
-const line = (issued: number, redeemed: number) => ({ issued, screen: issued, attempt: redeemed, redeemed, pin_failed: 0 });
-function use(over: Partial<CouponUseFunnel> = {}): CouponUseFunnel {
-  return { window: { from: "2026-10-05", to: "2026-10-11" }, followDays: 7, maturing: 0, organic: line(30, 3), campaign: line(0, 0), coverage: { steps: "full", failures: "full" }, ...over };
-}
-
-const db = (stats: Record<string, number | null>, failed: string[] = []) => ({ complete: true, stats, failed });
-const full = (o: Partial<CellInput> = {}): CellInput => ({ ga4: ga4(), coupons: coupons(), s2c: { window: { from: "", to: "" }, views: 80, claimed: 4, claimed_including_campaign: 9, rate: 5 }, use: use(), db: db({ signups: 7, coupon_issued: 10, coupon_redeemed: 3, coupon_redeem_rate: 30, stamp_earned: 12 }), ...o });
-
-function spec(unit: "day" | "week" | "month", start: string, end: string) {
-  const r = parseRange({ start, end, unit }, TODAY);
-  if (!r.ok) throw new Error(r.error);
-  return r.spec;
-}
 
 test("주 단위 — 칸마다 같은 정의, 진행 중인 칸 표시", () => {
   const s = buildSeries({
