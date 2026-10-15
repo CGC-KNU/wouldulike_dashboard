@@ -85,8 +85,10 @@ export async function buildStoreMonthlyReport(opts: { rid: number; period?: stri
   if (db.wishlist_total === null) warnings.push("찜을 세지 못해 비웁니다.");
 
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const data = buildStoreMonthlyData({ period, db, viewers, viewersPrev, today, through: through ? dash(through) : null });
+  if (!(data.photos as string[]).length) warnings.push("매장 정보에 사진이 없어 첫 장(가게 사진) 없이 한 장으로 냅니다.");
   return {
-    data: buildStoreMonthlyData({ period, db, viewers, viewersPrev, today, through: through ? dash(through) : null }),
+    data,
     filename: `우주라이크_${db.store.name}_${period}`.replace(/[\\/:*?"<>|\s]+/g, "_"),
     period,
     storeName: db.store.name,
