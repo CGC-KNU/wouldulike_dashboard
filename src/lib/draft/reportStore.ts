@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { serviceToken } from "./serviceAuth";
 import { appendDraftItem, patchDraftItem, readDraft, writeDraft } from "./store";
 import type { StoreReport } from "./types";
+import { koyebFetch } from "./koyeb";
 
 /**
  * 매장 리포트 저장소 — 읽기·쓰기는 전부 여기를 거친다.
@@ -35,7 +36,7 @@ async function call<T>(path: string, init: RequestInit & { auth?: boolean } = {}
   if (init.auth !== false) headers.Authorization = `Bearer ${serviceToken() ?? (await cookies()).get("access_token")?.value ?? ""}`;
   let res: Response;
   try {
-    res = await fetch(`${BASE()}/api/probe${path}`, { ...init, headers, cache: "no-store" });
+    res = await koyebFetch(`${BASE()}/api/probe${path}`, { ...init, headers, cache: "no-store" });
   } catch {
     throw new ReportStoreError(502, "리포트 저장소(백엔드)에 연결하지 못했습니다.");
   }
@@ -129,7 +130,7 @@ export async function getReportAsCron(id: string, token: string): Promise<StoreR
   if (!reportsOnBackend()) return null;
   let res: Response;
   try {
-    res = await fetch(`${BASE()}/api/probe/reports/${encodeURIComponent(id)}/`, { headers: { "X-CRON-TOKEN": token }, cache: "no-store" });
+    res = await koyebFetch(`${BASE()}/api/probe/reports/${encodeURIComponent(id)}/`, { headers: { "X-CRON-TOKEN": token }, cache: "no-store" });
   } catch {
     throw new ReportStoreError(502, "리포트 저장소(백엔드)에 연결하지 못했습니다.");
   }

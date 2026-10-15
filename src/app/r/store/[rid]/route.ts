@@ -40,7 +40,11 @@ function plain(status: number, title: string, body: string): Response {
 
 export async function GET(req: Request, { params }: { params: Promise<{ rid: string }> }) {
   const deny = await requireTool("restaurants");
-  if (deny) return plain(deny.status, deny.status === 403 ? "이 보고서를 볼 권한이 없습니다." : "로그인이 필요합니다.", "Probe 에 로그인한 뒤 다시 열어 주세요.");
+  if (deny) {
+    // 503 = 로그인 확인 중 백엔드가 못 답했다(Koyeb 잠듦, guard.ts) — 로그인 문제가 아니다
+    if (deny.status === 503) return plain(503, "백엔드가 깨어나는 중입니다.", "몇 초 뒤 새로고침해 주세요. 한동안 아무도 안 쓰면 서버가 잠들어 첫 요청이 늦습니다.");
+    return plain(deny.status, deny.status === 403 ? "이 보고서를 볼 권한이 없습니다." : "로그인이 필요합니다.", "Probe 에 로그인한 뒤 다시 열어 주세요.");
+  }
 
   const { rid: raw } = await params;
   if (!/^\d+$/.test(raw)) return plain(400, "매장 번호를 읽지 못했습니다.", `"${raw}" — 숫자로 주세요.`);

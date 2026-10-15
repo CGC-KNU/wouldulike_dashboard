@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { serviceToken } from "./serviceAuth";
+import { koyebFetch } from "./koyeb";
 
 /**
  * "백엔드 먼저, 없으면 초안" 프록시.
@@ -56,7 +57,7 @@ export async function getOrDraft<T>(
 ): Promise<NextResponse> {
   if (process.env.NEXT_PUBLIC_API_URL) {
     try {
-      const res = await fetch(backend(path, opts.search), {
+      const res = await koyebFetch(backend(path, opts.search), {
         headers: { Authorization: `Bearer ${await token()}` },
         cache: "no-store",
       });
@@ -94,7 +95,7 @@ export async function writeOrDraft<T>(
 ): Promise<NextResponse> {
   if (process.env.NEXT_PUBLIC_API_URL) {
     try {
-      const res = await fetch(backend(path), {
+      const res = await koyebFetch(backend(path), {
         method,
         headers: {
           Authorization: `Bearer ${await token()}`,
@@ -160,7 +161,7 @@ export async function fetchBackendJson<T>(path: string, search?: string, fresh =
   if (!fresh && hit && Date.now() - hit.at < TTL_MS) return hit.data as T;
 
   try {
-    const res = await fetch(backend(path, search), {
+    const res = await koyebFetch(backend(path, search), {
       headers: { Authorization: `Bearer ${tok}` },
       cache: "no-store",
     });
@@ -186,7 +187,7 @@ export async function fetchBackendResult<T>(path: string, search?: string): Prom
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return { status: 200, data: hit.data as T };
   try {
-    const res = await fetch(backend(path, search), { headers: { Authorization: `Bearer ${tok}` }, cache: "no-store" });
+    const res = await koyebFetch(backend(path, search), { headers: { Authorization: `Bearer ${tok}` }, cache: "no-store" });
     if (!res.ok) return { status: res.status, data: null };
     const data = (await res.json()) as T;
     cache.set(key, { at: Date.now(), data });

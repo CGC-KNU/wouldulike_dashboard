@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { isPreview } from "./previewStores";
+import { koyebFetch } from "./koyeb";
 
 /**
  * 초안 라우트의 인가 게이트.
@@ -11,6 +12,11 @@ import { isPreview } from "./previewStores";
  *
  * 그래서 여기서 `/api/dashboard/admin/me/` 를 한 번 찔러 권한을 받아온다.
  * 같은 토큰은 60초 동안 기억한다 — 화면 하나가 라우트를 여러 번 부르기 때문이다.
+ *
+ * **백엔드가 못 답한 것과 로그인이 안 된 것을 가른다(1015).** 전에는 둘 다 null 이라 Koyeb 가 잠들어 503 을 주면
+ * 「로그인이 필요합니다」가 떴고, 그 null 을 60초 기억해 새로고침해도 같은 말이 나왔다(/r/store 첫날).
+ * 이제 잠든 지역의 503 은 koyebFetch 가 기다려 다시 보내고, 그래도 못 받으면 `down` — 기억하지 않고 503 으로 올린다.
+ * 401·403 처럼 백엔드가 **답한** 거절만 로그인 문제로 본다.
  */
 
 interface Me {
@@ -37,24 +43,33 @@ type Need = "restaurants" | "admin";
 const cache = new Map<string, { me: Me | null; at: number }>();
 const TTL = 60_000;
 
-async function whoami(token: string): Promise<Me | null> {
-  const hit = cache.get(token);
-  if (hit && Date.now() - hit.at < TTL) return hit.me;
+/** `down` = 백엔드가 답하지 못했다(잠듦·5xx·연결 실패). 그때 me 는 모름이지 「로그인 안 됨」이 아니다. */
+interface Who { me: Me | null; down: boolean }
 
+async function whoami(token: string): Promise<Who> {
+  const hit = cache.get(token);
+  if (hit && Date.now() - hit.at < TTL) return { me: hit.me, down: false };
+  if (!process.env.NEXT_PUBLIC_API_URL) return { me: null, down: false };
+
+  let res: Response;
+  try {
+    res = await koyebFetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/admin/me/`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+  } catch {
+    return { me: null, down: true };
+  }
   let me: Me | null = null;
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/admin/me/`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      if (res.ok) me = (await res.json()) as Me;
-    } catch {
-      me = null;
-    }
+  if (res.ok) {
+    me = (await res.json().catch(() => null)) as Me | null;
+    if (!me) return { me: null, down: true };
+  } else if (res.status !== 401 && res.status !== 403) {
+    // 백엔드가 거절한 게 아니라 못 답했다 — 기억하지 않는다(다음 요청은 다시 묻는다)
+    return { me: null, down: true };
   }
   cache.set(token, { me, at: Date.now() });
-  return me;
+  return { me, down: false };
 }
 
 /** 통과하면 null, 막히면 그대로 돌려줄 응답. */
@@ -64,7 +79,8 @@ export async function requireTool(need: Need): Promise<NextResponse | null> {
   if (isPreview() && isPreviewToken(token)) return null;
   if (!token) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
 
-  const me = await whoami(token);
+  const { me, down } = await whoami(token);
+  if (down) return NextResponse.json({ detail: "백엔드가 깨어나는 중입니다 — 몇 초 뒤 다시 시도해 주세요." }, { status: 503 });
   if (!me) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
 
   const ok =
@@ -89,7 +105,7 @@ export async function actorName(): Promise<string | null> {
   const token = (await cookies()).get("access_token")?.value;
   if (!token) return null;
   if (isPreview() && isPreviewToken(token)) return "미리보기";
-  const me = await whoami(token);
+  const { me } = await whoami(token);
   return me ? me.display_name || me.username || null : null;
 }
 
@@ -98,6 +114,6 @@ export async function isAdminActor(): Promise<boolean> {
   const token = (await cookies()).get("access_token")?.value;
   if (!token) return false;
   if (isPreview() && isPreviewToken(token)) return true;
-  const me = await whoami(token);
+  const { me } = await whoami(token);
   return Boolean(me?.is_admin || me?.is_superadmin);
 }
