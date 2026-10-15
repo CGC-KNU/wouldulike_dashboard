@@ -15,7 +15,7 @@ export type ReportKind = "key" | "raw";
 export const KIND_PATH: Record<ReportKind, string> = { key: "/r/app/key", raw: "/r/app/raw" };
 const KIND_LABEL: Record<ReportKind, string> = { key: "주요 지표", raw: "지표 원본" };
 /** 위 띠의 탭 — 같은 기간으로 다른 보고서를 연다 */
-const KINDS: ReportKind[] = ["raw"];
+const KINDS: ReportKind[] = ["key", "raw"];
 
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const js = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
