@@ -40,6 +40,8 @@ export { ISSUE_KEY_SOURCES, isCampaignSource } from "./appMetrics";
  *   SELECT event_name, MIN(event_date) FROM `…events_*` WHERE … GROUP BY event_name
  */
 export const EVENT_LIVE_FROM: Record<string, string> = {
+  // 1015 실측 — 3월부터 이어 보는 기간 × 단위 보고서에서 그 전 칸이 「매장 상세 0 · 0%」로 찍혔다
+  restaurant_detail_open: "20260505",
   coupon_use_screen_view: "20260831",
   coupon_redeem_attempt: "20260831",
   coupon_redeem_failed: "20260907",

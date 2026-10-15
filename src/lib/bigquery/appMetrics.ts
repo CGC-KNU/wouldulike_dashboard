@@ -224,7 +224,7 @@ export async function readGa4AppMetrics(
   const events = `\`${dataset}.events_*\``;
 
   // ① WAU · DAU/WAU — 창 전체. DAU 평균은 창의 날 수로 나눈다.
-  const [act] = await run<{ wau: number; dau_sum: number }>(
+  const actP = run<{ wau: number; dau_sum: number }>(
     `WITH e AS (
        SELECT event_date, user_pseudo_id FROM ${events}
        WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'user_engagement'
@@ -235,7 +235,7 @@ export async function readGa4AppMetrics(
   );
 
   // ①-2 MAU — 같은 end 에서 거꾸로 30일. WAU 가 그 안에 포개져서 WAU/MAU 가 100% 를 넘을 수 없다.
-  const [mauRow] = await run<{ mau: number }>(
+  const mauP = run<{ mau: number }>(
     `SELECT COUNT(DISTINCT user_pseudo_id) AS mau FROM ${events}
      WHERE _TABLE_SUFFIX BETWEEN @mStart AND @end AND event_name = 'user_engagement'`,
     { mStart: shift(end, -29), end }
@@ -254,7 +254,7 @@ export async function readGa4AppMetrics(
   //    발급은 캠페인 자동 지급을 뺀다. 가르는 기준은 knownSourcesSql() 한 곳이다 —
   //    두 곳에 적어 두면 한쪽만 고쳐져 같은 보고서 안에서 숫자가 어긋난다.
   const knownSources = knownSourcesSql();
-  const [ses] = await run<{
+  const sesP = run<{
     sessions: number; with_detail: number; detail_to_coupon: number;
   }>(
     `WITH ev AS (
@@ -295,7 +295,7 @@ export async function readGa4AppMetrics(
   // anchored: 7일 창에는 그럴 자리가 없어 end 에서 거꾸로 고정으로 잡는다.
   const cStart = inPeriod ? start : shift(end, -20);
   const cEnd = inPeriod ? shift(end, -13) : shift(end, -14);
-  const [ret] = await run<{ cohort: number; returned: number }>(
+  const retP = run<{ cohort: number; returned: number }>(
     `WITH f AS (
        SELECT user_pseudo_id, MIN(PARSE_DATE('%Y%m%d', event_date)) AS d FROM ${events}
        WHERE _TABLE_SUFFIX BETWEEN @cStart AND @cEnd AND event_name = 'first_open'
@@ -315,7 +315,7 @@ export async function readGa4AppMetrics(
   // ④ 푸시 → 앱 열기 — 14일 창. 7일이면 수신이 백 건 남짓이라 하루 발송에 크게 흔들린다.
   // in-period: 창 전체(한 달이면 충분하다). anchored: 7일이면 수신이 백 건 남짓이라 14일로 넓힌다.
   const pStart = inPeriod ? start : shift(end, -13);
-  const [push] = await run<{ received: number; opened_android: number; opened_ios: number }>(
+  const pushP = run<{ received: number; opened_android: number; opened_ios: number }>(
     `SELECT COUNTIF(event_name = 'notification_receive' AND platform = 'ANDROID') AS received,
             COUNTIF(event_name = 'notification_open' AND platform = 'ANDROID') AS opened_android,
             COUNTIF(event_name = 'notification_open' AND platform = 'IOS') AS opened_ios
@@ -330,7 +330,7 @@ export async function readGa4AppMetrics(
   // in-period: 창 안에서. anchored: 클릭이 적어 4주치를 끌어온다.
   const bStart = inPeriod ? start : shift(end, -34);
   const bEnd = shift(end, -7);
-  const [ban] = await run<{ clicked: number; redeemed: number }>(
+  const banP = run<{ clicked: number; redeemed: number }>(
     `WITH c AS (
        SELECT user_pseudo_id, MIN(event_timestamp) AS t FROM ${events}
        WHERE _TABLE_SUFFIX BETWEEN @bStart AND @bEnd AND event_name = 'home_banner_click'
@@ -348,7 +348,7 @@ export async function readGa4AppMetrics(
   );
 
   // ⑤-2 배너 노출 → 클릭 — 같은 창에서 노출을 보낸 기기와, 그중 배너도 누른 기기.
-  const [view] = await run<{ seen: number; clicked: number }>(
+  const viewP = run<{ seen: number; clicked: number }>(
     `WITH i AS (
        SELECT DISTINCT user_pseudo_id FROM ${events}
        WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'home_banner_impression'
@@ -362,7 +362,7 @@ export async function readGa4AppMetrics(
   );
 
   // ⑥ 이번 주 활성 중 신규 — 같은 창에서 first_open 이 있는 기기. WAU 가 뛴 주에 "유입인가 복귀인가"를 가른다.
-  const [fresh] = await run<{ new_devices: number }>(
+  const freshP = run<{ new_devices: number }>(
     `WITH a AS (
        SELECT DISTINCT user_pseudo_id FROM ${events}
        WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'user_engagement'
@@ -374,6 +374,10 @@ export async function readGa4AppMetrics(
      FROM a LEFT JOIN f USING (user_pseudo_id)`,
     { start, end }
   );
+
+  // 여덟 쿼리는 서로 독립이라 같이 쏜다(1015). 순서대로 기다리면 합이 벽시계가 된다 —
+  // 7개월 창에서 44초(가장 느린 하나는 8초)라, 기간 × 단위 보고서의 「기간 전체」 열이 60초 한도에 걸렸다.
+  const [[act], [mauRow], [ses], [ret], [push], [ban], [view], [fresh]] = await Promise.all([actP, mauP, sesP, retP, pushP, banP, viewP, freshP]);
 
   const wau = Number(act?.wau ?? 0);
   const sessions = Number(ses?.sessions ?? 0);
