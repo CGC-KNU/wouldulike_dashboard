@@ -1,11 +1,14 @@
-# PROBE 앱 지표 보고서 — #sat-probe 에 HTML 파일과 숫자 세 줄(사용자 · 쿠폰 사용 · 스탬프 적립)을 올린다 (민찬 0927~0928).
+# PROBE 앱 지표 보고서 — #sat-probe 에 주요 지표 보고서(그래프) HTML 과 KPI 여섯 줄을 올린다 (민찬 0927~0928, 1015 개편).
+#
+#   1015: 옛 양식 HTML · 숫자 세 줄 → 주요 지표 보고서(/r/app/key 와 같은 그래프) · 본문 여섯 줄
+#         (활성 기기 · 가입 · 쿠폰 사용 · 스탬프 적립 · 앱 열기 → 매장 상세 · 가입 1주 후 복귀). 주간은 그 주까지 12주,
+#         월간은 그 달까지 6개월을 그린다.
 #
 #   주간  월요일 12:00 KST 에 깨어나 **일요일 GA4 데이터가 들어올 때까지** 15분마다 확인하고, 들어오면 한 번 보낸다.
 #         17:30 KST 까지 안 들어오면 사용자 줄만 「집계 중」으로 두고 보낸다(Actions 는 작업 하나에 6시간까지다).
 #         0927 실측: 최근 6번의 일요일 중 4번은 정오 전에 들어왔고, 9/13분은 12:02 · 8/16분은 15:52 였다.
-#   월간  매월 9일 12:00 KST — 쓰기 퍼널이 말일에 받은 쿠폰까지 발급 뒤 7일을 다 지켜보려면 다음 달 7일분 GA4 가
-#         있어야 한다(민찬 1010 — 2일에서 옮김. 월간은 늦게 올라가도 된다). 월별 스냅샷은 1일 02:10 에 이미 굳어 있다.
-#         정기 실행도 7일분 GA4 가 올 때까지 기다린다(check=1 이 월간은 말일 + 7일을 본다).
+#   월간  매월 2일 12:00 KST — 말일 GA4 가 들어오면 보낸다(check=1 이 월간은 말일까지 본다).
+#         1010 에 쓰기 퍼널 때문에 9일로 옮겼다가, 1015 주요 지표 보고서로 바꾸며 쓰기 퍼널이 빠져 2일로 되돌렸다(민찬).
 #
 # 보고서는 대시보드 /api/probe/app-report/cron 이 만든다(스크립트 없는 HTML · 메시지 본문). 토큰 판정은 백엔드가 한다.
 # 주를 **반드시 적어서** 부른다 — 비워 두면 대시보드가 "GA4 마지막 테이블 기준 마지막 주"를 골라, 일요일분이
@@ -22,7 +25,7 @@ name: Probe 앱 지표 보고서
 on:
   schedule:
     - cron: "0 3 * * 1"   # 월 12:00 KST — 주간
-    - cron: "0 3 9 * *"   # 매월 9일 12:00 KST — 월간
+    - cron: "0 3 2 * *"   # 매월 2일 12:00 KST — 월간
   workflow_dispatch:
     inputs:
       type:
@@ -93,7 +96,7 @@ jobs:
           [ -n "$CRON_TOKEN" ] || { echo "::error::CRON_SECRET_TOKEN 이 없습니다"; exit 1; }
 
           if [ "$EVENT" = "schedule" ]; then
-            if [ "$SCHEDULE" = "0 3 9 * *" ]; then TYPE=monthly; else TYPE=weekly; fi
+            if [ "$SCHEDULE" = "0 3 2 * *" ]; then TYPE=monthly; else TYPE=weekly; fi
             WAIT=true; DRY=false; IN_WEEK=""; IN_MONTH=""
           else
             TYPE="$IN_TYPE"; WAIT="$IN_WAIT"; DRY="$IN_DRY"
@@ -123,7 +126,7 @@ jobs:
               case "$CODE" in 4*) echo "::error::확인 요청이 거절됐습니다 HTTP $CODE — $(head -c 300 check.json)"; exit 1;; esac
               echo "$(TZ=Asia/Seoul date +%H:%M) GA4 아직 — HTTP $CODE $(head -c 200 check.json 2>/dev/null || true)"
               if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-                echo "::warning::17:30 까지 GA4 가 안 들어왔습니다 — 사용자 줄을 「집계 중」으로 보냅니다"; break
+                echo "::warning::17:30 까지 GA4 가 안 들어왔습니다 — GA4 줄(활성 기기 · 매장 상세 · 복귀)을 「집계 중」으로 보냅니다"; break
               fi
               sleep 900
             done
@@ -142,10 +145,10 @@ jobs:
           # 이 저장소는 공개라 Actions 로그를 누구나 본다 — 숫자·본문은 찍지 않는다(0928). 경고는 무엇을 못 읽었는지뿐이다.
           jq -r '.warnings[]' report.json | sed 's/^/경고: /' || true
           STATUS=$(jq -r .status report.json)
-          [ "$STATUS" = "ok" ] || { echo "::error::양식 검사에서 빠진 값이 나왔습니다(status=$STATUS) — 보내지 않습니다"; exit 1; }
-          # 양식 검사는 구조만 본다 — 숫자가 전부 비어도 ok 라서 따로 막는다
+          [ "$STATUS" = "ok" ] || { echo "::error::보고서가 ok 가 아닙니다(status=$STATUS) — 보내지 않습니다"; exit 1; }
+          # 숫자가 전부 비면(백엔드·GA4 를 모두 못 읽음) 보내지 않는다
           [ "$(jq '[.summary[].value | select(. != null)] | length' report.json)" -gt 0 ] \
-            || { echo "::error::숫자 세 개가 모두 비었습니다 — 보내지 않습니다"; exit 1; }
+            || { echo "::error::본문 여섯 줄의 숫자가 모두 비었습니다 — 보내지 않습니다"; exit 1; }
 
           FILE=$(jq -r .filename report.json)
           jq -r .html report.json > "$FILE"
