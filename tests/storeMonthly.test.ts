@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as vm from "node:vm";
-import { buildStoreMonthlyData, storeMissing, storeSummary, type PartnerMonth, type StoreCard } from "../src/lib/draft/storeMonthly";
+import {
+  buildStoreMonthlyData, pickPhotos, storeMissing, storePngPages, storeSummary, STORE_PNG_COVER, STORE_PNG_METRICS,
+  type PartnerMonth, type StoreCard,
+} from "../src/lib/draft/storeMonthly";
+import STORE_MONTHLY_TEMPLATE_HTML from "../src/lib/draft/storeMonthlyTemplateHtml";
 import { fillStoreMonthlyTemplate } from "../src/lib/draft/storeMonthlyTemplate";
 import { downloadBar } from "../src/lib/draft/reportDownload";
 
@@ -39,14 +43,17 @@ const card = (d: ReturnType<typeof build>, key: string) => {
   return c!;
 };
 
+const BUCKET = "https://wouldulike-default-bucket-lunching.s3.ap-northeast-2.amazonaws.com/restaurants/1";
+const photo = (n: number) => `${BUCKET}/p${n}.jpg`;
+
 /** 최소 DOM 에서 양식의 렌더러를 그대로 돌린다 */
-function render(html: string): { status: string; text: string } {
+function render(html: string): { status: string; text: string; html: Record<string, string> } {
   const json = /<script type="application\/json" id="report-data">\n([\s\S]*?)\n<\/script>/.exec(html);
   assert.ok(json, "report-data 블록을 못 찾았습니다");
   const scripts = [...html.matchAll(/<script>\n([\s\S]*?)\n<\/script>/g)];
   assert.ok(scripts.length, "렌더러를 못 찾았습니다");
   const nodes: Record<string, { textContent?: string; innerHTML: string }> = {};
-  for (const id of ["report-data", "err", "s-head", "s-kpi", "s-groups", "s-close", "s-foot"]) nodes[id] = { innerHTML: "" };
+  for (const id of ["report-data", "err", "s-head", "s-photo", "s-hello", "s-sum", "s-kpi", "s-groups", "s-close", "s-foot"]) nodes[id] = { innerHTML: "" };
   nodes["report-data"].textContent = json[1];
   const attrs: Record<string, string> = {};
   const ctx: Record<string, unknown> = {
@@ -56,7 +63,7 @@ function render(html: string): { status: string; text: string } {
   vm.createContext(ctx);
   new vm.Script(scripts[scripts.length - 1][1]).runInContext(ctx);
   const text = Object.values(nodes).map((x) => x.innerHTML).join(" ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  return { status: attrs["data-report-status"] ?? "ok", text };
+  return { status: attrs["data-report-status"] ?? "ok", text, html: Object.fromEntries(Object.entries(nodes).map(([k, v]) => [k, v.innerHTML])) };
 }
 
 test("값이 있는 칸을 두 묶음으로 낸다 — 사장님 홈과 같은 이름·단위", () => {
@@ -173,4 +180,48 @@ test("PNG 는 한 장 — 이 양식에는 게시물 리포트의 구획(r-*)이
   assert.match(bar, /var PNG_SKIP = \[\];/);
   // 기본값(게시물 리포트)은 그대로 두 장
   assert.match(downloadBar({ filename: "x", canDownload: true, statusLabel: "s" }), /PNG 저장 \(2장\)/);
+});
+
+// ── 1장 가게 사진 · 2장 지표 (1015) ─────────────────────────────────
+
+test("사진은 /api/img 가 읽는 주소만 — 대표 한 장, 세 장 이상이면 작은 두 장을 더한다", () => {
+  assert.deepEqual(pickPhotos(undefined), []);
+  assert.deepEqual(pickPhotos([]), []);
+  assert.deepEqual(pickPhotos(["https://evil.example.com/a.jpg", "http://x/b.jpg", "not a url"]), [], "목록 밖·https 아님은 저장한 파일에서 빈다");
+  assert.deepEqual(pickPhotos([photo(1), photo(2)]), [photo(1)], "작은 줄은 두 장이 있어야 채운다");
+  assert.deepEqual(pickPhotos([photo(1), "https://evil.example.com/a.jpg", photo(2), photo(3), photo(4)]), [photo(1), photo(2), photo(3)]);
+});
+
+test("첫 장에 대표 사진, 순서는 앱 그대로", () => {
+  const withPhotos = db();
+  withPhotos.store = { ...withPhotos.store, photos: [photo(1), photo(2), photo(3)] };
+  const r = render(fillStoreMonthlyTemplate(build({ db: withPhotos })));
+  const imgs = [...r.html["s-photo"].matchAll(/<img class="([^"]*)" src="([^"]+)" alt="([^"]+)">/g)];
+  assert.deepEqual(imgs.map((m) => [m[1], m[2]]), [["main", photo(1)], ["", photo(2)], ["", photo(3)]]);
+  assert.equal(imgs[0][3], "테스트가게 사진");
+  assert.equal(render(fillStoreMonthlyTemplate(build())).html["s-photo"], "", "사진이 없으면 칸을 안 그린다");
+});
+
+test("PNG 두 장 — 사진이 있으면 1장 사진 · 2장 지표, 없으면 한 장", () => {
+  const withPhotos = db();
+  withPhotos.store = { ...withPhotos.store, photos: [photo(1)] };
+  assert.deepEqual(storePngPages(build({ db: withPhotos })), [{ no: 1, ids: STORE_PNG_COVER }, { no: 2, ids: STORE_PNG_METRICS }]);
+  assert.deepEqual(storePngPages(build()), [{ no: 1, ids: [] }]);
+  const bar = downloadBar({ filename: "x", canDownload: true, statusLabel: "s", pages: storePngPages(build({ db: withPhotos })) });
+  assert.match(bar, /PNG 저장 \(2장\)/);
+  assert.match(bar, /\{ no: 1, ids: \["s-head", "s-photo", "s-hello"\] \}/);
+});
+
+test("양식의 모든 구획이 두 장 중 하나에 들어간다 — 목록 밖 구획은 PNG 에서 사라진다", () => {
+  const inTemplate = new Set([...STORE_MONTHLY_TEMPLATE_HTML.matchAll(/<div id="(s-[a-z]+)"><\/div>/g)].map((m) => m[1]));
+  const covered = [...STORE_PNG_COVER, ...STORE_PNG_METRICS];
+  assert.deepEqual([...inTemplate].sort(), [...covered].sort());
+  assert.equal(new Set(covered).size, covered.length, "한 구획이 두 장에 겹치지 않는다");
+});
+
+test("2장만 따로 봐도 어느 가게·어느 달인지 안다", () => {
+  const r = render(fillStoreMonthlyTemplate(build()));
+  assert.match(r.html["s-sum"], /테스트가게 · 2026년 9월/);
+  assert.match(r.html["s-sum"], /9월 한 달 동안 학생 42명/, "머리 한 줄은 2장 위에");
+  assert.doesNotMatch(r.html["s-head"], /학생 42명/, "1장에는 숫자를 싣지 않는다");
 });

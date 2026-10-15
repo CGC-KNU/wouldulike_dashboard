@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { imageHostAllowed } from "@/lib/draft/imageHosts";
 
 /**
  * 리포트 안의 **이미지를 우리 도메인으로 통과시키는** 창구.
@@ -18,20 +19,10 @@ import { NextRequest, NextResponse } from "next/server";
  * 아무 주소나 받아 주면 그냥 공개 프록시가 된다.
  */
 
-/** `download-proxy` 와 같은 버킷. boto3 presigned 는 리전 없는 호스트, 직접 조립한 URL 은 리전 포함. */
-const ALLOWED_EXACT = new Set([
-  "wouldulike-default-bucket-lunching.s3.amazonaws.com",
-  "wouldulike-default-bucket-lunching.s3.ap-northeast-2.amazonaws.com",
-]);
-/** 메타 CDN 은 호스트가 매번 달라진다(scontent-ssn1-1.cdninstagram.com 등) — 접미사로 본다. */
-const ALLOWED_SUFFIX = [".cdninstagram.com", ".fbcdn.net"];
+// 허용 호스트는 `lib/draft/imageHosts.ts` 한 곳 — 리포트도 그 목록으로 그림을 거른다(가게 월간 보고서 사진).
 
 /** 8MB — 리포트 썸네일 한 장이 이보다 클 이유가 없다. */
 const MAX_BYTES = 8 * 1024 * 1024;
-
-function allowed(host: string): boolean {
-  return ALLOWED_EXACT.has(host) || ALLOWED_SUFFIX.some((s) => host.endsWith(s));
-}
 
 export async function GET(req: NextRequest) {
   const src = req.nextUrl.searchParams.get("u");
@@ -43,7 +34,7 @@ export async function GET(req: NextRequest) {
   } catch {
     return NextResponse.json({ detail: "잘못된 주소입니다." }, { status: 400 });
   }
-  if (target.protocol !== "https:" || !allowed(target.hostname)) {
+  if (target.protocol !== "https:" || !imageHostAllowed(target.hostname)) {
     return NextResponse.json({ detail: "허용되지 않은 호스트입니다." }, { status: 400 });
   }
 

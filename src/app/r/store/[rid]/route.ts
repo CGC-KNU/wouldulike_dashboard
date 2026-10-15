@@ -1,6 +1,6 @@
 import { requireTool } from "@/lib/draft/guard";
 import { buildStoreMonthlyReport, StoreReportError } from "@/lib/draft/storeMonthlyReport";
-import { storeMissing } from "@/lib/draft/storeMonthly";
+import { storeMissing, storePngPages } from "@/lib/draft/storeMonthly";
 import { fillStoreMonthlyTemplate, STORE_MONTHLY_BODY_TAG } from "@/lib/draft/storeMonthlyTemplate";
 import { insertAfterBody } from "@/lib/draft/reportTemplate";
 import { downloadBar } from "@/lib/draft/reportDownload";
@@ -15,7 +15,8 @@ import { downloadBar } from "@/lib/draft/reportDownload";
  * 모든 가게 공통 소식은 `/r/partners` 가 맡는다.
  *
  * **사장님께는 PNG 로 보낸다(0928 결정)** — `/r/partners` 처럼 로그인한 담당자만 열고, 미리보기 띠에서 받는다.
- * 띠에는 종이에 안 나가는 주의(못 읽은 칸 등)를 같이 띄운다. PNG 는 한 장(구획 나누기 없음).
+ * 띠에는 종이에 안 나가는 주의(못 읽은 칸 등)를 같이 띄운다.
+ * PNG 는 두 장 — 1장 가게 사진, 2장 지표(1015). 사진이 없는 가게는 한 장(storePngPages).
  */
 export const maxDuration = 60;
 
@@ -70,7 +71,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ rid: str
       canDownload: true,
       // 주의는 담당자만 본다(띠는 PNG·HTML 저장에서 빠진다)
       statusLabel: `${built.storeName} · ${built.period}${built.warnings.length ? ` · 주의: ${built.warnings.join(" ")}` : ""}`,
-      pages: [{ no: 1, ids: [] }],
+      pages: storePngPages(built.data),
     }),
     STORE_MONTHLY_BODY_TAG
   );

@@ -19,12 +19,18 @@
  *  · 스탬프를 안 쓰는 매장은 스탬프·재방문·단골을 통째로 뺀다(그 0 은 「안 쓰는 기능」이다).
  */
 
+import { proxyableImage } from "./imageHosts";
+
 export type Num = number | null;
 export type Json = Record<string, unknown>;
 
 /** 백엔드 `/api/astro/partner/month/` 응답 — 필요한 칸만 */
 export interface PartnerMonth {
-  store: { restaurant_id: number; name: string; is_affiliate: boolean; hidden_from_app: boolean; stamp_enabled: boolean };
+  store: {
+    restaurant_id: number; name: string; is_affiliate: boolean; hidden_from_app: boolean; stamp_enabled: boolean;
+    /** 앱과 같은 순서의 가게 사진(첫 장 = 앱 목록 썸네일). backend #165 전 응답에는 없다 */
+    photos?: string[];
+  };
   period: string;
   complete: boolean;
   stats: { coupon_used: number; stamp: number; revisit: number };
@@ -80,6 +86,18 @@ export function storeSummary(m: number, v: { viewers: Num; coupons: Num; stamps:
   return [first, second].filter(Boolean).join(" ") || null;
 }
 
+/** 첫 장에 싣는 사진 수 — 대표 한 장 + 작은 두 장 */
+const MAX_PHOTOS = 3;
+
+/**
+ * 첫 장 사진. `/api/img` 가 못 읽는 주소는 뺀다 — 화면엔 보여도 PNG·HTML 저장에서 빈 칸이 된다.
+ * 작은 사진은 두 장일 때만 줄을 채우므로, 대표 + 한 장이면 대표만 쓴다.
+ */
+export function pickPhotos(photos: string[] | undefined): string[] {
+  const ok = (photos ?? []).filter(proxyableImage);
+  return ok.length >= MAX_PHOTOS ? ok.slice(0, MAX_PHOTOS) : ok.slice(0, 1);
+}
+
 export function buildStoreMonthlyData(i: StoreMonthlyInput): Json {
   const { period, db } = i;
   const m = monthNo(period);
@@ -128,11 +146,28 @@ export function buildStoreMonthlyData(i: StoreMonthlyInput): Json {
       through: i.through ?? null,
     },
     store: { name: db.store.name, stamp_enabled: stampOn },
+    /** 첫 장 사진 — 비면 양식이 사진 칸을 안 그리고, 라우트가 PNG 를 한 장으로 낸다 */
+    photos: pickPhotos(db.store.photos),
     summary: storeSummary(m, { viewers: i.viewers, coupons: db.stats.coupon_used, stamps: stampOn ? db.stats.stamp : null }),
     /** 머리에 크게 띄울 것 — 그려진 칸 중에서 이 순서로 셋까지 */
     headline: ["viewers", "coupons", "stamps", "revisit", "wishlist"],
     groups,
   };
+}
+
+/**
+ * PNG 장 나누기 — 양식 구획(id)으로 자른다(reportDownload `pages`).
+ * 사진이 있으면 1장 = 가게 사진, 2장 = 지표(민찬 1015). 사진이 없으면 1장이 제목뿐이라 **한 장 통째로** 낸다.
+ * 양식에 구획을 더하면 여기에도 넣는다 — 목록 밖 구획은 두 장 어디에도 안 나온다(테스트가 잡는다).
+ */
+export const STORE_PNG_COVER = ["s-head", "s-photo", "s-hello"];
+export const STORE_PNG_METRICS = ["s-sum", "s-kpi", "s-groups", "s-close", "s-foot"];
+
+export function storePngPages(data: Json): { no: number; ids: string[] }[] {
+  const photos = (data.photos ?? []) as unknown[];
+  return photos.length
+    ? [{ no: 1, ids: STORE_PNG_COVER }, { no: 2, ids: STORE_PNG_METRICS }]
+    : [{ no: 1, ids: [] }];
 }
 
 /** 이 달 일어난 일(누적이 아닌 칸) — 하나도 없으면 그 달 보고서는 빈 종이다 */
