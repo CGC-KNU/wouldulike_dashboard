@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { isKoyebWaking, koyebFetch } from "@/lib/draft/koyeb";
 
 /**
  * 백엔드 프록시 공통 헬퍼.
@@ -8,6 +9,10 @@ import { cookies } from "next/headers";
  * Django 가 500 을 HTML 트레이스백으로 내려주면 `res.json()` 이 throw 하면서
  * 원래 상태 코드와 사유가 통째로 사라진다. 프론트에는 정체불명의 에러만 남는다.
  * 여기서는 JSON 파싱에 실패해도 상태 코드와 요약을 살려서 넘긴다.
+ *
+ * 백엔드 호출은 koyebFetch 를 거친다 — 잠든 Koyeb 지역의 「almost ready」 503 은 기다렸다 다시 보낸다(1015).
+ * 이전에는 그 503 페이지 제목이 그대로 detail 이 되어, 세틀라이트 사진 올리기가
+ * 「Your service is almost ready!」 창만 띄우고 멈췄다(업로드 URL 발급 단계).
  */
 
 export async function getAccessToken(): Promise<string> {
@@ -42,6 +47,9 @@ export async function passthrough(res: Response): Promise<NextResponse> {
 }
 
 function summarizeNonJson(body: string, status: number): string {
+  // koyebFetch 가 다 기다려도 못 깨운 경우 — Koyeb 영어 페이지 제목 대신 할 일을 알려 준다
+  if (isKoyebWaking(status, body)) return "백엔드가 깨어나는 중입니다 — 몇 초 뒤 다시 시도해 주세요.";
+
   // Django 디버그 페이지의 <title> 에 예외 요약이 들어 있다
   const title = body.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.trim();
   if (title) {
@@ -62,7 +70,7 @@ function summarizeNonJson(body: string, status: number): string {
 export async function proxyGet(path: string, search?: string): Promise<NextResponse> {
   const token = await getAccessToken();
   try {
-    const res = await fetch(backendUrl(path, search), {
+    const res = await koyebFetch(backendUrl(path, search), {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
@@ -83,7 +91,7 @@ export async function proxyBody(
 ): Promise<NextResponse> {
   const token = await getAccessToken();
   try {
-    const res = await fetch(backendUrl(path), {
+    const res = await koyebFetch(backendUrl(path), {
       method,
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -101,7 +109,7 @@ export async function proxyBody(
 export async function proxyDelete(path: string): Promise<NextResponse> {
   const token = await getAccessToken();
   try {
-    const res = await fetch(backendUrl(path), {
+    const res = await koyebFetch(backendUrl(path), {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });

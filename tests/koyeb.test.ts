@@ -60,3 +60,17 @@ test("깨우는 중 판정은 503 + 「almost ready」 둘 다", () => {
   assert.equal(isKoyebWaking(502, WAKING), false);
   assert.equal(isKoyebWaking(503, '{"detail":"x"}'), false);
 });
+
+test("프록시(apiProxy)는 끝내 못 깨운 503 을 Koyeb 영어 제목 대신 한국어로 알린다", async () => {
+  // 1015 세틀라이트 사진 올리기: 업로드 URL 발급이 이 503 을 받아 「Your service is almost ready!」 창만 띄웠다
+  const { passthrough } = await import("../src/lib/apiProxy");
+  const page = "<html><head><title>Your service is almost ready!</title></head><body>Your service is almost ready!</body></html>";
+  const res = await passthrough(new Response(page, { status: 503 }));
+  assert.equal(res.status, 503);
+  const d = await res.json();
+  assert.match(d.detail, /깨어나는 중/);
+  assert.doesNotMatch(d.detail, /almost ready/);
+
+  const app = await passthrough(new Response('{"detail":"점검 중"}', { status: 503 }));
+  assert.deepEqual(await app.json(), { detail: "점검 중" }, "앱이 낸 503 은 그대로");
+});
