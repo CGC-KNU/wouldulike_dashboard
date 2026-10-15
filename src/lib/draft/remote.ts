@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { koyebFetch } from "./koyeb";
 
 /**
  * 백엔드(Django `astro` 앱) 우선, 없으면 초안 저장소.
@@ -82,7 +83,7 @@ const MISS: RemoteResult<never> = { handled: false, ok: false, status: 0, data: 
 export async function remoteGet<T>(path: string, search?: string): Promise<RemoteResult<T>> {
   if (!backendConfigured()) return MISS;
   try {
-    const res = await fetch(url(path, search), { headers: await authHeader(), cache: "no-store" });
+    const res = await koyebFetch(url(path, search), { headers: await authHeader(), cache: "no-store" });
     if (res.ok) proven = true;
     if (res.ok) {
       const text = await res.text();
@@ -121,7 +122,7 @@ export async function remoteSend<T>(
 ): Promise<RemoteResult<T>> {
   if (!backendConfigured()) return MISS;
   try {
-    const res = await fetch(url(path), {
+    const res = await koyebFetch(url(path), {
       method,
       headers: { ...(await authHeader()), "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
