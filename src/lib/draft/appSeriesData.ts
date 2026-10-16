@@ -127,16 +127,30 @@ const notDaily = (p: Pick): Pick => (c, ctx) => (ctx.unit === "day" && !ctx.tota
 
 interface Def {
   key: string;
-  label: string | ((u: RangeUnit) => string);
+  /** 단위와 기간 길이(일)로 이름이 바뀌는 행 — DAU/WAU */
+  label: string | ((u: RangeUnit, days: number) => string);
   unit: string;
   source: SeriesSource;
   kind: SeriesKind;
-  note: string | ((u: RangeUnit) => string);
+  note: string | ((u: RangeUnit, days: number) => string);
   sub?: boolean;
   pick: Pick;
+  /**
+   * 「기간 전체」를 끝난 칸 값의 평균으로 — 기간을 한 번에 다시 세면 창이 길어져 다른 지표가 된다.
+   * 4주를 한 창으로 센 DAU/WAU 는 분모가 28일 고유라 사실상 DAU/MAU 였다(1016 기획팀 검토).
+   * 일 단위는 칸 값이 없어 기간 전체로 세고, 이름을 창 길이에 맞춘다(stickinessName).
+   */
+  meanTotal?: boolean;
 }
 
 const UNIT_ACTIVE: Record<RangeUnit, string> = { day: "그날", week: "그 주", month: "그 달" };
+
+/**
+ * 끈적함의 이름 — 분모 창의 길이를 따른다. 주 칸은 DAU/WAU, 월 칸은 DAU/MAU.
+ * 일 단위는 칸마다 못 세고 기간 전체 한 창만 있으니 그 창 길이로 부른다 — 4주를 「DAU/WAU」라 부르지 않는다.
+ */
+const stickinessName = (u: RangeUnit, days: number) =>
+  u === "week" || (u === "day" && days === 7) ? "DAU/WAU" : u === "month" || (days >= 28 && days <= 31) ? "DAU/MAU" : `DAU ÷ ${days}일 활성`;
 
 const GROUPS: { key: string; title: string; defs: Def[] }[] = [
   {
@@ -164,9 +178,14 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
         pick: fromGa4((g) => num(g.dau)),
       },
       {
-        key: "stickiness", label: (u) => (u === "month" ? "DAU/MAU" : "DAU/WAU"), unit: "%", source: "ga4", kind: "rate",
-        note: "하루 평균 활성 ÷ 칸 전체 활성. 끈적함 — 주 단위 20% 를 넘으면 습관이 붙은 것",
+        key: "stickiness", label: stickinessName, unit: "%", source: "ga4", kind: "rate",
+        note: (u, days) => u === "day"
+          ? `기간의 하루 평균 활성 ÷ 기간 ${days}일 동안의 고유 기기. 창이 길수록 분모가 커져 낮게 나옵니다 — 「20% 면 습관」은 주 단위 DAU/WAU 에만 쓰는 기준입니다`
+          : u === "week"
+            ? "하루 평균 활성 ÷ 그 주 활성. 끈적함 — 20% 를 넘으면 습관이 붙은 것. 기간 전체는 끝난 주들의 평균"
+            : "하루 평균 활성 ÷ 그 달 활성. 분모가 한 달이라 DAU/WAU 보다 훨씬 낮게 나옵니다(20% 기준은 주 단위에만). 기간 전체는 끝난 달들의 평균",
         pick: notDaily(fromGa4((g) => (g.wau ? rate(g.dau_wau, g.wau) : { v: null, why: "표본 없음" }))),
+        meanTotal: true,
       },
       {
         key: "mau", label: "30일 활성", unit: "명", source: "ga4", kind: "count",
@@ -299,6 +318,18 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
           note: `받은 뒤 ${FOLLOW_DAYS}일 안에 쓰인 쿠폰. 아직 ${FOLLOW_DAYS}일이 안 지난 쿠폰이 섞인 칸은 흐리게 그립니다`,
           pick: fromUse((f) => (f.maturing > 0 ? { v: f[line].redeemed, weak: true, why: `지켜보는 중 ${f.maturing}장` } : { v: f[line].redeemed })),
         },
+        {
+          // 「같은 칸 안에」 센 사용률은 일 단위면 받은 날 당일 것만 남는다 — 일별을 합친 값이 기간 전체 열의 3분의 1 남짓이었다(1016 기획팀 검토).
+          // 받은 날부터 같은 길이를 따라가면 칸 길이와 상관없이 같은 뜻이고, 일별 칸을 더하면 기간 값이 된다.
+          key: `use_${line}_rate`, label: `${FOLLOW_DAYS}일 안에 사용률`, unit: "%", source: "ga4", kind: "rate", sub: true,
+          note: `그 칸에 처음 받은 ${name} 쿠폰 중 받은 뒤 ${FOLLOW_DAYS}일 안에 쓰인 비율 — 칸 길이와 상관없이 같은 창입니다. 아직 ${FOLLOW_DAYS}일이 안 지난 쿠폰이 섞인 칸은 흐리게 그립니다`,
+          pick: fromUse((f) => {
+            const x = f[line];
+            if (x.issued === 0) return { v: null, why: "발급 없음", n: 0 };
+            const c = rate(Math.round((x.redeemed / x.issued) * 1000) / 10, x.issued);
+            return f.maturing > 0 ? { ...c, weak: true, why: `지켜보는 중 ${f.maturing}장` } : c;
+          }),
+        },
       ];
     }),
   },
@@ -346,6 +377,15 @@ function sumCells(cells: Cell[]): Cell {
   return { v: cells.reduce((a, c) => a + (c.v as number), 0) };
 }
 
+/** 끝난 칸 값의 평균(meanTotal). 끝난 칸이 하나도 없으면 null — 부르는 쪽이 기간 전체로 센다 */
+function meanCells(cells: Cell[], buckets: SeriesBucket[], unit: RangeUnit): Cell | null {
+  const done = cells.filter((c, i) => !buckets[i].open && c.v !== null);
+  if (!done.length) return null;
+  if (done.length === 1) return done[0];
+  const v = Math.round((done.reduce((a, c) => a + (c.v as number), 0) / done.length) * 10) / 10;
+  return { v, why: `${unit === "month" ? "달" : "주"} ${done.length}개 평균` };
+}
+
 export interface SeriesInput {
   spec: RangeSpec;
   through: string | null;
@@ -370,16 +410,17 @@ export function buildSeries({ spec, through, today, generatedAt, cells, total, w
     rows: g.defs.map((d): SeriesRow => {
       const row = cells.map((c, i) => d.pick(c, { unit, total: false, start: spec.buckets[i].start, end: spec.buckets[i].end }));
       const dbCount = (d.source === "backend" || d.source === "push") && d.kind === "count";
+      const whole = () => d.pick(total, { unit, total: true, start: spec.start, end: spec.end });
       return {
         key: d.key,
-        label: typeof d.label === "function" ? d.label(unit) : d.label,
+        label: typeof d.label === "function" ? d.label(unit, spec.days) : d.label,
         unit: d.unit,
         source: d.source,
         kind: d.kind,
-        note: typeof d.note === "function" ? d.note(unit) : d.note,
+        note: typeof d.note === "function" ? d.note(unit, spec.days) : d.note,
         ...(d.sub ? { sub: true } : {}),
         cells: row,
-        total: dbCount ? sumCells(row) : d.pick(total, { unit, total: true, start: spec.start, end: spec.end }),
+        total: dbCount ? sumCells(row) : d.meanTotal ? meanCells(row, buckets, unit) ?? whole() : whole(),
       };
     }),
   }));
@@ -388,9 +429,11 @@ export function buildSeries({ spec, through, today, generatedAt, cells, total, w
   const caveats = [
     "**주 단위 칸은 주간 보고서, 월 단위 칸은 월간 보고서와 같은 정의로 셉니다(GA4).** DB 칸은 지금 다시 센 값이라, 월별 스냅샷(굳힌 값)을 쓰는 월간 보고서와 그 사이 탈퇴·만료 쿠폰 삭제만큼 다를 수 있습니다.",
     "**기기 단위입니다.** 출시된 앱이 setUserId 를 안 불러 사람이 아니라 기기를 셉니다. 재설치하면 새 기기로 셉니다.",
-    "**「기간 전체」 열의 활성·비율은 칸을 더한 값이 아니라 기간을 한 번에 다시 센 값입니다.** DB 건수만 칸의 합입니다.",
     unit === "day"
-      ? "**일 단위에서는 DAU/WAU · 복귀 · 푸시 → 열기 · 배너 클릭 → 쿠폰을 세지 않습니다** — 관찰 창이 하루보다 깁니다. 「기간 전체」 열에는 있습니다."
+      ? "**「기간 전체」 열의 활성·비율은 칸을 더한 값이 아니라 기간을 한 번에 다시 센 값입니다.** DB 건수만 칸의 합입니다."
+      : `**「기간 전체」 열의 활성·비율은 칸을 더한 값이 아니라 기간을 한 번에 다시 센 값입니다.** DB 건수는 칸의 합, ${unit === "month" ? "DAU/MAU" : "DAU/WAU"} 는 끝난 칸의 평균입니다 — 한 창으로 세면 분모가 기간 전체 고유 기기가 되어 다른 지표가 됩니다.`,
+    unit === "day"
+      ? `**일 단위에서는 끈적함 · 복귀 · 푸시 → 열기 · 배너 클릭 → 쿠폰을 세지 않습니다** — 관찰 창이 하루보다 깁니다. 「기간 전체」 열에는 있습니다. 끈적함은 기간 ${spec.days}일을 한 창으로 센 값이라 이름이 「${stickinessName(unit, spec.days)}」입니다.`
       : unit === "week"
         ? "**주 단위의 복귀 · 푸시 → 열기 · 배너 클릭 → 쿠폰은 끝 날에서 거꾸로 잡은 고정 창입니다**(첫 실행 14~20일 전 · 14일 · 클릭 4주). 주간 보고서와 같습니다."
         : "**월 단위의 복귀 · 푸시 → 열기 · 배너 클릭 → 쿠폰은 그 달 안에서 잡습니다** — 월간 보고서와 같습니다.",

@@ -18,6 +18,8 @@ const GRID = "#ECEEF3";
 const AXIS_TX = "#9CA3AF";
 const INK = "#374151";
 const SURFACE = "#FFFFFF";
+/** 못 센 칸의 띠 — 격자(GRID)보다 옅게 */
+const MISSING = "#F4F5F8";
 
 type Kind = "count" | "avg" | "rate";
 
@@ -114,6 +116,9 @@ const endLabel = (x: number, y: number, v: number, f: ChartFrame, anchor: "start
 /**
  * 막대. 계열이 둘 이상이면 **쌓는다**(아래부터 순서대로) — 활성 기기 = 다시 온 기기 + 처음 온 기기.
  * 끝 칸 위에 합계 하나만 적는다.
+ *
+ * 0 과 못 센 칸을 가른다(1016 기획팀 검토) — 예전엔 둘 다 그리지 않아 주말 0 이 「못 센 칸」으로 읽혔다.
+ * 0 은 바닥에 2px 회색 선, 못 센 칸(null)은 칸 높이 전체의 옅은 회색 띠.
  */
 export function barChart(series: ChartSeries[], f: ChartFrame): string {
   const totals = f.labels.map((_, i) => {
@@ -122,10 +127,20 @@ export function barChart(series: ChartSeries[], f: ChartFrame): string {
   });
   const g = geo(f, Math.max(0, ...totals.map((v) => v ?? 0)));
   const bw = Math.max(2, Math.min(24, g.band * 0.62));
+  const anyValue = totals.some((v) => v !== null);
+  // 띠는 격자보다 먼저 — 격자선이 띠 위로 지나가게
+  const bands = anyValue
+    ? totals.map((v, i) => (v === null ? `<rect x="${g.l + g.band * i + 1}" y="${g.t}" width="${Math.max(1, g.band - 2)}" height="${g.ph}" fill="${MISSING}"/>` : "")).join("")
+    : "";
   let marks = "";
-  totals.forEach((_, i) => {
+  totals.forEach((t, i) => {
     let base = 0;
     const x = g.x(i) - bw / 2;
+    if (t === 0) {
+      // 계열 색이 아니라 축 글자색 — 축 끝이 큰 그래프에서 1 짜리 막대(1.7px)와 헷갈렸다
+      marks += `<rect x="${x}" y="${g.y(0) - 2}" width="${bw}" height="2" fill="${AXIS_TX}"/>`;
+      return;
+    }
     const parts = series.map((s) => ({ s, v: s.values[i] })).filter((p) => p.v !== null && (p.v as number) > 0);
     parts.forEach((p, k) => {
       const v = p.v as number;
@@ -142,7 +157,7 @@ export function barChart(series: ChartSeries[], f: ChartFrame): string {
   const last = totals.map((v, i) => (v === null ? -1 : i)).filter((i) => i >= 0).pop();
   const label = last === undefined ? "" : endLabel(g.x(last), g.y(totals[last] as number) - 6, totals[last] as number, f);
   const empty = last === undefined ? `<text x="${g.l + g.pw / 2}" y="${g.t + g.ph / 2}" text-anchor="middle" font-size="12" fill="${AXIS_TX}">값이 없습니다</text>` : "";
-  return svg(g, f, frame(g, f) + marks + label + empty + hits(g, f, series));
+  return svg(g, f, bands + frame(g, f) + marks + label + empty + hits(g, f, series));
 }
 
 /** 선 하나 — 빈 칸에서 끊는다(0 으로 내려 긋지 않는다). 얕은 표본·진행 중 칸은 속 빈 점 */
