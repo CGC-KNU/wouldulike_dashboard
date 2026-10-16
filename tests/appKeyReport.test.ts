@@ -53,18 +53,18 @@ test("KPI 는 마지막으로 끝난 칸과 그 앞 칸 — 진행 중인 칸과
     spec: spec("week", "2026-09-28", "2026-10-15"), through: "20261013", today: TODAY, generatedAt: "2026-10-15 12:00",
     cells: [
       full({ db: db({ signups: 40, coupon_redeemed: 40, stamp_earned: 20 }) }),
-      full({ db: db({ signups: 48, coupon_redeemed: 20, stamp_earned: 20 }) }),
+      full({ db: db({ signups: 80, coupon_redeemed: 20, stamp_earned: 20 }) }),
       full({ db: db({ signups: 1, coupon_redeemed: 0, stamp_earned: 1 }) }), // 진행 중
     ],
     total: full(),
   });
   const html = renderKeyReport(s, "");
   const tile = (label: string) => html.split('<div class="kpi"').find((t) => t.includes(`<p class="kl">${label}</p>`))!;
-  assert.match(tile("가입"), /<p class="kv">48<small>명/);
-  assert.match(tile("가입"), /class="kd up"[^>]*>▲ 20%<span>전주 대비/);
+  assert.match(tile("가입"), /<p class="kv">80<small>명/);
+  assert.match(tile("가입"), /class="kd up"[^>]*>▲ 100%<span>전주 대비/);
   assert.match(tile("쿠폰 사용"), /class="kd down"[^>]*>▼ 50%/);
   assert.match(tile("스탬프 적립"), /변화 없음/);
-  assert.match(tile("가입"), /기간 합계 89명/);
+  assert.match(tile("가입"), /기간 합계 121명/);
   // 비율은 %p
   assert.match(tile("앱 열기 → 매장 상세"), /변화 없음|%p/);
 });
@@ -81,6 +81,44 @@ test("건수도 견준 두 값의 합이 30 미만이면 색을 빼고 판정 �
   assert.match(tile("쿠폰 사용"), /class="kd" title="건수가 적습니다[^"]*">▼ 14.3%/);
   assert.match(tile("스탬프 적립"), /class="kd up"[^>]*>▲ 150%/); // 12 + 30 = 42 — 판정한다
   assert.doesNotMatch(html, /class="kd down"/);
+});
+
+test("건수 차이가 우연 범위(±2√합) 안이면 판정 유보 — 합이 30 을 넘어도 두세 건 차이는 칠하지 않는다", () => {
+  const s = buildSeries({
+    spec: spec("week", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY, generatedAt: "2026-10-15 12:00",
+    cells: [
+      full({ ga4: ga4({ wau: 100, new_devices: 20 }), db: db({ signups: 16, coupon_redeemed: 50, stamp_earned: 12 }) }),
+      full({ ga4: ga4({ wau: 112, new_devices: 22 }), db: db({ signups: 20, coupon_redeemed: 20, stamp_earned: 12 }) }),
+    ],
+    total: full(),
+  });
+  const html = renderKeyReport(s, "");
+  const tile = (label: string) => html.split('<div class="kpi"').find((t) => t.includes(`<p class="kl">${label}</p>`))!;
+  // 16 → 20: 차이 4, 범위 ±12
+  assert.match(tile("가입"), /class="kd" title="차이가 우연 범위\(±12\) 안입니다">▲ 25%<span>전주 대비 · 판정 유보/);
+  // 100 → 112: 차이 12, 범위 ±29
+  assert.match(tile("활성 기기"), /class="kd" title="차이가 우연 범위\(±29\) 안입니다">▲ 12%/);
+  // 50 → 20: 차이 30, 범위 ±17 — 판정한다
+  assert.match(tile("쿠폰 사용"), /class="kd down"[^>]*>▼ 60%/);
+  assert.match(html, /건수 차이가 우연 범위\(±2√두 값의 합\) 안이거나/);
+});
+
+test("비율이 1%p 미만으로 바뀌면 색을 칠하지 않는다 — 판정 유보는 아니다", () => {
+  const s = buildSeries({
+    spec: spec("week", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY,
+    cells: [full({ ga4: ga4({ open_to_store: 34.3 }) }), full({ ga4: ga4({ open_to_store: 33.9 }) })],
+    total: full(),
+  });
+  const tile = renderKeyReport(s, "").split('<div class="kpi"').find((t) => t.includes('<p class="kl">앱 열기 → 매장 상세</p>'))!;
+  assert.match(tile, /<p class="kd">▼ 0.4%p<span>전주 대비<\/span>/);
+  assert.doesNotMatch(tile, /판정 유보/);
+  // 1%p 이상은 그대로 칠한다
+  const t2 = buildSeries({
+    spec: spec("week", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY,
+    cells: [full({ ga4: ga4({ open_to_store: 34.3 }) }), full({ ga4: ga4({ open_to_store: 33.3 }) })],
+    total: full(),
+  });
+  assert.match(renderKeyReport(t2, "").split('<div class="kpi"').find((t) => t.includes('<p class="kl">앱 열기 → 매장 상세</p>'))!, /class="kd down"[^>]*>▼ 1%p/);
 });
 
 test("처음 온 기기 비중 규칙은 두 값 모두 30 이상일 때만 — 작은 칸끼리의 구성비로 판정을 미루지 않는다", () => {
@@ -132,16 +170,15 @@ test("일 단위 KPI 는 마지막 7일을 묶어 앞 7일과 견준다 — 건�
     spec: spec("day", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY, generatedAt: "2026-10-15 12:00",
     cells: [
       ...Array.from({ length: 7 }, () => day(2, 3, 20, 2, 30, 6)),
-      ...Array.from({ length: 6 }, () => day(3, 0, 10, 1, 30, 9)),
-      day(3, 0, 10, 1, 30, 9),
+      ...Array.from({ length: 7 }, () => day(6, 0, 10, 1, 30, 9)),
     ],
     total: full(),
   });
   const html = renderKeyReport(s, "");
   const tile = (label: string) => html.split('<div class="kpi"').find((t) => t.includes(`<p class="kl">${label}</p>`))!;
-  // 가입 21 vs 14 — 합 35, 판정한다
-  assert.match(tile("가입 · 7일 합"), /<p class="kv">21<small>명/);
-  assert.match(tile("가입 · 7일 합"), /class="kd up"[^>]*>▲ 50%<span>앞 7일 대비/);
+  // 가입 42 vs 14 — 차이 28 이 우연 범위(±15)를 넘는다
+  assert.match(tile("가입 · 7일 합"), /<p class="kv">42<small>명/);
+  assert.match(tile("가입 · 7일 합"), /class="kd up"[^>]*>▲ 200%<span>앞 7일 대비/);
   assert.match(tile("가입 · 7일 합"), /10\/5~10\/11/);
   // 스탬프 0 vs 21 — 합 21, 판정 유보
   assert.match(tile("스탬프 적립 · 7일 합"), /class="kd" title="건수가 적습니다[^"]*">▼ 100%/);
