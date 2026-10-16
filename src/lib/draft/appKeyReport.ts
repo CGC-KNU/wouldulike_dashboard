@@ -25,6 +25,13 @@ export const PREV: Record<RangeUnit, string> = { day: "전날", week: "전주", 
 const MIX_SHIFT = 0.25;
 /** KPI 가 묶는 칸 수 — 일 단위는 7일. 하루치는 요일에 흔들린다(평일과 주말 활성이 크게 다르다, 1016 검토) */
 const KPI_SPAN: Record<RangeUnit, number> = { day: 7, week: 1, month: 1 };
+/** 비율이 이만큼(%p)도 안 바뀌면 색을 칠하지 않는다 — 판정 유보가 아니라 「거의 그대로」(민찬 1016) */
+const RATE_FLAT = 1;
+/**
+ * 건수 차이가 우연 범위 안이면 판정 유보(민찬 1016 「더 엄격하게」). 같은 빈도로 일어나는 일을 두 번 세면
+ * 두 값의 차이는 대략 ±2√(두 값의 합) 안에서 흔들린다(포아송, 약 95%). 그보다 작은 차이는 늘었다/줄었다로 읽지 않는다.
+ */
+const NOISE_Z = 2;
 
 const CSS = `
 .kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:4px}
@@ -163,6 +170,8 @@ const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, k)
  * 색을 빼는 경우(판정 유보) — 주간 보고서와 같은 규칙에 1016 검토 둘을 더했다.
  *  - 비율의 분모가 30 미만
  *  - 건수도 견준 두 값의 합이 30 미만 — 한 자리 수가 0 이 된 것을 「▼ 100%」 빨강으로 칠했다
+ *  - 건수 차이가 우연 범위(±2√합) 안 — 합이 30 을 넘어도 두세 건 차이를 초록·빨강으로 칠하지 않는다
+ * 판정 유보는 아니지만 비율이 1%p 미만으로 바뀐 칸도 색을 칠하지 않는다.
  *  - 활성 기기의 처음 온 기기 비중이 25%p 넘게 달라짐. 단 두 값 모두 30 이상일 때만 — 열 남짓한 칸에서 서너 대 차이로 걸렸다
  */
 export function kpiFacts(s: AppSeries, key: string, label: string, focus?: number): KpiFacts | null {
@@ -192,9 +201,14 @@ export function kpiFacts(s: AppSeries, key: string, label: string, focus?: numbe
   let d = open || !b ? null : delta(r, a.cell, b.cell);
   let hold = "";
   if (d && (a.cell.weak || b?.cell.weak)) hold = "표본이 얕습니다";
-  else if (d && r.kind !== "rate" && a.base !== null && b?.base != null && a.base + b.base < SMALL_SAMPLE) {
-    hold = `건수가 적습니다 — 견준 두 값의 합 ${fmtNum(a.base + b.base, "count")}`;
+  else if (d && r.kind !== "rate" && a.base !== null && b?.base != null) {
+    const sum = a.base + b.base;
+    const noise = NOISE_Z * Math.sqrt(sum);
+    if (sum < SMALL_SAMPLE) hold = `건수가 적습니다 — 견준 두 값의 합 ${fmtNum(sum, "count")}`;
+    // 하루 평균으로 묶은 활성은 기기·일 합으로 재고, 범위는 보이는 값(하루 평균)으로 적는다
+    else if (Math.abs(a.base - b.base) < noise) hold = `차이가 우연 범위(±${fmtNum(kind === "avg" ? Math.round((noise / cur.length) * 10) / 10 : Math.round(noise), kind)}) 안입니다`;
   }
+  if (d && !hold && r.kind === "rate" && a.cell.v !== null && b?.cell.v != null && Math.abs(a.cell.v - b.cell.v) < RATE_FLAT) d = { ...d, tone: "" };
   if (d && !hold && key === "active" && prevIdx) {
     // 설치가 몰린 칸과 그렇지 않은 칸은 「같은 사람들이 더/덜 왔다」로 읽으면 안 된다 — 색을 빼고 다시 온 기기로 적는다
     const nw = seriesRow(s, "new_devices"), rt = seriesRow(s, "returning");
@@ -364,7 +378,7 @@ ${section("전환 · 재방문", "앱을 켠 사람이 매장으로 가고, 다�
   single(s, "stickiness", stick, stickSub, "line"),
 ])}
 <section class="card"><h2>읽는 법</h2><ul class="notes">${[
-    `${kpiNote}${fromTotal.length ? ` 「${fromTotal.join("」 · 「")}」 칸은 칸마다 못 세는 지표라 기간 전체 값입니다.` : ""} 비율의 분모나 견준 두 건수의 합이 30 미만이거나, 처음 온 기기 비중이 크게 달라진 칸은 색을 칠하지 않습니다(판정 유보).`,
+    `${kpiNote}${fromTotal.length ? ` 「${fromTotal.join("」 · 「")}」 칸은 칸마다 못 세는 지표라 기간 전체 값입니다.` : ""} 비율의 분모나 견준 두 건수의 합이 30 미만이거나, 건수 차이가 우연 범위(±2√두 값의 합) 안이거나, 처음 온 기기 비중이 크게 달라진 칸은 색을 칠하지 않습니다(판정 유보). 비율이 1%p 미만으로 바뀐 칸도 색 없이 둡니다.`,
     "**막대 바닥의 얇은 회색 선은 0**, **칸 높이 전체의 옅은 회색 띠는 못 센 칸**입니다. 선이 끊긴 곳도 0 이 아니라 값이 없는 칸입니다(표본 없음 · 못 읽음 · 이벤트 없던 기간). 그래프에 마우스를 올리면 값과 이유가, 「표로 보기」에 숫자가 있습니다.",
     `${anyOpen ? "**옅은 막대**는 아직 끝나지 않은 칸(＊), " : ""}**속 빈 점**은 표본 30 미만인 칸입니다.${anyOpen ? " 비율의 선은 끝나지 않은 칸을 긋지 않습니다." : ""}`,
     "**기기 단위**입니다 — 재설치하면 새 기기로 셉니다. 모든 지표와 정의는 같은 기간의 「지표 원본」 보고서에 있습니다.",
