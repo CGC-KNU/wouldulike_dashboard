@@ -52,21 +52,47 @@ test("KPI 는 마지막으로 끝난 칸과 그 앞 칸 — 진행 중인 칸과
   const s = buildSeries({
     spec: spec("week", "2026-09-28", "2026-10-15"), through: "20261013", today: TODAY, generatedAt: "2026-10-15 12:00",
     cells: [
-      full({ db: db({ signups: 10, coupon_redeemed: 4, stamp_earned: 20 }) }),
-      full({ db: db({ signups: 12, coupon_redeemed: 2, stamp_earned: 20 }) }),
+      full({ db: db({ signups: 40, coupon_redeemed: 40, stamp_earned: 20 }) }),
+      full({ db: db({ signups: 48, coupon_redeemed: 20, stamp_earned: 20 }) }),
       full({ db: db({ signups: 1, coupon_redeemed: 0, stamp_earned: 1 }) }), // 진행 중
     ],
     total: full(),
   });
   const html = renderKeyReport(s, "");
   const tile = (label: string) => html.split('<div class="kpi"').find((t) => t.includes(`<p class="kl">${label}</p>`))!;
-  assert.match(tile("가입"), /<p class="kv">12<small>명/);
+  assert.match(tile("가입"), /<p class="kv">48<small>명/);
   assert.match(tile("가입"), /class="kd up"[^>]*>▲ 20%<span>전주 대비/);
   assert.match(tile("쿠폰 사용"), /class="kd down"[^>]*>▼ 50%/);
   assert.match(tile("스탬프 적립"), /변화 없음/);
-  assert.match(tile("가입"), /기간 합계 23명/);
+  assert.match(tile("가입"), /기간 합계 89명/);
   // 비율은 %p
   assert.match(tile("앱 열기 → 매장 상세"), /변화 없음|%p/);
+});
+
+test("건수도 견준 두 값의 합이 30 미만이면 색을 빼고 판정 유보 — 한 자리 수가 0 이 된 것을 「▼ 100%」 빨강으로 칠하지 않는다", () => {
+  const s = buildSeries({
+    spec: spec("week", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY, generatedAt: "2026-10-15 12:00",
+    cells: [full({ db: db({ signups: 8, coupon_redeemed: 7, stamp_earned: 12 }) }), full({ db: db({ signups: 0, coupon_redeemed: 6, stamp_earned: 30 }) })],
+    total: full(),
+  });
+  const html = renderKeyReport(s, "");
+  const tile = (label: string) => html.split('<div class="kpi"').find((t) => t.includes(`<p class="kl">${label}</p>`))!;
+  assert.match(tile("가입"), /class="kd" title="건수가 적습니다 — 견준 두 값의 합 8">▼ 100%<span>전주 대비 · 판정 유보/);
+  assert.match(tile("쿠폰 사용"), /class="kd" title="건수가 적습니다[^"]*">▼ 14.3%/);
+  assert.match(tile("스탬프 적립"), /class="kd up"[^>]*>▲ 150%/); // 12 + 30 = 42 — 판정한다
+  assert.doesNotMatch(html, /class="kd down"/);
+});
+
+test("처음 온 기기 비중 규칙은 두 값 모두 30 이상일 때만 — 작은 칸끼리의 구성비로 판정을 미루지 않는다", () => {
+  const s = buildSeries({
+    spec: spec("week", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY,
+    cells: [full({ ga4: ga4({ wau: 20, new_devices: 0 }) }), full({ ga4: ga4({ wau: 40, new_devices: 30 }) })],
+    total: full(),
+  });
+  const html = renderKeyReport(s, "");
+  const tile = html.split('<div class="kpi"').find((t) => t.includes('<p class="kl">활성 기기</p>'))!;
+  assert.match(tile, /class="kd up"[^>]*>▲ 100%/);
+  assert.doesNotMatch(tile, /판정 유보/);
 });
 
 test("처음 온 기기 비중이 크게 달라진 칸끼리는 색을 빼고 다시 온 기기로 적는다", () => {
@@ -92,8 +118,65 @@ test("일 단위 — 칸마다 못 세는 복귀는 기간 전체 값을 대신 
   assert.match(tile, /<p class="kv">15<small>%/);
   assert.match(tile, /기간 전체<span>일 단위 없음/);
   assert.match(html, /— 일 단위 없음 · 기간 전체 15%/);
-  assert.match(html, /전날 대비/);
+  // 7일뿐이라 견줄 앞 7일이 없다 — 전날과 견주지 않는다
+  assert.match(html, /앞 7일 값 없음/);
+  assert.doesNotMatch(html, /전날 대비/);
+  assert.match(html, /「가입 1주 후 복귀」 칸은 칸마다 못 세는 지표라 기간 전체 값입니다/);
   assert.doesNotMatch(html, /NaN|undefined/);
+});
+
+test("일 단위 KPI 는 마지막 7일을 묶어 앞 7일과 견준다 — 건수는 합, 활성은 하루 평균, 비율은 분자 ÷ 분모", () => {
+  const day = (signups: number, stamp: number, wau: number, nw: number, sessions: number, detail: number) =>
+    full({ db: db({ signups, coupon_redeemed: 1, stamp_earned: stamp }), ga4: ga4({ wau, new_devices: nw, sessions, sessions_with_detail: detail, open_to_store: Math.round((detail / sessions) * 1000) / 10 }) });
+  const s = buildSeries({
+    spec: spec("day", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY, generatedAt: "2026-10-15 12:00",
+    cells: [
+      ...Array.from({ length: 7 }, () => day(2, 3, 20, 2, 30, 6)),
+      ...Array.from({ length: 6 }, () => day(3, 0, 10, 1, 30, 9)),
+      day(3, 0, 10, 1, 30, 9),
+    ],
+    total: full(),
+  });
+  const html = renderKeyReport(s, "");
+  const tile = (label: string) => html.split('<div class="kpi"').find((t) => t.includes(`<p class="kl">${label}</p>`))!;
+  // 가입 21 vs 14 — 합 35, 판정한다
+  assert.match(tile("가입 · 7일 합"), /<p class="kv">21<small>명/);
+  assert.match(tile("가입 · 7일 합"), /class="kd up"[^>]*>▲ 50%<span>앞 7일 대비/);
+  assert.match(tile("가입 · 7일 합"), /10\/5~10\/11/);
+  // 스탬프 0 vs 21 — 합 21, 판정 유보
+  assert.match(tile("스탬프 적립 · 7일 합"), /class="kd" title="건수가 적습니다[^"]*">▼ 100%/);
+  // 활성 — 하루 평균 10 vs 20, 처음 온 비중은 같다
+  assert.match(tile("활성 기기 · 하루 평균"), /<p class="kv">10<small>명/);
+  assert.match(tile("활성 기기 · 하루 평균"), /class="kd down"[^>]*>▼ 50%/);
+  // 비율 — 63/210 = 30% vs 42/210 = 20%
+  assert.match(tile("앱 열기 → 매장 상세 · 7일"), /<p class="kv">30<small>%/);
+  assert.match(tile("앱 열기 → 매장 상세 · 7일"), /class="kd up"[^>]*>▲ 10%p/);
+  assert.match(html, /위 여섯 칸은 마지막 7일\(10\/5~10\/11\)의 합계/);
+  assert.doesNotMatch(html, /전날 대비|NaN|undefined/);
+});
+
+test("일 단위 쿠폰 사용률은 받은 날부터 7일 — 같은 날 안에 쓴 것만 세지 않는다", () => {
+  const s = buildSeries({
+    spec: spec("day", "2026-10-05", "2026-10-11"), through: "20261013", today: TODAY,
+    cells: Array.from({ length: 7 }, () => full()),
+    total: full(),
+  });
+  const card = renderKeyReport(s, "").split('<div class="ch').find((c) => c.includes("<h3>쿠폰 사용률 (캠페인 외)</h3>"))!;
+  assert.match(card, /받은 뒤 7일 안에 쓰인 비율/);
+  assert.match(card, /<td>10<\/td>/); // 쓰기 퍼널 3/30
+  // 주 단위는 그대로 — 같은 칸 안에
+  const w = buildSeries({ spec: spec("week", "2026-10-05", "2026-10-11"), through: "20261013", today: TODAY, cells: [full()], total: full() });
+  assert.match(renderKeyReport(w, ""), /그 칸에 받은 쿠폰 중 같은 칸 안에 쓰인 비율/);
+});
+
+test("막대 — 0 은 바닥에 얇은 선, 못 센 칸은 회색 띠", () => {
+  const svg = barChart([{ name: "가입", color: SERIES_1, values: [3, 0, null, 2] }], frame(4));
+  assert.equal((svg.match(/height="2" fill="#9CA3AF"/g) ?? []).length, 1); // 0 인 칸 하나 — 계열 색이 아니라 회색
+  assert.equal((svg.match(/fill="#F4F5F8"/g) ?? []).length, 1); // 못 센 칸 하나
+  // 모두 비었으면 띠 대신 말로
+  const none = barChart([{ name: "가입", color: SERIES_1, values: [null, null] }], frame(2));
+  assert.doesNotMatch(none, /#F4F5F8/);
+  assert.match(none, /값이 없습니다/);
 });
 
 test("비율의 선은 끝나지 않은 칸을 긋지 않는다 — 막대는 옅게 남긴다", () => {

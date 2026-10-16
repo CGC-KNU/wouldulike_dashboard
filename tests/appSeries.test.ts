@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildSeries, seriesRow } from "../src/lib/draft/appSeriesData";
 import { renderRawReport, seriesCsv } from "../src/lib/draft/appRawReport";
-import { coupons, db, full, ga4, spec, TODAY, use } from "./_appSeriesFixtures";
+import { coupons, db, full, ga4, line, spec, TODAY, use } from "./_appSeriesFixtures";
 
 /** 앱 지표 기간 × 단위 표 — 칸마다 읽은 값을 지표 행으로(1015). 숫자는 지어낸 것이다. */
 
@@ -91,6 +91,48 @@ test("월 단위 — 이름이 DAU/MAU", () => {
   const s = buildSeries({ spec: spec("month", "2026-08-01", "2026-09-30"), through: "20261013", today: TODAY, cells: [full(), full()], total: full() });
   assert.equal(seriesRow(s, "stickiness")!.label, "DAU/MAU");
   assert.ok(s.caveats.some((c) => c.includes("월 단위의 복귀")));
+});
+
+test("DAU/WAU 의 기간 전체는 끝난 칸의 평균 — 기간을 한 창으로 세면 분모가 기간 전체 고유라 다른 지표가 된다", () => {
+  const s = buildSeries({
+    spec: spec("week", "2026-09-28", "2026-10-15"), through: "20261013", today: TODAY,
+    cells: [full({ ga4: ga4({ dau_wau: 20 }) }), full({ ga4: ga4({ dau_wau: 25 }) }), full({ ga4: ga4({ dau_wau: 60 }) })], // 셋째는 진행 중
+    total: full({ ga4: ga4({ dau_wau: 6.5 }) }),
+  });
+  assert.deepEqual(seriesRow(s, "stickiness")!.total, { v: 22.5, why: "주 2개 평균" });
+  assert.ok(s.caveats.some((c) => c.includes("DAU/WAU 는 끝난 칸의 평균")));
+  // 한 주뿐이면 그 주 값 그대로
+  const one = buildSeries({ spec: spec("week", "2026-10-05", "2026-10-11"), through: "20261013", today: TODAY, cells: [full({ ga4: ga4({ dau_wau: 18 }) })], total: full() });
+  assert.deepEqual(seriesRow(one, "stickiness")!.total, { v: 18, n: 100 });
+});
+
+test("일 단위 끈적함은 기간 한 창이라 이름이 창 길이를 따른다 — 4주를 DAU/WAU 라 부르지 않는다", () => {
+  const name = (start: string, end: string) =>
+    seriesRow(buildSeries({ spec: spec("day", start, end), through: "20261013", today: TODAY, cells: Array.from({ length: Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1 }, () => full()), total: full({ ga4: ga4({ dau_wau: 6.5 }) }) }), "stickiness")!;
+  const four = name("2026-09-14", "2026-10-11");
+  assert.equal(four.label, "DAU/MAU");
+  assert.equal(four.total.v, 6.5); // 일 단위는 칸 값이 없어 기간 한 창으로 센다
+  assert.match(four.note, /주 단위 DAU\/WAU 에만/);
+  assert.equal(name("2026-10-05", "2026-10-11").label, "DAU/WAU");
+  assert.equal(name("2026-09-28", "2026-10-11").label, "DAU ÷ 14일 활성");
+});
+
+test("쓰기 퍼널 7일 안에 사용률 — 받은 쿠폰 중 7일 안에 쓴 비율, 지켜보는 중이면 흐리게", () => {
+  const s = buildSeries({
+    spec: spec("day", "2026-10-09", "2026-10-11"), through: "20261013", today: TODAY,
+    cells: [
+      full({ use: use({ organic: line(40, 6) }) }),
+      full({ use: use({ organic: line(0, 0) }) }),
+      full({ use: use({ organic: line(12, 1), maturing: 5 }) }),
+    ],
+    total: full({ use: use({ organic: line(52, 7), maturing: 5 }) }),
+  });
+  const r = seriesRow(s, "use_organic_rate")!;
+  assert.deepEqual(r.cells[0], { v: 15, n: 40 });
+  assert.deepEqual(r.cells[1], { v: null, why: "발급 없음", n: 0 });
+  assert.deepEqual(r.cells[2], { v: 8.3, n: 12, weak: true, why: "지켜보는 중 5장" });
+  assert.equal(r.total.v, 13.5);
+  assert.equal(r.sub, true);
 });
 
 test("칸 수가 안 맞으면 멈춘다", () => {
