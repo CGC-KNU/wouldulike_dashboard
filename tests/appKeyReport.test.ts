@@ -106,7 +106,7 @@ test("건수 차이가 우연 범위(±2√합) 안이면 판정 유보 — 합�
 test("비율이 1%p 미만으로 바뀌면 색을 칠하지 않는다 — 판정 유보는 아니다", () => {
   const s = buildSeries({
     spec: spec("week", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY,
-    cells: [full({ ga4: ga4({ open_to_store: 34.3 }) }), full({ ga4: ga4({ open_to_store: 33.9 }) })],
+    cells: [full({ ga4: ga4({ open_to_store: 41.2 }) }), full({ ga4: ga4({ open_to_store: 40.8 }) })],
     total: full(),
   });
   const tile = renderKeyReport(s, "").split('<div class="kpi"').find((t) => t.includes('<p class="kl">앱 열기 → 매장 상세</p>'))!;
@@ -115,7 +115,7 @@ test("비율이 1%p 미만으로 바뀌면 색을 칠하지 않는다 — 판정
   // 1%p 이상은 그대로 칠한다
   const t2 = buildSeries({
     spec: spec("week", "2026-09-28", "2026-10-11"), through: "20261013", today: TODAY,
-    cells: [full({ ga4: ga4({ open_to_store: 34.3 }) }), full({ ga4: ga4({ open_to_store: 33.3 }) })],
+    cells: [full({ ga4: ga4({ open_to_store: 41.2 }) }), full({ ga4: ga4({ open_to_store: 40.2 }) })],
     total: full(),
   });
   assert.match(renderKeyReport(t2, "").split('<div class="kpi"').find((t) => t.includes('<p class="kl">앱 열기 → 매장 상세</p>'))!, /class="kd down"[^>]*>▼ 1%p/);
