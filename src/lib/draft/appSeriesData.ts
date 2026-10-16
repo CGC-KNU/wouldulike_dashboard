@@ -325,12 +325,12 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
       },
       {
         key: "banner_ctr", label: "배너 노출 → 클릭", unit: "%", source: "ga4", kind: "rate",
-        note: "노출 이벤트(home_banner_impression, 앱 2.5.8~)를 보낸 기기 중 배너도 누른 기기",
+        note: "트렌드 가로배너(banner_type=promo)의 노출 이벤트(home_banner_impression, 앱 2.5.8~)를 보낸 기기 중 그 배너도 누른 기기. 기획전 세로배너는 뺍니다",
         pick: fromGa4((g) => ((g.banner_view?.seen ?? 0) === 0 ? { v: null, why: "노출 이벤트 없음", n: 0 } : rate(g.banner_ctr, g.banner_view!.seen))),
       },
       {
         key: "banner_to_coupon", label: "배너 클릭 → 쿠폰 사용", unit: "%", source: "ga4", kind: "rate",
-        note: (u) => `배너를 누른 기기 중 7일 안에 쿠폰을 쓴 비율. ${u === "month" ? "그 달 안에서(클릭은 말일 7일 전까지)" : "주 단위는 끝 날 7일 전까지 4주치 클릭 — 주간 보고서와 같은 고정 창"}`,
+        note: (u) => `트렌드 가로배너를 누른 기기 중 7일 안에 쿠폰을 쓴 비율. ${u === "month" ? "그 달 안에서(클릭은 말일 7일 전까지)" : "주 단위는 끝 날 7일 전까지 4주치 클릭 — 주간 보고서와 같은 고정 창"}`,
         pick: notDaily(fromGa4((g) => rate(g.banner_to_coupon, g.banner.clicked))),
       },
     ],

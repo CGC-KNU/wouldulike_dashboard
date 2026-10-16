@@ -99,7 +99,7 @@ export interface Ga4AppMetrics {
   /** 안드로이드 푸시 열기 ÷ 수신, % — 14일 창 */
   push_open: number | null;
   push: { from: string; to: string; received: number; opened_android: number; opened_ios: number };
-  /** 홈 배너를 누른 기기 중 7일 안에 쿠폰을 쓴 비율, % */
+  /** 홈 트렌드 가로배너(banner_type=promo)를 누른 기기 중 7일 안에 쿠폰을 쓴 비율, % */
   banner_to_coupon: number | null;
   banner: { from: string; to: string; clicked: number; redeemed: number };
   /**
@@ -332,6 +332,12 @@ export async function readGa4AppMetrics(
     { pStart, end }
   );
 
+  // 배너 지표 ⑤ · ⑤-2 는 **트렌드 가로배너(banner_type=promo)만** 센다.
+  // 앱이 기획전 세로배너도 같은 이벤트에 banner_type=featured 로 싣기 시작했다(frontend #14, 다음 릴리스).
+  // 거르지 않으면 그 릴리스부터 두 배너가 한 비율로 섞여 지난 칸과 이어 볼 수 없다.
+  // 2.5.0 전 클릭은 banner_type 이 비어 있다 — 그때는 트렌드 배너뿐이라 promo 로 친다.
+  const promoBanner = `IFNULL((SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'banner_type'), 'promo') = 'promo'`;
+
   // ⑤ 배너 클릭 → 쿠폰 사용 — 기기의 첫 배너 클릭 뒤 7일 안에 coupon_redeemed 가 있으면 전환.
   //    모든 클릭이 7일을 다 채우도록 클릭 창을 end-34 ~ end-7 로 잡는다(클릭이 적어 4주치).
   // 클릭 뒤 7일을 다 채워야 해서 클릭 창의 끝을 end-7 로 둔다.
@@ -341,7 +347,7 @@ export async function readGa4AppMetrics(
   const banP = run<{ clicked: number; redeemed: number }>(
     `WITH c AS (
        SELECT user_pseudo_id, MIN(event_timestamp) AS t FROM ${events}
-       WHERE _TABLE_SUFFIX BETWEEN @bStart AND @bEnd AND event_name = 'home_banner_click'
+       WHERE _TABLE_SUFFIX BETWEEN @bStart AND @bEnd AND event_name = 'home_banner_click' AND ${promoBanner}
        GROUP BY user_pseudo_id
      ), r AS (
        SELECT user_pseudo_id, event_timestamp AS t FROM ${events}
@@ -359,10 +365,10 @@ export async function readGa4AppMetrics(
   const viewP = run<{ seen: number; clicked: number }>(
     `WITH i AS (
        SELECT DISTINCT user_pseudo_id FROM ${events}
-       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'home_banner_impression'
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'home_banner_impression' AND ${promoBanner}
      ), c AS (
        SELECT DISTINCT user_pseudo_id FROM ${events}
-       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'home_banner_click'
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'home_banner_click' AND ${promoBanner}
      )
      SELECT COUNT(*) AS seen, COUNTIF(c.user_pseudo_id IS NOT NULL) AS clicked
      FROM i LEFT JOIN c USING (user_pseudo_id)`,
