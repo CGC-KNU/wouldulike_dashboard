@@ -51,3 +51,15 @@ test("보고서 빌더용 fetch 는 같은 토큰으로 읽고, 실패는 null �
   assert.ok(f.calls.every((c) => c.token === "tok"));
   assert.equal(f.calls[0].url, `${BASE}/api/ok/?x=1`);
 });
+
+test("Koyeb 「almost ready」 503 은 기다렸다 다시 묻고, 앱이 낸 503 은 그대로 「확인 못 함」이다(1018)", async () => {
+  let n = 0;
+  const waking = fakeFetch(() => (++n === 1 ? { status: 503, body: "Your service is almost ready!" } : { status: 200 }));
+  assert.equal(await checkCronToken(BASE, "tok", "2026-10-18", waking.impl), "ok");
+  assert.equal(waking.calls.length, 2);
+  assert.equal(waking.calls[1].token, "tok", "다시 보낼 때도 같은 토큰");
+
+  const app503 = fakeFetch(() => ({ status: 503, body: { detail: "db down" } }));
+  assert.equal(await checkCronToken(BASE, "tok", "2026-10-18", app503.impl), "unreachable");
+  assert.equal(app503.calls.length, 1);
+});
