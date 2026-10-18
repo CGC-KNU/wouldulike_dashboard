@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { PreviewableImg } from "@/components/ImagePreview";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
+import RestaurantQrSection from "./RestaurantQrSection";
 
 interface TrendItem {
   id: number;
@@ -73,7 +74,7 @@ function downloadHref(imageUrl: string, title: string) {
 export default function DriveScreen() {
   const [files, setFiles] = useState<DriveFile[] | null>(null);
   const [err, setErr] = useState("");
-  const [filter, setFilter] = useState<Category | "all">("all");
+  const [filter, setFilter] = useState<Category | "all" | "qr">("all");
 
   useEffect(() => {
     Promise.all([
@@ -122,7 +123,7 @@ export default function DriveScreen() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-400">
-          트렌드 · 팝업 · 기획전에 등록된 이미지를 모아 볼 수 있습니다. 카드를 눌러 크게 보거나 다운로드하세요.
+          트렌드 · 팝업 · 기획전에 등록된 이미지와 매장 테이블 QR을 모아 볼 수 있습니다. 카드를 눌러 크게 보거나 다운로드하세요.
         </p>
       </div>
 
@@ -132,6 +133,7 @@ export default function DriveScreen() {
           { key: "trend", label: "트렌드" },
           { key: "popup", label: "팝업" },
           { key: "featured", label: "기획전" },
+          { key: "qr", label: "매장 QR" },
         ] as const).map(({ key, label }) => (
           <button
             key={key}
@@ -145,6 +147,10 @@ export default function DriveScreen() {
         ))}
       </div>
 
+      {filter === "qr" ? (
+        <RestaurantQrSection />
+      ) : (
+        <>
       {err && <p className="text-xs text-red-500">{err}</p>}
 
       {files === null ? (
@@ -181,6 +187,8 @@ export default function DriveScreen() {
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   );

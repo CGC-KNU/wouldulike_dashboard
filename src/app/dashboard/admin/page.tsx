@@ -2287,7 +2287,7 @@ const PRODUCTS: {
     key: "drive",
     name: "Drive",
     subtitle: "파일 저장소",
-    description: "트렌드 · 팝업 · 기획전에 등록된 이미지를 모아보고 다운로드",
+    description: "트렌드 · 팝업 · 기획전 이미지와 매장 테이블 QR을 모아보고 다운로드",
     tabs: [],
     ready: true,
   },
