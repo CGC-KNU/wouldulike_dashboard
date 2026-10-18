@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { koyebFetch } from "./koyeb";
 
 /**
  * 사람 없이 도는 호출(14일차 자동 초안)이 백엔드를 부를 때 쓰는 토큰 (1007).
@@ -18,11 +19,14 @@ export function serviceToken(): string | undefined {
   return store.getStore();
 }
 
-/** 백엔드에서 자동 초안용 토큰을 받는다. 실패하면 null — 크론 토큰이 틀렸거나 백엔드가 아직 이 길을 모른다. */
+/**
+ * 백엔드에서 자동 초안용 토큰을 받는다. 실패하면 null — 크론 토큰이 틀렸거나 백엔드가 아직 이 길을 모른다.
+ * Koyeb 「almost ready」 503 은 koyebFetch 가 다시 보낸다(1018) — 앱에 안 닿은 요청이라 POST 여도 토큰이 두 번 나가지 않는다.
+ */
 export async function mintServiceToken(base: string | undefined, cronToken: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
   if (!base) return null;
   try {
-    const res = await fetchImpl(`${base}/api/probe/auto-token/`, { method: "POST", headers: { "X-CRON-TOKEN": cronToken }, cache: "no-store" });
+    const res = await koyebFetch(`${base}/api/probe/auto-token/`, { method: "POST", headers: { "X-CRON-TOKEN": cronToken }, cache: "no-store" }, { fetchFn: fetchImpl });
     if (!res.ok) return null;
     const d = (await res.json()) as { access?: string };
     return typeof d.access === "string" && d.access ? d.access : null;

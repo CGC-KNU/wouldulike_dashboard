@@ -7,7 +7,12 @@
  * 비밀 값을 두는 곳이 하나 줄어드는 것도 덤이다.
  *
  * 토큰이 틀리면 BigQuery 를 건드리기 전에 끊는다 — 그래서 보고서를 만들기 **전에** 따로 묻는다.
+ *
+ * 백엔드 호출은 koyebFetch 를 거친다(1018) — Koyeb 앞단의 「almost ready」 503 을 그대로 받으면 「확인 못 함」으로 502 가 났다.
+ * Actions 가 미리 깨워도 Vercel(서울)에서 가는 요청은 다른 지역에 닿는다 — 14일차 자동 초안이 10/15~10/18 8번 중 6번 이걸로 멈췄다.
  */
+
+import { koyebFetch } from "./koyeb";
 
 export type CronCheck = "ok" | "denied" | "unreachable";
 
@@ -21,7 +26,7 @@ export function backendWithCronToken(base: string | undefined, token: string, fe
   return async <T,>(path: string, search?: string): Promise<T | null> => {
     if (!base) return null;
     try {
-      const res = await fetchImpl(`${base}${path}${search ? `?${search}` : ""}`, { headers: { "X-CRON-TOKEN": token }, cache: "no-store" });
+      const res = await koyebFetch(`${base}${path}${search ? `?${search}` : ""}`, { headers: { "X-CRON-TOKEN": token }, cache: "no-store" }, { fetchFn: fetchImpl });
       return res.ok ? ((await res.json()) as T) : null;
     } catch {
       return null;
@@ -37,10 +42,10 @@ export function backendWithCronToken(base: string | undefined, token: string, fe
 export async function checkCronToken(base: string | undefined, token: string, today: string, fetchImpl: typeof fetch = fetch): Promise<CronCheck> {
   if (!base) return "unreachable";
   try {
-    const res = await fetchImpl(`${base}/api/dashboard/admin/app-stats/period/?start=${today}&end=${today}`, {
+    const res = await koyebFetch(`${base}/api/dashboard/admin/app-stats/period/?start=${today}&end=${today}`, {
       headers: { "X-CRON-TOKEN": token },
       cache: "no-store",
-    });
+    }, { fetchFn: fetchImpl });
     if (res.ok) return "ok";
     if (res.status === 401 || res.status === 403) return "denied";
     return "unreachable";

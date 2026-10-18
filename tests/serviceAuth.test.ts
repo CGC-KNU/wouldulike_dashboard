@@ -39,6 +39,15 @@ test("mintServiceToken — 403·연결 실패·주소 없음은 null", async () 
   assert.equal(await mintServiceToken(undefined, "x"), null);
 });
 
+test("mintServiceToken — Koyeb 「almost ready」 503 은 다시 보낸다(1018)", async () => {
+  let n = 0;
+  const f = (async () => (++n === 1
+    ? new Response("Your service is almost ready!", { status: 503 })
+    : new Response(JSON.stringify({ access: "jwt" }), { status: 200 }))) as unknown as typeof fetch;
+  assert.equal(await mintServiceToken("https://be.test", "cron", f), "jwt");
+  assert.equal(n, 2);
+});
+
 test("manualMissing — 캐러셀·큐레이션일 때만 그 항목을 묻고, 연령은 늘 묻는다", () => {
   assert.deepEqual(manualMissing(null, { carousel: true, curation: true }), ["썸네일 장 · 가게 장 좋아요 수", "18~24세 · 25~34세 비중", "함께 소개한 가게 수"]);
   assert.deepEqual(manualMissing(null, { carousel: false, curation: false }), ["18~24세 · 25~34세 비중"]);
