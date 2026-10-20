@@ -2,9 +2,9 @@
 
 import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconSearch, IconX, IconArrowLeft, IconCopy, IconExternalLink, IconPhone, IconPlus } from "@tabler/icons-react";
+import { IconSearch, IconX, IconArrowLeft, IconBrandInstagram, IconCopy, IconExternalLink, IconPhone, IconPlus } from "@tabler/icons-react";
 import {
-  GRADE_COLOR, KIND_LABEL, finalGrade, isNew, kakaoSearch, matchTies, naverSearch, normName, shortCampus, years,
+  GRADE_COLOR, KIND_LABEL, finalGrade, igRecent, isNew, kakaoSearch, matchTies, naverSearch, normName, shortCampus, years,
   type LeadRow, type PartnerRow, type Tie,
   type CampusItem, type CampusesDoc, type Grade, type Obs, type ObsDoc, type Store, type StoresDoc,
 } from "@/lib/hubble";
@@ -245,6 +245,17 @@ function TieChip({ t }: { t?: Tie }) {
 
 const chip = (on: boolean) => `px-2 py-0.5 rounded-full border text-[11px] ${on ? "bg-navy text-white border-navy" : "border-black/10 text-gray-600 bg-white hover:border-navy/40"}`;
 
+/** 인스타 한 줄 — 팔로워 · 마지막 게시(비즈니스 계정만 Meta 로 읽힘). 개인 계정은 핸들만 */
+function IgLine({ ig }: { ig: NonNullable<Store["ig"]> }) {
+  const days = ig.last_post ? Math.floor((Date.now() - new Date(`${ig.last_post}T00:00:00+09:00`).getTime()) / 864e5) : null;
+  return (
+    <p className="text-[11.5px] text-gray-600 mt-1.5">
+      인스타 {ig.kind === "비즈니스" ? <>팔로워 <b className="tabular-nums">{(ig.followers ?? 0).toLocaleString()}</b> · 마지막 게시 {ig.last_post ? <b className={days !== null && days <= 30 ? "text-green-700" : ""}>{ig.last_post}{days !== null ? ` (${days}일 전)` : ""}</b> : "없음"}</> : <span className="text-amber-700">{ig.kind}</span>}
+      <span className="text-gray-400"> · {ig.checked} 확인</span>
+    </p>
+  );
+}
+
 function GradeChip({ g }: { g: Grade }) {
   return <span className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1 rounded text-[10.5px] font-extrabold" style={{ background: GRADE_COLOR[g], color: g === "C" ? "#3A3D4A" : "#fff" }}>{g}</span>;
 }
@@ -256,12 +267,13 @@ function CampusPanel({ c, doc, ties, obs, onClose, onPick }: { c: CampusItem; do
   const [kind, setKind] = useState<"all" | Store["k"]>("all");
   const [hideChain, setHideChain] = useState(true);
   const [tieView, setTieView] = useState<"all" | "hide" | "only">("all");
+  const [igView, setIgView] = useState<"all" | "has" | "recent">("all");
   const [limit, setLimit] = useState(60);
   const rows = useMemo(() => {
-    const list = (doc?.stores ?? []).filter((s) => (kind === "all" || s.k === kind) && (!hideChain || !s.ch || ties[s.id]?.kind === "partner") && (tieView === "all" || (tieView === "hide" ? !ties[s.id] : !!ties[s.id]))).map((s) => ({ s, f: finalGrade(s, obs[s.id]) }));
+    const list = (doc?.stores ?? []).filter((s) => (kind === "all" || s.k === kind) && (!hideChain || !s.ch || ties[s.id]?.kind === "partner") && (tieView === "all" || (tieView === "hide" ? !ties[s.id] : !!ties[s.id])) && (igView === "all" || (igView === "has" ? !!s.ig : igRecent(s)))).map((s) => ({ s, f: finalGrade(s, obs[s.id]) }));
     list.sort((a, b) => sort === "fit" ? b.f.sc - a.f.sc || a.s.d - b.s.d : sort === "dist" ? a.s.d - b.s.d : (years(a.s.o) ?? 99) - (years(b.s.o) ?? 99));
     return list;
-  }, [doc, obs, sort, kind, hideChain, ties, tieView]);
+  }, [doc, obs, sort, kind, hideChain, ties, tieView, igView]);
   const nPartner = Object.values(ties).filter((t) => t.kind === "partner").length, nLead = Object.values(ties).length - nPartner;
   const dist = useMemo(() => {
     const m: Record<Grade, number> = { S: 0, A: 0, B: 0, C: 0 };
@@ -270,6 +282,7 @@ function CampusPanel({ c, doc, ties, obs, onClose, onPick }: { c: CampusItem; do
   }, [doc, obs]);
   const chains = (doc?.stores ?? []).filter((s) => s.ch).length;
   const fresh = (doc?.stores ?? []).filter((s) => isNew(s.o)).length;
+  const igs = (doc?.stores ?? []).filter((s) => s.ig), igLive = igs.filter((s) => igRecent(s)).length;
   const lanes = useMemo(() => {
     const m = new Map<string, number>();
     for (const s of doc?.stores ?? []) { const road = (s.a.match(/([가-힣0-9]+(?:로|길))\s/) ?? [])[1]; if (road) m.set(road, (m.get(road) ?? 0) + 1); }
@@ -300,13 +313,15 @@ function CampusPanel({ c, doc, ties, obs, onClose, onPick }: { c: CampusItem; do
               {([["all", "전체"], ["일", "음식점"], ["휴", "카페 · 분식"], ["제", "제과"]] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} className={chip(kind === k)}>{l}</button>)}
               <button type="button" onClick={() => setHideChain((v) => !v)} className={chip(hideChain)}>프랜차이즈 숨김</button>
               <button type="button" onClick={() => setTieView((v) => v === "all" ? "hide" : v === "hide" ? "only" : "all")} className={chip(tieView !== "all")}>{tieView === "hide" ? "파트너 · 후보 숨김" : tieView === "only" ? "파트너 · 후보만" : "파트너 · 후보 포함"}</button>
+              <button type="button" onClick={() => setIgView((v) => v === "has" ? "all" : "has")} className={chip(igView === "has")}>인스타 있음</button>
+              <button type="button" onClick={() => setIgView((v) => v === "recent" ? "all" : "recent")} className={chip(igView === "recent")}>최근 30일 게시</button>
             </div>
             <ul>
               {rows.slice(0, limit).map(({ s, f }) => (
                 <li key={s.id}>
                   <button type="button" onClick={() => onPick(s.id)} className="w-full text-left flex justify-between items-center gap-2 py-2 border-b border-black/[0.05] hover:bg-navy/[0.03]">
                     <span className="min-w-0"><b className="text-gray-900">{s.n}</b>
-                      <span className="block text-[11px] text-gray-400 truncate">{s.c || KIND_LABEL[s.k]} · {s.gn ? `${s.gn} ` : ""}{s.d}m · {isNew(s.o) ? "NEW" : years(s.o) !== null ? `${years(s.o)}년` : "—"}{s.ch ? ` · ${s.ch}` : ""}{obs[s.id]?.grade ? " · 팀 관찰" : ""}</span></span>
+                      <span className="block text-[11px] text-gray-400 truncate">{s.c || KIND_LABEL[s.k]} · {s.gn ? `${s.gn} ` : ""}{s.d}m · {isNew(s.o) ? "NEW" : years(s.o) !== null ? `${years(s.o)}년` : "—"}{s.ch ? ` · ${s.ch}` : ""}{s.ig ? ` · 인스타${igRecent(s) ? "(30일 게시)" : ""}` : ""}{obs[s.id]?.grade ? " · 팀 관찰" : ""}</span></span>
                     <span className="flex items-center gap-1"><TieChip t={ties[s.id]} /><GradeChip g={f.g} /></span>
                   </button>
                 </li>
@@ -320,6 +335,7 @@ function CampusPanel({ c, doc, ties, obs, onClose, onPick }: { c: CampusItem; do
             <li>업종: {Object.entries(c.kinds).map(([k, v]) => `${k} ${v}`).join(" · ")}</li>
             <li>이미 파트너 {nPartner}곳 · 후보 {nLead}곳 (ASTRO 매장 · 후보 이름 대조 — 지점 꼬리에 캠퍼스가 있으면 그 상권만)</li>
             <li>90일 안 새로 연 곳: {fresh}곳 · 프랜차이즈(이름 대조): {chains}곳 ({Math.round((chains / Math.max(1, c.n)) * 100)}%)</li>
+            <li>인스타 연결: {igs.length}곳 · 최근 30일 게시 {igLive}곳 <span className="text-gray-400">(네이버 플레이스에 매장이 건 링크만 — {igs.length ? `확인 ${igs.map((s) => s.ig!.checked).sort().pop()}` : "아직 안 모은 상권"})</span></li>
             <li>매장이 몰린 길: {lanes.map(([r, n]) => `${r} ${n}`).join(" · ") || "—"}</li>
             <li className="text-[11.5px] text-gray-400 pt-2">팀 메모 · 상권 메모는 다음 업데이트(이번 주 변동 탭과 함께).</li>
           </ul>
@@ -401,8 +417,10 @@ function StorePanel({ s, campus, tie, onAdded, obs, actor, onBack, onSave, onOpe
         <div className="flex flex-wrap gap-1.5 mt-2">
           <a href={kakaoSearch(s)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-black/10 text-[12px] font-semibold hover:border-navy/40"><IconExternalLink size={13} /> 카카오맵</a>
           <a href={naverSearch(s)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-black/10 text-[12px] font-semibold hover:border-navy/40"><IconExternalLink size={13} /> 네이버지도</a>
+          {s.ig && <a href={s.ig.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-black/10 text-[12px] font-semibold hover:border-navy/40"><IconBrandInstagram size={13} /> @{s.ig.handle}</a>}
           {s.t && <a href={`tel:${s.t}`} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-black/10 text-[12px] font-semibold"><IconPhone size={13} /> {s.t}</a>}
         </div>
+        {s.ig && <IgLine ig={s.ig} />}
         <p className="text-[10.5px] text-gray-400 mt-1.5">평점 · 리뷰 · 메뉴 · 영업시간은 카카오맵 · 네이버지도에서 봅니다(약관상 허블에 저장하지 않음).</p>
         <div className="flex gap-4 mt-3 text-[12.5px] border-b border-black/[0.06]" role="tablist">
           {([["info", "특이사항"], ["fit", "적합도"], ["obs", "팀 관찰"]] as const).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`pb-1.5 ${tab === k ? "text-navy font-bold border-b-2 border-navy" : "text-gray-400"}`}>{l}</button>)}

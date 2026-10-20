@@ -56,7 +56,21 @@ export interface Store {
   dn: number;   // 반경 약 50m 매장 수(골목 집적도)
   g: Grade; sc: number;
   p: { indep: number; dense: number; dist: number; new: number; age?: number; kind?: number };   // v1 은 age, v2(1011) 는 kind
+  ig?: Ig;      // 인스타그램(1020) — 매장이 네이버 플레이스에 스스로 건 링크만. 없으면 못 찾은 것(없다는 뜻은 아님)
 }
+
+/** 인스타 — 백엔드 scripts/hubble/ig_enrich.py 가 모아 주간 갱신이 붙인다. 팔로워 · 마지막 게시는 Meta business_discovery(비즈니스 계정만) */
+export interface Ig {
+  handle: string;
+  url: string;
+  kind: "비즈니스" | "개인 계정(확인 필요)" | "확인 실패" | "미확인";
+  followers?: number;
+  last_post?: string;   // YYYY-MM-DD(KST)
+  checked: string;      // 확인한 날
+}
+/** 최근 days 일 안에 게시 — 확인한 날이 아니라 오늘 기준 */
+export const igRecent = (s: Pick<Store, "ig">, days = 30) =>
+  Boolean(s.ig?.last_post) && s.ig!.last_post! >= new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
 
 export interface StoresDoc { campus: string; built_at: string; fit_version: number; stores: Store[] }
 
