@@ -89,3 +89,13 @@ export function MetricBox({ label, value, sub }: { label: string; value: ReactNo
     </div>
   );
 }
+
+/**
+ * 「앱 회차 없음」 경고를 띄울 때인가 — 추첨(그날 11:00 KST) **12시간 전부터 마감 때까지**(1022 민찬).
+ * 지난 회차는 안 띄운다. 응모는 마감 3일 전에 열려야 하지만, 그보다 일찍부터 띄우면 아직 급하지 않은 회차까지 경고로 남아서다.
+ */
+export const MISSING_WARN_HOURS = 12;
+export function missingAppWarnNow(date: string, nowMs: number = Date.now()): boolean {
+  const draw = Date.parse(`${date}T11:00:00+09:00`);
+  return nowMs < draw && nowMs >= draw - MISSING_WARN_HOURS * 3600_000;
+}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { periodLocal } from "./ui";
 import { fetchJson } from "./fetchJson";
+import { missingAppWarnNow } from "../probe/kit";
 import { LEAD_OPEN_STAGES } from "@/lib/draft/types";
 
 /** 정가표 — 스팟 금액을 셀 때만 쓴다. 값을 적어 둔 건이면 그걸 우선한다(0원 = 무료도 적어 둔 값이다). */
@@ -97,12 +98,10 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
         if (quality?.counts || ins?.insights || mil?.rounds) {
           // 보류는 이번 달 회차만 — 회차 표에는 지난달(9월)도 같이 온다. Probe 홈 「이번 달 보류」·마일리지 화면과 같은 기준 (1013)
           const held = ((mil?.rounds ?? []) as { date: string; result: string }[]).filter((r) => r.date.startsWith(period) && r.result === "held").length;
-          // 마일리지 배지(1022 목업) — 「지금 할 수 있는 일」만 센다: 앱에 만들어야 할 회차. 응모는 마감 3일 전에 열린다
+          // 마일리지 배지(1022 목업) — 「지금 할 수 있는 일」만 센다: 추첨 12시간 안에 들었는데 앱에 없는 회차(지난 회차는 뺀다)
           const progress = mil?.progress as Record<string, unknown> | null | undefined;
-          const todayIso = `${period}-${String(new Date().getDate()).padStart(2, "0")}`;
-          const dayMs = 86_400_000;
           const missingApp = progress
-            ? ((mil?.rounds ?? []) as { date: string; result: string }[]).filter((r) => r.result === "scheduled" && !progress[r.date] && (Date.parse(`${r.date}T00:00:00Z`) - 3 * dayMs - Date.parse(`${todayIso}T00:00:00Z`)) / dayMs <= 7).length
+            ? ((mil?.rounds ?? []) as { date: string; result: string }[]).filter((r) => r.result === "scheduled" && !progress[r.date] && missingAppWarnNow(r.date)).length
             : undefined;
           out.probe = { high: quality?.counts?.high ?? 0, due: ((ins?.insights ?? []) as { due?: boolean }[]).filter((i) => i.due).length, held, missingApp };
         }

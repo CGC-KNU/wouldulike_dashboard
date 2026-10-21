@@ -7,7 +7,7 @@ import { isFailing, isSilent } from "@/lib/draft/storeMetrics";
 import type { QualityIssue, StoreActivity, StoreMetric, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, Notice, PageHeader, Skeleton, todayLocal } from "../_shared/ui";
 import { fetchJson } from "../_shared/fetchJson";
-import { Unknown, daysBetween, md, openDateOf, ownerOf, weekdayOf } from "./kit";
+import { Unknown, md, missingAppWarnNow, openDateOf, ownerOf, weekdayOf } from "./kit";
 
 /**
  * Probe · 홈 — 「오늘 할 일」(1022 목업, 기획팀 검토 D2).
@@ -97,7 +97,7 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
 
     // ── 앱 회차 없음 — 응모가 7일 안에 열려야 하는데 앱에 회차가 없다. 앱 기록을 못 읽으면 알 수 없어 줄을 만들지 않는다
     if (progress) {
-      for (const r of rounds.filter((x) => x.result === "scheduled" && !progress[x.date] && daysBetween(today, openDateOf(x.date)) <= 7)) {
+      for (const r of rounds.filter((x) => x.result === "scheduled" && !progress[x.date] && missingAppWarnNow(x.date))) {
         const od = openDateOf(r.date);
         T.push({ icon: <IconGift size={16} />, title: `앱 회차 없음 ${md(r.date)}(${r.weekday})`, status: <Chip tone="amber">확인 필요</Chip>, meta: `${md(od)}(${weekdayOf(od)})에 응모가 열려야 합니다 — 앱에 회차를 만들어야 학생이 응모할 수 있습니다`, label: "만들기", go: `probe-mileage?open=${r.id}`, todo: true });
       }
