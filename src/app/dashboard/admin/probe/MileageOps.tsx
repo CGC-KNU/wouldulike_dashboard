@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconAlertTriangle, IconBrandSlack, IconExternalLink, IconRefresh } from "@tabler/icons-react";
-import { PanelSection, Unknown, daysBetween, md, openDateOf, weekdayOf } from "./kit";
+import { PanelSection, Unknown, daysBetween, md, missingAppWarnNow, openDateOf, weekdayOf } from "./kit";
 import { Button, Card, Chip, DraftBadge, Field, FilterPills, Input, Kpi, Notice, PageHeader, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, rowClickable, todayLocal, type ChipTone } from "../_shared/ui";
 
 /**
@@ -55,7 +55,7 @@ export default function MileageOps({ actor }: { actor: string }) {
   /** 앱 기록을 못 읽었는가 — 그러면 응모 · 당첨 · 식사권 칸은 0 이 아니라 모름 */
   const lost = !loading && data !== null && !progress;
   // 응모가 7일 안에 열려야 하는데 앱에 회차가 없는 예정 회차. 앱 기록을 못 읽으면 알 수 없어 빈 목록
-  const missing = useMemo(() => (progress ? rounds.filter((r) => r.result === "scheduled" && !progress[r.date] && daysBetween(today, openDateOf(r.date)) <= 7) : []), [rounds, progress, today]);
+  const missing = useMemo(() => (progress ? rounds.filter((r) => r.result === "scheduled" && !progress[r.date] && missingAppWarnNow(r.date)) : []), [rounds, progress, today]);
   const missingIds = new Set(missing.map((r) => r.id));
   const open = rounds.find((r) => r.id === openId) ?? null;
 
