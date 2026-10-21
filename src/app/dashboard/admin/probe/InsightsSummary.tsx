@@ -1,8 +1,7 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconRefresh } from "@tabler/icons-react";
-import { Button, Card, Empty, Kpi, Notice, PanelSection, Skeleton, Table, Td, Th } from "../_shared/ui";
+import { Card, Empty, Kpi, Notice, Skeleton, Table, Td, Th, periodLocal } from "../_shared/ui";
 import type { SummaryPayload, Trend, TrendMonth, TrendPoint } from "@/app/api/probe/insights/summary/route";
 import { DOT_MONTHS, axisTicks, compactKo, dayRange, monthBounds, monthTick, niceMax } from "@/lib/draft/insightsTrend";
 
@@ -27,10 +26,12 @@ const COLOR: Record<string, string> = { carousel: "var(--chart-carousel)", reel:
 const n = (v: number | null | undefined) => (typeof v === "number" ? v.toLocaleString() : "—");
 const md = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
-export default function InsightsSummary() {
+export default function InsightsSummary({ reloadKey = 0, onLoading }: { reloadKey?: number; onLoading?: (v: boolean) => void }) {
   const [data, setData] = useState<SummaryPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** 계정 도달 7일 — null 은 읽는 중 · false 는 못 읽음(0 이 아니라 모름) */
+  const [reach, setReach] = useState<{ now: number | null; ago: number | null } | null | false>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -41,13 +42,17 @@ export default function InsightsSummary() {
       .catch((e: Error) => { setData(null); setError(e.message); })
       .finally(() => setLoading(false));
   }, []);
-  useEffect(load, [load]);
+  useEffect(load, [load, reloadKey]);
+  useEffect(() => { onLoading?.(loading); }, [loading, onLoading]);
+  useEffect(() => {
+    fetch("/api/probe/insights/reach")
+      .then(async (r) => (r.ok ? r.json() : Promise.reject(new Error("reach"))))
+      .then((d: { now?: { reach: number | null }; ago?: { reach: number | null } }) => setReach(d.now ? { now: d.now.reach ?? null, ago: d.ago?.reach ?? null } : false))
+      .catch(() => setReach(false));
+  }, [reloadKey]);
 
   return (
-    <PanelSection
-      title="인스타 성과 추이"
-      actions={<Button size="sm" icon={<IconRefresh />} onClick={load} disabled={loading}>다시 읽기</Button>}
-    >
+    <div>
       {loading && !data ? (
         <Skeleton rows={4} />
       ) : error ? (
@@ -59,14 +64,20 @@ export default function InsightsSummary() {
       ) : (
         // 다시 읽는 동안 그림을 지우지 않고 흐리게 둔다 — 자리가 튀지 않게
         <div className={`transition-opacity ${loading ? "opacity-60" : ""}`}>
-          <TrendView trend={data.trend} />
+          <TrendView trend={data.trend} reach={reach} />
         </div>
       )}
-    </PanelSection>
+    </div>
   );
 }
 
-function TrendView({ trend }: { trend: Trend }) {
+/** 형식마다 N일차를 제때 잰 게시물이 5건 이상인 가장 최근 달의 중앙값 — 아래 점 그림 · 월별 표와 같은 값. 릴스와 카드뉴스는 조회 규모가 달라 합치지 않는다 */
+function medianOf(months: TrendMonth[], f: string): { label: string; n: number; v: number } | null {
+  const m = [...months].reverse().find((x) => x.by_format[f]?.views_median != null);
+  return m ? { label: m.label, n: m.by_format[f].timely, v: m.by_format[f].views_median as number } : null;
+}
+
+function TrendView({ trend, reach }: { trend: Trend; reach: { now: number | null; ago: number | null } | null | false }) {
   const { recent, months, points, counts, day } = trend;
   const present = FORMATS.filter((f) => months.some((m) => m.by_format[f]));
 
@@ -81,15 +92,16 @@ function TrendView({ trend }: { trend: Trend }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-2.5">
-        <Kpi label="최근 4주 발행" value={recent.posts} suffix="건" hint={recent.by_format.image ? `기타 ${recent.by_format.image}건 포함` : `오늘까지 ${recent.days}일`} />
-        <Kpi label="릴스" value={recent.by_format.reel ?? 0} suffix="건" hint="최근 4주" />
-        <Kpi label="카드뉴스" value={recent.by_format.carousel ?? 0} suffix="건" hint="최근 4주" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <Kpi label="최근 4주 발행" value={recent.posts} suffix="건" hint={`카드뉴스 ${recent.by_format.carousel ?? 0} · 릴스 ${recent.by_format.reel ?? 0}${recent.by_format.image ? ` · 기타 ${recent.by_format.image}` : ""}`} />
+        <Kpi label="계정 도달 (7일)" value={reach === null ? "…" : reach === false || reach.now === null ? "미확인" : reach.now.toLocaleString()} suffix={reach && reach.now !== null ? "명" : undefined}
+          hint={reach === null ? "읽는 중" : reach === false || reach.now === null ? "Meta 가 값을 주지 않았습니다 — 0 이 아니라 모름" : reach.ago ? `4주 전 7일 ${reach.ago.toLocaleString()}명 대비 ${reach.now >= reach.ago ? "+" : ""}${Math.round(((reach.now - reach.ago) / reach.ago) * 1000) / 10}% · 같은 사람은 한 번` : "같은 사람은 한 번"} />
+        <SplitKpi label={`${day}일차 조회 중앙값 · 형식별`} items={["carousel", "reel"].map((f) => { const m = medianOf(months, f); return { label: FORMAT_KO[f], color: COLOR[f], value: m ? m.v : null, sub: m ? `${m.label} · ${m.n}건` : `${day}일차 5건부터` }; })} />
       </div>
 
       <Card
         title="월별 발행 수"
-        description={`${months[0]?.label ?? ""} ~ ${months[months.length - 1]?.label ?? ""}${trend.archived_excluded ? ` · 인스타에서 지운 ${trend.archived_excluded}건은 뺐습니다` : ""}`}
+        description={`${months[0]?.label ?? ""} ~ ${months[months.length - 1]?.label ?? ""}${trend.archived_excluded ? ` · 인스타에서 지운 ${trend.archived_excluded}건은 뺐습니다` : ""} · 이번 달은 오늘까지라 옅게`}
         actions={<Legend items={present.map((f) => ({ key: f, label: FORMAT_KO[f], swatch: <span className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: COLOR[f] }} /> }))} />}
       >
         {months.length ? <VolumeChart months={months} formats={present} /> : <Empty title="발행된 게시물이 없습니다" />}
@@ -124,6 +136,24 @@ function TrendView({ trend }: { trend: Trend }) {
       </Card>
 
       <MonthTable months={months} formats={present} day={day} />
+    </div>
+  );
+}
+
+/** 한 카드에 두 값 — 릴스 · 카드뉴스를 합치지 않고 나란히 */
+function SplitKpi({ label, items }: { label: string; items: { label: string; color: string; value: number | null; sub: string }[] }) {
+  return (
+    <div className="bg-white rounded-[18px] border border-black/[0.05] shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-24px_rgba(5,0,114,0.25)] px-4 py-3.5 min-w-0">
+      <p className="text-[12px] font-semibold text-gray-500 truncate">{label}</p>
+      <div className="grid grid-cols-2 gap-3 mt-2">
+        {items.map((it) => (
+          <div key={it.label} className="min-w-0">
+            <p className="flex items-center gap-1.5 text-[12px] text-gray-600"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: it.color }} aria-hidden />{it.label}</p>
+            <p className="text-[28px] font-bold leading-none mt-1.5 tracking-[-0.03em] tabular-nums text-gray-900">{it.value === null ? <span className="text-[13px] font-medium text-gray-500">미확인</span> : <>{it.value.toLocaleString()}<span className="text-[13px] font-semibold text-gray-500 ml-1">회</span></>}</p>
+            <p className="text-[12px] text-gray-500 mt-1 truncate">{it.sub}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -176,7 +206,7 @@ function VolumeChart({ months, formats }: { months: TrendMonth[]; formats: reado
                 {m.posts > 0 && (
                   // 아래부터 카드뉴스 → 릴스 → 기타. 칸 사이 2px 는 바탕색 틈이다(테두리가 아니라)
                   <span
-                    className={`flex flex-col-reverse gap-[2px] w-[calc(100%-4px)] max-w-[24px] transition-opacity ${hover !== null && hover !== i ? "opacity-50" : ""}`}
+                    className={`flex flex-col-reverse gap-[2px] w-[calc(100%-4px)] max-w-[24px] transition-opacity ${m.period === periodLocal() || (hover !== null && hover !== i) ? "opacity-50" : ""}`}
                     style={{ height: (m.posts / top) * VOL_H }}
                   >
                     {parts.map((f, k) => (

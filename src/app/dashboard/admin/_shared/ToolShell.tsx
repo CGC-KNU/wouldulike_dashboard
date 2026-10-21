@@ -31,6 +31,7 @@ import {
   IconHome,
   IconLayoutGrid,
   IconBell,
+  IconBrandInstagram,
   IconMessage2,
   IconMessageChatbot,
   IconMovie,
@@ -61,6 +62,8 @@ import { focusRing } from "./ui";
 export interface ToolNavItem {
   key: string;
   label: string;
+  /** 묶음 이름만 적는 줄 — 화면이 아니다. 좁은 화면(가로 메뉴줄)에서는 숨긴다. Probe 「운영 / 지표」(1022 목업) */
+  heading?: boolean;
   /** 위에 가는 선을 하나 긋는다 — Papillon 목업의 묶음 구분을 그대로 살린다. */
   sepBefore?: boolean;
   /**
@@ -111,6 +114,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-quality": IconAlertTriangle,
   "probe-mileage": IconGift,
   "probe-reports": IconFileDescription,
+  "probe-insta": IconBrandInstagram,
   "hubble-map": IconMap2,
   "hubble-watch": IconTimelineEvent,
   "orbit-board": IconLayoutKanban,
@@ -226,6 +230,7 @@ export default function ToolShell({
           {/* 좁은 화면에서는 탭이 가로줄이 된다 — 오른쪽에 더 있다는 그늘을 둔다 (0914) */}
           <ul className="flex md:flex-col gap-0.5 overflow-x-auto md:overflow-visible bg-[linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgba(16,24,40,0.10),rgba(16,24,40,0)),linear-gradient(to_left,rgba(16,24,40,0.10),rgba(16,24,40,0))] bg-[length:22px_100%,22px_100%,14px_100%,14px_100%] bg-[position:left_center,right_center,left_center,right_center] bg-no-repeat [background-attachment:local,local,scroll,scroll] md:bg-none">
             {navItems.map((n) => {
+              if (n.heading) return <li key={n.key} role="presentation" className="hidden md:block px-3 pt-3 pb-1 text-[11px] font-semibold text-gray-500">{n.label}</li>;
               if (n.children?.length) {
                 const inside = n.children.some((c) => c.key === activeKey);
                 const open = inside || (groups[n.key] ?? true);

@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconBrandInstagram, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
+import { IconBrandInstagram, IconBrandSlack, IconCheck, IconCopy, IconDownload, IconExternalLink, IconFileDescription, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { METRIC_LABEL, METRIC_SOURCE, VERDICT_CLASS, campusTarget, cardValue, checkText, day7Line, hasCurationMarker, ownerNumbers, reportAllText, slideParagraph, stripChannelCompare } from "@/lib/draft/report";
 import { ageShare, manualMissing, parseManual, slideShare } from "@/lib/draft/reportManual";
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
-import InsightsSummary from "./InsightsSummary";
+import MonthlyReports from "./MonthlyReports";
+import { TagChip, Unknown, md, takeParam } from "./kit";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Table, Td, Textarea, Th, agoLabel, rowClickable, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 
 /**
  * Probe · 매장 리포트 — 게시물이 들어오는 곳부터 점주에게 리포트가 나가는 곳까지 한 화면.
@@ -16,10 +17,13 @@ import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, 
  * 민열님 0913: "마케팅(Papillon)팀이 올린 제휴 매장 카드뉴스를 전달받아(연동), 시기와 상관없이(D+7 · D+14 는 목표)
  * 원할 때 애딧 리포트처럼 보고서를 만들 수 있으면. 홍보 인사이트와 매장 리포트가 따로 있을 필요가 없다."
  *
- * 위: **Papillon 에서 온 게시물** — 발행 게시물 중 제휴 매장 이름이 들어간 것(이름 매칭). 행마다 "만들기".
- * 아래: **리포트** — 만든 것의 편집실. 지표 입력·문구 수정 → 승인 한 번(금지 표현·지어낸 숫자 검사, 1007) → #ops-partner 에 PNG·HTML → 카톡은 사람.
+ * 1022 목업: 게시물 표와 리포트 표를 **한 표**로 합쳤다 — 한 줄이 게시물 하나이고 「단계」(만들 때 › 입력·승인 › 전송 대기 › 보냄)와
+ * 「다음 행동」 버튼이 있다. 행을 누르면 게시물 패널이나 리포트 편집 패널이 열린다. 인스타 성과 추이는 「인스타 추이」 화면으로 뗐고,
+ * 월간 보고서는 두 번째 탭이다.
+ * 만든 것의 편집실: 지표 입력·문구 수정 → 승인 한 번(금지 표현·지어낸 숫자 검사, 1007) → #ops-partner 에 PNG·HTML → 카톡은 사람 → 「카톡 보냄 표시」.
  * (0920 민찬: 링크 대신 파일로 보낸다. 1013: 링크 발급·「승인 → 최종 승인」 두 단계 동작은 걷어냈다.
- *  그 전에 승인·링크까지만 간 옛 리포트(APPROVED·LINKED)는 「최종 승인」 버튼 하나로 끝낸다. 이미 나간 링크는 그대로 열리고 회수할 수 있다.)
+ *  그 전에 승인·링크까지만 간 옛 리포트(APPROVED·LINKED)는 「카톡 보냄 표시」 버튼 하나로 끝낸다. 이미 나간 링크는 그대로 열리고 회수할 수 있다.
+ *  1021: 보낸 리포트는 사유를 적어 되돌릴 수 있다 — 게시물이 「리포트 없음」으로 돌아가 새로 만든다.)
  * 스냅샷 숫자는 읽기 전용. 문구를 고치면 승인은 무효가 되고 다시 승인해야 한다.
  */
 
@@ -32,22 +36,39 @@ interface Post {
 interface PostsPayload { insights: Post[]; papillon_reachable: boolean; checked: { stores: number; plans: number; performance_denied?: number }; draft?: boolean; draft_note?: string }
 
 const S_LABEL: Record<ReportStatus, string> = { DRAFT: "초안", APPROVED: "승인됨", LINKED: "링크 발급 · 미전송", SENT: "보냄", REVOKED: "회수됨" };
-const S_TONE: Record<ReportStatus, ChipTone> = { DRAFT: "gray", APPROVED: "blue", LINKED: "amber", SENT: "green", REVOKED: "red" };
+// 색은 한 색 한 뜻(1022 목업) — 보냄만 초록, 진행 중은 남색, 초안 · 회수는 회색
+const S_TONE: Record<ReportStatus, ChipTone> = { DRAFT: "gray", APPROVED: "navy", LINKED: "navy", SENT: "green", REVOKED: "gray" };
 const M_LABEL: Record<string, string> = { saved: "저장", reach: "도달", views: "조회", shares: "공유", likes: "좋아요", comments: "댓글", profile_visits: "프로필 방문", follows: "팔로우" };
 const postKey = (p: Pick<Post, "plan_id" | "restaurant_id" | "store">) => `${p.plan_id}-${p.restaurant_id ?? p.store}`;
 
+/** 게시물 한 줄이 어느 단계인가 — 게시물과 리포트를 한 줄로 잇는다(1022 목업) */
+type Stage = "make" | "draft" | "send" | "wait" | "blocked" | "sent";
+const STAGE: Record<Stage, { label: string; tone: ChipTone; dot?: boolean }> = {
+  make: { label: "만들 때", tone: "amber", dot: true },
+  draft: { label: "입력 · 승인", tone: "navy" },
+  send: { label: "전송 대기", tone: "navy" },
+  sent: { label: "보냄", tone: "green" },
+  wait: { label: "D+14 전", tone: "gray" },
+  blocked: { label: "수치 없음", tone: "gray" },
+};
+const STAGE_ORDER: Record<Stage, number> = { make: 0, draft: 1, send: 2, wait: 3, blocked: 4, sent: 5 };
+const TODO_STAGES = new Set<Stage>(["make", "draft", "send"]);
+const stageOf = (p: Post, r: StoreReport | null): Stage => (r ? (r.status === "DRAFT" ? "draft" : r.status === "SENT" ? "sent" : "send") : !p.available ? "blocked" : p.due ? "make" : "wait");
+
+interface Item { p: Post; r: StoreReport | null; stage: Stage }
+
 export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
-  // ── 위: Papillon 에서 온 게시물
+  const [tab, setTab] = useState<"posts" | "monthly">(() => (takeParam("rtab") === "monthly" ? "monthly" : "posts"));
+  // ── Papillon 에서 온 게시물
   const [posts, setPosts] = useState<PostsPayload | null>(null);
   const [postsLoading, setPostsLoading] = useState(true);
-  const [pf, setPf] = useState<"due" | "none" | "all">("due");
+  const [stageFilter, setStageFilter] = useState<Stage | "todo" | "all">(() => { const v = takeParam("stage"); return v === "make" || v === "draft" || v === "send" || v === "sent" || v === "all" ? v : "todo"; });
   const [openPost, setOpenPost] = useState<string | null>(null);
-  // ── 아래: 리포트
+  // ── 리포트
   const [list, setList] = useState<StoreReport[] | null>(null);
   const [note, setNote] = useState<string | undefined>();
-  const [filter, setFilter] = useState<"todo" | "sent" | "all">("todo");
   const [openId, setOpenId] = useState<string | null>(null);
-  // 딥링크 `?open=<id>` — 슬랙 알림·런처 최근 목록에서 바로 이 리포트를 연다
+  // 딥링크 `?open=<id>` — 슬랙 알림·런처 최근 목록·홈 「오늘 할 일」에서 바로 이 리포트를 연다
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
 
@@ -80,13 +101,28 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
     if (hit.sent_report?.id) setOpenId(hit.sent_report.id);
     else setOpenPost(postKey(hit));
   }, [allPosts, planJumped]);
-  const visiblePosts = useMemo(() => allPosts.filter((p) => pf === "all" || (pf === "due" ? p.due : !p.sent_report)), [allPosts, pf]);
-  const dueCount = allPosts.filter((p) => p.due).length;
-  const noneCount = allPosts.filter((p) => !p.sent_report).length;
-  const openP = allPosts.find((p) => postKey(p) === openPost) ?? null;
 
-  const visible = useMemo(() => (list ?? []).filter((r) => filter === "all" || (filter === "todo" ? r.status === "DRAFT" || r.status === "APPROVED" || r.status === "LINKED" : r.status === "SENT")), [list, filter]);
-  const counts = useMemo(() => ({ draft: (list ?? []).filter((r) => r.status === "DRAFT").length, approved: (list ?? []).filter((r) => r.status === "APPROVED").length, linked: (list ?? []).filter((r) => r.status === "LINKED").length, sent: (list ?? []).filter((r) => r.status === "SENT").length, viewed: (list ?? []).filter((r) => r.status === "SENT" && r.views.count > 0).length }), [list]);
+  /**
+   * 게시물 + 리포트를 한 줄로. 게시물 목록에 없는데 리포트만 남은 것(옛 기획이 목록에서 빠진 경우 등)도 줄을 잃지 않게 리포트에서 만든다.
+   * 회수된(되돌린) 리포트는 게시물이 「리포트 없음」으로 돌아가 다시 만들 수 있으니 줄로 세우지 않는다.
+   */
+  const items = useMemo<Item[]>(() => {
+    const reports = list ?? [];
+    const byId = new Map(reports.map((r) => [r.id, r]));
+    const rows: Item[] = allPosts.map((p) => { const r = p.sent_report ? byId.get(p.sent_report.id) ?? null : null; return { p, r, stage: stageOf(p, r) }; });
+    const seen = new Set(rows.map((x) => x.r?.id).filter(Boolean));
+    for (const r of reports) {
+      if (seen.has(r.id) || r.status === "REVOKED") continue;
+      const sn = r.snapshot;
+      const p: Post = { restaurant_id: null, store: sn.store.name, matched_by: "name", plan_id: sn.post.plan_id, topic: sn.post.topic, posted_at: sn.post.posted_at, permalink: sn.post.permalink, age_days: sn.age_days, co_stores: sn.post.co_stores, checkpoint: "done", targets: { d7: false, d14: false }, due: false, available: true, metrics: sn.metrics, cohort_note: null, report: null, sent_report: { id: r.id, status: r.status, sent_at: null, views: r.views.count } };
+      rows.push({ p, r, stage: stageOf(p, r) });
+    }
+    return rows.sort((a, b) => STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || (b.p.age_days ?? -1) - (a.p.age_days ?? -1));
+  }, [allPosts, list]);
+  const count = (k: Stage) => items.filter((i) => i.stage === k).length;
+  const todoN = items.filter((i) => TODO_STAGES.has(i.stage)).length;
+  const visible = items.filter((i) => stageFilter === "all" || (stageFilter === "todo" ? TODO_STAGES.has(i.stage) : i.stage === stageFilter));
+  const openP = allPosts.find((p) => postKey(p) === openPost) ?? null;
   const open = (list ?? []).find((r) => r.id === openId) ?? null;
 
   /** 리포트 만들기 — 시기와 상관없이. 이미 살아 있는 리포트가 있으면(409) 갱신본 여부를 되묻는다. */
@@ -111,99 +147,76 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
     } finally { setMaking(null); if (tab && !opened) tab.close(); }
   }
 
-  const dueLabel = (p: Post) => {
-    if (p.age_days === null) return "-";
-    return p.targets.d14 ? "D+14 지남" : `D+14 까지 ${14 - p.age_days}일`;
+  const pill = (key: Stage | "todo" | "all", label: string, n: number) => (
+    <button key={key} type="button" onClick={() => setStageFilter(key)} aria-pressed={stageFilter === key}
+      className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] text-[12px] font-semibold touch-manipulation ${focusRing} ${stageFilter === key ? "bg-navy/[0.07] text-navy" : "bg-black/[0.05] text-gray-700 hover:bg-black/[0.08]"}`}>
+      {label}<span className={`tabular-nums ${stageFilter === key ? "text-navy/70" : "text-gray-500"}`}>{n}</span>
+    </button>
+  );
+  const firstTodo = visible.findIndex((i) => TODO_STAGES.has(i.stage));
+  const num = (it: Item, k: string) => {
+    const m = (it.r ? it.r.snapshot.metrics : it.p.metrics).find((x) => x.key === k);
+    return m ? <span className="font-semibold text-gray-900 tabular-nums">{m.value.toLocaleString()}</span> : <Unknown why={it.p.reason ?? "아직 수치가 없습니다"} />;
   };
 
   return (
     <>
-      <PageHeader title="매장 리포트" description="Papillon 이 올린 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 게시 14일차(09:00)에 초안이 자동으로 만들어져 #ops-partner 에 알림이 갑니다. 지표를 입력하고 승인하면 PNG 3장 + HTML 이 #ops-partner 에 올라갑니다. 시기와 상관없이 직접 만들 수도 있습니다."
-        actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button>#{TOOLS.probe.slack.channel}</Button></a><Button variant="primary" icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>} />
+      <PageHeader title="매장 리포트" description="Papillon 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 게시 14일차 09:00 에 초안이 생기고, 지표를 넣어 승인하면 PNG 3장 + HTML 이 #ops-partner 에 올라갑니다. 카톡으로 보낸 뒤 「보냄 표시」까지 하면 끝입니다."
+        actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{TOOLS.probe.slack.channel}</Button></a><Button icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>}>
+        <FilterPills soft label="리포트 종류" value={tab} onChange={setTab} options={[{ key: "posts", label: "게시물 리포트" }, { key: "monthly", label: "매장 월간 보고서" }]} />
+      </PageHeader>
 
-      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-3 gap-2.5 mb-5">
-        <Kpi label="리포트 만들 때" value={postsLoading ? "-" : dueCount} tone="alert" hint="D+14 지났는데 리포트 없음" onClick={() => setPf("due")} active={pf === "due"} />
-        {/* 1013: 「입력 · 승인 대기」와 「최종 승인 대기」가 옛 승인(APPROVED)을 둘 다 셌다 — 보내기 전인 것 하나로 */}
-        <Kpi label="승인 대기" value={list ? counts.draft + counts.approved + counts.linked : "-"} tone="alert" hint="지표 입력 후 승인" onClick={() => setFilter("todo")} active={filter === "todo"} />
-        <Kpi label="슬랙으로 보낸 리포트" value={list ? counts.sent : "-"} tone="good" hint="최종 승인한 것" onClick={() => setFilter("sent")} active={filter === "sent"} />
-      </div>
+      {tab === "monthly" ? <MonthlyReports /> : (
+        <>
+          {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개는 성과를 못 읽었습니다`}>제목에 「(매장 포함)」 표시가 있는 제휴식당 콘텐츠만 성과가 열려 있습니다(마케팅팀 합의 0920). 표시가 없는 콘텐츠는 수치가 비고 「만들 때」에 안 잡힙니다 — 마케팅팀에 제목 표시를 부탁하세요.</Notice></div>}
+          {posts && !posts.papillon_reachable && <div className="mb-4"><Notice tone="red" title="Papillon 기획 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>홍보한 적 없음이 아닙니다.</strong> 백엔드 연결을 확인하세요.</Notice></div>}
 
-      {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개는 성과를 못 읽었습니다`}>제목에 「(매장 포함)」 표시가 있는 제휴식당 콘텐츠만 성과가 열려 있습니다(마케팅팀 합의 0920). 표시가 없는 콘텐츠는 수치가 비고 「리포트 만들 때」에 안 잡힙니다 — 마케팅팀에 제목 표시를 부탁하세요.</Notice></div>}
-      {posts && !posts.papillon_reachable && <div className="mb-4"><Notice tone="red" title="Papillon 기획 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>홍보한 적 없음이 아닙니다.</strong> 백엔드 연결을 확인하세요.</Notice></div>}
+          <Card flush title="게시물 · 리포트" description={`한 줄이 게시물 하나입니다. 행을 누르면 게시물이나 리포트가 열리고, 오른쪽 끝 버튼이 지금 할 일입니다. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}>
+            <div className="flex flex-wrap items-center gap-1.5 px-4 py-3 border-b border-black/[0.06]" role="group" aria-label="단계">
+              {pill("todo", "할 일", todoN)}
+              <span className="w-px h-5 bg-gray-200 mx-1" aria-hidden="true" />
+              {(["make", "draft", "send", "sent"] as Stage[]).map((k, i) => <span key={k} className="inline-flex items-center gap-1.5">{i > 0 && <span className="text-gray-400" aria-hidden="true">›</span>}{pill(k, STAGE[k].label, count(k))}</span>)}
+              <span className="w-px h-5 bg-gray-200 mx-1" aria-hidden="true" />
+              {pill("all", "전체", items.length)}
+            </div>
+            {postsLoading && !posts ? <Skeleton rows={4} cols={6} /> : visible.length === 0 ? (
+              <Empty title={stageFilter === "todo" ? "지금 할 일이 없습니다" : "해당하는 게시물이 없습니다"} detail="Papillon 기획 제목 끝에 '(정든밤 포함)'처럼 적으면 발행 즉시 여기 잡힙니다. 「전체」에서 시기와 상관없이 만들 수 있습니다." />
+            ) : (
+              <Table minWidth="46rem">
+                <thead><tr><Th>매장 · 게시물</Th><Th width="5.5rem">게시</Th><Th width="9rem">단계</Th><Th width="6rem" align="right">저장</Th><Th width="6rem" align="right">도달</Th><Th width="8rem" align="right">다음 행동</Th></tr></thead>
+                <tbody>
+                  {visible.map((it, idx) => {
+                    const { p, r, stage } = it;
+                    const k = postKey(p);
+                    const v = idx === firstTodo ? "primary" : "secondary";
+                    const action = r && stage === "draft" ? <Button size="sm" variant={v} onClick={() => setOpenId(r.id)}>지표 입력</Button>
+                      : r && stage === "send" ? <Button size="sm" variant={v} onClick={() => setOpenId(r.id)}>보냄 표시</Button>
+                      : r && stage === "sent" ? <span className="text-[12px] text-gray-600">{r.token ? `열람 ${r.views.count}` : "파일로 보냄"}</span>
+                      : stage === "blocked" ? <span className="text-[12px] text-gray-500" title={p.reason}>—</span>
+                      : askForce === k ? <Button size="sm" variant="primary" onClick={() => make(p, true)} disabled={making === k}>갱신본 만들기</Button>
+                      : <Button size="sm" variant={stage === "wait" ? "ghost" : v} icon={<IconFileDescription />} onClick={() => make(p)} disabled={!p.available || making === k} title={p.available ? undefined : p.reason}>{making === k ? "만드는 중…" : stage === "wait" ? "미리 만들기" : "만들기"}</Button>;
+                    return (
+                      <tr key={r?.id ?? k} className={rowClickable} onClick={() => (r ? setOpenId(r.id) : setOpenPost(k))}>
+                        <Td><span className="inline-flex items-center gap-1.5 flex-wrap"><span className="font-semibold text-gray-900">{p.store}</span>{p.restaurant_id === null && (p.matched_by === "sponsor" ? <TagChip>앱 밖 협찬</TagChip> : <Chip tone="amber">매장 미확인</Chip>)}</span><span className="block text-[11px] text-gray-500 truncate max-w-[20rem]">{p.topic}{p.co_stores > 1 ? ` · ${p.co_stores}곳 함께` : ""}</span></Td>
+                        <Td className="text-[12px] text-gray-600 whitespace-nowrap">{p.posted_at ? md(p.posted_at) : "-"}{p.age_days !== null && <span className="block text-[11px] text-gray-500">D+{p.age_days}</span>}</Td>
+                        <Td><Chip tone={STAGE[stage].tone} dot={STAGE[stage].dot}>{stage === "wait" && p.age_days !== null ? `D+14 까지 ${Math.max(0, 14 - p.age_days)}일` : STAGE[stage].label}</Chip></Td>
+                        <Td align="right">{num(it, "saved")}</Td>
+                        <Td align="right">{num(it, "reach")}</Td>
+                        <Td align="right"><span onClick={(e) => e.stopPropagation()} className="inline-flex">{action}</span></Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            )}
+          </Card>
 
-      <Card flush title="Papillon 에서 온 게시물" description={`제목에 "(매장 포함)" 표시가 있거나 제휴 매장 · 협찬 매장 이름이 들어간 발행 게시물. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}
-        actions={<FilterPills label="" value={pf} onChange={setPf} options={[{ key: "due", label: "만들 때", count: dueCount }, { key: "none", label: "리포트 없음", count: noneCount }, { key: "all", label: "전체", count: allPosts.length }]} />} className="mb-4">
-        {postsLoading ? <Skeleton rows={4} cols={6} /> : visiblePosts.length === 0 ? (
-          <Empty title={pf === "due" ? "지금 만들 때가 된 게시물이 없습니다" : "해당하는 게시물이 없습니다"} detail="Papillon 기획 제목 끝에 '(정든밤 포함)'처럼 적으면 발행 즉시 여기 잡힙니다. '전체'에서 시기와 상관없이 만들 수 있습니다." />
-        ) : (
-          <Table minWidth="56rem">
-            <thead><tr><Th>매장 · 게시물</Th><Th width="6rem">게시</Th><Th width="7rem">권장 시점</Th><Th width="7rem" align="right">저장</Th><Th width="7rem" align="right">도달</Th><Th width="7rem" align="right">조회</Th><Th width="9rem" align="center">리포트</Th></tr></thead>
-            <tbody>
-              {visiblePosts.map((p) => {
-                const m = (k: string) => p.metrics.find((x) => x.key === k);
-                // 숫자만 — 「하위권 (10건 중 10위)」 같은 판정은 목록 · 게시물 패널 · 편집 카드 모두에서 뺐다(1005 민찬).
-                const cell = (k: string) => { const x = m(k); return x ? <span className="font-semibold text-gray-900 tabular-nums">{x.value.toLocaleString()}</span> : <span className="text-gray-300">-</span>; };
-                const k = postKey(p);
-                return (
-                  <tr key={k} className={rowClickable} onClick={() => setOpenPost(k)}>
-                    <Td><span className="font-semibold text-gray-900">{p.store}</span>{p.restaurant_id === null && (p.matched_by === "sponsor" ? <Chip tone="gray">앱 밖 협찬</Chip> : <Chip tone="red">매장 미확인</Chip>)}<span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{p.topic}{p.co_stores > 1 ? ` · ${p.co_stores}곳 함께` : ""}</span></Td>
-                    <Td className="text-[12px] text-gray-600">{p.posted_at ? p.posted_at.slice(5, 10).replace("-", "/") : "-"}{p.age_days !== null && <span className="block text-[11px] text-gray-400">D+{p.age_days}</span>}</Td>
-                    <Td><Chip tone={p.due ? "amber" : p.targets.d14 ? "gray" : "blue"} dot={p.due}>{dueLabel(p)}</Chip></Td>
-                    <Td align="right">{cell("saved")}</Td><Td align="right">{cell("reach")}</Td><Td align="right">{cell("views")}</Td>
-                    <Td align="center"><span onClick={(e) => e.stopPropagation()} className="inline-flex">
-                      {p.sent_report ? (
-                        <button type="button" onClick={() => setOpenId(p.sent_report!.id)} className="inline-flex"><Chip tone={p.sent_report.status === "SENT" ? "green" : p.sent_report.status === "LINKED" ? "amber" : "blue"}>{p.sent_report.status === "SENT" ? `보냄${p.sent_report.views ? ` · 열람 ${p.sent_report.views}` : ""}` : p.sent_report.status === "LINKED" ? "발급 · 미전송" : "검토 중"}</Chip></button>
-                      ) : askForce === k ? (
-                        <Button size="sm" variant="primary" onClick={() => make(p, true)} disabled={making === k}>갱신본 만들기</Button>
-                      ) : (
-                        <Button size="sm" variant={p.due ? "primary" : "secondary"} icon={<IconFileDescription />} onClick={() => make(p)} disabled={!p.available || making === k} title={p.available ? undefined : p.reason}>{making === k ? "만드는 중…" : "만들기"}</Button>
-                      )}
-                    </span></Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-
-      <Card flush title="리포트" description="스냅샷 숫자는 고정, 문구는 사람이 다듬고, 승인해야 파일을 받을 수 있습니다."
-        actions={<FilterPills label="" value={filter} onChange={setFilter} options={[{ key: "todo", label: "승인 대기", count: counts.draft + counts.approved + counts.linked }, { key: "sent", label: "보낸 것", count: counts.sent }, { key: "all", label: "전체", count: list?.length }]} />}>
-        {!list ? <Skeleton rows={4} cols={6} /> : visible.length === 0 ? (
-          <Empty title={filter === "todo" ? "검토할 리포트가 없습니다" : "리포트가 없습니다"} detail="위 게시물 목록에서 '만들기'를 누르면 여기로 옵니다." />
-        ) : (
-          <Table minWidth="48rem">
-            <thead><tr><Th>매장 · 게시물</Th><Th width="8rem">상태</Th><Th width="6rem" align="right">저장</Th><Th width="6rem" align="right">도달</Th><Th width="5rem" align="center">제안</Th><Th width="5rem" align="right">열람</Th><Th width="7rem" align="right">만든 때</Th></tr></thead>
-            <tbody>
-              {visible.map((r) => {
-                const m = (k: string) => r.snapshot.metrics.find((x) => x.key === k);
-                return (
-                  <tr key={r.id} className={rowClickable} onClick={() => setOpenId(r.id)}>
-                    <Td><span className="font-semibold text-gray-900">{r.snapshot.store.name}</span><span className="block text-[11px] text-gray-400 truncate max-w-[18rem]">{r.snapshot.post.topic}{r.snapshot.age_days !== null ? ` · D+${r.snapshot.age_days} 시점` : ""}</span></Td>
-                    <Td><Chip tone={S_TONE[r.status]} dot={r.status === "DRAFT"}>{S_LABEL[r.status]}</Chip></Td>
-                    <Td align="right" numeric>{m("saved")?.value.toLocaleString() ?? <span className="text-gray-300">—</span>}</Td>
-                    <Td align="right" numeric>{m("reach")?.value.toLocaleString() ?? <span className="text-gray-300">—</span>}</Td>
-                    <Td align="center" className="text-[12px] text-gray-600">{r.proposals.filter((p) => p.approved).length} / {r.proposals.length}</Td>
-                    {/* 열람은 링크로 보낸 것만 센다 — 파일로 보낸 리포트는 셀 수 없어 '—' */}
-                    <Td align="right" numeric className={r.views.count ? "text-emerald-700 font-semibold" : "text-gray-300"}>{r.token ? r.views.count : "—"}</Td>
-                    <Td align="right" className="text-[12px] text-gray-500">{agoLabel(r.created_at)}<span className="block text-[11px] text-gray-400">{r.created_by}</span></Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-
-      <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-        숫자는 인스타그램 수치 그대로이고, 우리 채널의 다른 게시물과 견준 순위·판정은 보이지 않습니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
-        {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-navy font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
-      </p>
-
-      {/* 추이 — 「평소 범위」(p10~p90)가 넓어 한 편의 판정으로는 안 보이는 것. "요즘 우리가 잘하고 있나"에 답한다. */}
-      <div className="mt-6">
-        <InsightsSummary />
-      </div>
+          <p className="text-[12px] text-gray-600 mt-3 leading-relaxed">
+            숫자는 인스타그램 수치 그대로이고, 우리 채널의 다른 게시물과 견준 순위·판정은 보이지 않습니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
+            {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-[#5558DD] font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
+          </p>
+        </>
+      )}
 
       {openP && <PostPanel p={openP} onClose={() => setOpenPost(null)} onMake={(force) => make(openP, force)} making={making === postKey(openP)} askForce={askForce === postKey(openP)} onOpenReport={(id) => { setOpenPost(null); setOpenId(id); }} />}
       {open && <ReportEditor r={open} onClose={() => setOpenId(null)} onChanged={() => load()} />}
@@ -311,7 +324,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, reason }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
-      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "finalize" ? "승인했습니다. 잠시 뒤 #ops-partner 에 PNG 3장과 HTML 이 올라갑니다." : action === "sent" ? "최종 승인했습니다." : "링크를 회수했습니다." }); onChanged();
+      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "finalize" ? "승인했습니다. 잠시 뒤 #ops-partner 에 PNG 3장과 HTML 이 올라갑니다." : action === "sent" ? "사장님께 보냄으로 표시했습니다. 이 리포트는 「보냄」으로 넘어갑니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
   /**
@@ -358,38 +371,30 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       footer={
         <>
           {editable && dirty && <Button variant="primary" onClick={save} disabled={busy || (manualDirty && manualCheck.errors.length > 0)}>{manualDirty ? "저장" : "문구 저장"}</Button>}
+          {r.status === "DRAFT" && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={approve} disabled={busy || !precheck.ok}>승인 · 슬랙에 올리기</Button>}
+          {/* 0920: 사장님께는 링크 대신 파일(PNG·HTML)을 카톡으로 보낸다 — 승인 뒤 받기 → 카톡 보냄 표시 */}
+          {(r.status === "APPROVED" || r.status === "LINKED") && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>카톡 보냄 표시</Button>}
+          {(r.status === "LINKED" || r.status === "SENT") && url && <Button variant={r.status === "SENT" ? "primary" : "secondary"} icon={<IconCopy />} onClick={() => copy(url)}>{copied ? "복사했습니다" : "링크 복사"}</Button>}
+          {(r.status === "APPROVED" || r.status === "LINKED" || r.status === "SENT") && !dirty && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer" title="미리보기 위 띠에서 PNG · HTML · 인쇄"><Button icon={<IconDownload />}>PNG·HTML 받기</Button></a>}
           {/* 스냅샷은 만든 순간으로 굳는다. 초안일 때만 지금 수치로 다시 읽는다 — 보낸 리포트는 갱신본을 만든다. */}
           {r.status === "DRAFT" && !dirty && <Button icon={<IconRefresh />} onClick={() => act("refresh")} disabled={busy}>수치 다시 읽기</Button>}
-          {r.status === "DRAFT" && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={approve} disabled={busy || !precheck.ok}>승인</Button>}
-          {(r.status === "LINKED" || r.status === "SENT") && url && <Button variant={r.status === "SENT" ? "primary" : "secondary"} icon={<IconCopy />} onClick={() => copy(url)}>{copied ? "복사했습니다" : "링크 복사"}</Button>}
-          {/* 0920: 사장님께는 링크 대신 파일(PNG·HTML)을 카톡으로 보낸다 — 승인 뒤 받기 → 보냈음 */}
-          {(r.status === "APPROVED" || r.status === "LINKED" || r.status === "SENT") && !dirty && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer" title="미리보기 위 띠에서 PNG · HTML · 인쇄"><Button variant={r.status === "SENT" ? "secondary" : "primary"} icon={<IconDownload />}>PNG·HTML 받기</Button></a>}
-          {(r.status === "APPROVED" || r.status === "LINKED") && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>최종 승인</Button>}
-          {r.status === "DRAFT" && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>미리보기</Button></a>}
-          {/* 회수는 링크가 나간 것만 — 파일로 보낸 리포트는 닫을 링크가 없다 */}
-          {r.status === "LINKED" && r.token && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
-          {r.status === "SENT" && <Button variant="ghost" icon={<IconTrash />} onClick={undo} disabled={busy}>되돌리기</Button>}
-          {(r.status === "DRAFT" || r.status === "APPROVED") && !r.token && <Button variant="ghost" icon={<IconTrash />} onClick={remove} disabled={busy} title="초안을 지우고 게시물 목록에서 다시 만들 수 있게 합니다">초안 지우기</Button>}
-          <span className="ml-auto text-[12px] text-gray-400">{r.token ? `열람 ${r.views.count}회${r.views.last_at ? ` · ${agoLabel(r.views.last_at)}` : ""}` : r.approved_by ? `${r.approved_by} 승인` : `${r.created_by} 작성`}</span>
+          {r.status === "DRAFT" && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer"><Button variant="ghost" icon={<IconExternalLink />}>미리보기</Button></a>}
+          <span className="ml-auto text-[12px] text-gray-500">{r.token ? `열람 ${r.views.count}회${r.views.last_at ? ` · ${agoLabel(r.views.last_at)}` : ""}` : r.approved_by ? `${r.approved_by} 승인` : `${r.created_by} 작성`}</span>
+          {/* 회수는 링크가 나간 것만 — 파일로 보낸 리포트는 닫을 링크가 없다. 보낸 리포트는 되돌리기(사유 필수, 1021) */}
+          {r.status === "LINKED" && r.token && <Button variant="ghost" size="sm" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
+          {r.status === "SENT" && <Button variant="ghost" size="sm" icon={<IconTrash />} onClick={undo} disabled={busy}>되돌리기</Button>}
+          {(r.status === "DRAFT" || r.status === "APPROVED") && !r.token && <Button variant="ghost" size="sm" icon={<IconTrash />} onClick={remove} disabled={busy} aria-label="초안 지우기" title="초안을 지우고 게시물 목록에서 다시 만들 수 있게 합니다" />}
         </>
       }>
+      <Stepper steps={["지표 입력", "승인 · 슬랙에 PNG 게시", "카톡으로 전송", "보냄 표시"]} current={r.status === "DRAFT" ? 0 : r.status === "SENT" ? 4 : 2} />
       {msg && <Notice tone={msg.tone === "green" ? "blue" : msg.tone} title={msg.text}>{msg.problems && <ul className="list-disc pl-4 mt-1">{msg.problems.map((p) => <li key={p}>{p}</li>)}</ul>}</Notice>}
       {r.status === "DRAFT" && staleHours >= 6 && <Notice tone="amber" title={`수치가 ${staleHours}시간 전 것입니다`}>인스타그램 수치는 계속 오릅니다. 보내기 전에 「수치 다시 읽기」로 지금 값을 담아 주세요.</Notice>}
       {!precheck.ok && <Notice tone="amber" title="이대로는 승인되지 않습니다"><ul className="list-disc pl-4">{precheck.problems.map((p) => <li key={p}>{p}</li>)}</ul></Notice>}
 
       {s.undo && <div className="mb-3"><Notice tone="amber" title="되돌린 리포트입니다">{s.undo.reason} — {s.undo.by} · {new Date(s.undo.at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</Notice></div>}
-      <PanelSection title={`스냅샷 (읽기 전용)${atLabel}`}>
-        <div className="grid grid-cols-3 gap-2">
-          {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
-            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
-          ))}
-          {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
-        </div>
-        {s.app && <p className="text-[12px] text-gray-600 mt-2">앱 {s.app.month}: 쿠폰 {s.app.coupon_redeemed} · 스탬프 {s.app.stamp_earned} · 재방문 {s.app.revisit} · 단골 {s.app.loyal_total}{s.app.coupon_redeemed + s.app.stamp_earned + s.app.revisit + s.app.loyal_total === 0 ? " — 전부 0 이라 공개 페이지에서는 블록을 숨깁니다" : ""}</p>}
-        {s.post.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{s.post.co_stores}곳을 함께 소개한 게시물입니다. 수치는 게시물 전체 것이고, 공개 페이지는 「N곳을 함께 소개한 큐레이션」이라고 밝힙니다.</p>}
-      </PanelSection>
-
-      <PanelSection title="인스타그램에서 확인해 넣는 값 (손으로)">
+      {/* 손으로 넣는 칸이 위 — 인스타와 오갈 때 스크롤 위치를 다시 찾지 않게(1022 목업). 보낸 뒤에는 스냅샷이 먼저 */}
+      {editable ? <>
+      <PanelSection title={editable ? "인스타그램에서 확인해 넣는 값" : "인스타그램에서 확인해 넣은 값"}>
         <p className="text-[12px] text-gray-500 mb-2">인스타 API 가 게시물 단위로 주지 않는 숫자입니다. 게시물의 「인사이트 보기」에서 확인해 적으면 해석 글에 문장이 붙습니다. 비워 두면 그 문장 없이 나갑니다.</p>
         {insta && <a href={insta} target="_blank" rel="noreferrer" className="inline-flex mb-3"><Button icon={<IconBrandInstagram />}>인스타그램에서 게시물 열기</Button></a>}
         {curation && (
@@ -427,6 +432,69 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         {manualDirty && manualCheck.errors.length === 0 && <p className="text-[12px] text-blue-700 mt-1">「저장」을 누르면 해석 글의 자동 문장이 이 값으로 다시 쓰입니다(손으로 고친 문장은 그대로).</p>}
       </PanelSection>
 
+      <PanelSection title={`스냅샷 · 인스타그램${atLabel} (읽기 전용)`}>
+        <div className="grid grid-cols-3 gap-2">
+          {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
+            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
+          ))}
+          {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
+        </div>
+        {s.app && <p className="text-[12px] text-gray-600 mt-2">앱 {s.app.month}: 쿠폰 {s.app.coupon_redeemed} · 스탬프 {s.app.stamp_earned} · 재방문 {s.app.revisit} · 단골 {s.app.loyal_total}{s.app.coupon_redeemed + s.app.stamp_earned + s.app.revisit + s.app.loyal_total === 0 ? " — 전부 0 이라 공개 페이지에서는 블록을 숨깁니다" : ""}</p>}
+        {s.post.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{s.post.co_stores}곳을 함께 소개한 게시물입니다. 수치는 게시물 전체 것이고, 공개 페이지는 「N곳을 함께 소개한 큐레이션」이라고 밝힙니다.</p>}
+      </PanelSection>
+
+      </> : <>
+      <PanelSection title={`스냅샷 · 인스타그램${atLabel} (읽기 전용)`}>
+        <div className="grid grid-cols-3 gap-2">
+          {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
+            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
+          ))}
+          {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
+        </div>
+        {s.app && <p className="text-[12px] text-gray-600 mt-2">앱 {s.app.month}: 쿠폰 {s.app.coupon_redeemed} · 스탬프 {s.app.stamp_earned} · 재방문 {s.app.revisit} · 단골 {s.app.loyal_total}{s.app.coupon_redeemed + s.app.stamp_earned + s.app.revisit + s.app.loyal_total === 0 ? " — 전부 0 이라 공개 페이지에서는 블록을 숨깁니다" : ""}</p>}
+        {s.post.co_stores > 1 && <p className="text-[12px] text-amber-700 mt-1">{s.post.co_stores}곳을 함께 소개한 게시물입니다. 수치는 게시물 전체 것이고, 공개 페이지는 「N곳을 함께 소개한 큐레이션」이라고 밝힙니다.</p>}
+      </PanelSection>
+
+      <PanelSection title={editable ? "인스타그램에서 확인해 넣는 값" : "인스타그램에서 확인해 넣은 값"}>
+        <p className="text-[12px] text-gray-500 mb-2">인스타 API 가 게시물 단위로 주지 않는 숫자입니다. 게시물의 「인사이트 보기」에서 확인해 적으면 해석 글에 문장이 붙습니다. 비워 두면 그 문장 없이 나갑니다.</p>
+        {insta && <a href={insta} target="_blank" rel="noreferrer" className="inline-flex mb-3"><Button icon={<IconBrandInstagram />}>인스타그램에서 게시물 열기</Button></a>}
+        {curation && (
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <Field label="함께 소개한 가게 수 (곳)"><Input type="number" inputMode="numeric" min={2} max={30} value={manual.count} onChange={(e) => setManual({ ...manual, count: e.target.value })} disabled={!editable} placeholder="예: 7" /></Field>
+            <p className="self-end pb-2 text-[12px] text-gray-600">{carousel && cards ? `카드 ${cards}장짜리 게시물입니다(표지·마무리 장 포함). ` : ""}비우면 소개 문단에 「여러 곳」이라고 나갑니다.</p>
+          </div>
+        )}
+        {carousel && (
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="썸네일(첫) 장 좋아요 수"><Input type="number" inputMode="numeric" min={0} value={manual.thumb} onChange={(e) => setManual({ ...manual, thumb: e.target.value })} disabled={!editable} placeholder="예: 12" /></Field>
+            <Field label="이 가게가 실린 장 좋아요 수"><Input type="number" inputMode="numeric" min={0} value={manual.store} onChange={(e) => setManual({ ...manual, store: e.target.value })} disabled={!editable} placeholder="예: 21" /></Field>
+            <p className="col-span-2 text-[12px] text-gray-600 -mt-1">{sharePct !== null && manualCheck.manual?.slide_likes
+              ? <>가게 장 비중 <b className="text-gray-900">{sharePct}%</b> = {manualCheck.manual.slide_likes.store} ÷ (전체 좋아요 {likes} − 썸네일 장 {manualCheck.manual.slide_likes.thumb})</>
+              : `전체 좋아요 ${likes ?? "?"}개(인스타 API) 기준으로 계산합니다 — 가게 장 ÷ (전체 − 썸네일 장)`}</p>
+            <label className="col-span-2 flex items-start gap-2 text-[12px] text-gray-700"><input type="checkbox" className="mt-0.5" checked={manual.top} onChange={(e) => setManual({ ...manual, top: e.target.checked })} disabled={!editable} />
+              <span>이 가게 장이 함께 소개된 가게 중 <b>좋아요 1위</b>입니다 — 체크해야 글에 「가장 높은 비중」이라고 씁니다(숫자 두 개로는 1위인지 알 수 없습니다).</span></label>
+            {slideHidden && <p className="col-span-2 text-[12px] text-amber-700">가게 수로 고르게 나눈 것보다 높지 않아 슬라이드 문단은 글에 넣지 않습니다(약점은 세우지 않습니다). 1위가 맞으면 위에 체크해 주세요.</p>}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <Field label="18~24세 비중 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.a18} onChange={(e) => setManual({ ...manual, a18: e.target.value })} disabled={!editable} placeholder="예: 51.2" /></Field>
+          <Field label="25~34세 비중 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.a25} onChange={(e) => setManual({ ...manual, a25: e.target.value })} disabled={!editable} placeholder="예: 32.4" /></Field>
+          <p className="col-span-2 text-[12px] text-gray-600 -mt-1">{agePct ? <>18~34세 비중 <b className="text-gray-900">{agePct.sum}%</b> = {agePct.p18_24} + {agePct.p25_34}</> : "두 비중을 더한 18~34세 비중을 글에 씁니다"}</p>
+          <label className="col-span-2 flex items-start gap-2 text-[12px] text-gray-700"><input type="checkbox" className="mt-0.5" checked={manual.campus} onChange={(e) => setManual({ ...manual, campus: e.target.checked })} disabled={!editable} />
+            <span><b>대학가 매장</b> 문구를 씁니다 — 「대학가를 중심으로 한 {s.store.name}의 핵심 타깃층과 높은 연관성」. 끄면 「젊은 고객층을 중심으로 노출」 (대학가와 엮이기 싫어하거나 대학가가 아닌 매장).</span></label>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <Field label="팔로워가 아닌 사람 비율 (%)"><Input type="number" inputMode="decimal" min={0} max={100} step="0.1" value={manual.nf} onChange={(e) => setManual({ ...manual, nf: e.target.value })} disabled={!editable} placeholder="예: 76.4" /></Field>
+          <p className="self-end pb-2 text-[12px] text-gray-600">인사이트 「조회」의 <b>팔로워 아님</b> 비율. {manualCheck.manual?.non_follower_pct !== undefined && (manualCheck.manual?.non_follower_pct ?? 0) < 50
+            ? <span className="text-amber-700">절반 미만이라 글에 넣지 않습니다.</span>
+            : "절반 이상일 때 「새로운 고객에게 알렸다」 문장이 붙습니다."}</p>
+        </div>
+        {manualDirty && manualCheck.errors.length > 0 && <ul className="list-disc pl-4 mt-1 text-[12px] text-red-600">{manualCheck.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
+        {manualDirty && manualCheck.errors.length === 0 && <p className="text-[12px] text-blue-700 mt-1">「저장」을 누르면 해석 글의 자동 문장이 이 값으로 다시 쓰입니다(손으로 고친 문장은 그대로).</p>}
+      </PanelSection>
+
+      </>}
+
       <PanelSection title="문구">
         <Field label="제목"><Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!editable} /></Field>
         <Field label="한 줄 요약 (카톡 미리보기에 보입니다)"><Textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} disabled={!editable} /></Field>
@@ -451,7 +519,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         <PanelSection title="카톡으로 보내기">
           <ol className="list-decimal pl-4 text-[13px] text-gray-700 space-y-1">
             <li>「PNG·HTML 받기」 → 미리보기 위 띠에서 <b>PNG 저장</b>(사진으로 바로 보임) · 필요하면 <b>HTML 저장</b></li>
-            {r.status === "APPROVED" ? <li>카톡으로 파일 전송 후 「최종 승인」</li> : <li>카톡으로 파일 전송</li>}
+            {r.status === "APPROVED" ? <li>카톡으로 파일 전송 후 이 패널에서 「카톡 보냄 표시」</li> : <li>카톡으로 파일 전송</li>}
           </ol>
           <p className="text-[12px] text-gray-500 mt-2">함께 보낼 인사말: &quot;사장님, 안녕하세요. 우주라이크입니다. 지난 게시물 성과를 정리해 보내 드립니다. 사진으로 보시면 되고, 파일로도 함께 드립니다.&quot;</p>
         </PanelSection>

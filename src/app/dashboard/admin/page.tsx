@@ -9,6 +9,7 @@ import BenefitApprovals from "./astro/BenefitApprovals";
 import CalendarPage from "./astro/CalendarPage";
 import SpotBoard from "./astro/SpotBoard";
 import ProbeHome from "./probe/ProbeHome";
+import InstaTrend from "./probe/InstaTrend";
 import AppMetrics from "./probe/AppMetrics";
 import CastorHome from "./castor/CastorHome";
 import Atlas from "./atlas/Atlas";
@@ -89,6 +90,7 @@ type Tab =
   | "probe-quality"
   | "probe-reports"
   | "probe-mileage"
+  | "probe-insta"
   // Castor(앱 구조·여정)
   | "hubble-map"
   | "hubble-watch"
@@ -2134,6 +2136,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-reports", label: "매장 리포트", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-mileage", label: "마일리지 추첨", icon: "◍", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-insta", label: "인스타 추이", icon: "◫", allow: (me) => me.permissions.can_restaurants },
 
   // ── Hubble — 파트너 탐색(1010). 영업 권한(Astro 와 같음).
   { key: "hubble-map", label: "지도", icon: "◎", allow: (me) => me.permissions.can_restaurants },
@@ -2177,6 +2180,11 @@ type Product = "papillon" | "astro" | "hubble" | "aether" | "probe" | "castor" |
  * "재무" 대신 **정산** — 입금 확인과 계산서 발행은 둘 다 '받을 돈을 마무리하는 일'이라 그 말이 맞다.
  * 묶음은 화면이 아니다. 권한으로 빠진 탭은 묶음에서도 빠지고, 다 빠지면 묶음도 안 보인다.
  */
+/** Probe 메뉴 — 홈, 「운영」(할 일이 생기는 곳), 「지표」(보는 곳). 1022 목업 */
+const PROBE_NAV_HEADS: Record<string, string> = { "probe-reports": "운영", "probe-metrics": "지표" };
+function probeNav(tabs: { key: string; label: string }[]): { key: string; label: string; heading?: boolean }[] {
+  return tabs.flatMap((t) => (PROBE_NAV_HEADS[t.key] ? [{ key: `head-${t.key}`, label: PROBE_NAV_HEADS[t.key], heading: true }, { key: t.key, label: t.label }] : [{ key: t.key, label: t.label }]));
+}
 const ASTRO_NAV_GROUPS: { key: string; label: string; items: string[] }[] = [
   { key: "astro-partners", label: "파트너 관리", items: ["astro-ops", "astro-contracts", "astro-leads"] },
   { key: "astro-finance", label: "정산", items: ["astro-billing", "astro-tax", "astro-quotes"] },
@@ -2248,7 +2256,7 @@ const PRODUCTS: {
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
     description: "매장 리포트 · 마일리지 추첨 · 매장·앱 지표 · 정합성",
-    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-metrics", "probe-app", "probe-quality"],
+    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-quality", "probe-metrics", "probe-app", "probe-insta"],
     ready: true,
   },
   {
@@ -2586,7 +2594,7 @@ export default function AdminHomePage() {
         (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "orbit" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
         <ToolShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
-          navItems={groupNav(productTabs.map((t) => ({ key: t.key, label: t.label })), selectedProduct === "astro" ? ASTRO_NAV_GROUPS : [])}
+          navItems={selectedProduct === "probe" ? probeNav(productTabs) : groupNav(productTabs.map((t) => ({ key: t.key, label: t.label })), selectedProduct === "astro" ? ASTRO_NAV_GROUPS : [])}
           activeKey={activeTab}
           onSelect={(key) => { setActiveTab(key as Tab); syncUrl(key); }}
           onBack={showProductPicker ? backToProducts : undefined}
@@ -2624,8 +2632,9 @@ export default function AdminHomePage() {
           {activeTab === "probe-metrics" && <ProbeOverview />}
           {activeTab === "probe-app" && <AppMetrics />}
           {activeTab === "probe-quality" && (
-            <DataQuality onGo={go} />
+            <DataQuality onGo={go} actor={actorName} />
           )}
+          {activeTab === "probe-insta" && <InstaTrend />}
 
           {/* Castor: 앱 구조·여정 — 기획안 Castor 절 메뉴(지도 · 흐름 · 화면 · 변경 · 실험 · 조사 · 레퍼런스). 지도에서 고른 화면은 화면 탭으로. */}
           {activeTab === "hubble-map" && <HubbleMap actor={actorName} onOpenLead={() => { selectProduct("astro"); setTimeout(() => go("astro-leads"), 0); }} />}
