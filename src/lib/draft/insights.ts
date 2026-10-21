@@ -1,6 +1,6 @@
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
-import { fetchPapillonMonths, fetchPerformance, isPartnerContent, mentions, partnerNames, sponsorStores } from "@/lib/draft/papillon";
+import { fetchPapillonMonths, fetchPerformance, fixedPlanStores, isPartnerContent, mentions, partnerNames, sponsorStores } from "@/lib/draft/papillon";
 import { normName } from "@/lib/draft/sheet";
 import { listReports } from "@/lib/draft/reportStore";
 import { metricsOf } from "@/lib/draft/snapshot";
@@ -96,6 +96,13 @@ export async function buildInsights(): Promise<InsightsResult> {
     const add = (r: BackendRestaurant, by: StoreInsight["matched_by"]) => { if (!seen.has(r.restaurant_id)) { seen.add(r.restaurant_id); candidates.push({ r, label: r.name, by, plan }); } };
     for (const r of restaurants) if (names.some((n) => same(n, r))) add(r, "marker");
     for (const r of restaurants) if (mentions(plan.topic, r.name)) add(r, marked ? "marker" : "name");
+    // 제목에 이름이 없는 여러 매장 게시물 — 정해 둔 매장 전부. 앱에 없는 곳은 협찬 매장으로(리포트 가능, 앱 지표만 없다)
+    const fixed = fixedPlanStores(plan.topic);
+    if (fixed.length) {
+      for (const r of restaurants) if (fixed.some((n) => same(n, r))) add(r, "name");
+      for (const n of fixed) if (!restaurants.some((r) => same(n, r))) candidates.push({ r: null, label: n, by: "sponsor", plan });
+      continue;
+    }
     if (!marked) {
       if (seen.size === 0) for (const n of sponsorStores(plan.topic, pap.sponsorships)) candidates.push({ r: null, label: n, by: "sponsor", plan });
       continue;
