@@ -94,6 +94,19 @@ export function isPartnerContent(topic: string | null | undefined): boolean {
   return new RegExp(PARTNER_RE.source).test(topic ?? "");
 }
 
+/**
+ * 제목에 매장 이름이 없는 여러 매장 유료 제휴 게시물(1021) — 「한정쿠폰 주 매장 쿠폰 혜택」은 8곳을 한 게시물에 담는다.
+ * 제목은 마케팅팀 것이라 건드리지 않고 여기서 제목 앞부분으로 매장을 묶는다. 앱에 있는 곳은 앱 매장으로, 없는 곳은 협찬 매장으로 올라간다.
+ */
+const FIXED_PLAN_STORES: { titleStart: string; stores: string[] }[] = [
+  { titleStart: "한정쿠폰주매장쿠폰혜택", stores: ["핵밥", "라라더", "쌈마이닭쌈밥", "스톡홀름샐러드", "혜화문식당", "진갈매기", "다이와스시", "주비 두루 향기롭다"] },
+];
+
+export function fixedPlanStores(topic: string | null | undefined): string[] {
+  const t = normName(topic ?? "");
+  return FIXED_PLAN_STORES.find((f) => t.startsWith(f.titleStart))?.stores ?? [];
+}
+
 const SPONSOR_TITLE = /^\s*(.+?)\s*협찬\s*$/;
 
 /**
@@ -103,6 +116,8 @@ const SPONSOR_TITLE = /^\s*(.+?)\s*협찬\s*$/;
  */
 export function sponsorStores(topic: string | null | undefined, sponsorships: Pick<Sponsorship, "store_name">[]): string[] {
   const t = topic ?? "";
+  const fixed = fixedPlanStores(t);
+  if (fixed.length) return fixed;
   const named = [...new Set(sponsorships.map((s) => s.store_name.trim()).filter((n) => n && mentions(t, n)))];
   if (named.length) return named;
   const m = SPONSOR_TITLE.exec(t);

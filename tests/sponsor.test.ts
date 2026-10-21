@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sponsorStores } from "../src/lib/draft/papillon";
+import { fixedPlanStores, sponsorStores } from "../src/lib/draft/papillon";
 
 /**
  * 앱 매장 표에 없는 협찬 매장(1001) — 「교동후추 협찬」 릴스가 Probe 에 안 떠서 만들었다.
@@ -22,4 +22,12 @@ test("협찬 게시물이 아니면 비어 있다", () => {
   assert.deepEqual(sponsorStores("큐레이션 콘텐츠(추석 연휴 관련)", []), []);
   assert.deepEqual(sponsorStores("협찬", []), []);
   assert.deepEqual(sponsorStores(null, []), []);
+});
+
+test("제목에 매장 이름이 없는 여러 매장 게시물은 정해 둔 8곳(1021)", () => {
+  const names = fixedPlanStores("한정쿠폰 주 매장 쿠폰 혜택 (매장 포함)");
+  assert.equal(names.length, 8);
+  assert.ok(names.includes("핵밥") && names.includes("주비 두루 향기롭다"));
+  assert.deepEqual(sponsorStores("한정쿠폰 주 매장 쿠폰 혜택", [{ store_name: "라라더" }]), names);
+  assert.deepEqual(fixedPlanStores("한정쿠폰 소개"), []);
 });
