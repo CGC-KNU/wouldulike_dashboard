@@ -111,7 +111,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const cur = await load(id);
   if (cur instanceof NextResponse) return cur;
-  const { action } = (await req.json().catch(() => ({}))) as { action?: string };
+  const { action, reason } = (await req.json().catch(() => ({}))) as { action?: string; reason?: string };
   const who = (await actorName()) ?? "unknown";
   const now = new Date().toISOString();
   const bad = (msg: string, extra: object = {}) => NextResponse.json({ detail: msg, ...extra }, { status: 409 });
@@ -157,8 +157,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
   if (action === "revoke") {
     if (cur.status === "REVOKED") return bad("이미 회수됐습니다.");
-    const updated = await save(id, { status: "REVOKED", revoked_at: now });
+    // 보낸 리포트를 되돌릴 때는 사유가 필수다(1021) — 회수되면 게시물이 「리포트 없음」으로 돌아가 다시 만들 수 있다.
+    const why = (reason ?? "").trim().slice(0, 300);
+    if (cur.status === "SENT" && why.length < 2) return bad("되돌리는 사유를 적어 주세요.");
+    const updated = await save(id, { status: "REVOKED", revoked_at: now, ...(why ? { snapshot: { ...cur.snapshot, undo: { reason: why, by: who, at: now } } } : {}) });
     if (updated instanceof NextResponse) return updated;
+    if (why) logStore(cur, { kind: "메모", body: `'${cur.snapshot.post.topic}' 게시물 리포트 되돌림 — ${why}`, author: who, created_at: now });
     return NextResponse.json({ report: updated, draft: draft() });
   }
   return NextResponse.json({ detail: "알 수 없는 action" }, { status: 400 });
