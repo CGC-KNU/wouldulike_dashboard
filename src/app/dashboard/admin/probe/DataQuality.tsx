@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconCopy, IconRefresh, IconArrowRight } from "@tabler/icons-react";
+import { IconArrowRight, IconCheck, IconCopy, IconRefresh } from "@tabler/icons-react";
 import type { QualityIssue, QualitySeverity } from "@/lib/draft/types";
 import { storeFixTarget } from "@/lib/draft/quality";
-import { Button, Card, Chip, DraftBadge, Empty, Kpi, Notice, PageHeader, Skeleton, focusRing, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, focusRing, type ChipTone } from "../_shared/ui";
+import { OWNERS, TagChip, takeParam, ownerOf, type Owner } from "./kit";
 
 /**
  * Probe · 데이터 정합성 점검.
@@ -18,6 +19,7 @@ import { Button, Card, Chip, DraftBadge, Empty, Kpi, Notice, PageHeader, Skeleto
  */
 
 const SEV_LABEL: Record<QualitySeverity, string> = { high: "높음", medium: "보통", low: "낮음" };
+// 빨강은 「높음」 · 「보류」만, 주황은 「확인 필요」만 — 한 색 한 뜻(1022 목업)
 const SEV_TONE: Record<QualitySeverity, ChipTone> = { high: "red", medium: "amber", low: "gray" };
 
 /**
@@ -50,11 +52,31 @@ interface Payload {
   draft_note?: string;
 }
 
-export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) {
+/** 「처리함」 — 고친 뒤 눌러 같은 건을 두 번 고치지 않게 한다. 규칙 + 대상이 키다 */
+const DONE_KEY = "probe.quality.done.v1";
+type Done = Record<string, { by: string; at: string }>;
+const keyOf = (i: QualityIssue) => `${i.rule}:${i.subject}`;
+function readDone(): Done { try { return JSON.parse(localStorage.getItem(DONE_KEY) ?? "{}") as Done; } catch { return {}; } }
+
+export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => void; actor?: string }) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sev, setSev] = useState<QualitySeverity | "all">("all");
+  const [sev, setSev] = useState<QualitySeverity | "all">(() => { const v = takeParam("sev"); return v === "high" || v === "medium" || v === "low" ? v : "all"; });
+  const [owner, setOwner] = useState<Owner | "all">("all");
   const [copied, setCopied] = useState(false);
+  /**
+   * 처리함은 이 브라우저에만 남는다 — 백엔드에 칸이 아직 없다(개발 중). 그래서 다른 사람 화면에는 안 보이고,
+   * 사이드바 · 홈의 「높음」 개수에도 안 빠진다. 같은 건을 두 사람이 고치지 않게 하는 공유 처리함은 칸이 생긴 뒤에 잇는다.
+   */
+  const [done, setDone] = useState<Done>({});
+  useEffect(() => setDone(readDone()), []);
+  const mark = (i: QualityIssue, on: boolean) => setDone((d) => {
+    const next = { ...d };
+    if (on) next[keyOf(i)] = { by: actor || "나", at: new Date().toISOString() }; else delete next[keyOf(i)];
+    try { localStorage.setItem(DONE_KEY, JSON.stringify(next)); } catch { /* 무시 */ }
+    return next;
+  });
+  const isDone = (i: QualityIssue) => keyOf(i) in done;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -66,9 +88,14 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
   }, []);
   useEffect(load, [load]);
 
-  const issues = useMemo(() => (data?.issues ?? []).filter((i) => sev === "all" || i.severity === sev), [data, sev]);
+  const all = useMemo(() => data?.issues ?? [], [data]);
+  const open = useMemo(() => all.filter((i) => !isDone(i)), [all, done]); // eslint-disable-line react-hooks/exhaustive-deps
+  const counts = { high: open.filter((i) => i.severity === "high").length, medium: open.filter((i) => i.severity === "medium").length, low: open.filter((i) => i.severity === "low").length };
+  const doneN = all.length - open.length;
+  const issues = useMemo(() => all.filter((i) => (sev === "all" || i.severity === sev) && (owner === "all" || ownerOf(i) === owner)), [all, sev, owner]);
+  const ownerCount = (o: Owner | "all") => open.filter((i) => (sev === "all" || i.severity === sev) && (o === "all" || ownerOf(i) === o)).length;
 
-  /** 규칙 + 심각도로 묶는다. 같은 규칙에 20곳이 걸리면 20줄보다 1묶음이 낫다. */
+  /** 규칙 + 심각도로 묶는다. 같은 규칙에 20곳이 걸리면 20줄보다 1묶음이 낫다. 아직 남은 묶음이 먼저 */
   const groups = useMemo(() => {
     const m = new Map<string, QualityIssue[]>();
     for (const i of issues) {
@@ -77,8 +104,9 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
       m.get(k)!.push(i);
     }
     const order = { high: 0, medium: 1, low: 2 } as const;
-    return [...m.values()].sort((a, b) => order[a[0].severity] - order[b[0].severity] || b.length - a.length);
-  }, [issues]);
+    const left = (l: QualityIssue[]) => l.filter((i) => !(keyOf(i) in done)).length;
+    return [...m.values()].sort((a, b) => order[a[0].severity] - order[b[0].severity] || Number(left(a) === 0) - Number(left(b) === 0) || b.length - a.length);
+  }, [issues, done]);
 
   async function copyAll() {
     if (!data) return;
@@ -96,18 +124,19 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
     }
   }
 
+  const filtered = sev !== "all" || owner !== "all";
   return (
     <>
       <PageHeader
         title="데이터 정합성 점검"
-        description="매장·혜택·기획전·입금 기록·캠퍼스를 서로 비교해 어긋난 곳을 찾습니다. 각 항목에 비교한 데이터와 고치는 자리가 같이 있습니다."
+        description="매장·혜택·기획전·입금 기록·캠퍼스를 서로 비교해 어긋난 곳을 찾습니다. 매장 이름을 누르면 고치는 화면이 바로 열리고, 고친 뒤 「처리함」을 누르면 어디까지 했는지 남습니다."
         actions={
           <>
             {data?.draft && <DraftBadge note={data.draft_note} />}
             <Button icon={<IconCopy />} onClick={copyAll} aria-live="polite" disabled={!data}>
               {copied ? "복사했습니다" : "슬랙용 복사"}
             </Button>
-            <Button variant="primary" icon={<IconRefresh />} onClick={load} disabled={loading}>
+            <Button icon={<IconRefresh />} onClick={load} disabled={loading}>
               다시 점검
             </Button>
           </>
@@ -134,71 +163,89 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
         </div>
       )}
 
-      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
-        <Kpi label="높음" value={loading ? "-" : data?.counts.high ?? 0} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => setSev(sev === "high" ? "all" : "high")} active={sev === "high"} />
-        <Kpi label="보통" value={loading ? "-" : data?.counts.medium ?? 0} hint="곧 문제가 됨" onClick={() => setSev(sev === "medium" ? "all" : "medium")} active={sev === "medium"} />
-        <Kpi label="낮음" value={loading ? "-" : data?.counts.low ?? 0} hint="비어 있는 칸" onClick={() => setSev(sev === "low" ? "all" : "low")} active={sev === "low"} />
-        <Kpi label="점검 범위" value={loading ? "-" : data?.checked.restaurants ?? 0} suffix="매장" hint={data ? `혜택 ${data.checked.benefits} · 기획전 ${data.checked.featured} · 후보 ${data.checked.leads}${data.checked.test_excluded ? ` · 테스트 매장 ${data.checked.test_excluded}곳 제외` : ""}` : undefined} />
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-4">
+        <Kpi soft label="높음" value={loading ? "-" : counts.high} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => setSev(sev === "high" ? "all" : "high")} active={sev === "high"} />
+        <Kpi soft label="보통" value={loading ? "-" : counts.medium} hint="곧 문제가 됨" onClick={() => setSev(sev === "medium" ? "all" : "medium")} active={sev === "medium"} />
+        <Kpi soft label="낮음" value={loading ? "-" : counts.low} hint="비어 있는 칸" onClick={() => setSev(sev === "low" ? "all" : "low")} active={sev === "low"} />
+        <Kpi label="점검 범위" value={loading ? "-" : data?.checked.restaurants ?? 0} suffix="매장" hint={data ? `혜택 ${data.checked.benefits} · 기획전 ${data.checked.featured} · 후보 ${data.checked.leads}${data.checked.test_excluded ? ` · 테스트 매장 ${data.checked.test_excluded}곳 제외` : ""}${doneN ? ` · 처리함 ${doneN}건은 위 숫자에서 뺐습니다` : ""}` : undefined} />
+      </div>
+      <div className="mb-4">
+        <FilterPills soft label="담당" value={owner} onChange={setOwner} options={[{ key: "all", label: "담당 전체", count: ownerCount("all") }, ...OWNERS.map((o) => ({ key: o, label: o, count: ownerCount(o) }))]} />
       </div>
 
       {loading ? (
         <Card flush><Skeleton rows={5} cols={3} /></Card>
       ) : groups.length === 0 ? (
         <Card>
-          <Empty
-            title={data?.backend_reachable ? "어긋난 데이터가 없습니다" : "판정할 수 없습니다"}
-            detail={data?.backend_reachable ? "지금 규칙 기준으로는 깨끗합니다. 규칙은 늘려 가면 됩니다." : "백엔드 연결을 먼저 확인하세요."}
-          />
+          {filtered ? <Empty title="조건에 맞는 항목이 없습니다" detail="담당이나 심각도 선택을 풀어 보세요." /> : (
+            <Empty
+              title={data?.backend_reachable ? "어긋난 데이터가 없습니다" : "판정할 수 없습니다"}
+              detail={data?.backend_reachable ? "지금 규칙 기준으로는 깨끗합니다. 규칙은 늘려 가면 됩니다." : "백엔드 연결을 먼저 확인하세요."}
+            />
+          )}
         </Card>
       ) : (
         <div className="space-y-3">
           {groups.map((list) => {
             const head = list[0];
             const fix = FIX_TAB[head.rule];
+            const left = list.filter((i) => !isDone(i)).length;
             return (
-              <Card key={`${head.rule}:${head.severity}`} className={head.severity === "high" ? "border-red-200" : ""}>
+              <Card key={`${head.rule}:${head.severity}`} className={left === 0 ? "opacity-60" : ""}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Chip tone={SEV_TONE[head.severity]} dot={head.severity === "high"}>{SEV_LABEL[head.severity]}</Chip>
-                      <h3 className="text-[14px] font-semibold text-gray-900">{head.title}</h3>
-                      <span className="text-[12px] text-gray-400 tabular-nums">{list.length}곳</span>
+                      <h3 className="text-[15px] font-semibold text-gray-900">{head.title}</h3>
+                      <span className="text-[12px] text-gray-600 tabular-nums">{left ? `${left}곳 남음` : "모두 처리함"}{list.length - left && left ? ` · 처리함 ${list.length - left}` : ""}</span>
                     </div>
-                    <p className="text-[13px] text-gray-600 mt-1.5 leading-relaxed">{head.detail}</p>
+                    <p className="text-[13px] text-gray-600 mt-2 leading-relaxed">{head.detail}</p>
                   </div>
-                  {fix && onGo && (
-                    <Button size="sm" variant="primary" icon={<IconArrowRight />} onClick={() => onGo(fix.tab)}>
-                      {fix.label}
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <TagChip>담당 {ownerOf(head)}</TagChip>
+                    {fix && onGo && (
+                      <Button size="sm" icon={<IconArrowRight />} onClick={() => onGo(fix.tab)} title="목록 화면으로 갑니다 — 한 곳씩 고칠 때는 아래 매장 이름을 누르세요">
+                        {fix.label}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
-                <ul className="flex flex-wrap gap-1.5 mt-3">
+                <ul className="flex flex-wrap gap-2 mt-3">
                   {list.map((i) => {
                     // 매장 이름을 누르면 그 매장을 고치는 자리로 — 갈 곳이 없는 항목(후보·기획전)은 글자만
                     const to = storeFixTarget(i);
                     const href = to && "href" in to ? to.href : null;
                     const tab = to && "tab" in to ? to.tab : null;
-                    const cls = "block text-[12px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1";
-                    const link = `${cls} hover:border-navy/30 hover:text-navy ${focusRing}`;
+                    const cls = "inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-[6px]";
+                    const link = `${cls} text-[#5558DD] bg-navy/[0.05] hover:bg-navy/[0.1] ${focusRing}`;
+                    const d = isDone(i);
                     return (
-                      <li key={i.id}>
+                      <li key={i.id} className={`inline-flex items-center gap-1 ${d ? "opacity-60" : ""}`}>
                         {href ? (
-                          <a href={href} target="_blank" rel="noreferrer" className={link} title="쿠폰 & 스탬프 편집 화면을 새 탭으로 엽니다">{i.subject}</a>
+                          <a href={href} target="_blank" rel="noreferrer" className={link} title="쿠폰 & 스탬프 편집 화면을 새 탭으로 엽니다">{i.subject}<IconArrowRight size={14} aria-hidden="true" /></a>
                         ) : tab && onGo ? (
-                          <button type="button" onClick={() => onGo(tab)} className={link} title="Astro 매장 상세를 엽니다">{i.subject}</button>
+                          <button type="button" onClick={() => onGo(tab)} className={link} title="Astro 매장 상세를 엽니다">{i.subject}<IconArrowRight size={14} aria-hidden="true" /></button>
                         ) : (
-                          <span className={cls}>{i.subject}</span>
+                          <span className={`${cls} text-gray-700 bg-black/[0.05]`}>{i.subject}</span>
+                        )}
+                        {d ? (
+                          <>
+                            <Chip tone="green">처리함 · {done[keyOf(i)].by}</Chip>
+                            <Button size="sm" variant="ghost" onClick={() => mark(i, false)}>되돌리기</Button>
+                          </>
+                        ) : (
+                          <Button size="sm" variant="ghost" icon={<IconCheck />} onClick={() => mark(i, true)}>처리함</Button>
                         )}
                       </li>
                     );
                   })}
                 </ul>
 
-                <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-gray-500">
-                  <span>고치는 법: <span className="text-gray-700">{head.hint}</span></span>
-                  <span>비교: <code className="bg-gray-100 px-1 rounded text-[11px]">{head.source}</code></span>
-                  <span className="text-gray-400">규칙 {head.rule}</span>
+                <div className="mt-3 pt-3 border-t border-black/[0.06] flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-gray-600">
+                  <span>고치는 법: <span className="text-gray-800">{head.hint}</span></span>
+                  <span>비교: <code className="bg-black/[0.05] px-1 rounded text-[11px]">{head.source}</code></span>
+                  <span>규칙 {head.rule}</span>
                 </div>
               </Card>
             );
@@ -206,8 +253,9 @@ export default function DataQuality({ onGo }: { onGo?: (tab: string) => void }) 
         </div>
       )}
 
-      <p className="text-[12px] text-gray-500 mt-4 leading-relaxed">
-        다음 단계: 이 점검을 매일 아침 돌려 <span className="font-semibold text-gray-700">높음</span>이 새로 생겼을 때만 슬랙에 올립니다. 매일 다 올리면 아무도 안 봅니다.
+      <p className="text-[12px] text-gray-600 mt-4 leading-relaxed">
+        다음 단계: 이 점검을 매일 아침 돌려 <span className="font-semibold text-gray-800">높음</span>이 새로 생겼을 때만 슬랙에 올립니다. 매일 다 올리면 아무도 안 봅니다.
+        「처리함」은 이 브라우저에만 남습니다 — 팀이 같이 보는 처리함은 <Chip tone="gray">개발 중</Chip>입니다.
       </p>
     </>
   );

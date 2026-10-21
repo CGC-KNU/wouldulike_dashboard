@@ -17,7 +17,7 @@ type PresetKey = string;
 
 const UNITS: { key: RangeUnit; label: string }[] = (["day", "week", "month"] as RangeUnit[]).map((u) => ({ key: u, label: UNIT_LABEL[u] }));
 
-export default function AppReportPicker() {
+export default function AppReportPicker({ embedded }: { embedded?: boolean } = {}) {
   const today = kstToday();
   const presets = useMemo(() => rangePresets(today), [today]);
   const init = defaultRange(today);
@@ -40,11 +40,11 @@ export default function AppReportPicker() {
   const custom = () => setPreset("custom");
 
   return (
-    <section className={`${surface} px-4 py-3.5 mb-4`} aria-label="앱 지표 보고서 뽑기">
+    <section className={embedded ? "" : `${surface} px-4 py-3.5 mb-4`} aria-label="앱 지표 보고서 뽑기">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-[12px] font-semibold text-gray-700 w-14 shrink-0">보고서</span>
-          <FilterPills label="빠른 선택" options={presets.map((p) => ({ key: p.key, label: p.label }))} value={preset} onChange={choose} />
+          <FilterPills soft label="빠른 선택" options={presets.map((p) => ({ key: p.key, label: p.label }))} value={preset} onChange={choose} />
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-[12px] font-semibold text-gray-700 w-14 shrink-0">기간</span>

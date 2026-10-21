@@ -24,7 +24,7 @@ export interface SatelliteStatus {
               rows: { id: string; name: string; total: number; status: string; paid_at: string | null }[] };
   spots?: { live: number; contracted: number; unpaidAmount: number; stages: { stage: string; n: number }[] };
   reports?: { draft: number; linked: number; sent: number; viewed: number };
-  probe?: { high: number; due: number; held: number };
+  probe?: { high: number; due: number; held: number; /** 응모가 7일 안에 열려야 하는데 앱에 회차가 없는 예정 회차 수 — 앱 기록을 못 읽으면 알 수 없어 undefined */ missingApp?: number };
   activities?: { id: string; body: string; kind: string; author: string; at: string }[];
 }
 
@@ -97,7 +97,14 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
         if (quality?.counts || ins?.insights || mil?.rounds) {
           // 보류는 이번 달 회차만 — 회차 표에는 지난달(9월)도 같이 온다. Probe 홈 「이번 달 보류」·마일리지 화면과 같은 기준 (1013)
           const held = ((mil?.rounds ?? []) as { date: string; result: string }[]).filter((r) => r.date.startsWith(period) && r.result === "held").length;
-          out.probe = { high: quality?.counts?.high ?? 0, due: ((ins?.insights ?? []) as { due?: boolean }[]).filter((i) => i.due).length, held };
+          // 마일리지 배지(1022 목업) — 「지금 할 수 있는 일」만 센다: 앱에 만들어야 할 회차. 응모는 마감 3일 전에 열린다
+          const progress = mil?.progress as Record<string, unknown> | null | undefined;
+          const todayIso = `${period}-${String(new Date().getDate()).padStart(2, "0")}`;
+          const dayMs = 86_400_000;
+          const missingApp = progress
+            ? ((mil?.rounds ?? []) as { date: string; result: string }[]).filter((r) => r.result === "scheduled" && !progress[r.date] && (Date.parse(`${r.date}T00:00:00Z`) - 3 * dayMs - Date.parse(`${todayIso}T00:00:00Z`)) / dayMs <= 7).length
+            : undefined;
+          out.probe = { high: quality?.counts?.high ?? 0, due: ((ins?.insights ?? []) as { due?: boolean }[]).filter((i) => i.due).length, held, missingApp };
         }
         if (spots?.spots) {
           type P = { stage: string; product: string | null; price: number | null; paid_at: string | null };
@@ -128,7 +135,7 @@ export function navBadges(st: SatelliteStatus | null): Record<string, number> {
   if (st.billing?.unpaid) b["astro-billing"] = st.billing.unpaid;
   if (st.billing?.pendingApprove) b["astro-tax"] = st.billing.pendingApprove;
   { const n = (st.reports ? st.reports.draft + st.reports.linked : 0) + (st.probe?.due ?? 0); if (n) b["probe-reports"] = n; }
-  if (st.probe?.held) b["probe-mileage"] = st.probe.held;
+  if (st.probe?.missingApp) b["probe-mileage"] = st.probe.missingApp;
   if (st.probe?.high) b["probe-quality"] = st.probe.high;
   return b;
 }

@@ -199,11 +199,14 @@ export function FilterPills<T extends string>({
   value,
   onChange,
   label,
+  soft,
 }: {
   options: { key: T; label: string; count?: number }[];
   value: T;
   onChange: (v: T) => void;
   label?: string;
+  /** 선택 = 옅은 남색 면 + 남색 글자. 남색 채움은 화면의 주 행동 하나에만 쓴다(Probe 1022 목업) */
+  soft?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label={label}>
@@ -216,12 +219,12 @@ export function FilterPills<T extends string>({
             onClick={() => onChange(o.key)}
             aria-pressed={on}
             className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] border text-[12px] font-semibold transition-[background-color,transform] duration-150 active:scale-[0.97] motion-reduce:active:scale-100 touch-manipulation ${focusRing} ${
-              on ? "bg-navy text-white border-navy shadow-[0_4px_12px_-6px_rgba(5,0,114,0.6)]" : "bg-black/[0.05] text-gray-700 border-transparent hover:bg-black/[0.08]"
+              on ? (soft ? "bg-navy/[0.07] text-navy border-transparent" : "bg-navy text-white border-navy shadow-[0_4px_12px_-6px_rgba(5,0,114,0.6)]") : "bg-black/[0.05] text-gray-700 border-transparent hover:bg-black/[0.08]"
             }`}
           >
             {o.label}
             {o.count !== undefined && (
-              <span className={`tabular-nums ${on ? "text-white/70" : "text-gray-400"}`}>{o.count}</span>
+              <span className={`tabular-nums ${on ? (soft ? "text-navy/70" : "text-white/70") : "text-gray-500"}`}>{o.count}</span>
             )}
           </button>
         );
@@ -277,6 +280,8 @@ export function Kpi({
   hint,
   onClick,
   active,
+  extra,
+  soft,
 }: {
   label: string;
   value: number | string;
@@ -285,6 +290,10 @@ export function Kpi({
   hint?: string;
   onClick?: () => void;
   active?: boolean;
+  /** 숫자 아래 덧붙이는 것(작은 그래프 등) */
+  extra?: ReactNode;
+  /** 선택 표시를 테두리 대신 옅은 남색 면으로(Probe 1022 목업) */
+  soft?: boolean;
 }) {
   const alert = tone === "alert" && typeof value === "number" && value > 0;
   const color = alert ? "text-red-600" : tone === "good" ? "text-emerald-700" : "text-gray-900";
@@ -299,6 +308,7 @@ export function Kpi({
         {suffix && <span className="text-[13px] font-semibold text-gray-400 ml-1">{suffix}</span>}
       </p>
       {hint && <p className="text-[12px] text-gray-500 mt-1 truncate">{hint}</p>}
+      {extra}
     </>
   );
   if (!onClick) return <div className={base}>{inner}</div>;
@@ -307,7 +317,7 @@ export function Kpi({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`${base} hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-16px_rgba(5,0,114,0.35)] active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${focusRing} ${active ? "ring-2 ring-navy border-transparent" : ""}`}
+      className={`${base} hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-16px_rgba(5,0,114,0.35)] active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${focusRing} ${active ? (soft ? "bg-navy/[0.07]" : "ring-2 ring-navy border-transparent") : ""}`}
     >
       {inner}
     </button>

@@ -443,6 +443,22 @@ export interface StoreMetric {
   hidden_from_app?: boolean;
   /** 지난달 한 달 전체(백엔드 월별 스냅샷). 스냅샷을 못 읽었거나 그 달 것이 없으면 null — 0 이 아니라 모름이다. */
   prev?: { coupon_redeemed: number; stamp_earned: number } | null;
+  /**
+   * 지난달 **같은 날짜까지**(1일~오늘 날짜) — 달 중순에 한 달 전체와 견주면 늘 줄어 보여서(1022). 식사권은 쿠폰 사용에 포함돼 있어 따로 싣는다.
+   * 옛 백엔드면 null — 화면은 「지난달 전체」(prev)로 내려간다.
+   */
+  prev_same?: { coupon_redeemed: number; stamp_earned: number; voucher_redeemed: number } | null;
+  /**
+   * 1022 백엔드 집계 — 쿠폰 쓴 사람 · 쿠폰이나 스탬프를 쓴 사람(계정) · 쓰인 식사권 장 수 · 마일리지 적립한 사람. 이번 달.
+   * 옛 백엔드면 undefined → 화면은 「미확인」이 아니라 「집계 전」으로 둔다. 숫자 0 은 실제 0 이다.
+   */
+  coupon_users?: number | null;
+  active_users?: number | null;
+  voucher_redeemed?: number | null;
+  mileage_earners?: number | null;
+  /** 지금 켜져 있는 혜택 수(쿠폰 · 스탬프 쿠폰)와 그중 스탬프가 있는가 — 못 읽으면 null. 「조용한 매장」이 혜택이 없어서인지 가른다 */
+  benefit_count?: number | null;
+  has_stamp_benefit?: boolean | null;
 }
 
 /**

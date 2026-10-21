@@ -31,6 +31,7 @@ import {
   IconHome,
   IconLayoutGrid,
   IconBell,
+  IconBrandInstagram,
   IconMessage2,
   IconMessageChatbot,
   IconMovie,
@@ -61,6 +62,8 @@ import { focusRing } from "./ui";
 export interface ToolNavItem {
   key: string;
   label: string;
+  /** 묶음 이름만 적는 줄 — 화면이 아니다. 좁은 화면(가로 메뉴줄)에서는 숨긴다. Probe 「운영 / 지표」(1022 목업) */
+  heading?: boolean;
   /** 위에 가는 선을 하나 긋는다 — Papillon 목업의 묶음 구분을 그대로 살린다. */
   sepBefore?: boolean;
   /**
@@ -111,6 +114,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-quality": IconAlertTriangle,
   "probe-mileage": IconGift,
   "probe-reports": IconFileDescription,
+  "probe-insta": IconBrandInstagram,
   "hubble-map": IconMap2,
   "hubble-watch": IconTimelineEvent,
   "orbit-board": IconLayoutKanban,
@@ -192,7 +196,7 @@ export default function ToolShell({
     setGroups((g) => { const next = { ...g, [key]: open }; try { localStorage.setItem(GROUPS_KEY, JSON.stringify(next)); } catch { /* 무시 */ } return next; });
   };
   return (
-    <div className={`grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-6 items-start ${dock ? "pb-24" : ""}`}>
+    <div className={`grid grid-cols-1 md:grid-cols-[52px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)] gap-0 md:gap-4 xl:gap-6 items-start ${dock ? "pb-24" : ""}`}>
       <aside className="md:sticky md:top-16 bg-white/70 backdrop-blur-xl rounded-[18px] border border-white/60 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_16px_40px_-28px_rgba(5,0,114,0.35)] overflow-hidden">
         {/* 제품 표시 + 메인(런처)으로 돌아가기 — 폰에서는 위에 '메인으로'가 이미 있어 숨기고 메뉴줄만 남긴다 (0929) */}
         <div className="hidden md:block px-3 pt-3 pb-2 border-b border-black/[0.05]">
@@ -203,18 +207,18 @@ export default function ToolShell({
               className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-gray-50 ${focusRing}`}
             >
               <ToolIcon k={product.key} />
-              <span className="min-w-0">
+              <span className="min-w-0 md:max-xl:hidden">
                 <span className="block text-[14px] font-bold text-gray-900 leading-tight tracking-[-0.01em]">{product.name}</span>
                 <span className="block text-[11px] text-gray-500 leading-tight">{product.subtitle}</span>
               </span>
-              <span className="ml-auto inline-flex items-center gap-0.5 text-[11px] font-semibold text-gray-400 shrink-0">
+              <span className="ml-auto md:max-xl:hidden inline-flex items-center gap-0.5 text-[11px] font-semibold text-gray-400 shrink-0">
                 <IconChevronLeft size={14} aria-hidden="true" />메인
               </span>
             </button>
           ) : (
             <div className="flex items-center gap-2 px-2 py-1.5">
               <ToolIcon k={product.key} />
-              <span className="min-w-0">
+              <span className="min-w-0 md:max-xl:hidden">
                 <span className="block text-[13px] font-bold text-gray-900 leading-tight">{product.name}</span>
                 <span className="block text-[11px] text-gray-500 leading-tight">{product.subtitle}</span>
               </span>
@@ -226,6 +230,7 @@ export default function ToolShell({
           {/* 좁은 화면에서는 탭이 가로줄이 된다 — 오른쪽에 더 있다는 그늘을 둔다 (0914) */}
           <ul className="flex md:flex-col gap-0.5 overflow-x-auto md:overflow-visible bg-[linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgb(var(--card)),rgb(var(--card))),linear-gradient(to_right,rgba(16,24,40,0.10),rgba(16,24,40,0)),linear-gradient(to_left,rgba(16,24,40,0.10),rgba(16,24,40,0))] bg-[length:22px_100%,22px_100%,14px_100%,14px_100%] bg-[position:left_center,right_center,left_center,right_center] bg-no-repeat [background-attachment:local,local,scroll,scroll] md:bg-none">
             {navItems.map((n) => {
+              if (n.heading) return <li key={n.key} role="presentation" className="hidden xl:block px-3 pt-3 pb-1 text-[11px] font-semibold text-gray-500">{n.label}</li>;
               if (n.children?.length) {
                 const inside = n.children.some((c) => c.key === activeKey);
                 const open = inside || (groups[n.key] ?? true);
@@ -243,11 +248,11 @@ export default function ToolShell({
                       className={`hidden md:flex w-full items-center gap-2.5 h-9 px-3 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-[background-color,color] duration-150 ${focusRing} ${inside && !open ? "text-navy" : "text-gray-600"} hover:bg-navy/[0.05] hover:text-gray-900`}
                     >
                       <GIcon size={18} stroke={1.75} className={inside ? "text-navy" : "text-gray-400"} aria-hidden="true" />
-                      {n.label}
+                      <span className="md:max-xl:sr-only">{n.label}</span>
                       {!open && sum ? <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center bg-red-50 text-red-600" aria-label={`${sum}건`}>{sum}</span> : null}
-                      <IconChevronDown size={15} stroke={2} className={`${!open && sum ? "ml-1" : "ml-auto"} text-gray-400 transition-transform duration-150 ${open ? "" : "-rotate-90"}`} aria-hidden="true" />
+                      <IconChevronDown size={15} stroke={2} className={`md:max-xl:hidden ${!open && sum ? "ml-1" : "ml-auto"} text-gray-400 transition-transform duration-150 ${open ? "" : "-rotate-90"}`} aria-hidden="true" />
                     </button>
-                    <ul id={`nav-group-${n.key}`} className={`contents md:block md:pl-3 md:space-y-0.5 ${open ? "" : "md:hidden"}`}>
+                    <ul id={`nav-group-${n.key}`} className={`contents md:block md:pl-3 md:max-xl:pl-0 md:space-y-0.5 ${open ? "" : "md:hidden md:max-xl:!block"}`}>
                       {n.children.map((c) => <NavLeaf key={c.key} n={c} on={activeKey === c.key} badge={badges[c.key]} onSelect={onSelect} nested />)}
                     </ul>
                   </li>
@@ -258,7 +263,7 @@ export default function ToolShell({
           </ul>
         </nav>
 
-        <div className="hidden md:flex items-center gap-2.5 px-4 py-3 border-t border-black/[0.05]">
+        <div className="hidden xl:flex items-center gap-2.5 px-4 py-3 border-t border-black/[0.05]">
           <span className="w-7 h-7 rounded-full bg-[linear-gradient(135deg,#6366E0,#050072)] text-white text-[12px] font-bold flex items-center justify-center shrink-0">
             {user.name.slice(0, 1)}
           </span>
@@ -362,13 +367,15 @@ function NavLeaf({ n, on, badge, onSelect, nested }: { n: ToolNavItem; on: boole
         onClick={() => onSelect(n.key)}
         aria-current={on ? "page" : undefined}
         ref={btn}
-        className={`w-full flex items-center gap-2.5 h-9 px-3 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 touch-manipulation ${focusRing} ${
+        title={n.label}
+        className={`relative w-full flex items-center gap-2.5 md:max-xl:justify-center md:max-xl:px-0 h-9 px-3 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-[background-color,color,box-shadow] duration-150 touch-manipulation ${focusRing} ${
           on ? (ACCENT[n.key] ?? ACCENT_DEFAULT) : "text-gray-600 hover:bg-navy/[0.05] hover:text-gray-900"
         }`}
       >
         <Icon size={nested ? 16 : 18} stroke={1.75} className={on ? "text-white/90" : "text-gray-400"} aria-hidden="true" />
-        {n.label}
-        {badge ? <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center ${on ? "bg-white/20 text-white" : "bg-red-50 text-red-600"}`} aria-label={`${badge}건`}>{badge}</span> : null}
+        {/* 768~1199px 에서는 아이콘 줄로 접는다 — 본문 폭을 지킨다. 이름은 스크린리더 · 툴팁으로 남긴다 */}
+        <span className="md:max-xl:sr-only">{n.label}</span>
+        {badge ? <span className={`ml-auto md:max-xl:ml-0 md:max-xl:absolute md:max-xl:top-0.5 md:max-xl:right-0.5 md:max-xl:min-w-[16px] md:max-xl:h-4 md:max-xl:px-1 min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center ${on ? "bg-white/20 text-white" : "bg-red-50 text-red-600"}`} aria-label={`${badge}건`}>{badge}</span> : null}
       </button>
     </li>
   );
