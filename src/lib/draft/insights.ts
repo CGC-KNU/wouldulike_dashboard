@@ -172,7 +172,7 @@ export async function buildInsights(): Promise<InsightsResult> {
       due: reportable && Boolean(p?.available) && age !== null && age >= (redo ? 7 : 14) && (!sent || redo),
       available: reportable && Boolean(p?.available), reason, metrics, cohort_note: snapshot.cohort_note,
       report: p?.available ? buildReportText(snapshot, cp) : null,
-      sent_report: sent && { id: sent.id, status: sent.status, sent_at: sent.sent_at, views: sent.views.count },
+      sent_report: sent && !redo && { id: sent.id, status: sent.status, sent_at: sent.sent_at, views: sent.views.count },
     };
   });
   insights.sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""));
