@@ -140,6 +140,19 @@ async function wauAgo(g: Ga4AppMetrics | null): Promise<{ from: string; to: stri
   }
 }
 
+/** 지난달 1일~(이번 달과 같은 날짜) 쓴 사람. 백엔드가 아직 이 칸을 모르면(옛 배포) null */
+async function usersPrevSameDays(): Promise<{ value: number; from: string; to: string } | null> {
+  const nowKst = new Date(Date.now() + 9 * 3600_000);
+  const y = nowKst.getUTCFullYear(), m = nowKst.getUTCMonth(); // 0 = 1월
+  const py = m === 0 ? y - 1 : y, pm = m === 0 ? 11 : m - 1;
+  const lastDay = new Date(Date.UTC(py, pm + 1, 0)).getUTCDate();
+  const day = Math.min(nowKst.getUTCDate(), lastDay);
+  const iso = (d: number) => `${py}-${String(pm + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const r = await fetchBackendJson<{ stats?: Record<string, number | null> }>("/api/dashboard/admin/app-stats/period/", `start=${iso(1)}&end=${iso(day)}`);
+  const v = r?.stats?.users_redeemed;
+  return typeof v === "number" ? { value: v, from: iso(1), to: iso(day) } : null;
+}
+
 async function ga4(): Promise<{ data: Ga4AppMetrics | null; error: string | null }> {
   try {
     if (!credentialsFromEnv()) return { data: null, error: null };
@@ -185,6 +198,8 @@ export async function GET() {
   const codeIssued = codeParts.reduce((a, [, v]) => a + v.issued, 0);
   const codeRedeemed = codeParts.reduce((a, [, v]) => a + v.redeemed, 0);
   const signupsTotal = n("signups_total");
+  // 쓴 사람 — 지난달 **같은 날짜까지**와 견준다. 달 중순에 지난달 한 달 전체와 견주면 늘 줄어 보인다(1022)
+  const prevSame = await usersPrevSameDays();
   const [s2c, ob, ago] = await Promise.all([storeToCoupon(g), onboarding(g), wauAgo(g)]);
 
   const groups: AppMetricGroup[] = [
@@ -218,6 +233,11 @@ export async function GET() {
       title: "전환 퍼널",
       description: "앱을 켠 사람이 실제로 매장에서 쓰기까지.",
       metrics: [
+        // 결과 지표 — 이 사업이 되는지를 한 숫자로(1022 기획팀 검토). 계정(DB) 단위라 GA4 기기 수와 1:1 이 아니다.
+        // 백엔드가 아직 이 칸을 모르면(옛 배포) n() 이 null → 화면이 「미확인」 + 「앱 수정 대기」 대신 pending 으로 보인다
+        { key: "users_redeemed", label: "쿠폰 · 스탬프 쓴 사람", value: n("users_redeemed_this_month"), unit: "명", source: "backend", period: "month",
+          ...(n("users_redeemed_this_month") === null ? { status: "pending" as const } : {}),
+          note: "이번 달 매장에서 쿠폰을 쓰거나 스탬프를 받은 계정 수 — 여러 번 써도 1명. 이 사업이 되는지를 보는 결과 지표" },
         { key: "open_to_store", label: "앱 열기 → 매장 상세", value: g?.open_to_store ?? null, unit: "%", source: "ga4", period: "week", note: g ? `세션 ${g.sessions.toLocaleString()}개 중 매장 상세를 연 비율` : "같은 세션 안 매장 상세 이벤트 유무. BigQuery 쿼리 연결 전" },
         // 예전 주석은 "DB 와 BigQuery 를 합쳐야 한다" 였는데 틀린 전제였다 —
         // restaurant_detail_open 과 coupon_issued 가 둘 다 restaurant_id 를 실어서 GA4 안에서 이어진다.
@@ -287,6 +307,8 @@ export async function GET() {
     generated_at: new Date().toISOString(),
     // 무엇을 못 읽었나 — 화면이 「0 이 아니라 모름」을 그 출처에 대해서만 말한다
     backend_ok: s !== null,
+    /** 지난달 같은 날짜까지의 값 — KPI 「지난 기간 대비」. 못 읽으면 키가 없다 */
+    previous: { ...(prevSame ? { users_redeemed: prevSame } : {}) },
     ga4_ok: g !== null,
     ga4_error: gErr,
     /** GA4 확정 테이블이 어디까지 왔나(YYYY-MM-DD) */

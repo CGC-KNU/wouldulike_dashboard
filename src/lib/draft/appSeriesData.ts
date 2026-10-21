@@ -252,6 +252,11 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
       { key: "coupon_issued", label: "쿠폰 발급", unit: "건", source: "backend", kind: "count", note: "발급된 쿠폰(취소 제외). 쿠폰함을 열 때 만료 쿠폰이 지워져 지난 칸은 다시 세면 줄 수 있습니다", pick: fromDb("coupon_issued") },
       { key: "coupon_used", label: "쿠폰 사용", unit: "건", source: "backend", kind: "count", note: "매장에서 사용 처리된 날 기준 — 그 전에 받은 쿠폰도 셉니다", pick: fromDb("coupon_redeemed") },
       {
+        key: "users_redeemed", label: "쿠폰 · 스탬프 쓴 사람", unit: "명", source: "backend", kind: "avg",
+        note: "칸 안에서 매장에서 쿠폰을 쓰거나 스탬프를 받은 계정 수 — 여러 번 써도 1명(1022). 칸을 더하면 같은 사람이 겹치니 기간 전체는 합이 아니라 그 기간을 한 번에 센 고유 계정입니다",
+        pick: fromDb("users_redeemed"),
+      },
+      {
         key: "coupon_rate_db", label: "발급 → 사용(DB)", unit: "%", source: "backend", kind: "rate",
         note: "그 칸에 발급된 쿠폰 중 지금까지 쓴 비율. 최근 칸은 쓸 시간이 짧아 낮게 나옵니다",
         pick: fromDb("coupon_redeem_rate"),

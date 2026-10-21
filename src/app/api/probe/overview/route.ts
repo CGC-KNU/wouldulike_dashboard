@@ -28,6 +28,10 @@ interface BackendStats {
   loyal_total?: number;
   coupon_redeemed_this_month?: number;
   stamp_earned_this_month?: number;
+  coupon_users_this_month?: number;
+  active_users_this_month?: number;
+  voucher_redeemed_this_month?: number;
+  mileage_earners_this_month?: number;
 }
 
 /** 백엔드 월별 스냅샷(`/api/dashboard/admin/metric-snapshots/?restaurants=1`) — 필요한 칸만 */
@@ -73,11 +77,24 @@ export async function GET() {
    * 404 는 그 달 스냅샷이 아직 없는 것(굳기 전) · 그 밖의 실패는 못 읽음 — 어느 쪽이든 지난달 줄은 비운다(0 이 아니다).
    */
   const prevPeriod = previousPeriod();
-  const [bulk, snap] = await Promise.all([
-    fetchBackendJson<{ stats?: Record<string, StatsEnvelope["stats"]> }>("/api/dashboard/stats/bulk/"),
+  const [bulk, snap, benefitsRes] = await Promise.all([
+    fetchBackendJson<{ stats?: Record<string, StatsEnvelope["stats"]>; prev_same_days?: { stats?: Record<string, { coupon_redeemed?: number; stamp_earned?: number; voucher_redeemed?: number }> } }>("/api/dashboard/stats/bulk/", "prev_same_days=1"),
     fetchBackendResult<SnapshotEnvelope>("/api/dashboard/admin/metric-snapshots/", `period=${prevPeriod}&restaurants=1`),
+    // 혜택 수 — 정합성 「유료인데 혜택 0건」 규칙이 세는 것과 같은 원본(restaurant-benefits)
+    fetchBackendJson<{ benefits?: { restaurant_id: number; kind: string; active?: boolean }[] } | { restaurant_id: number; kind: string; active?: boolean }[]>("/api/dashboard/restaurant-benefits/", "all=1"),
   ]);
   const bulkStats = bulk?.stats ?? null;
+  const sameDays = bulk?.prev_same_days?.stats ?? null;
+  /** 1022 백엔드가 배포됐나 — 새 칸이 한 줄이라도 있으면 그렇다. 안 됐으면 새 칸은 0 이 아니라 「집계 전」(undefined) */
+  const hasNewCounts = bulkStats ? Object.values(bulkStats).some((v) => v && "active_users_this_month" in v) : false;
+  const benefitList = Array.isArray(benefitsRes) ? benefitsRes : benefitsRes?.benefits ?? null;
+  const benefitCount = new Map<number, number>();
+  const stampBenefit = new Set<number>();
+  for (const b of benefitList ?? []) {
+    if (b.active === false) continue;
+    benefitCount.set(b.restaurant_id, (benefitCount.get(b.restaurant_id) ?? 0) + 1);
+    if (b.kind === "STAMP") stampBenefit.add(b.restaurant_id);
+  }
   const prevRows = snap.data?.restaurants ?? null;
 
   /** 매장 하나를 지표 줄로. `stats` 가 null 이면 '모름'이다 — 0 으로 세면 안 된다. */
@@ -97,6 +114,13 @@ export async function GET() {
     prev: prevRows
       ? { coupon_redeemed: prevRows[String(r.restaurant_id)]?.coupon_redeemed ?? 0, stamp_earned: prevRows[String(r.restaurant_id)]?.stamp_earned ?? 0 }
       : null,
+    prev_same: sameDays ? { coupon_redeemed: sameDays[String(r.restaurant_id)]?.coupon_redeemed ?? 0, stamp_earned: sameDays[String(r.restaurant_id)]?.stamp_earned ?? 0, voucher_redeemed: sameDays[String(r.restaurant_id)]?.voucher_redeemed ?? 0 } : null,
+    coupon_users: hasNewCounts && stats ? stats.coupon_users_this_month ?? 0 : null,
+    active_users: hasNewCounts && stats ? stats.active_users_this_month ?? 0 : null,
+    voucher_redeemed: hasNewCounts && stats ? stats.voucher_redeemed_this_month ?? 0 : null,
+    mileage_earners: hasNewCounts && stats ? stats.mileage_earners_this_month ?? 0 : null,
+    benefit_count: benefitList ? benefitCount.get(r.restaurant_id) ?? 0 : null,
+    has_stamp_benefit: benefitList ? stampBenefit.has(r.restaurant_id) : null,
   });
 
   const stores: StoreMetric[] = restaurants.map((r) => toMetric(r, bulkStats ? bulkStats[String(r.restaurant_id)] ?? {} : null));
@@ -113,6 +137,8 @@ export async function GET() {
     // 백엔드가 안전 상한에서 목록을 잘랐다(백엔드 #126~) — 뒤쪽 매장이 없다
     stores_truncated: Boolean(backend?.truncated),
     // 지난달 줄의 출처 — ok 면 언제 굳힌 값인지, missing 이면 그 달 스냅샷이 아직 없다, unreadable 이면 못 읽음
+    /** 지난달 같은 날짜까지 — 백엔드가 줬나 */
+    previous_same: sameDays ? { available: true } : { available: false },
     previous: prevRows
       ? { period: prevPeriod, state: "ok", complete: Boolean(snap.data?.current?.complete), counted_at: snap.data?.current?.counted_at ?? null }
       : { period: prevPeriod, state: snap.status === 404 ? "missing" : "unreadable" },

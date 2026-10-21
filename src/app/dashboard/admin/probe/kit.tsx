@@ -14,6 +14,11 @@ export function Unknown({ why = "읽지 못한 값입니다 — 0 이 아니라 
   return <span title={why} className="inline-flex items-center h-5 px-1.5 rounded-md bg-black/[0.06] text-[11px] font-medium text-gray-600 whitespace-nowrap">미확인</span>;
 }
 
+/** 백엔드가 아직 안 세는 칸(옛 배포) — 못 읽은 「미확인」과 다르다. 0 이 아니다 */
+export function Pending() {
+  return <span title="이 칸을 세는 백엔드가 아직 배포되지 않았습니다 — 0 이 아니라 집계 전" className="inline-flex items-center h-5 px-1.5 rounded-md bg-black/[0.04] text-[11px] font-medium text-gray-500 whitespace-nowrap">집계 전</span>;
+}
+
 /** 이름 옆 플랜 표지. 무료 · 미지정은 표지 없음 */
 export function PlanTag({ tier }: { tier: string | null | undefined }) {
   if (tier === "CONTENT") return <span title="Premium — 최고 등급" className="inline-flex items-center h-5 px-1.5 rounded-md bg-[#050072] text-[11px] font-semibold text-white">Premium</span>;

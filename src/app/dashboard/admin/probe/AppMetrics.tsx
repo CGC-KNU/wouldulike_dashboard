@@ -34,25 +34,67 @@ interface Payload {
   ga4_error?: string | null;
   ga4_through?: string | null;
   periods?: AppPeriod[];
+  previous?: { users_redeemed?: { value: number; from: string; to: string } };
 }
+/** 12주 추이 — /api/probe/app/trend. 느려서(10~20초) KPI 를 먼저 그리고 나중에 얹는다 */
+interface Trend { range: string; weeks: { start: string; end: string }[]; series: Record<string, (number | null)[]> }
 
 const SOURCE_SHORT: Record<Source, string> = { backend: "DB", push: "푸시", ga4: "GA4", firebase: "Firebase" };
 
 /**
  * 위 KPI 넷 — 1022 목업(기획팀 지표 구성 검토 1019): 머리가 전부 「앱을 켰다」에서 끝나서, 결과 지표(쿠폰 · 스탬프 쓴 사람)를 셋째 칸에 두고
  * DAU/WAU 는 WAU/MAU 로 바꿨다. 가입 1주 후 복귀는 기준 기기가 100대 안팎이라 매주 출렁여 본문(앱 이용)으로 내렸다.
- * 「쓴 사람」은 백엔드 집계가 아직 없다(개발 중) — 값을 지어내지 않고 「미확인」으로 둔다.
+ * 「쓴 사람」은 백엔드 월 집계(users_redeemed). 옛 백엔드면 값이 없어 「미확인」으로 둔다 — 값을 지어내지 않는다.
  */
 const HEADLINE: { key: string; hint: string }[] = [
   { key: "wau", hint: "앱을 켠 기기" },
   { key: "open_to_store", hint: "세션 기준" },
-  { key: "users_redeemed", hint: "계정 · 개발 중" },
+  { key: "users_redeemed", hint: "계정 기준" },
   { key: "wau_mau", hint: "30일 안에 온 기기가 이번 주에도" },
 ];
 /** 머리 칸으로 올라갔거나 · 대체되었거나 · 값이 없는 칸 — 본문 묶음에서 뺀다 */
-const HIDE_IN_BODY = new Set(["wau", "open_to_store", "wau_mau", "dau_wau", "wau_per_signup", "invite_share", "coupon_code_share", "voucher_redeemed", "mileage_winners"]);
+const HIDE_IN_BODY = new Set(["users_redeemed", "wau", "open_to_store", "wau_mau", "dau_wau", "wau_per_signup", "invite_share", "coupon_code_share", "voucher_redeemed", "mileage_winners"]);
 /** 이름만 바꾸는 칸 — 매장 지표 숫자와 범위가 다르다는 것을 이름에서 말한다 */
 const RENAME: Record<string, string> = { coupon_used: "쿠폰 사용(앱 전체)" };
+/** 지난 기간 대비 — 쓴 사람은 지난달 같은 날짜까지, 나머지는 끝난 주 둘(추이 선의 마지막 두 칸)을 견준다 */
+function deltaOf(key: string, value: number | null, data: Payload | null, trend: Trend | null | false): string {
+  if (key === "users_redeemed") {
+    const p = data?.previous?.users_redeemed;
+    if (value === null || !p) return "";
+    const d = value - p.value;
+    return `${+p.from.slice(5, 7)}월 같은 날짜까지 대비 ${d > 0 ? "+" : ""}${d.toLocaleString()}명`;
+  }
+  if (!trend) return "";
+  const v = trend.series[key];
+  if (!v || v.length < 2) return "";
+  const a = v[v.length - 2], b = v[v.length - 1];
+  if (a === null || b === null) return "";
+  const d = Math.round((b - a) * 10) / 10;
+  const u = key === "wau" ? "명" : "%p";
+  return `전주 대비 ${d > 0 ? "+" : ""}${d.toLocaleString()}${u}`;
+}
+
+/** KPI 아래 작은 선 — 최근 12칸. 못 읽은 칸(null)은 이어 그리지 않고 끊는다 */
+function Spark({ values, weeks, range }: { values: (number | null)[]; weeks: { start: string; end: string }[]; range: string }) {
+  const nums = values.filter((x): x is number => x !== null);
+  if (nums.length < 2) return null;
+  const W = 200, H = 36, P = 3, lo = Math.min(...nums), hi = Math.max(...nums), span = hi - lo || 1;
+  const x = (i: number) => P + (i / (values.length - 1)) * (W - 2 * P);
+  const y = (n: number) => P + (1 - (n - lo) / span) * (H - 2 * P);
+  const segs: string[][] = [];
+  values.forEach((n, i) => { if (n === null) { segs.push([]); return; } if (!segs.length) segs.push([]); segs[segs.length - 1].push(`${x(i).toFixed(1)},${y(n).toFixed(1)}`); });
+  const label = `${range} · 최저 ${lo.toLocaleString()} · 최고 ${hi.toLocaleString()}`;
+  const w = (i: number) => `${+weeks[i].start.slice(4, 6)}/${+weeks[i].start.slice(6, 8)} 주`;
+  return (
+    <div className="mt-3" title={label}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H} role="img" aria-label={label}>
+        {segs.filter((sg) => sg.length > 1).map((sg, i) => <polyline key={i} points={sg.join(" ")} fill="none" stroke="#050072" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />)}
+      </svg>
+      <p className="flex justify-between text-[11px] text-gray-500 mt-0.5"><span>{w(0)}</span><span>{w(values.length - 1)}</span></p>
+    </div>
+  );
+}
+
 const GROUP_TABS: Record<string, string> = { usage: "앱 이용", funnel: "전환 퍼널", loyalty: "스탬프 · 마일리지", push: "푸시 · 배너" };
 
 export default function AppMetrics() {
@@ -84,6 +126,10 @@ export default function AppMetrics() {
       .finally(() => setLoading(false));
   };
   useEffect(load, []);
+  const [trend, setTrend] = useState<Trend | null | false>(null);
+  useEffect(() => {
+    fetch("/api/probe/app/trend").then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))).then(setTrend).catch(() => setTrend(false));
+  }, []);
 
   const metric = (key: string) => data?.groups.flatMap((g) => g.metrics).find((m) => m.key === key);
   const period = (key?: AppPeriodKey) => (key ? data?.periods?.find((p) => p.key === key) : undefined);
@@ -132,11 +178,18 @@ export default function AppMetrics() {
         {HEADLINE.map(({ key, hint }) => {
           const m = metric(key);
           const range = period(m?.period)?.range;
-          const unread = key === "users_redeemed" || !m || m.value === null;
-          return <Kpi key={key} label={key === "users_redeemed" ? "쿠폰 · 스탬프 쓴 사람" : m?.label ?? key} value={loading ? "-" : unread ? "미확인" : m!.value!.toLocaleString()} suffix={!unread ? m!.unit : undefined} hint={range ? `${range} · ${hint}` : hint} />;
+          const unread = !m || m.value === null;
+          const delta = deltaOf(key, m?.value ?? null, data, trend);
+          return <Kpi key={key} label={m?.label ?? key} value={loading ? "-" : unread ? "미확인" : m!.value!.toLocaleString()} suffix={!unread ? m!.unit : undefined}
+            hint={[delta, range ? `${range} · ${hint}` : hint].filter(Boolean).join(" · ")}
+            extra={trend && trend.series[key] ? <Spark values={trend.series[key]} weeks={trend.weeks} range={trend.range} /> : undefined} />;
         })}
       </div>
-      <p className="text-[12px] text-gray-600 mb-4">지난 기간 대비와 12주 추이 그래프는 <Chip tone="gray">추이 · 개발 중</Chip> — 「주요 지표 보고서」(보고서 뽑기)에서 같은 칸의 추이를 봅니다.</p>
+      <p className="text-[12px] text-gray-600 mb-4">
+        {trend === null ? "머리 칸 아래 선(최근 12주)을 읽는 중입니다 — 「주요 지표 보고서」와 같은 계산이라 10~20초 걸립니다."
+          : trend === false ? "12주 추이를 읽지 못했습니다 — 선이 없다고 변화가 없다는 뜻이 아닙니다."
+          : "머리 칸 아래 선은 최근 12주(주 단위)입니다 — 「주요 지표 보고서」와 같은 계산을 6시간마다 캐시해 그립니다. 「쓴 사람」 선은 주 단위 고유 계정이라 위 이번 달 값과 단위가 다릅니다. 선에 마우스를 올리면 기간과 최저 · 최고가 나옵니다."}
+      </p>
 
       {loading ? (
         <Card flush><Skeleton rows={6} cols={4} /></Card>
