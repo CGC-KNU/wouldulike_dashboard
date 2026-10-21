@@ -644,6 +644,8 @@ export interface ReportManual {
 }
 
 export interface ReportSnapshot {
+  /** 보낸 리포트를 되돌린 기록(1021) — 사유는 필수. 백엔드 칸을 늘리지 않으려고 스냅샷 JSON 에 둔다 */
+  undo?: { reason: string; by: string; at: string };
   /** in_app: 앱에 등록된 제휴 매장인가(1003 — 협찬만 한 매장은 false). 옛 스냅샷엔 없다 */
   store: { name: string; campus: Campus | null; in_app?: boolean };
   post: { plan_id: number; topic: string; posted_at: string | null; permalink: string | null; format: string | null; caption: string | null; cover_url: string | null; owner_name: string | null; co_stores: number };

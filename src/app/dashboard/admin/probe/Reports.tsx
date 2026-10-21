@@ -306,10 +306,10 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       setMsg({ tone: "blue", text: "저장했습니다. 승인은 다시 받아야 합니다." }); onChanged();
     } finally { setBusy(false); }
   }
-  async function act(action: "refresh" | "finalize" | "sent" | "revoke") {
+  async function act(action: "refresh" | "finalize" | "sent" | "revoke", reason?: string) {
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, reason }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
       setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "finalize" ? "승인했습니다. 잠시 뒤 #ops-partner 에 PNG 3장과 HTML 이 올라갑니다." : action === "sent" ? "최종 승인했습니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
@@ -323,6 +323,14 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     const warn = left.length ? `아직 인스타 지표를 다 입력하지 않았습니다.\n\n비어 있는 항목\n${left.map((x) => `· ${x}`).join("\n")}\n\n` : "";
     if (!window.confirm(`${warn}승인하면 #ops-partner 에 PNG 3장과 HTML 이 바로 올라갑니다.${left.length ? "\n이대로 승인할까요?" : "\n승인할까요?"}`)) return;
     void act("finalize");
+  }
+
+  /** 보낸 리포트 되돌리기(1021) — 사유를 적어야 한다. 되돌리면 게시물이 「리포트 없음」으로 돌아가 새로 만들 수 있다. 이미 사장님께 간 파일·#ops-partner 게시물은 거두지 못한다. */
+  function undo() {
+    const why = window.prompt(`'${r.snapshot.post.topic}' 리포트를 되돌립니다.\n\n되돌리면 링크가 닫히고, 게시물 목록에서 새 리포트를 만들 수 있습니다. 이미 보낸 파일과 #ops-partner 게시물은 그대로 남습니다.\n\n되돌리는 사유를 적어 주세요.`);
+    if (why === null) return;
+    if (why.trim().length < 2) { setMsg({ tone: "red", text: "되돌리는 사유를 적어 주세요." }); return; }
+    void act("revoke", why.trim());
   }
 
   /** 초안 지우기 — 게시물 목록에서 다시 만들 수 있게 돌려놓는다. 보낸 리포트는 이 버튼이 없다. */
@@ -359,7 +367,8 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
           {(r.status === "APPROVED" || r.status === "LINKED") && !dirty && <Button variant="primary" icon={<IconCheck />} onClick={() => act("sent")} disabled={busy}>최종 승인</Button>}
           {r.status === "DRAFT" && <a href={`/r/preview-${r.id}`} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>미리보기</Button></a>}
           {/* 회수는 링크가 나간 것만 — 파일로 보낸 리포트는 닫을 링크가 없다 */}
-          {(r.status === "LINKED" || r.status === "SENT") && r.token && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
+          {r.status === "LINKED" && r.token && <Button variant="ghost" icon={<IconTrash />} onClick={() => act("revoke")} disabled={busy}>회수</Button>}
+          {r.status === "SENT" && <Button variant="ghost" icon={<IconTrash />} onClick={undo} disabled={busy}>되돌리기</Button>}
           {(r.status === "DRAFT" || r.status === "APPROVED") && !r.token && <Button variant="ghost" icon={<IconTrash />} onClick={remove} disabled={busy} title="초안을 지우고 게시물 목록에서 다시 만들 수 있게 합니다">초안 지우기</Button>}
           <span className="ml-auto text-[12px] text-gray-400">{r.token ? `열람 ${r.views.count}회${r.views.last_at ? ` · ${agoLabel(r.views.last_at)}` : ""}` : r.approved_by ? `${r.approved_by} 승인` : `${r.created_by} 작성`}</span>
         </>
@@ -368,6 +377,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       {r.status === "DRAFT" && staleHours >= 6 && <Notice tone="amber" title={`수치가 ${staleHours}시간 전 것입니다`}>인스타그램 수치는 계속 오릅니다. 보내기 전에 「수치 다시 읽기」로 지금 값을 담아 주세요.</Notice>}
       {!precheck.ok && <Notice tone="amber" title="이대로는 승인되지 않습니다"><ul className="list-disc pl-4">{precheck.problems.map((p) => <li key={p}>{p}</li>)}</ul></Notice>}
 
+      {s.undo && <div className="mb-3"><Notice tone="amber" title="되돌린 리포트입니다">{s.undo.reason} — {s.undo.by} · {new Date(s.undo.at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</Notice></div>}
       <PanelSection title={`스냅샷 (읽기 전용)${atLabel}`}>
         <div className="grid grid-cols-3 gap-2">
           {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
