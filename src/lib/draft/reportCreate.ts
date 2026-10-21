@@ -5,6 +5,7 @@ import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { fetchPapillonMonths, sponsorStores } from "@/lib/draft/papillon";
 import { normName } from "@/lib/draft/sheet";
 import { buildSnapshot } from "@/lib/draft/snapshot";
+import { isD7ReportToRefresh } from "@/lib/draft/reportRefresh";
 import { cohortNote, ownerHeadline, ownerStory, propose } from "@/lib/draft/report";
 import { seedStoreOps } from "@/lib/draft/seed";
 import type { BackendRestaurant, StoreOps, StoreReport } from "@/lib/draft/types";
@@ -30,7 +31,7 @@ export async function createReportDraft(input: { restaurant_id?: number | null; 
   } catch (e) {
     return storeFail(e, "리포트를 읽지 못했습니다.");
   }
-  const existing = mine.find((r) => r.plan_id === input.plan_id && r.status !== "REVOKED");
+  const existing = mine.find((r) => r.plan_id === input.plan_id && r.status !== "REVOKED" && !isD7ReportToRefresh(r, r.snapshot?.store?.name ?? ""));
   if (existing && !input.force) return { ok: false, status: 409, detail: `이 게시물 리포트는 이미 있습니다 (${existing.status}). 갱신본을 만들려면 force 를 주세요.`, report: existing };
 
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/");

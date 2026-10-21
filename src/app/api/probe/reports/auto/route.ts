@@ -1,3 +1,4 @@
+import { isD7ReportToRefresh } from "@/lib/draft/reportRefresh";
 import { NextResponse } from "next/server";
 import { checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 import { buildInsights } from "@/lib/draft/insights";
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
     const failed: { plan_id: number; detail: string }[] = [];
     let had = 0;
     for (const i of due) {
-      const mine = reports.some((x) => x.plan_id === i.plan_id && (i.restaurant_id !== null ? x.restaurant_id === i.restaurant_id : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(i.store)));
+      const mine = reports.some((x) => x.plan_id === i.plan_id && !isD7ReportToRefresh(x, i.store) && (i.restaurant_id !== null ? x.restaurant_id === i.restaurant_id : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(i.store)));
       if (mine) { had++; continue; }
       const rd = await fetchReportData(i.plan_id);
       if (!rd?.available || rd.day !== 14) { wait.push(i.plan_id); continue; }
