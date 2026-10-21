@@ -157,6 +157,8 @@ export async function buildInsights(): Promise<InsightsResult> {
     const sent = !reportable ? null : reports.find((x) => x.plan_id === plan.id && x.status !== "REVOKED" && (rid !== null
       ? x.restaurant_id === rid
       : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(label))) ?? null;
+    // 7일차 리포트가 나간 뒤 14일차로 다시 내기로 한 매장(1021) — 이미 보냄 칸을 비워 「만들기」가 보이게 하고, 14일차 전에도 만들 수 있다
+    const redo = Boolean(sent && isD7ReportToRefresh(sent, label));
     const reason = !reportable
       ? "괄호에 적힌 매장을 매장 표에서 찾지 못했습니다 — 이름을 매장 표와 맞추면 리포트를 만들 수 있습니다"
       : denied.has(plan.id)
@@ -167,10 +169,10 @@ export async function buildInsights(): Promise<InsightsResult> {
       posted_at: snapshot.post.posted_at, permalink: snapshot.post.permalink, age_days: age, co_stores: snapshot.post.co_stores, checkpoint: cp,
       targets: { d7: age !== null && age >= 7, d14: age !== null && age >= 14 },
       // 권장 시점은 14일차(민찬 1008) — 14일차 09:00 자동 초안(#259)과 같은 날. 전에는 7일차였다.
-      due: reportable && Boolean(p?.available) && age !== null && age >= 14 && !(sent && !isD7ReportToRefresh(sent, label)),
+      due: reportable && Boolean(p?.available) && age !== null && age >= (redo ? 7 : 14) && (!sent || redo),
       available: reportable && Boolean(p?.available), reason, metrics, cohort_note: snapshot.cohort_note,
       report: p?.available ? buildReportText(snapshot, cp) : null,
-      sent_report: sent && { id: sent.id, status: sent.status, sent_at: sent.sent_at, views: sent.views.count },
+      sent_report: sent && !redo ? { id: sent.id, status: sent.status, sent_at: sent.sent_at, views: sent.views.count } : null,
     };
   });
   insights.sort((a, b) => (b.posted_at ?? "").localeCompare(a.posted_at ?? ""));
