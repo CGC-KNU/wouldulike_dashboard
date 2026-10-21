@@ -30,11 +30,15 @@ export function TagChip({ children }: { children: ReactNode }) {
  * 딥링크 인자 한 번 읽고 버리기 — 홈 「오늘 할 일」 같은 곳에서 `?stage=make` 처럼 넘긴 값을
  * 화면이 처음 열릴 때 한 번만 쓴다. 안 지우면 다른 메뉴로 갔다 와도 그 필터가 남는다.
  */
+const taken = new Map<string, { v: string; t: number }>();
 export function takeParam(name: string): string | null {
   try {
+    // 개발 모드(StrictMode)는 초기값 함수를 두 번 부른다 — 첫 호출이 지웠어도 같은 값을 돌려준다
+    const hit = taken.get(name);
+    if (hit && Date.now() - hit.t < 2000) return hit.v;
     const url = new URL(window.location.href);
     const v = url.searchParams.get(name);
-    if (v !== null) { url.searchParams.delete(name); window.history.replaceState(null, "", url.toString()); }
+    if (v !== null) { taken.set(name, { v, t: Date.now() }); url.searchParams.delete(name); window.history.replaceState(null, "", url.toString()); }
     return v;
   } catch { return null; }
 }
@@ -53,3 +57,30 @@ export const openDateOf = (iso: string) => new Date(Date.parse(`${iso}T00:00:00Z
 export type Owner = "영업" | "운영" | "개발";
 export const OWNERS: Owner[] = ["영업", "운영", "개발"];
 export const ownerOf = (i: { rule: string }): Owner => (i.rule === "APP_CAMPUS_MISSING" ? "개발" : i.rule === "LEAD_STALE" ? "영업" : "운영");
+
+/**
+ * 패널 구역 — 제목이 그 아래 칸 이름(12px)보다 약하던 위계를 바로잡았다(1022 목업): 구역 제목 15px 굵게 · 칸 이름 12px.
+ * 공용 PanelSection(Astro 도 씀)은 그대로 두고 Probe 패널만 이걸 쓴다.
+ */
+export function PanelSection({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[15px] font-semibold text-gray-900 tracking-[-0.01em]">{title}</h3>
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** 패널 안 지표 상자 — 테두리 없이 옅은 면 */
+export function MetricBox({ label, value, sub }: { label: string; value: ReactNode; sub?: string }) {
+  return (
+    <div className="rounded-[10px] bg-[#F6F7FF] px-3 py-2">
+      <p className="text-[12px] text-gray-600">{label}</p>
+      <p className="text-[20px] font-bold tabular-nums text-gray-900 leading-tight">{value}</p>
+      {sub && <p className="text-[11px] text-gray-500 tabular-nums">{sub}</p>}
+    </div>
+  );
+}

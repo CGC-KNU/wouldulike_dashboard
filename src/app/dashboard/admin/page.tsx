@@ -2629,7 +2629,7 @@ export default function AdminHomePage() {
           {activeTab === "probe-home" && <ProbeHome onGo={go} />}
           {activeTab === "probe-reports" && <Reports onGo={go} />}
           {activeTab === "probe-mileage" && <MileageOps actor={actorName} />}
-          {activeTab === "probe-metrics" && <ProbeOverview />}
+          {activeTab === "probe-metrics" && <ProbeOverview onGo={go} />}
           {activeTab === "probe-app" && <AppMetrics />}
           {activeTab === "probe-quality" && (
             <DataQuality onGo={go} actor={actorName} />

@@ -7,9 +7,9 @@ import { ageShare, manualMissing, parseManual, slideShare } from "@/lib/draft/re
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import MonthlyReports from "./MonthlyReports";
-import { TagChip, Unknown, md, takeParam } from "./kit";
+import { PanelSection, TagChip, Unknown, md, takeParam } from "./kit";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
-import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Kpi, Notice, PageHeader, PanelSection, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notice, PageHeader, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 
 /**
  * Probe · 매장 리포트 — 게시물이 들어오는 곳부터 점주에게 리포트가 나가는 곳까지 한 화면.
@@ -250,7 +250,7 @@ function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: 
         {!p.available ? <p className="text-[13px] text-gray-500">{p.reason ?? "아직 성과가 모이지 않았습니다."}</p> : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {p.metrics.map((m) => (
-              <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2">
+              <div key={m.key} className="rounded-[10px] bg-[#F6F7FF] px-3 py-2">
                 <p className="text-[11px] text-gray-500">{M_LABEL[m.key] ?? m.key}</p>
                 <p className="text-[18px] font-bold tabular-nums text-gray-900 leading-tight">{m.value.toLocaleString()}</p>
               </div>
@@ -435,7 +435,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title={`스냅샷 · 인스타그램${atLabel} (읽기 전용)`}>
         <div className="grid grid-cols-3 gap-2">
           {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
-            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
+            <div key={m.key} className="rounded-[10px] bg-[#F6F7FF] px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
           ))}
           {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
         </div>
@@ -447,7 +447,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
       <PanelSection title={`스냅샷 · 인스타그램${atLabel} (읽기 전용)`}>
         <div className="grid grid-cols-3 gap-2">
           {s.metrics.filter((m) => ["saved", "reach", "views", "shares", "likes", "comments"].includes(m.key)).map((m) => (
-            <div key={m.key} className="rounded-lg border border-gray-200 px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
+            <div key={m.key} className="rounded-[10px] bg-[#F6F7FF] px-3 py-2"><p className="flex items-center justify-between gap-1 text-[11px] text-gray-500">{METRIC_LABEL[m.key]}{m.source && <Chip tone={METRIC_SOURCE[m.source].tone}>{METRIC_SOURCE[m.source].label}</Chip>}</p><p className="text-[16px] font-bold tabular-nums">{cardValue(s, m).toLocaleString()}</p>{day7Line(s, m) && <p className="text-[11px] text-gray-500 tabular-nums">{day7Line(s, m)}</p>}</div>
           ))}
           {s.metrics.length === 0 && <p className="col-span-3 text-[13px] text-gray-500">인스타그램 수치가 없습니다. 공개 페이지에는 '—' 로 나갑니다.</p>}
         </div>
@@ -505,7 +505,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
         {props.length === 0 ? <p className="text-[13px] text-gray-500">조건에 걸린 제안이 없습니다. 억지로 채우지 않습니다 — 제안 섹션은 공개 페이지에서 숨겨집니다.</p> : (
           <ul className="space-y-3">
             {props.map((p, i) => (
-              <li key={p.rule} className="rounded-lg border border-gray-200 p-3">
+              <li key={p.rule} className="rounded-[10px] bg-[#F6F7FF] p-3">
                 <label className="flex items-center gap-2 text-[13px] font-semibold text-gray-900 cursor-pointer"><input type="checkbox" checked={p.approved} disabled={!editable} onChange={(e) => setProps((ps) => ps.map((x, k) => (k === i ? { ...x, approved: e.target.checked } : x)))} className="w-4 h-4 accent-[#050072]" />{p.title}<span className="text-[11px] text-gray-400 font-normal">{p.rule}</span></label>
                 <Textarea rows={2} value={p.text} disabled={!editable} onChange={(e) => setProps((ps) => ps.map((x, k) => (k === i ? { ...x, text: e.target.value } : x)))} className="mt-2" />
                 <ProposalBasis p={r.proposals.find((x) => x.rule === p.rule)} />
