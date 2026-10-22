@@ -47,6 +47,8 @@ export interface ChartFrame {
   marks?: boolean[];
   /** 평시 기준선 — 칸마다 점선 한 토막(칸 길이가 다르면 높이도 다르다, A16) */
   ref?: { values: (number | null)[]; label: string };
+  /** 목표선 — 칸을 가로지르는 가는 실선 하나, 끝에 이름(D7) */
+  goal?: { value: number; label: string };
 }
 
 /** 사건 띠 — 못 센 칸(MISSING)과 헷갈리지 않게 금색 쪽으로 */
@@ -109,8 +111,16 @@ function refLine(g: Geo, f: ChartFrame): string {
   return segs + label;
 }
 
-/** 축 끝을 정할 때 기준선도 넣는다 — 기준선이 그래프 밖으로 나가지 않게 */
-const refMax = (f: ChartFrame) => Math.max(0, ...(f.ref?.values ?? []).map((v) => v ?? 0));
+/** 목표선 — 점선(평시)과 헷갈리지 않게 잉크색 실선. 이름은 왼쪽 안쪽에 둔다(오른쪽 끝은 평시 이름 자리) */
+function goalLine(g: Geo, f: ChartFrame): string {
+  if (!f.goal) return "";
+  const y = g.y(f.goal.value);
+  return `<line x1="${g.l}" x2="${g.w - g.r}" y1="${y}" y2="${y}" stroke="${INK}" stroke-width="1" stroke-opacity="0.7"/>` +
+    `<text x="${g.l + 4}" y="${y - 4}" font-size="10" fill="${INK}">${esc(f.goal.label)}</text>`;
+}
+
+/** 축 끝을 정할 때 기준선 · 목표선도 넣는다 — 선이 그래프 밖으로 나가지 않게 */
+const refMax = (f: ChartFrame) => Math.max(0, f.goal?.value ?? 0, ...(f.ref?.values ?? []).map((v) => v ?? 0));
 
 /** 칸마다 보이지 않는 넓은 사각형에 title — 가는 막대·작은 점을 정확히 짚지 않아도 뜬다 */
 function hits(g: Geo, f: ChartFrame, series: ChartSeries[]): string {
@@ -182,7 +192,7 @@ export function barChart(series: ChartSeries[], f: ChartFrame): string {
   const last = totals.map((v, i) => (v === null ? -1 : i)).filter((i) => i >= 0).pop();
   const label = last === undefined ? "" : endLabel(g.x(last), g.y(totals[last] as number) - 6, totals[last] as number, f);
   const empty = last === undefined ? `<text x="${g.l + g.pw / 2}" y="${g.t + g.ph / 2}" text-anchor="middle" font-size="12" fill="${AXIS_TX}">값이 없습니다</text>` : "";
-  return svg(g, f, eventBands(g, f) + bands + frame(g, f) + marks + refLine(g, f) + label + empty + hits(g, f, series));
+  return svg(g, f, eventBands(g, f) + bands + frame(g, f) + marks + refLine(g, f) + goalLine(g, f) + label + empty + hits(g, f, series));
 }
 
 /** 선 하나 — 빈 칸에서 끊는다(0 으로 내려 긋지 않는다). 얕은 표본·진행 중 칸은 속 빈 점 */
@@ -205,7 +215,7 @@ export function lineChart(s: ChartSeries, f: ChartFrame): string {
   const last = vals.map((v, i) => (v === null ? -1 : i)).filter((i) => i >= 0).pop();
   const label = last === undefined ? "" : endLabel(g.x(last) + 8, g.y(vals[last] as number) + 4, vals[last] as number, f, "start");
   const empty = last === undefined ? `<text x="${g.l + g.pw / 2}" y="${g.t + g.ph / 2}" text-anchor="middle" font-size="12" fill="${AXIS_TX}">값이 없습니다</text>` : "";
-  return svg(g, f, eventBands(g, f) + frame(g, f) + refLine(g, f) + path + dots + label + empty + hits(g, f, [s]));
+  return svg(g, f, eventBands(g, f) + frame(g, f) + refLine(g, f) + goalLine(g, f) + path + dots + label + empty + hits(g, f, [s]));
 }
 
 /** KPI 칸 아래 작은 추이 — 축 없이, 마지막 점만 진하게 */
