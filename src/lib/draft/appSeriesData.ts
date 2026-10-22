@@ -1,7 +1,7 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { eventCoverage, EVENT_LIVE_FROM, FOLLOW_DAYS, V260_RELEASED, V260_SETTLE_DAYS, V260_SHARE_MIN, type CouponFunnel, type CouponUseFunnel } from "@/lib/bigquery/couponFunnel";
 import { ACCOUNT_EXCLUSION, EXCLUSIONS, type AppEvent } from "./appEvents";
-import { detailSessions, SMALL_SAMPLE, type PeriodStats } from "./appReportData";
+import { detailSessions, SMALL_SAMPLE, type ContractStores, type PeriodStats } from "./appReportData";
 import { dashed, shiftDays, type Bucket, type RangeSpec, type RangeUnit } from "./appRange";
 
 /**
@@ -168,6 +168,7 @@ function longRows(spec: RangeSpec, cells: CellInput[]): LongRow[] {
       add("쿠폰 종류별(GA4 발급 경로, 같은 칸)", `${r.source}${r.campaign ? " · 캠페인" : ""}`, "발급", r.issued);
       add("쿠폰 종류별(GA4 발급 경로, 같은 칸)", `${r.source}${r.campaign ? " · 캠페인" : ""}`, "그중 사용", r.redeemed);
     }
+    for (const r of c.db?.contract_stores?.inactive ?? []) add(IDLE_STORES_TABLE, [r.name, restMark(r)].filter(Boolean).join(" · "), "활동", 0);
     for (const [rid, m] of Object.entries(c.stores ?? {})) {
       for (const [k, label] of [["coupon_redeemed", "쿠폰 사용"], ["stamp_earned", "스탬프 적립"], ["active_users", "이용 계정"], ["coupon_users", "쿠폰 쓴 계정"], ["voucher_redeemed", "식사권 사용"]] as const) {
         add("매장 × 월(월말 스냅샷)", `매장 ${rid}`, label, m[k] ?? null);
@@ -224,6 +225,17 @@ const fromDb = (k: string): Pick => (c) => {
   if (!(k in c.db.stats)) return { v: null, why: "백엔드 미반영" };
   return num(c.db.stats[k]);
 };
+/** 계약 매장(Astro) 칸 — 백엔드가 못 읽었으면 null, 키가 아예 없으면 그 칸을 세는 백엔드가 아직 안 나갔다(D8 · 1023) */
+const fromContracts = (f: (cs: ContractStores) => Cell): Pick => (c) => {
+  if (!c.db?.stats) return MISSING;
+  if (!("contract_stores" in c.db)) return { v: null, why: "백엔드 미반영" };
+  return c.db.contract_stores ? f(c.db.contract_stores) : { v: null, why: "못 셈" };
+};
+/** 활동 0건 계약 매장 보조표 — 주요 지표 보고서가 KPI 칸의 목록을 여기서 읽는다 */
+export const IDLE_STORES_TABLE = "활동 0건 계약 매장(Astro)";
+/** 「방학 쉼」 같은 표시 — Astro 의 학기·방학 이용 여부가 「안 함」으로 확인된 곳만 */
+const restMark = (r: ContractStores["inactive"][number]) =>
+  [r.semester_active === false ? "학기 쉼" : "", r.vacation_active === false ? "방학 쉼" : ""].filter(Boolean).join(" · ");
 /** 월 칸은 월말 스냅샷(굳힌 값), 없으면 지금 다시 센 값에 그렇다고 적는다(D10 · 민찬 1022 「월말 스냅샷」) */
 const fromSnapOr = (k: string, live: Pick): Pick => (c, ctx) => {
   const v = c.snap?.stats?.[k];
@@ -452,8 +464,27 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
       },
       {
         key: "active_restaurants", label: "활동 매장", unit: "곳", source: "backend", kind: "count", agg: "칸 안 고유", counts: "매장",
-        note: "쿠폰 사용이나 스탬프가 1건 이상인 매장 수. 제휴 매장 대비 비율은 계약 기준 매장 정본(Astro)이 다 채워진 뒤 싣습니다(D8)",
+        note: "쿠폰 사용이나 스탬프가 1건 이상인 매장 수 — 계약이 끝난 매장도 셉니다. 계약 매장 대비는 아래 「활동 계약 매장 비율」",
         pick: fromDb("active_restaurants"),
+      },
+      {
+        key: "contract_stores", label: "계약 매장", unit: "곳", source: "backend", kind: "count", agg: "칸에 걸친 계약", counts: "매장",
+        note: "Astro 에서 그 칸 끝까지 개시일이 지났고 지금 제휴 중인 매장(테스트 매장 제외). 보고서를 뽑을 때마다 Astro 를 읽어 매장을 넣으면 바로 들어갑니다(D8). 개시일은 재계약 D-day 와 같은 규칙(개시일 → 청구 시작월 → 26-2 계약서 → 서명 다음 달)이고, 제휴를 끈 매장은 끈 날을 몰라 지난 칸에서도 빠집니다",
+        pick: fromContracts((cs) => ({ v: cs.count })),
+      },
+      {
+        key: "contract_active_rate", label: "활동 계약 매장 비율", unit: "%", source: "backend", kind: "rate", agg: "칸 안 고유 ÷ 계약", counts: "매장", sub: true,
+        note: "계약 매장 중 칸 안에 쿠폰 사용이나 스탬프가 1건 이상인 곳의 비율. 활동 0건 매장은 보조표 「활동 0건 계약 매장(Astro)」에 있습니다",
+        // 표본이 아니라 계약 매장 전수라 분모 30 미만의 「표본 n」 흐림을 달지 않는다
+        pick: fromContracts((cs) => {
+          const c = rate(cs.active, cs.count);
+          return c.v === null ? c : { v: c.v, n: c.n, x: c.x };
+        }),
+      },
+      {
+        key: "contract_undated", label: "계약일 빈 매장", unit: "곳", source: "backend", kind: "count", agg: "지금 값", counts: "매장", sub: true,
+        note: "제휴 중인데 Astro 에 개시일·청구 시작월·서명일이 없어 분모에 못 넣은 매장 — 지금 Astro 값이라 칸마다 같습니다. 채우면 분모에 들어갑니다",
+        pick: fromContracts((cs) => ({ v: cs.undated })),
       },
       {
         key: "coupon_claimed", label: "받기 누른 쿠폰", unit: "장", source: "ga4", kind: "count", agg: "합", counts: "쿠폰",
