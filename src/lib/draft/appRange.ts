@@ -160,18 +160,22 @@ export interface RangePreset {
   unit: RangeUnit;
 }
 
-/** 화면·보고서 위 띠의 빠른 선택 — 단위까지 같이 정한다(민찬이 고르기 쉬운 묶음). */
+/**
+ * 화면·보고서 위 띠의 빠른 선택 — 단위까지 같이 정한다(민찬이 고르기 쉬운 묶음).
+ *
+ * 「지난달」은 **월 단위 6개월판**이다(1022 기획팀 검토 R6 · 민찬 D1 — 월간 정본은 월 단위 6개월판, 슬랙 월간과 같다).
+ * 예전엔 일 단위 30칸이라 같은 9월 가입이 화면판 KPI 11명(마지막 7일), 슬랙 월간 177명(그 달)으로 둘이었다.
+ * 「이번 달」은 주 단위 — 일 단위는 캠페인·릴리스 모니터링용이라 기간을 직접 골라 뽑는다.
+ */
 export function rangePresets(today: string): RangePreset[] {
   const lastSun = shiftDays(unitStart(today, "week"), -1);
   const thisMonth = unitStart(today, "month");
   const lastMonthEnd = shiftDays(thisMonth, -1);
-  const lastMonth = unitStart(lastMonthEnd, "month");
   return [
     { key: "4w", label: "최근 4주", start: shiftDays(lastSun, -27), end: lastSun, unit: "week" },
-    { key: "12w", label: "최근 12주", start: shiftDays(lastSun, -83), end: lastSun, unit: "week" },
-    { key: "last-month", label: "지난달", start: lastMonth, end: lastMonthEnd, unit: "day" },
-    { key: "this-month", label: "이번 달", start: thisMonth, end: today, unit: "day" },
-    { key: "6m", label: "최근 6개월", start: monthsBack(thisMonth, 6), end: lastMonthEnd, unit: "month" },
+    { key: "12w", label: "최근 12주(주간판)", start: shiftDays(lastSun, -83), end: lastSun, unit: "week" },
+    { key: "this-month", label: "이번 달", start: thisMonth, end: today, unit: "week" },
+    { key: "last-month", label: "지난달(월간판 6개월)", start: monthsBack(thisMonth, 6), end: lastMonthEnd, unit: "month" },
     { key: "all", label: "전체", start: DATA_FROM, end: today, unit: "month" },
   ];
 }

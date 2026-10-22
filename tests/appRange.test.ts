@@ -85,11 +85,13 @@ test("빠른 선택은 모두 그대로 뽑힌다 — 칸 수 상한 안", () =>
     assert.ok(r.ok, `${p.label}: ${r.ok ? "" : r.error}`);
   }
   const byKey = Object.fromEntries(rangePresets(TODAY).map((p) => [p.key, p]));
-  assert.deepEqual([byKey["last-month"].start, byKey["last-month"].end], ["20260901", "20260930"]);
-  assert.deepEqual([byKey["6m"].start, byKey["6m"].end], ["20260401", "20260930"]);
-  // 1월에 「최근 6개월」 — 해를 넘긴다
+  // 「지난달」은 월 단위 6개월판 — 같은 9월이 화면판 · 슬랙 월간에서 다른 헤드라인이 되지 않게(1022 R6 · D1)
+  assert.deepEqual([byKey["last-month"].start, byKey["last-month"].end, byKey["last-month"].unit], ["20260401", "20260930", "month"]);
+  assert.equal(byKey["this-month"].unit, "week");
+  assert.ok(!rangePresets(TODAY).some((p) => p.unit === "day"), "빠른 선택에 일 단위는 없다 — 일 단위는 모니터링용");
+  // 1월에 「지난달」 — 해를 넘긴다
   const jan = Object.fromEntries(rangePresets("20270110").map((p) => [p.key, p]));
-  assert.deepEqual([jan["6m"].start, jan["6m"].end], ["20260701", "20261231"]);
+  assert.deepEqual([jan["last-month"].start, jan["last-month"].end], ["20260701", "20261231"]);
 });
 
 test("KST 오늘 — UTC 15시가 넘으면 다음 날", () => {

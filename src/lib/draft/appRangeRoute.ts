@@ -2,7 +2,7 @@ import { requireTool } from "./guard";
 import { defaultRange, kstToday, parseDay, parseRange, rangeLabel, RANGE_UNITS, type RangeUnit } from "./appRange";
 import { renderKeyReport } from "./appKeyReport";
 import { errorBody, page, rangeBar, rangeFilename, type ReportKind } from "./appRangePage";
-import { renderRawReport, seriesCsv } from "./appRawReport";
+import { longCsv, renderRawReport, seriesCsv } from "./appRawReport";
 import { buildAppSeries } from "./appSeries";
 
 /**
@@ -53,12 +53,13 @@ export async function rangeReportResponse(req: Request, kind: ReportKind): Promi
     return errorPage(503, "보고서를 만들지 못했습니다.", e instanceof Error ? e.message : "알 수 없는 오류");
   }
 
-  const filename = rangeFilename(kind, spec);
+  const filename = rangeFilename(kind, spec, series.generatedAt);
   if (kind === "raw" && q.get("format") === "csv") {
-    return new Response(seriesCsv(series), {
+    const long = q.get("part") === "long";
+    return new Response(long ? longCsv(series) : seriesCsv(series), {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="app-metrics.csv"; filename*=UTF-8''${encodeURIComponent(filename)}.csv`,
+        "Content-Disposition": `attachment; filename="app-metrics.csv"; filename*=UTF-8''${encodeURIComponent(`${filename}${long ? "_보조표" : ""}`)}.csv`,
         "X-Robots-Tag": "noindex, nofollow",
         "Cache-Control": "private, no-store",
       },
@@ -66,6 +67,9 @@ export async function rangeReportResponse(req: Request, kind: ReportKind): Promi
   }
 
   const status = `${rangeLabel(spec)}${series.warnings.length ? ` · 주의 ${series.warnings.length}건` : ""}`;
-  const bar = rangeBar({ kind, form: { start: spec.start, end: spec.end, unit: spec.unit }, today, status, filename });
+  const bar = rangeBar({
+    kind, form: { start: spec.start, end: spec.end, unit: spec.unit }, today, status, filename,
+    ...(kind === "raw" ? { csv: { wide: seriesCsv(series), long: longCsv(series) } } : {}),
+  });
   return new Response(kind === "raw" ? renderRawReport(series, bar) : renderKeyReport(series, bar), { headers: HEADERS });
 }
