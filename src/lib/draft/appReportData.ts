@@ -45,6 +45,17 @@ export interface PeriodStats {
   generated_at?: string;
   /** 캠페인 주간(Astro 달력과 같은 표) — app-stats/period 가 같이 싣는다(1022) */
   campaigns?: { kind: string; label: string; start: string; end: string }[];
+  /** 그 기간에 계약 중이던 매장(Astro, 부를 때마다 읽음 · D8 1023). null 이면 못 읽음, 키가 없으면 백엔드 반영 전 */
+  contract_stores?: ContractStores | null;
+}
+
+export interface ContractStores {
+  count: number;
+  /** 그중 쿠폰 사용이나 스탬프가 1건 이상인 곳 */
+  active: number;
+  /** 개시일을 몰라 분모에 안 넣은 제휴 매장 */
+  undated: number;
+  inactive: { restaurant_id: number; name: string; semester_active: boolean | null; vacation_active: boolean | null }[];
 }
 
 export interface Metric {

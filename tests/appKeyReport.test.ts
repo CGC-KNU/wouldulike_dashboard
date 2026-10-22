@@ -187,6 +187,16 @@ test("주간판 화면 — 데이터 상태 줄 · 새 KPI 여섯 칸 · 2.6.0 �
   assert.doesNotMatch(html, /NaN|undefined/);
 });
 
+test("계약 매장 카드(D8) — KPI 칸의 활동 0건 매장과 계약일 빈 매장 수를 적는다. 백엔드 반영 전이면 카드가 없다", () => {
+  const cs = (inactive: { name: string; vacation_active: boolean | null }[]) =>
+    ({ count: 10, active: 10 - inactive.length, undated: 2, inactive: inactive.map((r, k) => ({ restaurant_id: k, semester_active: null, ...r })) });
+  const s = nov({ cells: [full({ db: { ...db({ users_redeemed: 9 }), contract_stores: cs([]) } }), full({ db: { ...db({ users_redeemed: 9 }), contract_stores: cs([{ name: "가게A", vacation_active: false }, { name: "가게B", vacation_active: null }]) } })] });
+  const html = renderKeyReport(s, "");
+  assert.match(html, /<h3>활동 계약 매장 비율<\/h3>/);
+  assert.match(html, /11\/2~11\/8 활동 0건 계약 매장 2곳: 가게A · 방학 쉼, 가게B · 계약일 빈 매장 2곳/);
+  assert.doesNotMatch(renderKeyReport(nov(), ""), /활동 계약 매장 비율/);
+});
+
 test("월간판 — 쿠폰 발급은 월말 스냅샷, 활동 매장 · 복귀 그래프, 앞 달 설치가 몰렸으면 활성 감소 주석(A10)", () => {
   const s = buildSeries({
     spec: spec("month", "2026-09-01", "2026-10-31"), through: "20261101", today: "20261102",

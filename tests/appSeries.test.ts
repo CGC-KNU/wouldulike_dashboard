@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSeries, seriesRow, SERIES_KEYS } from "../src/lib/draft/appSeriesData";
+import { buildSeries, IDLE_STORES_TABLE, seriesRow, SERIES_KEYS } from "../src/lib/draft/appSeriesData";
 import { longCsv, renderRawReport, seriesCsv } from "../src/lib/draft/appRawReport";
 import { calmWeeks } from "../src/lib/draft/appSeries";
 import { ACCOUNT_EXCLUSION, campaignEvents, FIXED_EVENTS } from "../src/lib/draft/appEvents";
@@ -226,6 +226,22 @@ test("제외 목록(D9) — 테스트 계정은 백엔드가 계정째 빼므로
   assert.equal(r.cells[1].why, undefined);
   assert.equal(r.total.v, 9);
   assert.deepEqual(s.exclusions, [ACCOUNT_EXCLUSION]);
+});
+
+test("계약 매장(D8) — Astro 분모 · 활동 비율 · 계약일 빈 매장, 0건 매장은 보조표로. 못 읽음과 백엔드 반영 전을 가른다", () => {
+  const cs = { count: 20, active: 12, undated: 3, inactive: [{ restaurant_id: 9, name: "가게A", semester_active: true, vacation_active: false }] };
+  const s = buildSeries({
+    spec: spec("week", "2026-10-05", "2026-10-18"), through: "20261020", today: TODAY,
+    cells: [full({ db: { ...db({ coupon_redeemed: 1 }), contract_stores: cs } }), full({ db: { ...db({ coupon_redeemed: 1 }), contract_stores: null } })],
+    total: full(),
+  });
+  assert.deepEqual(seriesRow(s, "contract_stores")!.cells.map((c) => c.v), [20, null]);
+  assert.deepEqual(seriesRow(s, "contract_active_rate")!.cells[0], { v: 60, n: 20, x: 12 }); // 전수라 「표본 n」 흐림 없음
+  assert.equal(seriesRow(s, "contract_active_rate")!.cells[1].why, "못 셈");
+  assert.equal(seriesRow(s, "contract_undated")!.cells[0].v, 3);
+  assert.deepEqual(s.long.filter((l) => l.table === IDLE_STORES_TABLE).map((l) => l.dim), ["가게A · 방학 쉼"]);
+  // 키가 아예 없으면 백엔드가 아직 안 나간 것
+  assert.equal(seriesRow(s, "contract_stores")!.total.why, "백엔드 미반영");
 });
 
 test("칸 수가 안 맞으면 멈춘다", () => {
