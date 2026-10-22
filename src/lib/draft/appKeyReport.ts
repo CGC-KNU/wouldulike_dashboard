@@ -1,5 +1,5 @@
 import { FOLLOW_DAYS } from "@/lib/bigquery/couponFunnel";
-import { CALM_FIXED_LABEL, CALM_WEEKS_MAX, CALM_WEEKS_MIN, eventLabel, eventsIn, eventSpan, type AppEvent } from "./appEvents";
+import { CALM_FIXED_LABEL, CALM_WEEKS_MAX, CALM_WEEKS_MIN, DAU_GOAL, eventLabel, eventsIn, eventSpan, type AppEvent } from "./appEvents";
 import { dashed, rangeLabel, type RangeUnit } from "./appRange";
 import { barChart, legend, lineChart, sparkline, SERIES_1, SERIES_2, type ChartFrame, type ChartSeries } from "./appCharts";
 import { bold, esc, fmtCell, fmtNum, page } from "./appRangePage";
@@ -215,7 +215,7 @@ const vOf = (s: AppSeries, key: string, i: number) => seriesRow(s, key)?.cells[i
 function subLine(s: AppSeries, key: string, i: number, cell: Cell): string {
   const u = s.spec.unit;
   const n = (v: number | null, unit: string) => (v === null ? "–" : `${fmtNum(v, "count")}${unit}`);
-  if (key === "dau") return `${u === "month" ? "그 달" : "그 주"} 고유 ${n(vOf(s, "active", i), "대")}`;
+  if (key === "dau") return `${u === "month" ? "그 달" : "그 주"} 고유 ${n(vOf(s, "active", i), "대")} · 목표 ${DAU_GOAL}대`;
   if (key === "users_redeemed") return `쿠폰 ${n(vOf(s, "coupon_used", i), "건")} · 스탬프 ${n(vOf(s, "stamp_earned", i), "건")}`;
   if (key === "open_to_store") return cell.n !== undefined ? `분모 세션 ${fmtNum(cell.n, "count")}` : "";
   if (key === "retention_w1") return cell.span ? `코호트 ${cell.span}` : "";
@@ -420,8 +420,9 @@ function activeChart(s: AppSeries, focus: number | null): string {
   const tips = act.cells.map((c, i) => tip(s, i, c.v === null ? `– ${c.why ?? ""}` : `활성 ${fmtNum(c.v, "count")}대 = 다시 온 ${ret.cells[i].v ?? "–"} + 처음 온 ${nw.cells[i].v ?? "–"}`));
   const u = s.spec.unit;
   const ref = u === "month" ? undefined : refFor(s, "active");
-  const f = frameOf(s, act, "활성 기기", true, tips, ref);
-  const sub = `대 · ${u === "day" ? "그날" : u === "week" ? "그 주" : "그 달"} 앱을 켠 고유 기기 — 아래는 전에도 온 기기, 위는 그 칸에 처음 연 기기${u === "month" ? " · 월 고유 수는 주 기준선과 견줄 수 없어 평시 점선을 긋지 않습니다" : " · 점선은 평시 기준선"}`;
+  // 목표(하루 평균)는 일 칸에만 긋는다 — 주·월 막대는 칸 전체의 고유 기기라 하루 목표와 견줄 수 없다
+  const f: ChartFrame = { ...frameOf(s, act, "활성 기기", true, tips, ref), ...(u === "day" ? { goal: { value: DAU_GOAL, label: `목표 ${DAU_GOAL}` } } : {}) };
+  const sub = `대 · ${u === "day" ? "그날" : u === "week" ? "그 주" : "그 달"} 앱을 켠 고유 기기 — 아래는 전에도 온 기기, 위는 그 칸에 처음 연 기기${u === "month" ? " · 월 고유 수는 주 기준선과 견줄 수 없어 평시 점선을 긋지 않습니다" : " · 점선은 평시 기준선"}${u === "day" ? ` · 실선은 목표(하루 ${DAU_GOAL}대)` : ""}`;
   return card("활성 기기", sub, legend(series) + barChart(series, f) + table(s, [{ name: "활성", row: act }, { name: "다시 온", row: ret }, { name: "처음 온", row: nw }]), true, focus === null ? "" : installDrain(s, focus));
 }
 

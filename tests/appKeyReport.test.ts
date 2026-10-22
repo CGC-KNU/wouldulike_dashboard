@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { barChart, lineChart, niceMax, sparkline, SERIES_1, SERIES_2 } from "../src/lib/draft/appCharts";
 import { KEY_KPIS, kpiFacts, renderKeyReport } from "../src/lib/draft/appKeyReport";
-import { campaignEvents, FIXED_EVENTS, type AppEvent } from "../src/lib/draft/appEvents";
+import { campaignEvents, DAU_GOAL, FIXED_EVENTS, type AppEvent } from "../src/lib/draft/appEvents";
 import { buildSeries, type BaseWindow, type Cell, type CellInput } from "../src/lib/draft/appSeriesData";
 import { db, full, ga4, spec, TODAY } from "./_appSeriesFixtures";
 
@@ -81,7 +81,7 @@ test("KPI 는 평시 기준선 대비로 판정한다 — 앞 칸 대비는 색 
   assert.deepEqual(dau.delta, { text: "▲ 78.6%", tone: "up" }); // 25 vs 14 — 기기·일 합 175 vs 98, 우연 범위 ±33 밖
   assert.equal(dau.hold, "");
   assert.deepEqual(dau.prev, { name: "전주", text: "변화 없음" });
-  assert.equal(dau.sub, "그 주 고유 100대");
+  assert.equal(dau.sub, "그 주 고유 100대 · 목표 50대");
   // 비율은 두 비율 z — 10%(40/400) vs 30%(60/200)
   assert.deepEqual(fact(s, "open_to_store").delta, { text: "▼ 20%p", tone: "down" });
   assert.equal(fact(s, "open_to_store").sub, "분모 세션 400");
@@ -162,6 +162,14 @@ test("일 단위는 모니터링용 — KPI 대신 기간 합계와 「판정하
   assert.match(html, /<b>이 기간의 사건<\/b> 개천절 연휴/);
   assert.doesNotMatch(html, /<h3>DAU/); // 일판엔 끈적함 그래프가 없다(C13)
   assert.doesNotMatch(html, /NaN|undefined/);
+});
+
+test("하루 평균 목표(D7)는 일 단위 활성 그래프에만 긋는다 — 주 막대는 그 주 고유 기기라 견줄 수 없다", () => {
+  const day = buildSeries({ spec: spec("day", "2026-10-05", "2026-10-11"), through: "20261013", today: TODAY, cells: Array.from({ length: 7 }, () => full()), total: full(), events: FIXED_EVENTS, eventsOk: true });
+  const dayHtml = renderKeyReport(day, "");
+  assert.match(dayHtml, new RegExp(`>목표 ${DAU_GOAL}</text>`));
+  assert.match(dayHtml, new RegExp(`실선은 목표\\(하루 ${DAU_GOAL}대\\)`));
+  assert.doesNotMatch(renderKeyReport(nov(), ""), new RegExp(`>목표 ${DAU_GOAL}</text>`));
 });
 
 test("주간판 화면 — 데이터 상태 줄 · 새 KPI 여섯 칸 · 2.6.0 묶음 접기 · 회차표 · 「20%」 문구 없음", () => {

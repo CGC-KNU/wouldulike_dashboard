@@ -49,6 +49,8 @@ export const CALM_WEEKS_FROM = "20260915";
 /** 평시 주가 이만큼 쌓이면 고정 기준선 대신 그 중앙값을 쓴다(D4) */
 export const CALM_WEEKS_MIN = 3;
 export const CALM_WEEKS_MAX = 4;
+/** 하루 평균 활성 기기 목표(D7 · 민찬 1022 확정) — 9/20 개발 회의의 150 을 바꿨다. 판정 색은 평시 기준선으로만 매기고 목표는 숫자 · 선으로만 보인다 */
+export const DAU_GOAL = 50;
 
 /**
  * 손으로 뺀 값 — 그날 그 지표에서 n 만큼 덜어 낸다. 원본 CSV 의 메타 「제외 목록」에 그대로 적힌다.

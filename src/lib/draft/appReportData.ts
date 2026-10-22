@@ -328,7 +328,7 @@ export function buildAppReportData({ end, cur: g, prev: p, stats, week, weekPrev
           key: "dau", label: "일간 활성(DAU)", value: g?.dau ?? null, prev: prevIf(p?.dau ?? null), unit: "명", source: "ga4",
           // WAU 와 같은 이유 — 첫 실행 비중이 크게 달라진 주끼리는 그대로 견줄 수 없다
           ...(ret?.mixShifted ? { verdict: "flat" as const } : {}),
-          note: g ? `${win} 하루 평균 앱을 켠 기기 수(사용자가 없던 날도 하루로 셉니다). 9/20 개발 회의 목표는 평균 150명` : "하루 평균 접속 기기 — BigQuery 를 읽지 못했습니다",
+          note: g ? `${win} 하루 평균 앱을 켠 기기 수(사용자가 없던 날도 하루로 셉니다). 목표는 하루 평균 50대(1022 확정)` : "하루 평균 접속 기기 — BigQuery 를 읽지 못했습니다",
           ...(g ? pendingIf(g.dau ?? null) : { status: "pending" as const }),
         },
         {
