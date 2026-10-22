@@ -51,12 +51,14 @@ export const CALM_WEEKS_MIN = 3;
 export const CALM_WEEKS_MAX = 4;
 
 /**
- * 손으로 뺀 값(민찬 1022 D9) — 그날 그 지표에서 n 만큼 덜어 낸다. 원본 CSV 의 메타 「제외 목록」에 그대로 적힌다.
- * 계정을 몰라 DB 에서 거르지 못해 건수만 덜어 낸다 — 같은 칸의 「매장 이용 계정」·GA4 쿠폰 퍼널에는 남아 있다.
+ * 손으로 뺀 값 — 그날 그 지표에서 n 만큼 덜어 낸다. 원본 CSV 의 메타 「제외 목록」에 그대로 적힌다.
+ * 계정으로 거를 수 없는 것만 여기 적는다. D9 의 9/7 팀 테스트 쿠폰 사용은 개발자 테스트 계정이라
+ * 백엔드가 DB 칸에서 계정째 뺀다(백엔드 #174) — 여기서 또 덜면 두 번 빠진다.
  */
-export const EXCLUSIONS: { day: string; key: string; n: number; why: string }[] = [
-  { day: "20260907", key: "coupon_used", n: 2, why: "팀 테스트 쿠폰 사용(민찬 1022 확인)" },
-];
+export const EXCLUSIONS: { day: string; key: string; n: number; why: string }[] = [];
+
+/** 늘 걸려 있는 제외 — 「제외 목록」 맨 앞에 적는다. GA4 칸은 기기 단위라 계정으로 못 거른다 */
+export const ACCOUNT_EXCLUSION = "개발자 테스트 계정 — DB 칸에서 계정째 뺌(GA4 칸에는 남음)";
 
 const toYmd = (iso: string) => iso.replace(/-/g, "");
 

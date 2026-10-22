@@ -1,6 +1,6 @@
 import type { Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { eventCoverage, EVENT_LIVE_FROM, FOLLOW_DAYS, V260_RELEASED, V260_SETTLE_DAYS, V260_SHARE_MIN, type CouponFunnel, type CouponUseFunnel } from "@/lib/bigquery/couponFunnel";
-import { EXCLUSIONS, type AppEvent } from "./appEvents";
+import { ACCOUNT_EXCLUSION, EXCLUSIONS, type AppEvent } from "./appEvents";
 import { detailSessions, SMALL_SAMPLE, type PeriodStats } from "./appReportData";
 import { dashed, shiftDays, type Bucket, type RangeSpec, type RangeUnit } from "./appRange";
 
@@ -434,7 +434,7 @@ const GROUPS: { key: string; title: string; defs: Def[] }[] = [
       },
       {
         key: "coupon_used", label: "쿠폰 사용", unit: "건", source: "backend", kind: "count", agg: "합", counts: "쿠폰", total: "sum",
-        note: "매장에서 사용 처리된 날 기준 — 그 전에 받은 쿠폰도 셉니다. 제외 목록(팀 테스트)은 뺀 값입니다",
+        note: "매장에서 사용 처리된 날 기준 — 그 전에 받은 쿠폰도 셉니다. 개발자 테스트 계정은 계정째 뺀 값입니다",
         pick: fromDb("coupon_redeemed"),
       },
       {
@@ -640,7 +640,7 @@ export function buildSeries({ spec, through, today, generatedAt, cells, total, w
   if (cells.length !== spec.buckets.length) throw new Error(`칸 수가 맞지 않습니다 — 기간 ${spec.buckets.length}칸, 읽은 값 ${cells.length}칸`);
   const unit = spec.unit;
   const buckets: SeriesBucket[] = spec.buckets.map((b) => ({ ...b, open: through ? b.end > through : b.end >= today }));
-  const exclusions: string[] = [];
+  const exclusions: string[] = [ACCOUNT_EXCLUSION];
 
   const groups: SeriesGroup[] = GROUPS.map((g) => ({
     key: g.key,
