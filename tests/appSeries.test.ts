@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildSeries, seriesRow, SERIES_KEYS } from "../src/lib/draft/appSeriesData";
 import { longCsv, renderRawReport, seriesCsv } from "../src/lib/draft/appRawReport";
 import { calmWeeks } from "../src/lib/draft/appSeries";
-import { campaignEvents, FIXED_EVENTS } from "../src/lib/draft/appEvents";
+import { ACCOUNT_EXCLUSION, campaignEvents, FIXED_EVENTS } from "../src/lib/draft/appEvents";
 import { coupons, db, full, ga4, line, spec, TODAY, use } from "./_appSeriesFixtures";
 
 /** 앱 지표 기간 × 단위 표 — 칸마다 읽은 값을 지표 행으로(1015 · 1022 기획팀 검토). 숫자는 지어낸 것이다. */
@@ -215,17 +215,17 @@ test("매장 상세 → 그 자리 쿠폰은 세션 기준(S35) — 위 두 줄�
   assert.deepEqual(seriesRow(s, "store_to_coupon")!.cells[0], { v: 10, n: 40, x: 4 });
 });
 
-test("제외 목록(D9) — 9/7 쿠폰 사용 2건을 그날이 든 칸에서 덜어 내고 적는다", () => {
+test("제외 목록(D9) — 테스트 계정은 백엔드가 계정째 빼므로 9/7 칸에서 또 덜지 않고, 제외 목록에는 적는다", () => {
   const s = buildSeries({
     spec: spec("week", "2026-08-31", "2026-09-13"), through: "20261013", today: TODAY,
     cells: [full({ db: db({ coupon_redeemed: 5 }) }), full({ db: db({ coupon_redeemed: 4 }) })],
     total: full(),
   });
   const r = seriesRow(s, "coupon_used")!;
-  assert.deepEqual(r.cells.map((c) => c.v), [5, 2]); // 9/7 은 둘째 칸(9/7~13)
-  assert.match(r.cells[1].why!, /9\/7 2건 뺌/);
-  assert.equal(r.total.v, 7);
-  assert.equal(s.exclusions.length, 1);
+  assert.deepEqual(r.cells.map((c) => c.v), [5, 4]); // 9/7 이 든 둘째 칸도 받은 값 그대로
+  assert.equal(r.cells[1].why, undefined);
+  assert.equal(r.total.v, 9);
+  assert.deepEqual(s.exclusions, [ACCOUNT_EXCLUSION]);
 });
 
 test("칸 수가 안 맞으면 멈춘다", () => {
