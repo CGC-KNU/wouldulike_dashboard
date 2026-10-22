@@ -3,6 +3,7 @@ import { readLastEventDate } from "@/lib/bigquery/appMetrics";
 import { buildMonthlyAppReport, buildWeeklyAppReport, lastCompleteMonth, monthWindow } from "@/lib/draft/appReport";
 import { appReportFilename, dash, lastCompleteWeekEnd, normalizeWeekEnd, weekLabel } from "@/lib/draft/appReportData";
 import { botReportData } from "@/lib/draft/appReportBot";
+import { eventLabel, eventsIn } from "@/lib/draft/appEvents";
 import { kstToday, rangeQuery } from "@/lib/draft/appRange";
 import { renderKeyReport } from "@/lib/draft/appKeyReport";
 import { buildAppSeries } from "@/lib/draft/appSeries";
@@ -138,7 +139,7 @@ export async function GET(req: Request) {
       through: series.through,
       warnings: series.warnings,
       summary: lines.map((l) => ({ key: l.key, label: l.label, value: l.value })),
-      message: slackMessage({ type, label, range, lines, ready, through: series.through, warnings: series.warnings, link }),
+      message: slackMessage({ type, label, range, lines, ready, through: series.through, warnings: series.warnings, link, events: eventLabel(eventsIn(series.events, bucket.start, bucket.end)) }),
       html,
     },
     { headers: { "Cache-Control": "no-store" } }

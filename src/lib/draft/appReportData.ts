@@ -41,6 +41,10 @@ export interface PeriodStats {
   complete?: boolean;
   stats?: Record<string, number | null> | null;
   failed?: string[];
+  /** 백엔드가 센 시각(KST ISO) — 보고서 머리의 「DB 기준 시각」 */
+  generated_at?: string;
+  /** 캠페인 주간(Astro 달력과 같은 표) — app-stats/period 가 같이 싣는다(1022) */
+  campaigns?: { kind: string; label: string; start: string; end: string }[];
 }
 
 export interface Metric {

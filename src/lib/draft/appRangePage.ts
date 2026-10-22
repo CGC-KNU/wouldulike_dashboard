@@ -71,6 +71,11 @@ export function rangeBar(opts: {
   /** 「미리보기 · …」 뒤에 붙는 말. 오류 화면이면 null — 저장 버튼을 끈다 */
   status: string | null;
   filename: string;
+  /**
+   * 원본의 CSV 두 장(표 · 보조표) — 이 HTML 을 만든 **같은 숫자**를 띠에 담아 내려받게 한다(1022 기획팀 검토 R12).
+   * 링크로 다시 부르면 그사이 DB 가 다시 세어 HTML 과 CSV 의 숫자 · 생성 시각이 갈렸다.
+   */
+  csv?: { wide: string; long: string };
 }): string {
   const { kind, form, today, status } = opts;
   const q = rangeQuery(form);
@@ -91,7 +96,10 @@ export function rangeBar(opts: {
   const downloads = [
     // 원본은 표라 PNG 대신 CSV — 열이 수십 개면 그림 한 장에 안 담긴다
     kind === "raw"
-      ? can ? `<a href="${KIND_PATH.raw}?${q}&amp;format=csv" download style="${primary}">CSV 저장</a>` : ""
+      ? !can ? ""
+        : opts.csv
+          ? `<a href="data:text/csv;charset=utf-8,${encodeURIComponent(opts.csv.wide)}" download="${esc(opts.filename)}.csv" style="${primary}">CSV 저장</a><a href="data:text/csv;charset=utf-8,${encodeURIComponent(opts.csv.long)}" download="${esc(opts.filename)}_보조표.csv" style="${ghost}">보조표 CSV</a>`
+          : `<a href="${KIND_PATH.raw}?${q}&amp;format=csv" download style="${primary}">CSV 저장</a>`
       : `<button type="button" data-dl="png" style="${primary}"${off}>PNG 저장</button>`,
     `<button type="button" data-dl="html" style="${ghost}"${off}>HTML 저장</button>`,
     `<button type="button" data-dl="print" style="${ghost}"${off}>인쇄(PDF)</button>`,
@@ -197,7 +205,11 @@ export function errorBody(title: string, detail: string): string {
   return `<div class="card" style="text-align:center;padding:40px 20px"><p style="font-size:15px;font-weight:700">${esc(title)}</p><p style="font-size:13px;color:var(--sub);margin-top:8px">${esc(detail)}</p></div>`;
 }
 
-/** 파일 이름 — 「앱지표_원본_20260901-20261012_주」 */
-export function rangeFilename(kind: ReportKind, r: { start: string; end: string; unit: RangeUnit }): string {
-  return `앱지표_${kind === "raw" ? "원본" : "주요지표"}_${r.start}-${r.end}_${UNIT_LABEL[r.unit]}`.replace(/[\\/:*?"<>|\s]+/g, "_");
+/**
+ * 파일 이름 — 「앱지표_원본_20260901-20261012_주_생성20261022-1854」.
+ * 만든 시각을 붙인다(1022 기획팀 검토 R12) — 같은 기간을 다시 뽑으면 이름이 같아 덮어써져, 어느 판의 숫자인지 알 수 없었다.
+ */
+export function rangeFilename(kind: ReportKind, r: { start: string; end: string; unit: RangeUnit }, generatedAt?: string): string {
+  const at = generatedAt ? `_생성${generatedAt.replace(/-/g, "").replace(" ", "-").replace(":", "")}` : "";
+  return `앱지표_${kind === "raw" ? "원본" : "주요지표"}_${r.start}-${r.end}_${UNIT_LABEL[r.unit]}${at}`.replace(/[\\/:*?"<>|\s]+/g, "_");
 }

@@ -95,7 +95,8 @@ export interface Ga4AppMetrics {
   sessions_detail_to_coupon: number | null;
   /** 첫 실행 코호트 중 7~13일째 다시 활성인 비율, % */
   retention_w1: number | null;
-  cohort: { from: string; to: string; users: number };
+  /** returned = 그중 7~13일째 다시 켠 기기(retention_w1 의 분자) */
+  cohort: { from: string; to: string; users: number; returned?: number };
   /** 안드로이드 푸시 열기 ÷ 수신, % — 14일 창 */
   push_open: number | null;
   push: { from: string; to: string; received: number; opened_android: number; opened_ios: number };
@@ -117,6 +118,15 @@ export interface Ga4AppMetrics {
    */
   list_ctr?: number | null;
   list_view?: { seen: number; clicked: number };
+  /**
+   * 앱 2.6.0 보급 — 창 안에 앱을 켠 기기 중 2.6.0 이상으로 한 번이라도 켠 기기(1022 기획팀 검토 S10).
+   * 2.6.0 이벤트(쿠폰 받기 · 목록 노출)를 판정에 쓰기 시작하는 기준이 「보급 50% · 게시 2주」라 칸마다 센다(D6).
+   */
+  app_v260?: { devices: number; active: number };
+  /** 가입 퍼널 — 로그인 시작 · 완료 · 가입 완료를 보낸 기기 수(S13). 처음 온 기기와 가입 계정 사이를 잇는다 */
+  signup_funnel?: { login_start: number; login_completed: number; signup_completed: number };
+  /** 앱 2.6.0 의 push_open 을 보낸 기기 수(S16) — 캠페인 이름은 아직 대부분 unknown 이라 합계만 */
+  push_open_devices?: number;
 }
 
 export type Ga4Read = { ok: true; data: Ga4AppMetrics } | { ok: false; reason: "no_key" | "error"; detail?: string };
@@ -209,7 +219,7 @@ export async function readWau(end: string, env: Record<string, string | undefine
  */
 export async function readGa4AppMetrics(
   env: Record<string, string | undefined> = process.env,
-  opts: { end?: string; start?: string; subWindows?: "anchored" | "in-period" } = {}
+  opts: { end?: string; start?: string; subWindows?: "anchored" | "in-period"; cohortDays?: number } = {}
 ): Promise<Ga4Read> {
   const client = clientFromEnv(env);
   if (!client) return { ok: false, reason: "no_key" };
@@ -301,7 +311,9 @@ export async function readGa4AppMetrics(
   //    복귀 창이 확정 테이블 안에 다 들어오도록 코호트를 end-20 ~ end-14 로 잡는다.
   // in-period: 창 안에서 첫 실행한 사람만 보고, 복귀 관찰(7~13일째)이 end 안에 들어오게 -13 까지만 코호트로 잡는다.
   // anchored: 7일 창에는 그럴 자리가 없어 end 에서 거꾸로 고정으로 잡는다.
-  const cStart = inPeriod ? start : shift(end, -20);
+  // cohortDays: anchored 코호트의 길이. 기본 7일(주간 보고서). 기간 × 단위 보고서의 주 칸은 28일 — 한 주 코호트는
+  // 열 대 남짓이라 주마다 판정할 수 없다(1022 기획팀 검토 R10). 끝은 그대로 end-14 라 복귀 관찰은 창 안에 다 들어온다.
+  const cStart = inPeriod ? start : shift(end, -(13 + (opts.cohortDays ?? 7)));
   const cEnd = inPeriod ? shift(end, -13) : shift(end, -14);
   const retP = run<{ cohort: number; returned: number }>(
     `WITH f AS (
@@ -411,9 +423,27 @@ export async function readGa4AppMetrics(
     { start, end }
   );
 
+  // ⑦ 1022 기획팀 검토 — 앱 2.6.0 보급(S10) · 가입 퍼널(S13) · push_open(S16). 한 번 훑어 같이 센다.
+  //    버전은 「2.6.0 이상으로 한 번이라도 켰나」 — 창 안에 업데이트한 기기도 새 버전으로 친다.
+  const verNum = `(SAFE_CAST(SPLIT(app_info.version, '.')[SAFE_OFFSET(0)] AS INT64) * 10000
+    + IFNULL(SAFE_CAST(SPLIT(app_info.version, '.')[SAFE_OFFSET(1)] AS INT64), 0) * 100
+    + IFNULL(SAFE_CAST(SPLIT(app_info.version, '.')[SAFE_OFFSET(2)] AS INT64), 0))`;
+  const extraP = run<{ active: number; v260: number; login_start: number; login_completed: number; signup_completed: number; push_open: number }>(
+    `SELECT COUNT(DISTINCT IF(event_name = 'user_engagement', user_pseudo_id, NULL)) AS active,
+            COUNT(DISTINCT IF(event_name = 'user_engagement' AND ${verNum} >= 20600, user_pseudo_id, NULL)) AS v260,
+            COUNT(DISTINCT IF(event_name = 'login_start', user_pseudo_id, NULL)) AS login_start,
+            COUNT(DISTINCT IF(event_name = 'login_completed', user_pseudo_id, NULL)) AS login_completed,
+            COUNT(DISTINCT IF(event_name = 'user_signup_completed', user_pseudo_id, NULL)) AS signup_completed,
+            COUNT(DISTINCT IF(event_name = 'push_open', user_pseudo_id, NULL)) AS push_open
+     FROM ${events}
+     WHERE _TABLE_SUFFIX BETWEEN @start AND @end
+       AND event_name IN ('user_engagement', 'login_start', 'login_completed', 'user_signup_completed', 'push_open')`,
+    { start, end }
+  );
+
   // 쿼리는 서로 독립이라 같이 쏜다(1015). 순서대로 기다리면 합이 벽시계가 된다 —
   // 7개월 창에서 44초(가장 느린 하나는 8초)라, 기간 × 단위 보고서의 「기간 전체」 열이 60초 한도에 걸렸다.
-  const [[act], [mauRow], [ses], [ret], [push], [ban], [view], [list], [fresh]] = await Promise.all([actP, mauP, sesP, retP, pushP, banP, viewP, listP, freshP]);
+  const [[act], [mauRow], [ses], [ret], [push], [ban], [view], [list], [fresh], [extra]] = await Promise.all([actP, mauP, sesP, retP, pushP, banP, viewP, listP, freshP, extraP]);
 
   const wau = Number(act?.wau ?? 0);
   const sessions = Number(ses?.sessions ?? 0);
@@ -433,7 +463,7 @@ export async function readGa4AppMetrics(
       sessions_with_detail: ses ? Number(ses.with_detail ?? 0) : null,
       sessions_detail_to_coupon: ses ? Number(ses.detail_to_coupon ?? 0) : null,
       retention_w1: pct(Number(ret?.returned ?? 0), cohort),
-      cohort: { from: dash(cStart), to: dash(cEnd), users: cohort },
+      cohort: { from: dash(cStart), to: dash(cEnd), users: cohort, returned: Number(ret?.returned ?? 0) },
       push_open: pct(Number(push?.opened_android ?? 0), Number(push?.received ?? 0)),
       push: {
         from: dash(pStart), to: dash(end),
@@ -447,6 +477,17 @@ export async function readGa4AppMetrics(
       banner_view: { seen: Number(view?.seen ?? 0), clicked: Number(view?.clicked ?? 0) },
       list_ctr: pct(Number(list?.clicked ?? 0), Number(list?.seen ?? 0)),
       list_view: { seen: Number(list?.seen ?? 0), clicked: Number(list?.clicked ?? 0) },
+      ...(extra
+        ? {
+            app_v260: { devices: Number(extra.v260 ?? 0), active: Number(extra.active ?? 0) },
+            signup_funnel: {
+              login_start: Number(extra.login_start ?? 0),
+              login_completed: Number(extra.login_completed ?? 0),
+              signup_completed: Number(extra.signup_completed ?? 0),
+            },
+            push_open_devices: Number(extra.push_open ?? 0),
+          }
+        : {}),
     },
   };
 }

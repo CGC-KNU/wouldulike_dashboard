@@ -43,7 +43,15 @@ export interface ChartFrame {
   height?: number;
   /** 접근성 이름 */
   title: string;
+  /** 사건(캠페인 · 휴일 · 릴리스)이 걸린 칸 — 칸 높이 전체에 옅은 금색 띠(1022 기획팀 검토 A3) */
+  marks?: boolean[];
+  /** 평시 기준선 — 칸마다 점선 한 토막(칸 길이가 다르면 높이도 다르다, A16) */
+  ref?: { values: (number | null)[]; label: string };
 }
+
+/** 사건 띠 — 못 센 칸(MISSING)과 헷갈리지 않게 금색 쪽으로 */
+const EVENT_BAND = "#FBF1D9";
+const REF_LINE = "#9CA3AF";
 
 /** 0 에서 시작하는 축의 깔끔한 끝 — 1 · 2 · 2.5 · 5 · 10 × 10^n */
 export function niceMax(v: number): number {
@@ -87,6 +95,23 @@ function frame(g: Geo, f: ChartFrame): string {
   return lines + xs;
 }
 
+/** 사건 띠 — 격자보다 먼저 그려 격자선이 위로 지나가게 */
+function eventBands(g: Geo, f: ChartFrame): string {
+  return (f.marks ?? []).map((on, i) => (on ? `<rect x="${g.l + g.band * i}" y="${g.t}" width="${g.band}" height="${g.ph}" fill="${EVENT_BAND}"/>` : "")).join("");
+}
+
+/** 평시 기준선 — 칸마다 점선 토막 하나, 끝에 이름 */
+function refLine(g: Geo, f: ChartFrame): string {
+  if (!f.ref) return "";
+  const segs = f.ref.values.map((v, i) => (v === null ? "" : `<line x1="${g.l + g.band * i + 2}" x2="${g.l + g.band * (i + 1) - 2}" y1="${g.y(v)}" y2="${g.y(v)}" stroke="${REF_LINE}" stroke-width="1.5" stroke-dasharray="4 3"/>`)).join("");
+  const last = f.ref.values.map((v, i) => (v === null ? -1 : i)).filter((i) => i >= 0).pop();
+  const label = last === undefined ? "" : `<text x="${g.w - g.r + 2}" y="${g.y(f.ref.values[last] as number) + 3.5}" font-size="10" fill="${AXIS_TX}">${esc(f.ref.label)}</text>`;
+  return segs + label;
+}
+
+/** 축 끝을 정할 때 기준선도 넣는다 — 기준선이 그래프 밖으로 나가지 않게 */
+const refMax = (f: ChartFrame) => Math.max(0, ...(f.ref?.values ?? []).map((v) => v ?? 0));
+
 /** 칸마다 보이지 않는 넓은 사각형에 title — 가는 막대·작은 점을 정확히 짚지 않아도 뜬다 */
 function hits(g: Geo, f: ChartFrame, series: ChartSeries[]): string {
   return f.labels.map((lab, i) => {
@@ -125,7 +150,7 @@ export function barChart(series: ChartSeries[], f: ChartFrame): string {
     const vs = series.map((s) => s.values[i]);
     return vs.some((v) => v === null) ? (vs.every((v) => v === null) ? null : vs.reduce<number>((a, v) => a + (v ?? 0), 0)) : vs.reduce<number>((a, v) => a + (v as number), 0);
   });
-  const g = geo(f, Math.max(0, ...totals.map((v) => v ?? 0)));
+  const g = geo(f, Math.max(refMax(f), ...totals.map((v) => v ?? 0)));
   const bw = Math.max(2, Math.min(24, g.band * 0.62));
   const anyValue = totals.some((v) => v !== null);
   // 띠는 격자보다 먼저 — 격자선이 띠 위로 지나가게
@@ -157,13 +182,13 @@ export function barChart(series: ChartSeries[], f: ChartFrame): string {
   const last = totals.map((v, i) => (v === null ? -1 : i)).filter((i) => i >= 0).pop();
   const label = last === undefined ? "" : endLabel(g.x(last), g.y(totals[last] as number) - 6, totals[last] as number, f);
   const empty = last === undefined ? `<text x="${g.l + g.pw / 2}" y="${g.t + g.ph / 2}" text-anchor="middle" font-size="12" fill="${AXIS_TX}">값이 없습니다</text>` : "";
-  return svg(g, f, bands + frame(g, f) + marks + label + empty + hits(g, f, series));
+  return svg(g, f, eventBands(g, f) + bands + frame(g, f) + marks + refLine(g, f) + label + empty + hits(g, f, series));
 }
 
 /** 선 하나 — 빈 칸에서 끊는다(0 으로 내려 긋지 않는다). 얕은 표본·진행 중 칸은 속 빈 점 */
 export function lineChart(s: ChartSeries, f: ChartFrame): string {
   const vals = s.values;
-  const g = geo(f, Math.max(0, ...vals.map((v) => v ?? 0)));
+  const g = geo(f, Math.max(refMax(f), ...vals.map((v) => v ?? 0)));
   let d = "";
   let pen = false;
   vals.forEach((v, i) => {
@@ -180,7 +205,7 @@ export function lineChart(s: ChartSeries, f: ChartFrame): string {
   const last = vals.map((v, i) => (v === null ? -1 : i)).filter((i) => i >= 0).pop();
   const label = last === undefined ? "" : endLabel(g.x(last) + 8, g.y(vals[last] as number) + 4, vals[last] as number, f, "start");
   const empty = last === undefined ? `<text x="${g.l + g.pw / 2}" y="${g.t + g.ph / 2}" text-anchor="middle" font-size="12" fill="${AXIS_TX}">값이 없습니다</text>` : "";
-  return svg(g, f, frame(g, f) + path + dots + label + empty + hits(g, f, [s]));
+  return svg(g, f, eventBands(g, f) + frame(g, f) + refLine(g, f) + path + dots + label + empty + hits(g, f, [s]));
 }
 
 /** KPI 칸 아래 작은 추이 — 축 없이, 마지막 점만 진하게 */

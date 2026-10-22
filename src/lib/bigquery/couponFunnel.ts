@@ -48,7 +48,16 @@ export const EVENT_LIVE_FROM: Record<string, string> = {
   // 1015 실측 — 앱 2.6.0(iOS 10/12 · 안드로이드 10/14)과 함께 들어온다. 노출은 하루 먼저 iOS 2.5.8 에서 보였다
   restaurant_list_impression: "20261011",
   coupon_claim: "20261012",
+  // 1022 실측 — 앱 2.6.0 의 push_open. 그 전 기기는 notification_open(안드로이드만)을 보낸다
+  push_open: "20261015",
+  // 1022 실측 — 매장 QR 안내(47곳)와 함께
+  qr_visit_credit: "20261018",
 };
+
+/** 앱 2.6.0 게시일(iOS) — 2.6.0 이벤트를 판정에 쓰는 기준 「게시 + 2주 · 보급 50%」의 출발점(민찬 1022 D6) */
+export const V260_RELEASED = "20261012";
+export const V260_SETTLE_DAYS = 14;
+export const V260_SHARE_MIN = 50;
 
 /** 창 전체가 이벤트가 살아 있던 뒤인가. 걸쳐 있으면 false — 값을 내되 「일부 기간만」이라고 알린다. */
 export function eventCoverage(event: string, start: string, end: string): "full" | "partial" | "none" {
@@ -83,6 +92,8 @@ export interface CouponFunnel {
   attempt: { attempts: number; ok: number; failed: number; rate: number | null; reasons: { reason: string; n: number }[] };
   /** PIN 이 안 맞은 매장 — 지표가 아니라 오늘 연락할 곳 */
   pinFailStores: { restaurant_id: string; n: number }[];
+  /** 스탬프 적립 실패 이유(stamp_add_failed.fail_reason) — 원본 보조표(1022 기획팀 검토 S7) */
+  stampFail?: { reason: string; n: number }[];
   /**
    * 사용자가 「받기」를 눌러 서버가 성공을 준 쿠폰(`coupon_claim`) — 그중 같은 창 안에 쓰인 것.
    *
@@ -112,15 +123,22 @@ const pickSource = (expr: string) =>
 
 const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : null);
 const num = (v: unknown) => Number(v ?? 0);
+const shiftYmd = (s: string, days: number) =>
+  new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8) + days)).toISOString().slice(0, 10).replace(/-/g, "");
 
 export async function readCouponFunnel(
   env: Record<string, string | undefined> = process.env,
-  opts: { start: string; end: string }
+  /**
+   * `follow` 를 주면 「받기 → 사용」을 **받은 뒤 FOLLOW_DAYS 일 안**으로 센다(쓰기 퍼널과 같은 창, 1022 기획팀 검토 C6).
+   * 사용은 `through`(확정 테이블 끝)까지만 읽는다. 안 주면 예전 그대로 같은 창 안 — 주간·월간 보고서가 이걸 쓴다.
+   */
+  opts: { start: string; end: string; follow?: { through: string } }
 ): Promise<CouponFunnelRead> {
   const client = clientFromEnv(env);
   if (!client) return { ok: false, reason: "no_key" };
   const { dataset, run } = client;
   const { start, end } = opts;
+  const followEnd = opts.follow ? [shiftYmd(end, FOLLOW_DAYS), opts.follow.through].sort()[0] : end;
   if (start > end) return { ok: false, reason: "error", detail: `창이 거꾸로입니다 — ${start} > ${end}` };
 
   const events = `\`${dataset}.events_*\``;
@@ -179,23 +197,35 @@ export async function readCouponFunnel(
       { start, end }
     );
 
-    // ⑥ 받기 → 사용 — 받은 쿠폰을 coupon_code 로 사용과 잇는다(①과 같은 방식, 같은 창 안).
+    // ⑥ 받기 → 사용 — 받은 쿠폰을 coupon_code 로 사용과 잇는다(①과 같은 방식).
+    //    follow 면 받은 시각부터 FOLLOW_DAYS 일 안 — 칸 길이와 상관없이 같은 뜻이다. 아니면 같은 창 안.
     const claimP = run<{ claimed: number; redeemed: number }>(
       `WITH c AS (
-         SELECT DISTINCT ${S("coupon_code")} AS code FROM ${events}
+         SELECT ${S("coupon_code")} AS code, MIN(event_timestamp) AS t FROM ${events}
          WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_claim'
            AND ${S("coupon_code")} IS NOT NULL
+         GROUP BY code
        ), red AS (
-         SELECT DISTINCT ${S("coupon_code")} AS code FROM ${events}
-         WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'coupon_redeemed'
+         SELECT ${S("coupon_code")} AS code, MIN(event_timestamp) AS t FROM ${events}
+         WHERE _TABLE_SUFFIX BETWEEN @start AND @rEnd AND event_name = 'coupon_redeemed'
            AND ${S("coupon_code")} IS NOT NULL
+         GROUP BY code
        )
-       SELECT COUNT(*) AS claimed, COUNTIF(r.code IS NOT NULL) AS redeemed
+       SELECT COUNT(*) AS claimed,
+              COUNTIF(${opts.follow ? `r.t BETWEEN c.t AND c.t + ${FOLLOW_DAYS} * 24 * 3600 * 1000000` : "r.code IS NOT NULL"}) AS redeemed
        FROM c LEFT JOIN red r USING (code)`,
+      { start, end, rEnd: followEnd }
+    );
+
+    // ⑦ 스탬프 적립 실패 이유 — 쿠폰 실패(④)와 같은 모양
+    const stampP = run<{ reason: string | null; n: number }>(
+      `SELECT ${S("fail_reason")} AS reason, COUNT(*) AS n FROM ${events}
+       WHERE _TABLE_SUFFIX BETWEEN @start AND @end AND event_name = 'stamp_add_failed'
+       GROUP BY reason ORDER BY n DESC`,
       { start, end }
     );
 
-    const [rows, funnelRows, reasons, stores, claimRows] = await Promise.all([rowsP, funnelP, reasonsP, storesP, claimP]);
+    const [rows, funnelRows, reasons, stores, claimRows, stampRows] = await Promise.all([rowsP, funnelP, reasonsP, storesP, claimP, stampP]);
     const funnel = funnelRows[0];
     const claim = claimRows[0];
 
@@ -225,6 +255,7 @@ export async function readCouponFunnel(
           reasons: reasons.map((r) => ({ reason: r.reason ?? "(없음)", n: num(r.n) })).filter((r) => r.n > 0),
         },
         pinFailStores: stores.filter((r) => r.restaurant_id).map((r) => ({ restaurant_id: r.restaurant_id as string, n: num(r.n) })),
+        stampFail: stampRows.map((r) => ({ reason: r.reason ?? "(없음)", n: num(r.n) })).filter((r) => r.n > 0),
         claim: {
           claimed: num(claim?.claimed), redeemed: num(claim?.redeemed),
           rate: pct(num(claim?.redeemed), num(claim?.claimed)),
@@ -413,8 +444,6 @@ export async function readCouponUseFunnel(
   const { start, end } = opts;
   if (start > end) return { ok: false, reason: "error", detail: `창이 거꾸로입니다 — ${start} > ${end}` };
 
-  const shiftYmd = (s: string, days: number) =>
-    new Date(Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8) + days)).toISOString().slice(0, 10).replace(/-/g, "");
   // 발급 뒤 7일까지 읽되, 확정 테이블이 없는 날은 읽지 않는다 — 없는 날은 「지켜보는 중」으로 센다
   const shifted = shiftYmd(end, FOLLOW_DAYS);
   const through = opts.through ?? shifted;

@@ -40,10 +40,12 @@ export function use(over: Partial<CouponUseFunnel> = {}): CouponUseFunnel {
 }
 
 export const db = (stats: Record<string, number | null>, failed: string[] = []) => ({ complete: true, stats, failed });
-export const full = (o: Partial<CellInput> = {}): CellInput => ({ ga4: ga4(), coupons: coupons(), s2c: { window: { from: "", to: "" }, views: 80, claimed: 4, claimed_including_campaign: 9, rate: 5 }, use: use(), db: db({ signups: 7, coupon_issued: 10, coupon_redeemed: 3, coupon_redeem_rate: 30, stamp_earned: 12 }), ...o });
+export const full = (o: Partial<CellInput> = {}): CellInput => ({ ga4: ga4(), coupons: coupons(), use: use(), db: db({ signups: 7, coupon_issued: 10, coupon_redeemed: 3, coupon_redeem_rate: 30, stamp_earned: 12, users_redeemed: 9 }), ...o });
 
+/** 칸 만들기 — 끝이 TODAY 뒤면 그날을 오늘로 친다(11월 · 12월 칸을 짓는 판정 테스트) */
 export function spec(unit: "day" | "week" | "month", start: string, end: string) {
-  const r = parseRange({ start, end, unit }, TODAY);
+  const e = end.replace(/-/g, "");
+  const r = parseRange({ start, end, unit }, e > TODAY ? e : TODAY);
   if (!r.ok) throw new Error(r.error);
   return r.spec;
 }

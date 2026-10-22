@@ -39,10 +39,18 @@ export interface SlackLine {
   label: string;
   value: number | null;
   unit: string;
-  /** 「▲ 20%」 「▼ 0.4%p」 — 앞 칸이 없거나 진행 중이면 null */
+  /** 「▲ 20%」 「▼ 0.4%p」 — 평시 기준선 대비. 판정을 미뤘거나 기준이 없으면 null */
   delta: string | null;
+  /** 견준 기준 — 「평시(9/1~14)」 */
+  baseName: string;
+  /** 칸 길이에 맞춘 기준값 — 유보여도 「11 vs 10」으로 적는다 */
+  base: number | null;
+  /** 앞 칸(전주 · 전월) 대비 — 참고 */
+  prev: string | null;
   /** 판정을 미룬 까닭 — 없으면 "" */
   hold: string;
+  /** 보조줄 — 「쿠폰 3건 · 스탬프 5건」 */
+  sub: string;
   /** GA4 가 그 주(달) 끝까지 안 들어온 GA4 줄 — 「집계 중」 */
   pending: boolean;
   /** 값이 없는 이유 */
@@ -54,14 +62,18 @@ export function slackLines(s: AppSeries, ready: boolean): SlackLine[] {
   const focus = s.buckets.length - 1;
   return KEY_KPIS.map(({ key, label }) => {
     const f = kpiFacts(s, key, label, focus);
-    if (!f) return { key, label, value: null, unit: "", delta: null, hold: "", pending: false, why: "지표 없음" };
+    if (!f) return { key, label, value: null, unit: "", delta: null, baseName: "", base: null, prev: null, hold: "", sub: "", pending: false, why: "지표 없음" };
     const pending = !ready && isGa4Row(f.row);
     return {
       key, label,
       value: pending ? null : f.cell.v,
       unit: f.row.unit,
       delta: pending ? null : f.delta?.text ?? null,
+      baseName: f.baseName,
+      base: pending ? null : f.base,
+      prev: pending ? null : f.prev?.text ?? null,
       hold: pending ? "" : f.hold,
+      sub: pending ? "" : f.sub,
       pending,
       ...(f.cell.v === null && f.cell.why ? { why: f.cell.why } : {}),
     };
@@ -82,6 +94,8 @@ export interface SlackMessageInput {
   warnings: string[];
   /** 대시보드에서 같은 보고서를 여는 주소(로그인 필요) */
   link: string;
+  /** 그 주(달)의 사건 — 「한정쿠폰 주간 · 추석 연휴」. 없으면 "" */
+  events?: string;
 }
 
 const mdDay = (s: string) => {
@@ -89,7 +103,10 @@ const mdDay = (s: string) => {
   return `${+t.slice(4, 6)}/${+t.slice(6, 8)}`;
 };
 
-/** #sat-probe 본문(슬랙 mrkdwn). GA4 가 끝까지 안 들어왔으면 GA4 줄만 「집계 중」 — 엿새치를 한 주 값처럼 올리지 않는다 */
+/**
+ * #sat-probe 본문(슬랙 mrkdwn). GA4 가 끝까지 안 들어왔으면 GA4 줄만 「집계 중」 — 엿새치를 한 주 값처럼 올리지 않는다.
+ * 증감은 평시 기준선 대비다(1022 기획팀 검토). 판정을 미룬 줄은 %·화살표 없이 「이번 vs 평시」와 사유를 적고, 전주·전월 대비는 참고로 뒤에 붙인다.
+ */
 export function slackMessage(m: SlackMessageInput): string {
   const weekly = m.type === "weekly";
   const cmp = PREV[weekly ? "week" : "month"];
@@ -98,11 +115,18 @@ export function slackMessage(m: SlackMessageInput): string {
       ? `:bar_chart: *앱 지표 주간 보고서 · ${m.label}* (${mdDay(m.range.start)}~${mdDay(m.range.end)})`
       : `:bar_chart: *앱 지표 월간 보고서 · ${m.label}*`,
   ];
+  if (m.events) out.push(`_이번 ${weekly ? "주" : "달"} 사건: ${m.events}_`);
   for (const l of m.lines) {
     if (l.pending) { out.push(`• ${l.label} — 집계 중`); continue; }
     if (l.value === null) { out.push(`• ${l.label} — 읽지 못함${l.why && l.why !== "못 읽음" ? ` (${l.why})` : ""}`); continue; }
-    const v = `${fmtNum(l.value, l.unit === "%" ? "rate" : "count")}${l.unit}`;
-    out.push(`• ${l.label} *${v}*${l.delta ? ` · ${cmp} 대비 ${l.delta}` : ""}${l.hold ? ` _(판정 유보 — ${l.hold})_` : ""}`);
+    const kind = l.unit === "%" ? "rate" : Number.isInteger(l.value) ? "count" : "avg";
+    const fmt = (v: number) => `${fmtNum(v, kind)}${l.unit}`;
+    const judged = l.delta
+      ? ` · ${l.baseName} 대비 ${l.delta}`
+      : l.hold
+        ? ` _(판정 유보${l.base !== null ? ` · ${fmt(l.value)} vs ${l.baseName} ${fmt(l.base)}` : ""} — ${l.hold})_`
+        : "";
+    out.push(`• ${l.label} *${fmt(l.value)}*${l.sub ? ` (${l.sub})` : ""}${judged}${l.prev ? ` · ${cmp} 대비 ${l.prev}` : ""}`);
   }
   if (!m.ready) {
     out.push(`_GA4 가 ${mdDay(m.range.end)} 데이터를 아직 안 보냈습니다${m.through ? ` — 첨부의 GA4 칸은 ${mdDay(m.through)}까지 센 값입니다` : ""}._`);
