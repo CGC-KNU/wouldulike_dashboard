@@ -47,19 +47,19 @@ function weekSeries(through: string, o: { events?: AppEvent[]; generatedAt?: str
 const msgOf = (s: ReturnType<typeof weekSeries>, ready = true, events = "") =>
   slackMessage({ type: "weekly", label: "11월 1주차", range: { start: "2026-11-02", end: "2026-11-08" }, lines: slackLines(s, ready), ready, through: s.through, warnings: [], link: "https://app.wouldulike.kr/r/app/key?x", events });
 
-test("본문 여섯 줄 — 그 주에 묶고, 평시 기준선 대비 · 전주 대비는 참고, 첨부 KPI 와 같은 값", () => {
+test("본문 여섯 줄 — 그 주에 묶고 「값 — 평시 값 대비」만, 보조줄 · 전주 대비는 첨부에만(1023 간소화)", () => {
   const s = weekSeries("20261108");
   const lines = slackLines(s, true);
   assert.deepEqual(lines.map((l) => l.label), ["하루 평균 활성 기기", "가입", "매장 이용 계정", "앱 열기 → 매장 상세", "첫 실행 기기 1주 후 복귀", "다시 온 기기"]);
   const msg = msgOf(s);
   assert.match(msg, /^:bar_chart: \*앱 지표 주간 보고서 · 11월 1주차\* \(11\/2~11\/8\)\n/);
   // 22 vs 14 — 기기·일 합 154 vs 98, 우연 범위 ±31 밖
-  assert.match(msg, /• 하루 평균 활성 기기 \*22대\* \(그 주 고유 90대 · 목표 50대\) · 평시\(9\/1~14\) 대비 ▲ 57\.1% · 전주 대비 ▼ 12%/);
-  // 가입 12 vs 10 — 합 22 라 참고만
-  assert.match(msg, /• 가입 \*12명\* \(직원 제외 · 탈퇴 빠짐\) _\(판정 유보 · 12명 vs 평시\(9\/1~14\) 10명 — 건수가 적어 참고만 — 두 값 합 22\)_ · 전주 대비 ▲ 20%/);
-  assert.match(msg, /• 매장 이용 계정 \*60명\* \(쿠폰 2건 · 스탬프 20건\) · 평시\(9\/1~14\) 대비 ▲ 650%/);
-  assert.match(msg, /첨부: 최근 12주 그래프 HTML · <https:\/\/app\.wouldulike\.kr\/r\/app\/key\?x\|대시보드에서 열기>$/);
-  assert.doesNotMatch(msg, /집계 중|undefined|NaN/);
+  assert.match(msg, /\n• 하루 평균 활성 기기 \*22대\* — 평시 14대 대비 ▲ 57\.1% · 목표 50대\n/);
+  // 가입 12 vs 10 — 합 22 라 참고만. 사유는 한 마디만
+  assert.match(msg, /\n• 가입 \*12명\* — 평시 10명 · _판정 유보: 건수가 적어 참고만_\n/);
+  assert.match(msg, /\n• 매장 이용 계정 \*60명\* — 평시 8명 대비 ▲ 650%\n/);
+  assert.match(msg, /\n_평시: 9\/1~14_\n첨부: 최근 12주 그래프 HTML · <https:\/\/app\.wouldulike\.kr\/r\/app\/key\?x\|대시보드에서 열기>$/);
+  assert.doesNotMatch(msg, /전주 대비|직원 제외|그 주 고유|집계 중|undefined|NaN/);
 
   // 첨부 보고서의 KPI 도 같은 주
   const html = renderKeyReport(s, "", { title: "앱 지표 주간 보고서 · 11월 1주차", focus: 11 });
@@ -69,12 +69,23 @@ test("본문 여섯 줄 — 그 주에 묶고, 평시 기준선 대비 · 전주
   assert.doesNotMatch(html, /<script/);
 });
 
-test("사건 주는 본문 위에 사건 한 줄, 모든 줄이 판정 유보", () => {
+test("사건 주는 사유를 맨 위 사건 줄에 한 번 — 줄마다 되풀이하지 않는다(1023 간소화)", () => {
   const s = weekSeries("20261108", { events: [...FIXED_EVENTS, ...campaignEvents([{ kind: "coupon_week", label: "한정쿠폰 주간", start: "2026-11-02", end: "2026-11-08" }])] });
   const msg = msgOf(s, true, "한정쿠폰 주간");
-  assert.match(msg, /\n_이번 주 사건: 한정쿠폰 주간_\n/);
-  assert.match(msg, /• 하루 평균 활성 기기 \*22대\* \(그 주 고유 90대 · 목표 50대\) _\(판정 유보 · 22대 vs 평시\(9\/1~14\) 14대 — 사건 칸 — 한정쿠폰 주간\)_/);
-  assert.doesNotMatch(msg, /평시\(9\/1~14\) 대비/);
+  assert.match(msg, /\n_이번 주 사건: 한정쿠폰 주간 — 사건 칸이라 평시와 견주지 않습니다_\n/);
+  assert.match(msg, /\n• 하루 평균 활성 기기 \*22대\* — 평시 14대 · 목표 50대\n/);
+  assert.match(msg, /\n• 가입 \*12명\* — 평시 10명\n/);
+  assert.doesNotMatch(msg, /대비|판정 유보|사건 칸 —/);
+});
+
+test("평시 값은 지표 모양대로 — 이번 값이 정수여도 하루 평균 평시 14.4 를 14 로 자르지 않는다", () => {
+  const fixed = FIXED.map((w, k) => ({ ...w, cells: { ...w.cells, dau: { v: k ? 14.8 : 14 } } }));
+  const r = slackRange("weekly", "20261108", "20261109");
+  if (!r.ok) throw new Error(r.error);
+  const cells = r.spec.buckets.map(() => full());
+  cells[11] = full({ ga4: ga4({ wau: 90, new_devices: 18, dau: 22 }) });
+  const s = buildSeries({ spec: r.spec, through: "20261108", today: "20261109", cells, total: full(), events: FIXED_EVENTS, eventsOk: true, baseline: { fixed, weeks: [] } });
+  assert.match(msgOf(s), /• 하루 평균 활성 기기 \*22대\* — 평시 14\.4대/);
 });
 
 test("GA4 가 일요일분을 아직 안 보냈으면 GA4 줄만 「집계 중」, DB 줄은 그대로", () => {
@@ -97,7 +108,7 @@ test("판정 유보 · 못 읽음 · 경고가 많을 때", () => {
   assert.match(msg, /:warning: 외 2건/);
 });
 
-test("월간 — 제목과 보조 비교가 바뀐다", () => {
+test("월간 — 제목이 바뀌고 전월 대비는 싣지 않는다", () => {
   const r = slackRange("monthly", "2026-11", "20261202");
   if (!r.ok) throw new Error(r.error);
   const cells = r.spec.buckets.map(() => full());
@@ -106,8 +117,9 @@ test("월간 — 제목과 보조 비교가 바뀐다", () => {
   const s = buildSeries({ spec: r.spec, through: "20261201", today: "20261202", cells, total: full(), events: FIXED_EVENTS, eventsOk: true, baseline: { fixed: FIXED, weeks: [] } });
   const msg = slackMessage({ type: "monthly", label: "2026년 11월", range: { start: "2026-11-01", end: "2026-11-30" }, lines: slackLines(s, true), ready: true, through: "20261201", warnings: [], link: "L" });
   assert.match(msg, /^:bar_chart: \*앱 지표 월간 보고서 · 2026년 11월\*\n/);
-  assert.match(msg, /• 가입 \*50명\*.* · 전월 대비 ▲ 25%/);
-  // 월 고유 수는 주 기준과 견주지 않는다
-  assert.match(msg, /• 매장 이용 계정 \*40명\*.*칸 안 고유 수라 주 기준과 견줄 수 없습니다/);
+  assert.match(msg, /\n• 가입 \*50명\* — 평시 \d+명/);
+  assert.doesNotMatch(msg, /전월 대비/);
+  // 월 고유 수는 주 기준과 견주지 않는다 — 평시 값 없이 사유 한 마디
+  assert.match(msg, /\n• 매장 이용 계정 \*40명\* — _판정 유보: 칸 안 고유 수라 주 기준과 견줄 수 없습니다_\n/);
   assert.match(msg, /첨부: 최근 6개월 그래프 HTML/);
 });
