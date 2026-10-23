@@ -191,6 +191,6 @@ export function longCsv(s: AppSeries): string {
   lines.push([]);
   lines.push(["메타", "", "생성 시각(KST)", s.generatedAt, ""]);
   lines.push(["메타", "", "리비전", s.revision, ""]);
-  lines.push(["메타", "", "매장 × 월", s.spec.unit === "month" ? "월말 스냅샷의 매장별 행 — 그 달 이용이 있던 매장만. 0건 매장은 매장 정본(Astro 계약) 뒤" : "월 단위로 뽑을 때만 실립니다", ""]);
+  lines.push(["메타", "", "매장 × 월", s.spec.unit === "month" ? "월말 스냅샷의 매장별 행 — 그 달 이용이 있던 매장만. 활동 0건 매장은 보조표 「활동 0건 제휴 매장」" : "월 단위로 뽑을 때만 실립니다", ""]);
   return toCsv(lines);
 }
