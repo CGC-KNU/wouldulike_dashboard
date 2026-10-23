@@ -427,21 +427,18 @@ function activeChart(s: AppSeries, focus: number | null): string {
 }
 
 /**
- * 계약 매장 활동(D8 · 1023) — Astro 계약 매장 중 쿠폰 사용이나 스탬프가 있었던 곳의 비율.
- * 아래에 KPI 칸(focus)의 활동 0건 매장과 개시일이 비어 분모에 못 넣은 매장 수를 적는다 — 영업이 바로 챙길 목록이다.
+ * 제휴 매장 활동(D8 · 1023) — 지금 앱 제휴 매장 중 쿠폰 사용이나 스탬프가 있었던 곳의 비율.
+ * Probe 는 앱 내부 지표로만 말한다(민찬 1023) — 분모는 Astro 계약이 아니라 앱의 제휴 표시다.
+ * 아래에 KPI 칸(focus)의 활동 0건 매장을 적는다.
  */
-function contractCard(s: AppSeries, focus: number | null): string {
-  const r = seriesRow(s, "contract_active_rate");
+function affiliateCard(s: AppSeries, focus: number | null): string {
+  const r = seriesRow(s, "affiliate_active_rate");
   if (!r || r.cells.every((c) => c.v === null)) return "";
   const i = focus ?? s.buckets.length - 1;
   const b = s.buckets[i];
   const idle = s.long.filter((l) => l.table === IDLE_STORES_TABLE && l.start === b.start).map((l) => l.dim);
-  const undated = vOf(s, "contract_undated", i);
-  const note = [
-    idle.length ? `${b.label} 활동 0건 계약 매장 ${idle.length}곳: ${idle.join(", ")}` : `${b.label} 활동 0건 계약 매장 없음`,
-    undated ? `계약일 빈 매장 ${undated}곳 — Astro 에 개시일을 넣으면 분모에 들어갑니다` : "",
-  ].filter(Boolean).join(" · ");
-  return single(s, "contract_active_rate", "활동 계약 매장 비율", "% · Astro 계약 매장 중 쿠폰 사용이나 스탬프가 1건 이상인 곳(DB) · 점에 마우스를 올리면 활동/계약 곳 수", "line", true, undefined, note);
+  const note = idle.length ? `${b.label} 활동 0건 제휴 매장 ${idle.length}곳: ${idle.join(", ")}` : `${b.label} 활동 0건 제휴 매장 없음`;
+  return single(s, "affiliate_active_rate", "활동 제휴 매장 비율", "% · 지금 앱 제휴 매장 중 쿠폰 사용이나 스탬프가 1건 이상인 곳(DB) — 분모가 지금 목록이라 지난 칸일수록 낮게 나올 수 있음 · 점에 마우스를 올리면 활동/제휴 곳 수", "line", true, undefined, note);
 }
 
 /** 마일리지 회차표(C9 · A12 · A13) — 날짜 막대는 응모가 마감일 앞에 몰려 잡음이라 회차 한 줄씩 */
@@ -559,8 +556,8 @@ ${section("매장 이용", "받은 쿠폰이 매장에서 쓰이는가", [
     ? single(s, "coupon_issued", "쿠폰 발급 (월말 스냅샷)", "장 · 월말에 굳힌 그 달 발급(DB), 취소 제외 — 스냅샷 없는 달은 다시 센 값이라 줄 수 있음", "bar")
     : stacked(s, ["use_organic_issued", "use_campaign_issued"], ["캠페인 외", "캠페인"], "처음 받은 쿠폰", "장 · 그 칸에 처음 받은 쿠폰(GA4) — DB 발급은 만료 삭제로 다시 셀 때마다 줄어 일·주판은 GA4 로 셉니다"),
   single(s, "use_organic_rate", `쿠폰 ${FOLLOW_DAYS}일 사용률 (캠페인 외)`, `% · 가입 환영·스탬프 보상·추천·한정 등 그 칸에 처음 받은 쿠폰 중 받은 뒤 ${FOLLOW_DAYS}일 안에 쓰인 비율 · 점에 마우스를 올리면 사용/받은 장 수(GA4) · 분모 30 미만은 속 빈 점(참고)`, "line", true),
-  u === "month" ? single(s, "active_restaurants", "활동 매장", "곳 · 쿠폰 사용이나 스탬프가 1건 이상인 매장(DB) — 계약이 끝난 매장도 셉니다. 계약 매장 대비는 옆 그래프", "bar", true) : "",
-  u === "day" ? "" : contractCard(s, focus),
+  u === "month" ? single(s, "active_restaurants", "활동 매장", "곳 · 쿠폰 사용이나 스탬프가 1건 이상인 매장(DB) — 제휴를 끈 매장도 셉니다. 제휴 매장 대비는 옆 그래프", "bar", true) : "",
+  u === "day" ? "" : affiliateCard(s, focus),
   v260Fold(s, focus, [
     single(s, "coupon_claimed", "쿠폰 받기", "장 · 학생이 「받기」를 눌러 받은 쿠폰, 자동 지급 제외 · 앱 2.6.0~(GA4)", "bar"),
     single(s, "claim_to_use", `받기 누른 쿠폰 → ${FOLLOW_DAYS}일 사용`, `% · 「받기」로 받은 쿠폰 중 받은 뒤 ${FOLLOW_DAYS}일 안에 쓰인 비율(GA4)`, "line"),
