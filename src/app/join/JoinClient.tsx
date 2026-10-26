@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { IconBrandApple, IconBrandGooglePlay, IconBrandInstagram, IconCheck, IconChevronRight, IconFileDownload, IconWorld } from "@tabler/icons-react";
 import { BrandLockup } from "../onboard/[token]/Brand";
 import { Button, Field, Input, Notice, Spinner, Stepper } from "@/app/dashboard/admin/_shared/ui";
 
@@ -390,16 +391,52 @@ function StepTerms({ d, patch, terms, fee, busy, onBack, onSubmit }: { d: Draft;
   );
 }
 
+const MORE: { href: string; Icon: typeof IconBrandApple; title: string; sub: string }[] = [
+  { href: "https://apps.apple.com/kr/app/wouldulike/id6740640251", Icon: IconBrandApple, title: "우주라이크 앱 · App Store", sub: "학생들이 보는 화면 그대로" },
+  { href: "https://play.google.com/store/apps/details?id=com.coggiri.new1", Icon: IconBrandGooglePlay, title: "우주라이크 앱 · Google Play", sub: "안드로이드 휴대폰" },
+  { href: "https://www.instagram.com/w_ouldulike", Icon: IconBrandInstagram, title: "인스타그램 @w_ouldulike", sub: "기획전 · 카드뉴스가 올라가는 곳" },
+  { href: "https://wouldulike.kr/partner", Icon: IconWorld, title: "홈페이지 wouldulike.kr", sub: "실제 성과 · 플랜 · 자주 묻는 질문" },
+];
+
 function Done({ d, fee, onNew }: { d: Draft; fee: number; onNew: () => void }) {
   const dup = d.submitted?.status === "duplicate";
   return (
-    <section className="text-center py-4">
-      <p className="text-[40px]" aria-hidden="true">✓</p>
-      <H title={dup ? "신청을 받았습니다" : "신청이 들어갔습니다"} />
-      <p className="text-[14px] text-gray-700 leading-relaxed">{d.submitted?.message ?? "담당자가 확인한 뒤 연락드립니다(영업일 1일)."}</p>
-      {fee > 0 && !dup && <p className="text-[13px] text-gray-600 mt-3 rounded-xl bg-gray-50 p-3">{PLAN_LABEL[d.plan]} 플랜은 담당자가 연락드리면서 입금 방법을 안내드립니다. 첫 이용료는 개시일부터 7일 안에 내시면 됩니다.</p>}
-      <p className="text-[12.5px] text-gray-500 mt-4">승인되면 이 카카오 계정으로 우주라이크에 들어오시면 바로 사장님 화면이 열립니다.</p>
-      <button type="button" onClick={onNew} className="mt-6 text-[12.5px] text-gray-400 underline">다른 매장도 신청하기</button>
+    <section className="py-2">
+      <div className="text-center">
+        <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-navy text-white" aria-hidden="true"><IconCheck size={26} stroke={2.4} /></span>
+        <H title={dup ? "신청을 받았습니다" : "파트너 신청이 완료되었습니다"} />
+        <p className="-mt-2 text-[14px] text-gray-700 leading-relaxed">{d.submitted?.message ?? "담당자가 확인한 뒤 연락드립니다(영업일 1일)."}</p>
+      </div>
+      {fee > 0 && !dup && <p className="text-[13px] text-gray-600 mt-4 rounded-xl bg-gray-50 p-3 text-center">{PLAN_LABEL[d.plan]} 플랜은 담당자가 연락드리면서 입금 방법을 안내드립니다. 첫 이용료는 개시일부터 7일 안에 내시면 됩니다.</p>}
+      <p className="text-[12.5px] text-gray-500 mt-3 text-center">승인되면 이 카카오 계정으로 우주라이크에 들어오시면 바로 사장님 화면이 열립니다.</p>
+
+      <a href="/join/wouldulike-owner-guide.pdf" download="우주라이크_점주_안내문.pdf"
+         className="mt-6 flex items-center gap-3 rounded-2xl bg-navy px-4 py-3.5 text-white transition active:scale-[0.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15" aria-hidden="true"><IconFileDownload size={22} stroke={1.8} /></span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-[14.5px] font-bold">점주 안내문 받기</span>
+          <span className="block text-[12px] text-white/75">이용료 · 시작일 · 그만두는 법 · PDF 1장</span>
+        </span>
+        <IconChevronRight size={18} className="shrink-0 opacity-70" aria-hidden="true" />
+      </a>
+
+      <p className="mt-7 mb-2 text-[12px] font-bold tracking-[0.04em] text-gray-500">우주라이크가 더 궁금하시다면</p>
+      <ul className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200">
+        {MORE.map(({ href, Icon, title, sub }) => (
+          <li key={href}>
+            <a href={href} target="_blank" rel="noopener" className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ECEBFB] text-navy" aria-hidden="true"><Icon size={20} stroke={1.8} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-semibold text-gray-900">{title}</span>
+                <span className="block text-[11.5px] text-gray-500">{sub}</span>
+              </span>
+              <IconChevronRight size={16} className="shrink-0 text-gray-300" aria-hidden="true" />
+            </a>
+          </li>
+        ))}
+      </ul>
+
+      <div className="text-center"><button type="button" onClick={onNew} className="mt-6 text-[12.5px] text-gray-400 underline">다른 매장도 신청하기</button></div>
     </section>
   );
 }
