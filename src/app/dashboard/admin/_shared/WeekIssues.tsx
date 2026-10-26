@@ -26,13 +26,13 @@ const DOT: Record<string, string> = {
   meeting: "bg-navy", spot_meeting: "bg-fuchsia-500", spot_shoot: "bg-orange-500",
   due: "bg-amber-500", spot_due: "bg-yellow-600", spot_plan: "bg-purple-500", spot_done: "bg-lime-600",
   contract: "bg-emerald-500", contract_end: "bg-rose-500", signed: "bg-teal-500",
-  payment: "bg-periwinkle", post: "bg-sky-500",
+  payment: "bg-periwinkle", post: "bg-sky-500", apply: "bg-indigo-500",
 };
 
 const KIND_LABEL: Record<string, string> = {
   meeting: "미팅", spot_meeting: "스팟 미팅", spot_shoot: "촬영", due: "기한", spot_due: "납품 기한",
   spot_plan: "기획안", spot_done: "납품", contract: "계약 시작", contract_end: "계약 종료",
-  signed: "계약 체결", payment: "입금 예정", post: "게시물 업로드",
+  signed: "계약 체결", payment: "입금 예정", post: "게시물 업로드", apply: "입점 신청",
 };
 
 const md = (d: string) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;

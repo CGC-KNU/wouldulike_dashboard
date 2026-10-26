@@ -28,7 +28,7 @@ const SHOWN: CalKind[] = [
 
 export interface WeekIssue {
   date: string;
-  kind: CalKind | "post";
+  kind: CalKind | "post" | "apply";
   label: string;
   at?: string;
   campus?: string | null;
@@ -76,8 +76,8 @@ export function useWeekIssues(enabled = true): WeekIssues {
     Promise.all([
       j("/api/astro/stores"), j("/api/astro/leads"), j("/api/astro/spots"),
       j(`/api/astro/invoices?period=${from.slice(0, 7)}`), j("/api/astro/campaigns"),
-      j("/api/satellite/plans/quick-list?status=active"),
-    ]).then(([stores, leads, spots, inv, camp, plans]) => {
+      j("/api/satellite/plans/quick-list?status=active"), j("/api/astro/applications"),
+    ]).then(([stores, leads, spots, inv, camp, plans, apps]) => {
       if (!alive) return;
 
       const weeks = (camp?.campaigns ?? []) as CampaignWeek[];
@@ -111,6 +111,13 @@ export function useWeekIssues(enabled = true): WeekIssues {
           sub: p.owner_name ? `업로드 · ${p.owner_name}` : "업로드",
           go: "satellite",
         });
+      }
+
+      // 입점 신청 대기 — 날짜가 있는 일이 아니라 오늘 처리할 일이라 오늘 줄에 건수로 올린다
+      const waiting = ((apps?.applications ?? []) as unknown[]).length;
+      if (waiting > 0) {
+        const today = iso(new Date());
+        items.push({ date: today >= from && today <= to ? today : from, kind: "apply", label: `입점 신청 대기 ${waiting}건`, sub: "파트너 계약 탭에서 승인", go: "astro-contracts" });
       }
 
       items.sort((a, b) => a.date.localeCompare(b.date) || (a.at ?? "99:99").localeCompare(b.at ?? "99:99"));

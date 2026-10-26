@@ -7,6 +7,7 @@ import { allCampuses } from "./CampusPicker";
 import OnboardLink from "./OnboardLink";
 import OnboardReconcile from "./OnboardReconcile";
 import SpecialApprovals from "./SpecialApprovals";
+import JoinApplications from "./JoinApplications";
 import CampusMark from "./CampusMark";
 import NewStorePanel from "./NewStorePanel";
 import DuplicateStoreChoice, { dupsOf, type DupStore } from "./DuplicateStoreChoice";
@@ -249,6 +250,7 @@ export default function ContractBoard({ actor, onGo }: { actor: string; onGo?: (
       )}
 
       {/* 승인이 먼저다 — 사장님은 등록했다고 생각하는데 앱에는 안 나가고 있는 상태라 제일 급하다 */}
+      <JoinApplications onDone={load} />
       <SpecialApprovals onDone={load} />
       <OnboardReconcile onDone={load} />
 
