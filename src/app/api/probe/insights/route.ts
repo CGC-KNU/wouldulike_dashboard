@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { buildInsights } from "@/lib/draft/insights";
+import { singleFlight } from "@/lib/draft/singleFlight";
 
 export type { StoreInsight } from "@/lib/draft/insights";
 
@@ -15,6 +16,13 @@ export type { StoreInsight } from "@/lib/draft/insights";
 let cached: { at: number; body: unknown } | null = null;
 const TTL = 5 * 60_000;
 
+/** 만드는 중이면 그걸 같이 기다린다(1027) — 런처 현황 · Probe 홈 · 매장 리포트가 처음 열릴 때 거의 동시에 부른다 */
+const build = singleFlight(async () => {
+  const out = await buildInsights();
+  if (out.papillon_reachable) cached = { at: Date.now(), body: out };
+  return out;
+});
+
 export async function GET(req: Request) {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
@@ -22,7 +30,6 @@ export async function GET(req: Request) {
   if (!fresh && cached && Date.now() - cached.at < TTL) {
     return NextResponse.json({ ...(cached.body as object), cached_at: new Date(cached.at).toISOString() });
   }
-  const out = await buildInsights();
-  if (out.papillon_reachable) cached = { at: Date.now(), body: out };
-  return NextResponse.json(out);
+  // fresh(리포트를 만들거나 고친 뒤 · 「다시 읽기」)는 만드는 중인 것과 합치지 않는다 — 그건 방금 고친 것을 모르고 시작했을 수 있다
+  return NextResponse.json(await build(!fresh));
 }

@@ -7,6 +7,7 @@ import { ageShare, manualMissing, parseManual, slideShare } from "@/lib/draft/re
 import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import MonthlyReports from "./MonthlyReports";
+import { fetchJson, rememberJson } from "../_shared/fetchJson";
 import { PanelSection, TagChip, Unknown, md, takeParam } from "./kit";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notice, PageHeader, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
@@ -74,9 +75,10 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
 
   // 목록은 서버가 5분 기억한다(만드는 데 10초). 처음 열 때만 그걸 쓰고, 리포트를 만들거나 고친 뒤·「다시 읽기」는
   // 새로 읽는다 — 안 그러면 방금 만든 리포트가 5분 동안 「만들기」로 남아, 다시 누르면 「갱신본 만들기」가 뜬다.
-  const loadPosts = useCallback((fresh: boolean) => { setPostsLoading(true); fetch(`/api/probe/insights${fresh ? "?fresh=1" : ""}`).then((r) => r.json()).then(setPosts).catch(() => setPosts(null)).finally(() => setPostsLoading(false)); }, []);
-  const loadList = useCallback(() => { fetch("/api/probe/reports").then((r) => r.json()).then((d) => { setList(d.reports ?? []); setNote(d.draft_note); }).catch(() => setList([])); }, []);
-  const load = useCallback((fresh = true) => { loadPosts(fresh); loadList(); }, [loadPosts, loadList]);
+  // 처음 열 때는 fetchJson 으로 — 런처 현황 · Probe 홈이 방금 읽었거나 읽는 중인 것과 합친다(1027). 못 읽으면 null(아래 빨간 안내).
+  const loadPosts = useCallback((fresh: boolean) => { setPostsLoading(true); fetchJson<PostsPayload>(`/api/probe/insights${fresh ? "?fresh=1" : ""}`, { fresh }).then((d) => { if (fresh) rememberJson("/api/probe/insights", d); setPosts(d); }).finally(() => setPostsLoading(false)); }, []);
+  const loadList = useCallback((fresh: boolean) => { fetchJson<{ reports?: StoreReport[]; draft_note?: string }>("/api/probe/reports", { fresh }).then((d) => { setList(d?.reports ?? []); setNote(d?.draft_note); }); }, []);
+  const load = useCallback((fresh = true) => { loadPosts(fresh); loadList(fresh); }, [loadPosts, loadList]);
   useEffect(() => load(false), [load]);
 
   const allPosts = posts?.insights ?? [];
@@ -169,6 +171,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       {tab === "monthly" ? <MonthlyReports /> : (
         <>
           {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개는 성과를 못 읽었습니다`}>제목에 「(매장 포함)」 표시가 있는 제휴식당 콘텐츠만 성과가 열려 있습니다(마케팅팀 합의 0920). 표시가 없는 콘텐츠는 수치가 비고 「만들 때」에 안 잡힙니다 — 마케팅팀에 제목 표시를 부탁하세요.</Notice></div>}
+          {!postsLoading && !posts && <div className="mb-4"><Notice tone="red" title="게시물 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>할 일이 없다는 뜻이 아닙니다.</strong> 「다시 읽기」를 눌러 주세요.</Notice></div>}
           {posts && !posts.papillon_reachable && <div className="mb-4"><Notice tone="red" title="Papillon 기획 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>홍보한 적 없음이 아닙니다.</strong> 백엔드 연결을 확인하세요.</Notice></div>}
 
           <Card flush title="게시물 · 리포트" description={`한 줄이 게시물 하나입니다. 행을 누르면 게시물이나 리포트가 열리고, 오른쪽 끝 버튼이 지금 할 일입니다. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}>

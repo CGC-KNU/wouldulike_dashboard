@@ -64,3 +64,12 @@ export function fetchJson<T = unknown>(url: string, opts: { timeout?: number; re
   inflight.set(url, p);
   return p;
 }
+
+/**
+ * 다른 주소로 새로 읽은 값을 이 주소의 기억으로 둔다 (1027). 매장 리포트는 만든 뒤 `?fresh=1` 로 다시 읽는데,
+ * 기억은 주소마다라 30초 안에 탭을 옮겼다 오면 `/api/probe/insights` 의 **만들기 전** 값을 받아 「만들기」가 다시 보였다.
+ * 못 읽은 값(null)은 두지 않는다 — 그건 원래 주소의 값보다 나을 게 없다.
+ */
+export function rememberJson(url: string, value: unknown): void {
+  if (value !== null) cache.set(url, { at: Date.now(), value });
+}
