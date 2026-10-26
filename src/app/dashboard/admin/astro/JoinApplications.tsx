@@ -53,12 +53,14 @@ export default function JoinApplications({ onDone }: { onDone?: () => void }) {
   }, []);
   useEffect(load, [load]);
 
-  const act = async (a: App, action: "approve" | "reject" | "duplicate", extra: Record<string, unknown> = {}) => {
+  const act = async (a: App, action: "approve" | "reject" | "duplicate" | "delete", extra: Record<string, unknown> = {}) => {
     let note: string | null = null;
     if (action === "reject") {
       note = window.prompt(`${a.store_name} — 반려 사유 (사장님 화면에는 「담당자가 연락드립니다」로만 보입니다)`, "");
       if (note === null) return;
     }
+    if (action === "delete" &&
+        !window.confirm(`${a.store_name} 신청을 지웁니다. 시험 신청이나 잘못 들어온 신청만 지워 주세요 — 되돌릴 수 없습니다.`)) return;
     if (action === "approve" && a.plan !== "FREE" &&
         !window.confirm(`${a.store_name} · ${PLAN[a.plan]}\n사장님과 통화해 입금 · 개시일을 맞추셨나요? 승인하면 매장이 바로 만들어집니다.`)) return;
     setBusy(a.id); setMsg(null);
@@ -73,7 +75,7 @@ export default function JoinApplications({ onDone }: { onDone?: () => void }) {
         tone: "blue",
         text: action === "approve"
           ? `${a.store_name} 입점 승인 — 매장 #${j.restaurant_id} 이 만들어졌습니다. 사장님께 앱 로그인 안내를 드려 주세요.`
-          : action === "reject" ? `${a.store_name} 신청을 반려했습니다.` : `${a.store_name} 신청을 기존 매장으로 처리했습니다. 사장님께 연락해 주세요.`,
+          : action === "delete" ? `${a.store_name} 신청을 지웠습니다.` : action === "reject" ? `${a.store_name} 신청을 반려했습니다.` : `${a.store_name} 신청을 기존 매장으로 처리했습니다. 사장님께 연락해 주세요.`,
       });
       setOpen(null); load(); onDone?.();
     } catch (err) { setMsg({ tone: "red", text: (err as Error).message }); } finally { setBusy(null); }
@@ -175,6 +177,7 @@ export default function JoinApplications({ onDone }: { onDone?: () => void }) {
                       </Button>
                     )}
                     <Button size="sm" disabled={busy === a.id} onClick={() => act(a, "reject")}>반려</Button>
+                    <Button size="sm" variant="ghost" disabled={busy === a.id} onClick={() => act(a, "delete")}>시험 신청 삭제</Button>
                   </div>
                 </div>
               )}
