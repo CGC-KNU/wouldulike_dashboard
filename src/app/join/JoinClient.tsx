@@ -22,7 +22,7 @@ interface Terms {
 interface Found { id: string; name: string; address: string; category: string }
 interface Draft {
   step: number; source: string;
-  campus: string; store_name: string; address: string; category: string; hubble_id: string; manual: boolean;
+  campus: string; campus_key: string; campus_label: string; store_name: string; address: string; category: string; hubble_id: string; manual: boolean;
   owner_name: string; phone: string; biz_no: string; rep_same: boolean; rep_name: string; email: string;
   plan: Plan;
   stamps: Record<string, string>; stamp_note: string; coupons: { benefit: string; cond: string }[];
@@ -31,7 +31,7 @@ interface Draft {
   submitted: { id: number; status: string; message: string } | null;
 }
 const KEY = "wl_join_v1";
-const CAMPUSES = ["경북대", "영남대", "계명대"];
+interface Campus { key: string; short: string; name: string; branch: string; sido: string }
 const STEPS = ["매장", "사장님", "플랜", "혜택", "PIN", "약관"];  // step 1~6, 0 = 소개 · 7 = 제출 완료
 const PLAN_LABEL: Record<Plan, string> = { FREE: "무료", BOOST: "Boost", PREMIUM: "Premium" };
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -47,7 +47,7 @@ function bizOk(v: string) {
   return (10 - (s % 10)) % 10 === d[9];
 }
 const empty = (): Draft => ({
-  step: 0, source: "", campus: "", store_name: "", address: "", category: "", hubble_id: "", manual: false,
+  step: 0, source: "", campus: "", campus_key: "", campus_label: "", store_name: "", address: "", category: "", hubble_id: "", manual: false,
   owner_name: "", phone: "", biz_no: "", rep_same: true, rep_name: "", email: "", plan: "FREE",
   // 기본 세트(명세 4장 [4]) — 바꾸고 싶은 사장님만 바꾼다
   stamps: { "10": "음료 1잔" }, stamp_note: "", coupons: [{ benefit: "음료 1캔", cond: "10,000원 이상 주문 시" }],
@@ -108,7 +108,7 @@ export default function JoinClient() {
   }
 
   if (!ready || !terms) return <Shell><div className="py-24 flex justify-center"><Spinner size={28} /></div></Shell>;
-  const fee = d.campus ? terms.fees[d.campus]?.[d.plan] ?? 0 : 0;
+  const fee = d.campus ? (terms.fees[d.campus] ?? terms.fees["기타"])?.[d.plan] ?? 0 : 0;
 
   return (
     <Shell>
@@ -163,7 +163,7 @@ function Nav({ onBack, onNext, nextLabel = "다음", disabled, hint }: { onBack?
 function Intro({ onStart }: { onStart: () => void }) {
   return (
     <section>
-      <H title="대구 대학생에게 사장님 가게를 알려 드립니다" sub="우주라이크는 경북대 · 영남대 · 계명대 학생들이 쓰는 맛집 앱과 인스타그램 매거진입니다." />
+      <H title="대학생에게 사장님 가게를 알려 드립니다" sub="우주라이크는 대구 경북대 · 영남대 · 계명대에서 시작한 대학가 맛집 앱과 인스타그램 매거진입니다." />
       <ul className="space-y-2.5 text-[14px] text-gray-700">
         <li className="flex gap-2"><b className="text-navy shrink-0">1</b>신청은 이 화면에서 끝납니다. 매장 확인 · 혜택 · 약관 동의까지 5분 정도 걸립니다.</li>
         <li className="flex gap-2"><b className="text-navy shrink-0">2</b>쿠폰 · 스탬프는 기본으로 켜 둡니다. 바꾸고 싶으실 때만 바꾸시면 됩니다.</li>
@@ -175,6 +175,36 @@ function Intro({ onStart }: { onStart: () => void }) {
   );
 }
 
+function CampusPick({ d, patch }: { d: Draft; patch: (p: Partial<Draft>) => void }) {
+  const [q, setQ] = useState("");
+  const [list, setList] = useState<Campus[] | null>(null);
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const j = await fetch(`/api/join/campuses?${new URLSearchParams({ q: q.trim() })}`).then((r) => r.json()).catch(() => ({ campuses: [] }));
+      setList(j.campuses ?? []);
+    }, q ? 200 : 0);
+    return () => clearTimeout(t);
+  }, [q]);
+  if (d.campus) return (
+    <div className="flex items-center justify-between rounded-xl border border-navy/30 bg-navy/[0.03] px-3 py-2.5 mb-4">
+      <span><b className="text-[15px] text-gray-900">{d.campus_label || d.campus}</b></span>
+      <button type="button" className="text-[12.5px] text-gray-500 underline" onClick={() => patch({ campus: "", campus_key: "", campus_label: "", store_name: "", hubble_id: "", manual: false })}>바꾸기</button>
+    </div>
+  );
+  return (
+    <div className="mb-4">
+      <Field label="가까운 학교"><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="학교 이름 — 예: 경북대, 부산대" autoFocus /></Field>
+      <ul className="mt-2 rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+        {(list ?? []).map((c) => <li key={c.key}><button type="button" className="w-full text-left px-3 py-2.5 hover:bg-gray-50"
+          onClick={() => patch({ campus: c.short, campus_key: c.key, campus_label: `${c.name}${c.branch !== "본교" ? ` ${c.branch.replace("캠퍼", "캠퍼스")}` : ""}`, hubble_id: "", manual: false, store_name: "" })}>
+          <b className="text-[14px] text-gray-900">{c.name}</b>{c.branch !== "본교" && <span className="text-[12.5px] text-gray-600"> {c.branch.replace("캠퍼", "캠퍼스")}</span>}<span className="block text-[12px] text-gray-400">{c.sido}</span></button></li>)}
+        {list && list.length === 0 && <li className="px-3 py-2.5 text-[13px] text-gray-500">찾는 학교가 없습니다. 이름을 줄여서 다시 찾아 주세요.</li>}
+        {!list && <li className="px-3 py-2.5 text-[13px] text-gray-400">불러오는 중…</li>}
+      </ul>
+    </div>
+  );
+}
+
 function StepStore({ d, patch, onNext }: { d: Draft; patch: (p: Partial<Draft>) => void; onNext: () => void }) {
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Found[] | null>(null);
@@ -183,20 +213,16 @@ function StepStore({ d, patch, onNext }: { d: Draft; patch: (p: Partial<Draft>) 
     if (!d.campus || q.trim().length < 2) { setFound(null); return; }
     const t = setTimeout(async () => {
       setLoading(true);
-      const j = await fetch(`/api/join/search?${new URLSearchParams({ campus: d.campus, q: q.trim() })}`).then((r) => r.json()).catch(() => ({ stores: [] }));
+      const j = await fetch(`/api/join/search?${new URLSearchParams({ campus: d.campus, key: d.campus_key, q: q.trim() })}`).then((r) => r.json()).catch(() => ({ stores: [] }));
       setFound(j.stores ?? []); setLoading(false);
     }, 250);
     return () => clearTimeout(t);
-  }, [q, d.campus]);
+  }, [q, d.campus, d.campus_key]);
   const chosen = d.store_name && (d.hubble_id || d.manual);
   return (
     <section>
-      <H title="어느 매장인가요" sub="학교를 고르고 가게 이름을 찾아 주세요. 구청에 등록된 이름으로 나옵니다." />
-      <p className="text-[12.5px] font-bold text-gray-600 mb-1.5">가까운 학교</p>
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {CAMPUSES.map((c) => <button key={c} type="button" onClick={() => patch({ campus: c, hubble_id: "", manual: false, store_name: "" })} aria-pressed={d.campus === c}
-          className={`h-11 rounded-xl border text-[14px] font-bold ${d.campus === c ? "border-navy bg-navy text-white" : "border-gray-200 text-gray-600"}`}>{c}</button>)}
-      </div>
+      <H title="어느 매장인가요" sub="가까운 학교를 찾고, 가게 이름을 찾아 주세요. 구청에 등록된 이름으로 나옵니다." />
+      <CampusPick d={d} patch={patch} />
       {d.campus && !chosen && (
         <>
           <Field label="가게 이름"><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="예: 다나, 혜화문식당" autoFocus /></Field>
@@ -259,7 +285,7 @@ function StepOwner({ d, patch, logged, onKakao, onBack, onNext, onSwitch }: { d:
 }
 
 function StepPlan({ d, patch, terms, onBack, onNext }: { d: Draft; patch: (p: Partial<Draft>) => void; terms: Terms; onBack: () => void; onNext: () => void }) {
-  const fees = terms.fees[d.campus] ?? terms.fees["경북대"];
+  const fees = terms.fees[d.campus] ?? terms.fees["기타"];
   const rows: { p: Plan; what: string }[] = [
     { p: "FREE", what: "앱에 매장 등록 · 기본 쿠폰과 스탬프 · 마일리지 추첨 참여" },
     { p: "BOOST", what: "무료 플랜 전부 + 매주 파트너 묶음 카드뉴스에 월 1회 · 한정 쿠폰 캠페인 · 앱 배너" },
