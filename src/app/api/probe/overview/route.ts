@@ -7,6 +7,7 @@ import { remoteGet } from "@/lib/draft/remote";
 import { readDraft } from "@/lib/draft/store";
 import { seedStoreOps } from "@/lib/draft/seed";
 import { previousPeriod, summarizeStoreMetrics, withoutTestStores } from "@/lib/draft/storeMetrics";
+import { singleFlight } from "@/lib/draft/singleFlight";
 
 /**
  * Probe 지표 개요 — 매장별 쿠폰·스탬프·단골 수치를 한 번에 모아 온다.
@@ -48,7 +49,11 @@ export async function GET() {
   const deny = await requireTool("restaurants");
   if (deny) return deny;
   if (cached && Date.now() - cached.at < TTL) return NextResponse.json(cached.body);
+  // 런처(Polaris) · Probe 홈 · 매장 지표가 처음 열릴 때 거의 동시에 부른다 — 만드는 중이면 그걸 같이 기다린다(1027)
+  return NextResponse.json(await build());
+}
 
+const build = singleFlight(async () => {
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[]; truncated?: boolean }>(
     "/api/dashboard/restaurants/"
   );
@@ -146,5 +151,5 @@ export async function GET() {
     draft: false,
   };
   cached = { at: Date.now(), body };
-  return NextResponse.json(body);
-}
+  return body;
+});

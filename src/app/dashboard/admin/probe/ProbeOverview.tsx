@@ -7,6 +7,7 @@ import { campusOfMetric, failReasonLabel, isFailing, isSilent, previousPeriod, s
 import { allCampuses } from "../astro/CampusPicker";
 import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, SlideOver, Table, Td, Th, periodLocal, rowClickable } from "../_shared/ui";
 import { MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
+import { fetchJson } from "../_shared/fetchJson";
 import type { StoreMonth } from "@/app/api/probe/store-history/route";
 
 /**
@@ -63,6 +64,18 @@ interface PreviousState {
   counted_at?: string | null;
 }
 
+/** `/api/probe/overview` 응답 — 화면이 읽는 칸만 */
+interface OverviewPayload {
+  stores?: StoreMetric[];
+  generated_at?: string;
+  source?: string;
+  stores_unreadable?: boolean;
+  test_excluded?: number;
+  stores_truncated?: boolean;
+  previous?: PreviousState | null;
+}
+type VoucherRow = { coupon_code: string | null; user_id: number; expires_at: string | null; status: string | null; redeemed_at: string | null; restaurant_id: number | null };
+
 export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }) {
   const [stores, setStores] = useState<StoreMetric[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,18 +97,20 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
   /** GA4 칸 — null 은 부르는 중. DB 표와 따로 채운다 */
   const [activity, setActivity] = useState<ActivityState | null>(null);
 
-  const load = () => {
+  /**
+   * 처음 열 때는 fetchJson 으로 — 런처(Polaris) · Probe 홈이 방금 읽었거나 읽는 중인 같은 주소와 합친다(1027).
+   * 전에는 그냥 fetch 라 홈에서 아직 만들고 있는 것을 처음부터 한 벌 더 만들게 했다. 「다시 불러오기」는 새로 읽는다.
+   * fetchJson 은 못 읽으면 null 을 준다 — 0 이 아니라 모름으로 그린다.
+   */
+  const load = (fresh = false) => {
     setLoading(true);
     setActivity(null);
-    fetch("/api/probe/store-activity")
-      .then((r) => r.json())
-      .then((d) => setActivity({ ok: Boolean(d.ok), window: d.window ?? null, stores: d.stores ?? {}, error: d.error ?? d.detail }))
-      .catch(() => setActivity({ ok: false, window: null, stores: {}, error: "GA4 를 읽지 못했습니다" }));
+    fetchJson<{ ok?: boolean; window?: ActivityState["window"]; stores?: ActivityState["stores"]; error?: string; detail?: string }>("/api/probe/store-activity", { fresh })
+      .then((d) => setActivity(d ? { ok: Boolean(d.ok), window: d.window ?? null, stores: d.stores ?? {}, error: d.error ?? d.detail } : { ok: false, window: null, stores: {}, error: "GA4 를 읽지 못했습니다" }));
     setVouchers(null);
-    fetch("/api/probe/mileage")
-      .then((r) => r.json())
-      .then((d: { progress?: Record<string, { vouchers: { coupon_code: string | null; user_id: number; expires_at: string | null; status: string | null; redeemed_at: string | null; restaurant_id: number | null }[] }> | null }) => {
-        if (!d.progress) { setVouchers(null); return; }
+    fetchJson<{ progress?: Record<string, { vouchers: VoucherRow[] }> | null }>("/api/probe/mileage", { fresh })
+      .then((d) => {
+        if (!d?.progress) { setVouchers(null); return; }
         const month = periodLocal();
         const seen = new Set<string>(); const by: Record<string, number> = {};
         for (const day of Object.values(d.progress)) for (const x of day.vouchers) {
@@ -104,11 +119,10 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
           seen.add(key); by[String(x.restaurant_id)] = (by[String(x.restaurant_id)] ?? 0) + 1;
         }
         setVouchers(by);
-      })
-      .catch(() => setVouchers(null));
-    fetch("/api/probe/overview")
-      .then((r) => r.json())
+      });
+    fetchJson<OverviewPayload>("/api/probe/overview", { fresh })
       .then((d) => {
+        if (!d) { setStores([]); setStoresUnreadable(true); return; }
         setStores(d.stores ?? []);
         setGeneratedAt(d.generated_at ?? "");
         setSource(d.source ?? "");
@@ -117,10 +131,9 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
         setTruncated(Boolean(d.stores_truncated));
         setPrevious(d.previous ?? null);
       })
-      .catch(() => setStores([]))
       .finally(() => setLoading(false));
   };
-  useEffect(load, []);
+  useEffect(() => load(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 기본 3곳 + 데이터에 있는 캠퍼스. 숫자는 제휴 매장 수 — '제휴 전체' 와 같은 기준이다. 목록을 못 읽었으면 0 이 아니라 비운다. */
   const campusOptions = useMemo(() => {
@@ -188,7 +201,7 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
       <PageHeader
         title="매장 지표"
         description="앱 안에서 일어난 일(쿠폰·스탬프·식사권)을 매장별로 봅니다. 행을 누르면 그 매장의 기록이 열립니다. 인스타 성과는 Papillon 이 원본입니다."
-        actions={<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>}
+        actions={<Button icon={<IconRefresh />} onClick={() => load(true)} disabled={loading}>다시 불러오기</Button>}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <FilterPills
