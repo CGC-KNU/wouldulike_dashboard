@@ -24,7 +24,7 @@ function KakaoCallbackInner() {
           headers: { "Content-Type": "application/json" },
           // redirect_uri 는 백엔드 교환이 실패했을 때(localhost·프리뷰) 라우트가 직접 교환하는 데 쓴다 — 인가 요청 때 쓴 값과 같아야 한다
           // state 에 온보딩 토큰이 실려 있으면 점주로 들어가는 길이다 — 직원 계정이어도 관리자 2단계로 새지 않게 알린다
-          body: JSON.stringify({ code, redirect_uri: `${window.location.origin}/auth/kakao/callback`, onboard: (searchParams.get("state") ?? "").startsWith("onboard:") }),
+          body: JSON.stringify({ code, redirect_uri: `${window.location.origin}/auth/kakao/callback`, onboard: (searchParams.get("state") ?? "").startsWith("onboard:"), join: (searchParams.get("state") ?? "").startsWith("join:") }),
         });
 
         const data = await res.json();
@@ -35,6 +35,11 @@ function KakaoCallbackInner() {
         // 점주 온보딩에서 온 로그인 — 카카오 `state` 에 실어 보낸 토큰으로 되돌아간다.
         // PIN 화면을 거치지 않는다: 온보딩 라우트가 임시 PIN 으로 세션을 만든다 (api/onboard/[token]/session).
         const state = searchParams.get("state") ?? "";
+        // 공용 입점 신청(1026) — 신청 화면으로 돌아간다. 적던 내용은 그 화면이 브라우저에 남겨 둔다.
+        if (state.startsWith("join:")) {
+          router.replace(data.join ? "/join?resume=1" : "/join?login=fail");
+          return;
+        }
         if (state.startsWith("onboard:") && (data.requiresPinVerification || data.success)) {
           router.replace(`/onboard/${state.slice("onboard:".length)}?resume=1`);
           return;
