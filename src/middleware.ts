@@ -12,6 +12,8 @@ const PUBLIC_EXACT = [/^\/r\/[0-9a-f]{40}$/, /^\/api\/r\/[0-9a-f]{40}\/view$/, /
 const ONBOARD_TOKEN = "(?:[A-Za-z0-9_-]{40,600}\\.[A-Za-z0-9_-]{43}|[A-Za-z0-9_-]{60,700})";
 // `/contract` 은 서명한 계약서 사본을 앱이 직접 그려 주는 자리다 (0922).
 // 드라이브가 HTML 을 소스 그대로 펼쳐 보여서 점주가 "이상한 코드"를 받았다.
+// 공용 입점 신청(1026) — 사장님이 링크 하나로 혼자 신청한다. 화면 하나와 그 화면이 부르는 라우트만 연다.
+const PUBLIC_JOIN = [/^\/join$/, /^\/api\/join\/(terms|search|me|apply|mine|logout)$/];
 const PUBLIC_ONBOARD = [new RegExp(`^/onboard/${ONBOARD_TOKEN}(/contract)?$`), new RegExp(`^/api/onboard/${ONBOARD_TOKEN}(/(session|consent|complete|sms|pin))?$`)];
 
 interface DashboardJWT {
@@ -66,7 +68,7 @@ export function middleware(req: NextRequest) {
   }
 
   // 공개 경로는 통과
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || PUBLIC_EXACT.some((re) => re.test(pathname)) || PUBLIC_ONBOARD.some((re) => re.test(pathname))) {
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p)) || PUBLIC_EXACT.some((re) => re.test(pathname)) || PUBLIC_ONBOARD.some((re) => re.test(pathname)) || PUBLIC_JOIN.some((re) => re.test(pathname))) {
     return NextResponse.next();
   }
 

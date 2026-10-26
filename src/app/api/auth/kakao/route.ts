@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export async function POST(req: NextRequest) {
-  const { code, redirect_uri, onboard } = (await req.json()) as { code?: string; redirect_uri?: string; onboard?: boolean };
+  const { code, redirect_uri, onboard, join } = (await req.json()) as { code?: string; redirect_uri?: string; onboard?: boolean; join?: boolean };
 
   if (!code) {
     return NextResponse.json({ success: false, message: "code missing" }, { status: 400 });
@@ -54,6 +54,14 @@ export async function POST(req: NextRequest) {
   const kakaoId: number | undefined = body.user?.kakao_id;
 
   const cookieStore = await cookies();
+
+  // 공용 입점 신청(1026)에서 온 로그인 — 사장님 카카오 계정의 **앱 토큰**만 따로 쥐고 신청 화면으로 돌아간다.
+  // 대시보드 세션(access_token)은 만들지 않는다: 이 사람은 아직 어느 매장의 점주도 아니고, 신청은 백엔드가 이 토큰으로 직접 받는다.
+  // 직원 카카오 계정이어도 관리자 2단계로 보내지 않는다(본인 가게를 신청하는 길이라).
+  if (join) {
+    cookieStore.set("join_token", access, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 60 * 60 * 24, path: "/" });
+    return NextResponse.json({ success: false, join: true });
+  }
 
   // 온보딩 링크에서 온 로그인은 **점주로 들어가는 길**이다. 직원 계정이어도 관리자 2단계로 보내지 않는다 —
   // 그 관문은 대시보드 접근용이고, 여기서 필요한 건 그 매장의 점주 세션이다 (`api/onboard/[token]/session` 이 임시 PIN 으로 만든다).
