@@ -9,7 +9,7 @@ import { Button, Notice, SlideOver } from "../_shared/ui";
 /**
  * 제안서 만들기 (1012 민열님) — 파트너 계약 탭 「새로고침」 옆.
  * ① 매장을 허블에서 찾는다(허블 매장명 = 공식 매장명) → ② 표지 제목을 정한다 → ③ 미리 보고 PDF 로 받는다.
- * 양식은 가장 최신 파트너 제안서(CGC/01_계약_영업/0911_제안서_6P, 9/15판)를 백엔드 `proposal:6p` 에 올려 둔 것.
+ * 양식은 가장 최신 파트너 제안서(CGC/01_계약_영업/0911_제안서_6P, 10/27판)를 백엔드 `proposal:6p` 에 올려 둔 것.
  * 실적 숫자가 들어 있어 이 저장소(공개)에 두지 않는다. 양식이 바뀌면 여기 「양식 바꾸기」로 새 HTML 을 올린다.
  * 표지 말고는 손대지 않는다 — 상권 전환(경북대 · 영남대 · 계명대)은 양식에 이미 있는 apply() 를 그대로 부른다.
  */
@@ -163,7 +163,7 @@ export default function ProposalMaker({ open, onClose, isAdmin }: { open: boolea
             ) : <p className="p-4 text-gray-400">{tpl === undefined ? "양식을 불러오는 중…" : "양식이 없습니다."}</p>}
           </div>
           <p className="text-[12px] text-navy bg-navy/[0.05] rounded-lg px-2.5 py-1.5 mt-1.5">「PDF 받기」 → 인쇄 창에서 대상을 <b>PDF로 저장</b>으로 두고 저장하세요. 크기 · 여백은 양식이 정해 둡니다(1280×720, 6장).</p>
-          <p className="text-[11.5px] text-gray-400 mt-1">표지만 바뀝니다. 요금 · 실적 숫자는 양식(9/15판) 그대로입니다 — 구독 개편 v2 는 다음 학기 적용이라 이번 학기 제안서는 이 판을 씁니다.</p>
+          <p className="text-[11.5px] text-gray-400 mt-1">표지만 바뀝니다. 요금 · 실적 숫자는 올라간 양식 그대로입니다(10/27판: 41곳 · 13/13 · 누적 도달 146만 · 「파트너님」 표기). 숫자가 바뀌면 「양식 바꾸기」로 새 판을 올리세요.</p>
         </section>
       </div>
     </SlideOver>
