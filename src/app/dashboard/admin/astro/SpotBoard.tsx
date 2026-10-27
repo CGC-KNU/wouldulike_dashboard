@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconCopy, IconDownload, IconExternalLink, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-react";
-import { APP_CATEGORIES, type SalesDoc, type StoreRow } from "@/lib/draft/types";
+import { APP_CATEGORIES, type StoreRow } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
 import {
   ALL_SPOT_STAGES, SPOT_CONTRACTED, SPOT_PRODUCTS, SPOT_SIDE_STAGES, SPOT_STAGES,
@@ -57,10 +57,8 @@ export default function SpotBoard({ actor }: { actor: string }) {
   const [msg, setMsg] = useState<string | null>(null);
 
   const [stores, setStores] = useState<StoreRow[] | null>(null);
-  const [docs, setDocs] = useState<SalesDoc[] | null>(null);
   useEffect(() => {
     fetch("/api/astro/stores").then((r) => r.json()).then((d) => setStores((d.stores ?? []) as StoreRow[])).catch(() => setStores([]));
-    fetch("/api/astro/docs").then((r) => r.json()).then((d) => setDocs((d.docs ?? []) as SalesDoc[])).catch(() => setDocs([]));
   }, []);
   /** 파트너 전용가를 받는 건 — 파트너 매장에 이어져 있고 그 매장이 유료 플랜 */
   const isPartner = useCallback((s: Pick<SpotJob, "restaurant_id">) => partnerPriced(s.restaurant_id ? (stores ?? []).find((x) => x.restaurant_id === s.restaurant_id) : null), [stores]);
@@ -142,7 +140,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
 
       {/* 상품과 정가 — 견적 대화의 출발점이라 화면에 늘 띄워 둔다 */}
       <Card title="소개서" description="매장에 보낼 스팟 제작 소개서. 파트너 매장(유료 플랜)에는 전용가가 적힌 파트너용을 보냅니다." className="mb-4">
-        <BrochureLinks docs={docs} />
+        <BrochureLinks />
       </Card>
 
       <Card flush title="상품과 가격" description="부가세 별도. 파트너가는 유료 플랜(Boost · Premium) 파트너 매장에만 — 건마다 다르게 받을 수 있습니다." className="mb-4">
@@ -485,21 +483,26 @@ function NewSpotPanel({ actor, stores, onClose, onCreated }: { actor: string; st
   );
 }
 
-/** 자료실의 스팟 제작 소개서(파트너용 · 비파트너용)를 바로 내려받는 줄. 없으면 숨기지 않고 '등록 필요'로 둔다. */
-function BrochureLinks({ docs }: { docs: SalesDoc[] | null }) {
-  if (!docs) return <Skeleton rows={1} cols={2} />;
-  const find = (who: "파트너용" | "비파트너용") => docs.find((d) => d.title.includes("스팟") && d.title.includes(who) && !(who === "파트너용" && d.title.includes("비파트너용")));
+/**
+ * 스팟 제작 소개서(파트너용 · 비파트너용) 내려받기.
+ * 파일은 저장소 public/spot/ 에 둔다 — 소개서를 고치면 PDF 만 갈아 끼우고 BROCHURE_VERSION 을 올린다.
+ * 자료실(S3 링크)을 거치면 고칠 때마다 관리자 로그인으로 다시 올려야 해서 1027 에 옮겼다. 로그인한 팀원만 받는다(middleware).
+ */
+const BROCHURE_VERSION = "2026.10.27";
+const BROCHURES = [
+  { who: "비파트너용", href: "/spot/wouldulike-spot-brochure.pdf" },
+  { who: "파트너용", href: "/spot/wouldulike-spot-brochure-partner.pdf" },
+] as const;
+
+function BrochureLinks() {
   return (
     <div className="flex flex-wrap gap-2">
-      {(["비파트너용", "파트너용"] as const).map((who) => {
-        const d = find(who);
-        return d?.url ? (
-          <a key={who} href={d.url} target="_blank" rel="noreferrer" download
-            className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-semibold ${who === "파트너용" ? "bg-navy text-white hover:bg-[#0a0a8a]" : "bg-black/[0.05] text-gray-800 hover:bg-black/[0.08]"} ${focusRing}`}>
-            <IconDownload size={15} aria-hidden="true" /> 소개서 {who} PDF{d.version ? <span className="opacity-70 font-normal"> · {d.version}</span> : null}
-          </a>
-        ) : <Chip key={who} tone="gray">{who} — 자료실 등록 필요</Chip>;
-      })}
+      {BROCHURES.map(({ who, href }) => (
+        <a key={who} href={href} target="_blank" rel="noreferrer" download={`우주라이크_스팟제작_소개서_${who}.pdf`}
+          className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-[13px] font-semibold ${who === "파트너용" ? "bg-navy text-white hover:bg-[#0a0a8a]" : "bg-black/[0.05] text-gray-800 hover:bg-black/[0.08]"} ${focusRing}`}>
+          <IconDownload size={15} aria-hidden="true" /> 소개서 {who} PDF<span className="opacity-70 font-normal"> · {BROCHURE_VERSION}</span>
+        </a>
+      ))}
     </div>
   );
 }
