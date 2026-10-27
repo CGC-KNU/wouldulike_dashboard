@@ -51,9 +51,14 @@ export async function postToChannel(channelId: string, text: string): Promise<vo
   await sendSlackNotification("SLACK_ASTRO_WEBHOOK_URL", text);
 }
 
-/** Astro(영업) 채널. 매장·후보·입금처럼 세일즈가 바로 알아야 하는 변화만 보낸다. */
+/**
+ * Astro(영업) 쪽에서 일어난 변화 — 매장·후보·입금·스팟·온보딩 알림.
+ *
+ * 10-28 민열님: #sat-astro 는 영업 소통 전용으로 비운다. 세틀라이트가 자동으로 남기는
+ * 인터랙션 알림은 전부 #ops-partner 로 보낸다. 함수 이름은 호출처가 많아 그대로 둔다.
+ */
 export async function notifyAstro(text: string): Promise<void> {
-  await postToChannel(ASTRO_CHANNEL_ID, text);
+  await postToChannel(OPS_PARTNER_CHANNEL_ID, text);
 }
 
 /**
@@ -66,8 +71,6 @@ export async function notifyPartnerOps(text: string): Promise<void> {
   await postToChannel(OPS_PARTNER_CHANNEL_ID, text);
 }
 
-/** #sat-astro-세일즈 — lib/satellite.ts 의 TOOLS.astro.slack.id 와 같은 값이다. */
-const ASTRO_CHANNEL_ID = "C0BPP3ACEUA";
 /** #ops-partner — 파트너 매장 운영(계산서·입금) */
 const OPS_PARTNER_CHANNEL_ID = "C0BPSQ7F8LC";
 

@@ -16,7 +16,7 @@ import { remoteGet } from "@/lib/draft/remote";
  *  1. 매장에 임시 PIN 을 심는다 (`/api/dashboard/admin/restaurants/{rid}/` PATCH pin)
  *     — 점주는 이 PIN 을 모른다. 세션 교환에만 쓰이고 [0]단계에서 점주가 갈아엎는다.
  *  2. 토큰을 서명해 링크를 돌려준다. 저장소 없음 (lib/onboard/token.ts 머리말).
- *  3. #sat-astro 에 "링크 발급" 한 줄. 토큰 본문은 채널에 쓰지 않는다.
+ *  3. #ops-partner 에 "링크 발급" 한 줄. 토큰 본문은 채널에 쓰지 않는다.
  */
 export async function POST(req: NextRequest) {
   const deny = await requireTool("restaurants");
