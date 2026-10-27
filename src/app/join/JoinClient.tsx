@@ -289,8 +289,8 @@ function StepPlan({ d, patch, terms, onBack, onNext }: { d: Draft; patch: (p: Pa
   const fees = terms.fees[d.campus] ?? terms.fees["기타"];
   const rows: { p: Plan; what: string }[] = [
     { p: "FREE", what: "앱에 매장 등록 · 기본 쿠폰과 스탬프 · 마일리지 추첨 참여" },
-    { p: "BOOST", what: "무료 플랜 전부 + 매주 파트너 묶음 카드뉴스에 월 1회 · 한정 쿠폰 캠페인 · 앱 배너" },
-    { p: "PREMIUM", what: "Boost 전부 + 파트너 묶음 카드뉴스 월 2회 · 큐레이션 편" },
+    { p: "BOOST", what: "무료 플랜 전부 + 파트너 묶음 카드뉴스 매달 1회 · 한정 쿠폰 캠페인 · 앱 배너" },
+    { p: "PREMIUM", what: "Boost 전부 + 파트너 묶음 카드뉴스 매달 2회 · 큐레이션 편" },
   ];
   return (
     <section>
