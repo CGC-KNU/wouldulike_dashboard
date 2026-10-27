@@ -405,7 +405,7 @@ function StorePanel({ s, campus, tie, onAdded, obs, actor, onBack, onSave, onOpe
     setAdd("check");
     try {
       const r = await fetch("/api/astro/leads/from-hubble", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        hubble_id: s.id, name: s.n, address: s.a, phone: s.t || "", campus: shortCampus(campus), district: `${campus.name} ${s.gn ?? "정문"} ${s.d}m`, category: s.c || KIND_LABEL[s.k],
+        hubble_id: s.id, name: s.n, address: s.a, phone: s.t || "", insta: s.ig?.handle ? `@${s.ig.handle}` : "", campus: shortCampus(campus), district: `${campus.name} ${s.gn ?? "정문"} ${s.d}m`, category: s.c || KIND_LABEL[s.k],
         stage: "미컨택", owner: actor, grade: f.g === "S" || f.g === "A" ? "A" : f.g, score: f.sc,
         angle: `허블 적합 ${f.g} — ${fitRows.filter((x) => !x[2].startsWith("0") && x[2] !== "—").map((x) => x[0]).join(" · ")}`,
         memo: `허블에서 추가 · ${s.a} · 인허가 ${s.id}`, ...extra,
