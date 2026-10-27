@@ -13,7 +13,7 @@ const ONBOARD_TOKEN = "(?:[A-Za-z0-9_-]{40,600}\\.[A-Za-z0-9_-]{43}|[A-Za-z0-9_-
 // `/contract` 은 서명한 계약서 사본을 앱이 직접 그려 주는 자리다 (0922).
 // 드라이브가 HTML 을 소스 그대로 펼쳐 보여서 점주가 "이상한 코드"를 받았다.
 // 공용 입점 신청(1026) — 사장님이 링크 하나로 혼자 신청한다. 화면 하나와 그 화면이 부르는 라우트만 연다.
-const PUBLIC_JOIN = [/^\/join$/, /^\/join\/[\w-]+\.pdf$/, /^\/api\/join\/(terms|search|campuses|me|apply|mine|logout)$/];
+const PUBLIC_JOIN = [/^\/api\/inbound\/(consult|spot)$/, /^\/join$/, /^\/join\/[\w-]+\.pdf$/, /^\/api\/join\/(terms|search|campuses|me|apply|mine|logout)$/];
 const PUBLIC_ONBOARD = [new RegExp(`^/onboard/${ONBOARD_TOKEN}(/contract)?$`), new RegExp(`^/api/onboard/${ONBOARD_TOKEN}(/(session|consent|complete|sms|pin))?$`)];
 
 interface DashboardJWT {
