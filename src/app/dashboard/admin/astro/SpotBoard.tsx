@@ -8,6 +8,8 @@ import {
   ALL_SPOT_STAGES, SPOT_CONTRACTED, SPOT_PRODUCTS, SPOT_SIDE_STAGES, SPOT_STAGES,
   basePrice, partnerPriced, productOf, spotAmount, type SpotJob, type SpotStage,
 } from "@/lib/draft/spot";
+import { KIND_LABEL, type StoresDoc } from "@/lib/hubble";
+import { SPOT_LEAD_CAMPUSES, leadSignal, pickSpotLeads, type SpotLead } from "@/lib/spotLeads";
 import StorePicker from "./StorePicker";
 import {
   Button, Card, Chip, DraftBadge, Empty, Field, Input, Kpi, Notice, PageHeader,
@@ -51,7 +53,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
   const [draft, setDraft] = useState(false);
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<NewSpotPrefill | true | false>(false);
   const [planning, setPlanning] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -71,6 +73,18 @@ export default function SpotBoard({ actor }: { actor: string }) {
       .catch(() => setSpots([]));
   }, []);
   useEffect(load, [load]);
+
+  // 컨택 후보(1028) — 허블 상권 문서를 탭이 열릴 때마다 새로 읽는다. 저장해 두는 목록이 없어 허블 주간 갱신이 곧 후보 갱신이다.
+  const [hubble, setHubble] = useState<{ campus: string; doc: StoresDoc | null }[] | null>(null);
+  const loadHubble = useCallback(() => {
+    setHubble(null);
+    Promise.all(SPOT_LEAD_CAMPUSES.map((c) =>
+      fetch(`/api/hubble/${encodeURIComponent(`c:${c.key}`)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null)).then((d) => ({ campus: c.name, doc: (d?.data ?? null) as StoresDoc | null }))
+        .catch(() => ({ campus: c.name, doc: null })),
+    )).then(setHubble);
+  }, []);
+  useEffect(loadHubble, [loadHubble]);
   // 일정 탭에서 넘어올 때 그 건을 바로 연다 (astro-spots?open=<id>)
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
@@ -114,7 +128,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
           <>
             {draft && <DraftBadge note="백엔드에 스팟 테이블이 아직 없어 임시 저장소를 씁니다." />}
             <Button icon={<IconSearch />} onClick={() => setPlanning(true)}>기획안 리서치</Button>
-            <Button icon={<IconRefresh />} onClick={load}>다시 읽기</Button>
+            <Button icon={<IconRefresh />} onClick={() => { load(); loadHubble(); }}>다시 읽기</Button>
             <Button variant="primary" icon={<IconPlus />} onClick={() => setAdding(true)}>건 추가</Button>
           </>
         }
@@ -254,8 +268,10 @@ export default function SpotBoard({ actor }: { actor: string }) {
         받을 돈은 계약 이후 단계 중 정산이 안 된 건의 합입니다.
       </p>
 
+      <SpotLeads hubble={hubble} stores={stores} spots={spots} onAdd={setAdding} />
+
       {open && <SpotPanel spot={open} actor={actor} partner={isPartner(open)} onClose={() => setOpenId(null)} onPatch={patch} onProduct={(pr) => changeProduct(open, pr)} onDeleted={() => { setOpenId(null); load(); }} />}
-      {adding && <NewSpotPanel actor={actor} stores={stores} onClose={() => setAdding(false)} onCreated={load} />}
+      {adding && <NewSpotPanel actor={actor} stores={stores} prefill={adding === true ? null : adding} onClose={() => setAdding(false)} onCreated={load} />}
       {planning && <ResearchPanel onClose={() => setPlanning(false)} />}
     </>
   );
@@ -400,13 +416,107 @@ function SpotPanel({ spot, actor, partner, onClose, onPatch, onProduct, onDelete
   );
 }
 
+/* ═══════════ 컨택 후보 ═══════════ */
+
+/**
+ * 컨택 후보(1028 민열님) — 허블 매장 중 인스타에 협찬 · 체험단 · 이벤트 흔적이 있는 곳.
+ * 이미 홍보에 돈을 쓰는 곳이라 스팟 제작을 먼저 권할 만하다. 따로 저장하지 않고 탭을 열 때마다 허블에서 뽑는다.
+ * 「건 추가」는 위의 건 추가 창을 그대로 연다(파트너면 매장을 이어 둔 채로) — 쓰는 길은 하나다.
+ */
+function SpotLeads({ hubble, stores, spots, onAdd }: {
+  hubble: { campus: string; doc: StoresDoc | null }[] | null; stores: StoreRow[] | null; spots: SpotJob[] | null;
+  onAdd: (p: NewSpotPrefill) => void;
+}) {
+  const [campus, setCampus] = useState<string>("");
+  const ready = hubble !== null && stores !== null && spots !== null;
+  const docs = useMemo(() => (hubble ?? []).filter((h) => h.doc).map((h) => ({ campus: h.campus, stores: h.doc!.stores ?? [] })), [hubble]);
+  const partners = useMemo(() => (stores ?? []).filter((x) => !x.ops?.is_test), [stores]);
+  const filled = docs.some((d) => d.stores.some((s) => s.ig?.sig));   // 광고 흔적을 한 번이라도 센 적이 있나
+  const leads = useMemo(() => (ready ? pickSpotLeads(docs.filter((d) => !campus || d.campus === campus), partners, spots ?? []) : []), [ready, docs, campus, partners, spots]);
+
+  const add = (l: SpotLead) => onAdd({
+    rid: l.rid, name: l.store.n, contact: l.store.t || "",
+    insta: l.store.ig?.handle ? `@${l.store.ig.handle}` : "",
+    memo: [`컨택 후보(허블 광고 흔적) · ${l.campus} · ${leadSignal(l.store)}`, l.store.a, `인허가 ${l.store.id}`].filter(Boolean).join("\n"),
+  });
+
+  return (
+    <Card flush title={`컨택 후보${ready && leads.length ? ` ${leads.length}곳` : ""}`} className="mt-5"
+      description="인스타에 협찬 · 체험단 · 이벤트 흔적이 있는 매장. 탭을 열 때마다 허블에서 새로 뽑고, 이미 스팟 건이 있는 곳은 뺍니다."
+      actions={
+        <div className="flex gap-1" role="group" aria-label="상권">
+          {["", ...SPOT_LEAD_CAMPUSES.map((c) => c.name)].map((c) => (
+            <button key={c || "all"} type="button" aria-pressed={campus === c} onClick={() => setCampus(c)}
+              className={`h-7 px-2.5 rounded-lg text-[12px] font-semibold ${focusRing} ${campus === c ? "bg-navy text-white" : "text-gray-600 bg-black/[0.05] hover:bg-black/[0.08]"}`}>
+              {c || "전체"}
+            </button>
+          ))}
+        </div>
+      }>
+      {!ready ? (
+        <Skeleton rows={3} cols={4} />
+      ) : docs.length === 0 ? (
+        <div className="px-5 py-5"><Notice tone="amber" title="허블 매장 데이터를 읽지 못했습니다">다시 읽기를 눌러 보세요. 허블 권한이 없으면 보이지 않습니다.</Notice></div>
+      ) : !filled ? (
+        <div className="px-5 py-6"><Empty title="11/1 허블 주간 갱신부터 채워집니다" detail="광고 흔적은 매주 일요일 새벽 허블 갱신이 셉니다. 첫 집계가 들어오면 여기에 후보가 뜹니다." /></div>
+      ) : leads.length === 0 ? (
+        <div className="px-5 py-6"><Empty title={campus ? `${campus}에는 지금 후보가 없습니다` : "지금 후보가 없습니다"} detail="광고 흔적이 있는 매장이 없거나 모두 이미 스팟 건에 있습니다." /></div>
+      ) : (
+        <Table minWidth="48rem">
+          <thead><tr><Th>매장</Th><Th width="15rem">광고 흔적</Th><Th width="9rem">인스타</Th><Th width="7rem">파트너</Th><Th width="6.5rem" align="right"><span className="sr-only">건 추가</span></Th></tr></thead>
+          <tbody>
+            {leads.map((l) => {
+              const st = l.rid ? partners.find((x) => x.restaurant_id === l.rid) : null;
+              return (
+                <tr key={`${l.campus}:${l.store.id}`}>
+                  <Td>
+                    <span className="font-semibold text-gray-900">{l.store.n}</span>
+                    <span className="block text-[11px] text-gray-400">{[l.campus, l.store.c || KIND_LABEL[l.store.k], `정문 ${l.store.d.toLocaleString()}m`].filter(Boolean).join(" · ")}</span>
+                  </Td>
+                  <Td className="text-[12px] text-gray-700">{leadSignal(l.store)}</Td>
+                  <Td className="text-[12px]">
+                    {l.store.ig?.url ? (
+                      <a href={l.store.ig.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-navy">
+                        @{l.store.ig.handle} <IconExternalLink size={12} aria-hidden="true" />
+                      </a>
+                    ) : <span className="text-gray-300">-</span>}
+                  </Td>
+                  <Td>
+                    {st ? <><Chip tone="navy">파트너</Chip><span className="block text-[11px] text-gray-400 mt-0.5">{partnerPriced(st) ? "파트너가" : "무료 플랜 · 정가"}</span></> : <span className="text-[12px] text-gray-400">비파트너</span>}
+                  </Td>
+                  <Td align="right"><Button size="sm" icon={<IconPlus />} onClick={() => add(l)}>건 추가</Button></Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      )}
+      {ready && filled && (
+        <p className="px-5 py-3 text-[11.5px] text-gray-500 leading-relaxed border-t border-black/[0.05]">
+          최근 90일 안에 협찬 · 체험단 글이 있는 곳이 먼저, 그다음 오래된 협찬, 이벤트만 있는 곳 순입니다. 상위 20곳만 보입니다. 광고 흔적은 매장 인스타 최근 게시물 최대 12편의 캡션에서 센 숫자입니다.
+        </p>
+      )}
+    </Card>
+  );
+}
+
 /* ═══════════ 새 건 ═══════════ */
 
-function NewSpotPanel({ actor, stores, onClose, onCreated }: { actor: string; stores: StoreRow[] | null; onClose: () => void; onCreated: () => void }) {
+/** 컨택 후보에서 열 때 미리 채우는 값 — 파트너면 rid 로 매장을 잇고, 아니면 이름을 적어 둔다 */
+interface NewSpotPrefill { rid: number | null; name: string; contact: string; insta: string; memo: string }
+
+function NewSpotPanel({ actor, stores, prefill, onClose, onCreated }: { actor: string; stores: StoreRow[] | null; prefill?: NewSpotPrefill | null; onClose: () => void; onCreated: () => void }) {
   // 1008 민열님: 건을 만들 때 **파트너 매장인지부터** 묻는다. 파트너면 매장을 검색해서 잇고 파트너가를 적용한다.
-  const [kind, setKind] = useState<"partner" | "other" | null>(null);
-  const [rid, setRid] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: "", category: "", product: "", owner: actor, contact: "", insta: "", map_url: "", memo: "" });
+  // 컨택 후보(1028)에서 열면 그 답을 미리 골라 둔다 — 고칠 수는 있다.
+  const [kind, setKind] = useState<"partner" | "other" | null>(prefill ? (prefill.rid ? "partner" : "other") : null);
+  const [rid, setRid] = useState<number | null>(prefill?.rid ?? null);
+  const [form, setForm] = useState(() => {
+    const st = prefill?.rid ? (stores ?? []).find((x) => x.restaurant_id === prefill.rid) : null;
+    return {
+      name: st ? st.ops?.map_name || st.name : prefill?.name ?? "", category: "", product: "", owner: actor,
+      contact: prefill?.contact || st?.ops?.owner_phone || "", insta: prefill?.insta ?? "", map_url: "", memo: prefill?.memo ?? "",
+    };
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
