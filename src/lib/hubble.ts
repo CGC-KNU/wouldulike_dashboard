@@ -67,7 +67,39 @@ export interface Ig {
   followers?: number;
   last_post?: string;   // YYYY-MM-DD(KST)
   checked: string;      // 확인한 날
+  sig?: IgSig;          // 광고 흔적(1027) — 옛 데이터엔 없다
 }
+
+/**
+ * 광고 흔적(1027, 애딧 Lens 「광고 흔적」) — 매장 계정 최근 게시물 최대 12편의 캡션에서 센 숫자만 온다(캡션은 저장하지 않음).
+ * 이미 협찬 · 체험단에 돈을 쓰거나 이벤트를 하는 곳이 스팟 제작 · Premium 제안의 첫 줄. 키는 하나씩 빠질 수 있다.
+ */
+export interface IgSig {
+  sponsor?: number;               // 협찬 · 체험단 · 광고 표시가 있는 게시물 수
+  sponsor_last?: string | null;   // 그중 가장 최근 게시일 YYYY-MM-DD
+  event?: number;                 // 이벤트 · 증정 · 추첨 게시물 수
+  recent30?: number;              // 최근 30일 게시물 수
+  engage?: number;                // 좋아요 + 댓글 중앙값
+}
+export const SIG_HELP = "광고 흔적 = 매장 인스타 최근 게시물 최대 12편의 캡션에서 협찬 · 체험단 · 광고 표시를 센 것(캡션은 저장하지 않고 숫자만). 이미 홍보에 돈을 쓰는 곳이라 스팟 제작 · Premium 제안 우선순위.";
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+export const igSponsor = (s: Pick<Store, "ig">) => (num(s.ig?.sig?.sponsor) ?? 0) > 0;
+export const igEvent = (s: Pick<Store, "ig">) => (num(s.ig?.sig?.event) ?? 0) > 0;
+/** 서랍 한 줄 조각 — 있는 값만. sig 가 없거나 비면 빈 배열 */
+export function sigParts(sig: IgSig | undefined | null): string[] {
+  if (!sig || typeof sig !== "object") return [];
+  const out: string[] = [];
+  const sp = num(sig.sponsor), ev = num(sig.event), r30 = num(sig.recent30), en = num(sig.engage);
+  const last = typeof sig.sponsor_last === "string" && /^\d{4}-\d{2}-\d{2}/.test(sig.sponsor_last) ? `${Number(sig.sponsor_last.slice(5, 7))}/${Number(sig.sponsor_last.slice(8, 10))}` : null;
+  if (sp !== undefined) out.push(sp > 0 ? `협찬 · 체험단 흔적 ${sp}편${last ? ` (최근 ${last})` : ""}` : "협찬 · 체험단 흔적 없음");
+  if (ev !== undefined && ev > 0) out.push(`이벤트 ${ev}편`);
+  if (r30 !== undefined) out.push(`최근 30일 ${r30}편`);
+  if (en !== undefined) out.push(`반응 중앙값 ${Math.round(en).toLocaleString()}`);
+  return out;
+}
+/** 광고 흔적순 — 협찬 흔적 많은 순, 같으면 반응(중앙값) 높은 순 */
+export const sigCompare = (a: Pick<Store, "ig">, b: Pick<Store, "ig">) =>
+  (num(b.ig?.sig?.sponsor) ?? 0) - (num(a.ig?.sig?.sponsor) ?? 0) || (num(b.ig?.sig?.engage) ?? -1) - (num(a.ig?.sig?.engage) ?? -1);
 /** 최근 days 일 안에 게시 — 확인한 날이 아니라 오늘 기준 */
 export const igRecent = (s: Pick<Store, "ig">, days = 30) =>
   Boolean(s.ig?.last_post) && s.ig!.last_post! >= new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
