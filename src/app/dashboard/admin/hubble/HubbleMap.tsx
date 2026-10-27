@@ -251,7 +251,7 @@ function IgLine({ ig }: { ig: NonNullable<Store["ig"]> }) {
   return (
     <p className="text-[11.5px] text-gray-600 mt-1.5">
       인스타 {ig.kind === "비즈니스" ? <>팔로워 <b className="tabular-nums">{(ig.followers ?? 0).toLocaleString()}</b> · 마지막 게시 {ig.last_post ? <b className={days !== null && days <= 30 ? "text-green-700" : ""}>{ig.last_post}{days !== null ? ` (${days}일 전)` : ""}</b> : "없음"}</> : <span className="text-amber-700">{ig.kind}</span>}
-      <span className="text-gray-400"> · {ig.checked} 확인{ig.src === "team" ? " · 팀 입력 핸들" : ""}</span>
+      <span className="text-gray-400"> · {ig.checked} 확인</span>
     </p>
   );
 }
@@ -350,7 +350,7 @@ function CampusPanel({ c, doc, ties, obs, onClose, onPick }: { c: CampusItem; do
             <li>업종: {Object.entries(c.kinds).map(([k, v]) => `${k} ${v}`).join(" · ")}</li>
             <li>이미 파트너 {nPartner}곳 · 후보 {nLead}곳 (ASTRO 매장 · 후보 이름 대조 — 지점 꼬리에 캠퍼스가 있으면 그 상권만)</li>
             <li>90일 안 새로 연 곳: {fresh}곳 · 프랜차이즈(이름 대조): {chains}곳 ({Math.round((chains / Math.max(1, c.n)) * 100)}%)</li>
-            <li>인스타 연결: {igs.length}곳 · 최근 30일 게시 {igLive}곳 <span className="text-gray-400">(네이버 플레이스에 매장이 건 링크 · 없으면 Astro 후보에 팀이 적은 핸들 — {igs.length ? `확인 ${igs.map((s) => s.ig!.checked).sort().pop()}` : "아직 안 모은 상권"})</span></li>
+            <li>인스타 연결: {igs.length}곳 · 최근 30일 게시 {igLive}곳 <span className="text-gray-400">(네이버 플레이스에 매장이 건 링크만 — {igs.length ? `확인 ${igs.map((s) => s.ig!.checked).sort().pop()}` : "아직 안 모은 상권"})</span></li>
             {igSig > 0 && <li title={SIG_HELP}>광고 흔적: 협찬 · 체험단 {igAd}곳 · 이벤트 {igEv}곳 <span className="text-gray-400">(게시물을 읽은 {igSig}곳 중 — 최근 게시물 최대 12편 캡션 기준, 캡션은 저장하지 않음)</span></li>}
             <li>매장이 몰린 길: {lanes.map(([r, n]) => `${r} ${n}`).join(" · ") || "—"}</li>
             <li className="text-[11.5px] text-gray-400 pt-2">팀 메모 · 상권 메모는 다음 업데이트(이번 주 변동 탭과 함께).</li>

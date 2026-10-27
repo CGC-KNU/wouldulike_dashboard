@@ -56,7 +56,7 @@ export interface Store {
   dn: number;   // 반경 약 50m 매장 수(골목 집적도)
   g: Grade; sc: number;
   p: { indep: number; dense: number; dist: number; new: number; age?: number; kind?: number };   // v1 은 age, v2(1011) 는 kind
-  ig?: Ig;      // 인스타그램(1020) — 매장이 네이버 플레이스에 스스로 건 링크, 없으면 팀이 Astro 후보에 적은 핸들(1028, src "team"). 없으면 못 찾은 것(없다는 뜻은 아님)
+  ig?: Ig;      // 인스타그램(1020) — 매장이 네이버 플레이스에 스스로 건 링크만. 없으면 못 찾은 것(없다는 뜻은 아님)
 }
 
 /** 인스타 — 백엔드 scripts/hubble/ig_enrich.py 가 모아 주간 갱신이 붙인다. 팔로워 · 마지막 게시는 Meta business_discovery(비즈니스 계정만) */
@@ -68,7 +68,6 @@ export interface Ig {
   last_post?: string;   // YYYY-MM-DD(KST)
   checked: string;      // 확인한 날
   sig?: IgSig;          // 광고 흔적(1027) — 옛 데이터엔 없다
-  src?: "team";         // 1028 네이버 링크가 아니라 팀이 Astro 후보 인스타 칸에 적은 핸들
 }
 
 /**
