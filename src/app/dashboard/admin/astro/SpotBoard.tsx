@@ -5,7 +5,7 @@ import { IconCopy, IconDownload, IconExternalLink, IconPlus, IconRefresh, IconSe
 import { APP_CATEGORIES, type SalesDoc, type StoreRow } from "@/lib/draft/types";
 import { looseToISO } from "@/lib/draft/dates";
 import {
-  ALL_SPOT_STAGES, SPOT_PRODUCTS, SPOT_SIDE_STAGES, SPOT_STAGES,
+  ALL_SPOT_STAGES, SPOT_CONTRACTED, SPOT_PRODUCTS, SPOT_SIDE_STAGES, SPOT_STAGES,
   basePrice, partnerPriced, productOf, spotAmount, type SpotJob, type SpotStage,
 } from "@/lib/draft/spot";
 import StorePicker from "./StorePicker";
@@ -85,7 +85,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
 
   /** 진행 중 = 보류·거절이 아닌 것. 돈은 납품 뒤에 들어오므로 '받을 돈'과 '받은 돈'을 갈라 센다. */
   const live = all.filter((s) => !SPOT_SIDE_STAGES.includes(s.stage as (typeof SPOT_SIDE_STAGES)[number]));
-  const contracted = live.filter((s) => ["계약", "촬영", "편집", "납품", "정산"].includes(s.stage));
+  const contracted = live.filter((s) => SPOT_CONTRACTED.includes(s.stage));
   const unpaid = contracted.filter((s) => !s.paid_at && (amountOf(s) ?? 0) > 0);
   const sum = (list: SpotJob[]) => list.reduce((a, s) => a + (amountOf(s) ?? 0), 0);
 
@@ -192,8 +192,8 @@ export default function SpotBoard({ actor }: { actor: string }) {
                 const amount = amountOf(s);
                 const partner = isPartner(s);
                 // 단계에 따라 지금 중요한 날짜가 다르다 — 계약 전엔 미팅, 계약 뒤엔 촬영, 그 뒤엔 납품 기한.
-                const next = s.stage === "촬영" || s.stage === "계약" ? s.shoot_at : s.stage === "미팅" ? s.meeting_at : s.due;
-                const nextLabel = s.stage === "촬영" || s.stage === "계약" ? "촬영" : s.stage === "미팅" ? "미팅" : "기한";
+                const next = s.stage === "제작" || s.stage === "계약" ? s.shoot_at : s.stage === "미팅" ? s.meeting_at : s.due;
+                const nextLabel = s.stage === "제작" || s.stage === "계약" ? "촬영" : s.stage === "미팅" ? "미팅" : "기한";
                 return (
                   <tr key={s.id} className={rowClickable} onClick={() => setOpenId(s.id)}>
                     <Td>
@@ -235,7 +235,7 @@ export default function SpotBoard({ actor }: { actor: string }) {
                           <Chip tone="blue">{s.plan_sent_at.slice(5).replace("-", "/")} 발송</Chip>
                         ) : (
                           <button type="button" disabled={busy === s.id}
-                            onClick={() => patch(s.id, { plan_sent_at: todayLocal(), ...(s.stage === "컨택" || s.stage === "미팅" ? { stage: "기획안" as SpotStage } : {}) })}
+                            onClick={() => patch(s.id, { plan_sent_at: todayLocal(), ...(["컨택", "미팅", "제안 승인"].includes(s.stage) ? { stage: "기획안" as SpotStage } : {}) })}
                             className={`h-7 px-2 rounded-lg text-[12px] font-semibold text-gray-600 bg-black/[0.05] hover:bg-black/[0.08] disabled:opacity-50 ${focusRing}`}>
                             오늘 보냄
                           </button>
@@ -376,7 +376,7 @@ function SpotPanel({ spot, actor, partner, onClose, onPatch, onProduct, onDelete
             <div className="flex gap-1.5">
               <Input type="date" value={spot.plan_sent_at ?? ""} onChange={(e) => onPatch(spot.id, { plan_sent_at: e.target.value || null })} className="flex-1" />
               {!spot.plan_sent_at && (
-                <Button size="sm" onClick={() => onPatch(spot.id, { plan_sent_at: todayLocal(), ...(spot.stage === "컨택" || spot.stage === "미팅" ? { stage: "기획안" as SpotStage } : {}) })}>오늘</Button>
+                <Button size="sm" onClick={() => onPatch(spot.id, { plan_sent_at: todayLocal(), ...(["컨택", "미팅", "제안 승인"].includes(spot.stage) ? { stage: "기획안" as SpotStage } : {}) })}>오늘</Button>
               )}
             </div>
           </Field>

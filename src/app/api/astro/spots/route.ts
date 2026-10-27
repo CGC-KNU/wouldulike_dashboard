@@ -4,7 +4,7 @@ import { appendDraftItem, readDraft } from "@/lib/draft/store";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 import { notifyAstro } from "@/lib/slack";
 import type { SpotJob } from "@/lib/draft/spot";
-import { productOf } from "@/lib/draft/spot";
+import { normalizeSpotStage, productOf } from "@/lib/draft/spot";
 
 /**
  * 스팟 제작 목록·등록.
@@ -22,9 +22,9 @@ export async function GET() {
   const r = await remoteGet<{ spots: SpotJob[] }>("/api/astro/spots/");
   if (r.handled) {
     if (!r.ok) return NextResponse.json(r.data ?? { detail: "스팟 목록을 읽지 못했습니다." }, { status: r.status });
-    return NextResponse.json({ spots: r.data?.spots ?? [], draft: false });
+    return NextResponse.json({ spots: (r.data?.spots ?? []).map(normalizeSpotStage), draft: false });
   }
-  return NextResponse.json({ spots: readDraft<SpotJob[]>(KEY, seed), draft: true });
+  return NextResponse.json({ spots: readDraft<SpotJob[]>(KEY, seed).map(normalizeSpotStage), draft: true });
 }
 
 export async function POST(req: NextRequest) {

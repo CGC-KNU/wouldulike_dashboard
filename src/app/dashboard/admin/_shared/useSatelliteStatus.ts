@@ -5,10 +5,10 @@ import { periodLocal } from "./ui";
 import { fetchJson } from "./fetchJson";
 import { missingAppWarnNow } from "../probe/kit";
 import { LEAD_OPEN_STAGES } from "@/lib/draft/types";
+import { SPOT_CONTRACTED, SPOT_STAGES as SPOT_ORDER } from "@/lib/draft/spot";
 
 /** 정가표 — 스팟 금액을 셀 때만 쓴다. 값을 적어 둔 건이면 그걸 우선한다(0원 = 무료도 적어 둔 값이다). */
 const SPOT_PRICE: Record<string, number> = { CARD: 100_000, CARD_SHOOT: 150_000, REELS: 150_000, REELS_SHOOT: 200_000 };
-const SPOT_ORDER = ["컨택", "미팅", "기획안", "계약", "촬영", "편집", "납품", "정산"] as const;
 
 /**
  * 세틀라이트 전체 현황 — 런처의 현황 카드·최근 목록, 셸 사이드바 배지가 같은 숫자를 본다 (애딧 대행사 대시보드 차용).
@@ -109,7 +109,7 @@ export function useSatelliteStatus(enabled = true): SatelliteStatus | null {
           type P = { stage: string; product: string | null; price: number | null; paid_at: string | null };
           const all = spots.spots as P[];
           const live = all.filter((x) => !["보류", "거절"].includes(x.stage));
-          const contracted = live.filter((x) => ["계약", "촬영", "편집", "납품", "정산"].includes(x.stage));
+          const contracted = live.filter((x) => SPOT_CONTRACTED.includes(x.stage));
           const amount = (x: P) => (typeof x.price === "number" && x.price >= 0 ? x.price : (SPOT_PRICE[x.product ?? ""] ?? 0));
           out.spots = {
             live: live.length,
