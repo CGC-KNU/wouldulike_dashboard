@@ -3,7 +3,7 @@ import { requireTool } from "@/lib/draft/guard";
 import { patchDraftItem, readDraft, writeDraft } from "@/lib/draft/store";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 import { notifyAstro } from "@/lib/slack";
-import { SPOT_EDITABLE, spotAmount, type SpotJob } from "@/lib/draft/spot";
+import { normalizeSpotStage, SPOT_EDITABLE, spotAmount, type SpotJob } from "@/lib/draft/spot";
 
 const KEY = "astro_spots";
 const seed = (): SpotJob[] => [];
@@ -16,11 +16,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const list = await remoteGet<{ spots: SpotJob[] }>("/api/astro/spots/");
   if (list.handled && list.ok) {
-    const prev = (list.data?.spots ?? []).find((x) => x.id === id) ?? null;
+    const prev = (list.data?.spots ?? []).map(normalizeSpotStage).find((x) => x.id === id) ?? null;
     const r = await remoteSend<{ spot: SpotJob }>("PATCH", `/api/astro/spots/${id}/`, body);
     if (r.handled) {
       if (!r.ok) return NextResponse.json(r.data ?? { detail: "저장하지 못했습니다." }, { status: r.status });
-      const spot = r.data!.spot;
+      const spot = normalizeSpotStage(r.data!.spot);
       // 단계가 움직였을 때만 알린다. 메모 잔손질까지 보내면 채널이 시끄러워져 아무도 안 본다.
       if (prev && body.stage && body.stage !== prev.stage) {
         const won = spotAmount(spot);

@@ -6,7 +6,15 @@
  * 담당은 스팟 제작 AE(윤지님)다.
  */
 
-export const SPOT_STAGES = ["컨택", "미팅", "기획안", "계약", "촬영", "편집", "납품", "정산"] as const;
+/**
+ * 진행 순서 고정(10-27 윤지·민열 스팟 회의) — 검수가 끝나야 입금을 받고, 입금이 확인돼야 게시한다.
+ * 세금계산서는 입금 뒤, 리포트는 게시 7일·14일차. 소구점 수합·방향 확정은 기획안 단계 안에서 한다.
+ */
+export const SPOT_STAGES = ["컨택", "미팅", "제안 승인", "기획안", "계약", "제작", "검수", "입금", "게시", "리포트"] as const;
+/** 10-27 이전 단계 이름 → 지금 이름. 백엔드에 옛 이름으로 남은 건을 화면이 그대로 읽게 한다. */
+const LEGACY_SPOT_STAGE: Record<string, string> = { 촬영: "제작", 편집: "제작", 납품: "검수", 정산: "리포트" };
+/** 계약 이후 단계 — 받을 돈을 세는 범위 */
+export const SPOT_CONTRACTED: readonly string[] = ["계약", "제작", "검수", "입금", "게시", "리포트"];
 export const SPOT_SIDE_STAGES = ["보류", "거절"] as const;
 export type SpotStage = (typeof SPOT_STAGES)[number] | (typeof SPOT_SIDE_STAGES)[number];
 export const ALL_SPOT_STAGES: readonly SpotStage[] = [...SPOT_STAGES, ...SPOT_SIDE_STAGES];
@@ -30,6 +38,10 @@ export function partnerPriced(store: { tier: string | null; is_affiliate: boolea
 export function basePrice(key: string | null | undefined, partner: boolean): number | null {
   const p = productOf(key);
   return p ? (partner ? p.partner : p.price) : null;
+}
+export function normalizeSpotStage<T extends { stage: string }>(s: T): T {
+  const to = LEGACY_SPOT_STAGE[s.stage];
+  return to ? { ...s, stage: to } : s;
 }
 export type SpotProduct = (typeof SPOT_PRODUCTS)[number]["key"];
 

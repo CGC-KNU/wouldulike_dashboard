@@ -183,7 +183,7 @@ export default function QuickAdd({
           : spotKind === "shoot" ? { shoot_at: meetingAt }
           : { plan_sent_at: date };
         // 일정을 잡는 것 자체가 단계를 옮기는 일이다 — 뒤로는 절대 돌리지 않는다.
-        const to = spotKind === "meeting" ? "미팅" : spotKind === "shoot" ? "촬영" : "기획안";
+        const to = spotKind === "meeting" ? "미팅" : spotKind === "shoot" ? "제작" : "기획안";
         const at = (st: string) => (SPOT_ORDER as readonly string[]).indexOf(st);
         if (moveStage && cur && at(cur.stage) >= 0 && at(cur.stage) < at(to)) body.stage = to;
         const res = await fetch(`/api/astro/spots/${id}`, { method: "PATCH", headers: json, body: JSON.stringify(body) });
