@@ -221,7 +221,7 @@ export default function LeadPipeline({ actor, onGo }: { actor: string; onGo?: (t
         </div>
       </div>
 
-      <LeadDetailPanel lead={open} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onConvert={convertLead} converting={convertingId === open?.id} />
+      <LeadDetailPanel lead={open} actor={actor} campusOptions={campuses} onClose={() => setOpenId(null)} onPatch={patch} onConvert={convertLead} converting={convertingId === open?.id} onDeleted={() => { setOpenId(null); load(); }} />
       {adding && <NewLeadPanel actor={actor} campus={campus === "all" ? (campuses[0] ?? "경북대") : campus} campusOptions={campuses} onClose={() => setAdding(false)} onCreated={load} />}
       {importing && <ImportPanel onClose={() => setImporting(false)} onDone={load} />}
     </>
@@ -342,10 +342,12 @@ function Cell({ label, value, onCommit, placeholder, type, rows, hint }: { label
   );
 }
 
-function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConvert, converting }: { lead: Lead | null; actor: string; campusOptions: string[]; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConvert: (lead: Lead, dup?: DupAnswer) => Promise<ConvertResult>; converting: boolean }) {
+function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConvert, converting, onDeleted }: { lead: Lead | null; actor: string; campusOptions: string[]; onClose: () => void; onPatch: (id: string, body: Partial<Lead>) => void; onConvert: (lead: Lead, dup?: DupAnswer) => Promise<ConvertResult>; converting: boolean; onDeleted: () => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [dups, setDups] = useState<DupStore[] | null>(null);
-  useEffect(() => { setMsg(null); setDups(null); }, [lead?.id]);
+  const [removing, setRemoving] = useState(false);
+  const [delErr, setDelErr] = useState("");
+  useEffect(() => { setMsg(null); setDups(null); setRemoving(false); setDelErr(""); }, [lead?.id]);
   if (!lead) return null;
   const idx = LEAD_STAGES.indexOf(lead.stage as (typeof LEAD_STAGES)[number]);
   const side = isSide(lead.stage);
@@ -369,6 +371,24 @@ function LeadDetailPanel({ lead, actor, campusOptions, onClose, onPatch, onConve
           {!side && idx >= 0 && idx < LEAD_STAGES.length - 1 && <Button variant="primary" icon={<IconArrowRight />} onClick={() => onPatch(lead.id, { stage: LEAD_STAGES[idx + 1] })}>{LEAD_STAGES[idx + 1]}(으)로</Button>}
           {(lead.stage === "구두 합의" || lead.stage === "계약 완료") && !lead.converted_restaurant_id && <Button icon={<IconBuildingStore />} onClick={() => convert()} disabled={converting}>{converting ? "보내는 중…" : "계약·매장 탭으로 보내기"}</Button>}
           <Select value={lead.stage} onChange={(e) => onPatch(lead.id, { stage: e.target.value as LeadStage })} aria-label="단계 직접 지정" className="w-32 ml-auto">{ALL_LEAD_STAGES.map((s) => <option key={s}>{s}</option>)}</Select>
+          {/* 1027 민열님: 테스트 · 잘못 들어온 후보를 지울 곳이 없었다. 매장(앱)은 건드리지 않고 후보 행만 지운다. */}
+          {removing ? (
+            <span className="inline-flex items-center gap-2">
+              {delErr && <span role="alert" className="text-[12px] text-red-700">{delErr}</span>}
+              <Button size="sm" variant="danger" onClick={async () => {
+                const res = await fetch(`/api/astro/leads/${lead.id}`, { method: "DELETE" });
+                if (!res.ok && res.status !== 204) {
+                  const d = (await res.json().catch(() => ({}))) as { detail?: string };
+                  setDelErr(d.detail ?? `지우지 못했습니다 (${res.status}).`);
+                  return;
+                }
+                onDeleted();
+              }}>네, 지웁니다</Button>
+              <Button size="sm" variant="ghost" onClick={() => setRemoving(false)}>취소</Button>
+            </span>
+          ) : (
+            <Button size="sm" variant="danger" onClick={() => setRemoving(true)}>후보 지우기</Button>
+          )}
         </>
       }>
       {!side && <Stepper steps={[...LEAD_STAGES]} current={Math.max(0, idx)} />}
