@@ -32,6 +32,11 @@ interface Draft {
   submitted: { id: number; status: string; message: string } | null;
 }
 const KEY = "wl_join_v1";
+const STEP_NAME = ["intro", "store", "owner", "plan", "benefit", "pin", "terms", "done"];
+/** GA4 이벤트(1027) — gtag 가 없으면 조용히 넘어간다. 전화 · 사업자번호 같은 개인정보는 넣지 않는다. */
+function track(name: string, params: Record<string, string | number> = {}) {
+  try { const g = (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag; if (g) g("event", name, params); } catch { /* 측정 실패는 무시 */ }
+}
 interface Campus { key: string; short: string; name: string; branch: string; sido: string }
 const STEPS = ["매장", "사장님", "플랜", "혜택", "PIN", "약관"];  // step 1~6, 0 = 소개 · 7 = 제출 완료
 const PLAN_LABEL: Record<Plan, string> = { FREE: "무료", BOOST: "Boost", PREMIUM: "Premium" };
@@ -81,7 +86,11 @@ export default function JoinClient() {
   }, []);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [d.step]);
 
-  const go = (n: number) => { setErr(null); patch({ step: n }); };
+  const go = (n: number) => {
+    setErr(null);
+    if (n > d.step) track("signup_step_complete", { step_number: d.step, step_name: STEP_NAME[d.step] ?? String(d.step), source: d.source });
+    patch({ step: n });
+  };
   const kakao = () => {
     const id = process.env.NEXT_PUBLIC_KAKAO_CLIENT_ID;
     if (!id) { setErr("카카오 로그인 설정이 없습니다. 담당자에게 알려 주세요."); return; }
@@ -105,6 +114,8 @@ export default function JoinClient() {
       if (r.status === 401 && j.login) { setLogged(false); go(1); setErr(j.detail); return; }
       if (!r.ok) { setErr(j.detail ?? "제출하지 못했습니다. 잠시 뒤 다시 눌러 주세요."); return; }
       patch({ submitted: { id: j.id, status: j.status, message: j.message }, step: 7, pin: "", pin2: "" });
+      track("sign_up", { method: "kakao", plan: d.plan, source: d.source });
+      try { const w = window as unknown as { wcs?: { trans: (o: object) => void }; wcs_add?: Record<string, string> }; if (w.wcs) { w.wcs_add = w.wcs_add || {}; w.wcs_add.wa = "1cc11b3335254c0"; w.wcs.trans({ type: "sign_up" }); } } catch { /* 무시 */ }
     } catch { setErr("인터넷 연결을 확인하고 다시 눌러 주세요."); } finally { setBusy(false); }
   }
 
