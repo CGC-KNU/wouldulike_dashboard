@@ -65,6 +65,13 @@ jobs:
             fi
           done
           echo "::warning::백엔드가 다 깨어나지 않았습니다(마지막 HTTP $CODE) — 그대로 진행합니다"
+      - name: 손으로 만들어 달라고 알린 기획 불러오기
+        # 자동이 못 읽은 게시물 알림은 기획마다 한 번만(1028). 하루 여러 번 · 사흘(14~16일차) 도니 보낸 기획 번호를 캐시에 둔다.
+        uses: actions/cache/restore@v4
+        with:
+          path: manual-sent.json
+          key: probe-auto-manual-${{ github.run_id }}
+          restore-keys: probe-auto-manual-
       - name: 초안 만들기
         run: |
           set -uo pipefail
@@ -73,6 +80,7 @@ jobs:
           case "$CODE" in 200|207) ;; *) echo "::error::auto HTTP $CODE: $(jq -r '.detail // empty' r.json 2>/dev/null | head -c 200)"; exit 1;; esac
           echo "대상 $(jq '.due' r.json)건 중 이미 리포트 $(jq '.had_report' r.json) · 14일차 대기 $(jq '.waiting_d14 | length' r.json) · 새로 만듦 $(jq '.created | length' r.json) · 실패 $(jq '.failed | length' r.json)"
           echo "만든 것: $(jq -r '[.created[].id] | join(", ")' r.json)"
+          echo "숫자를 못 읽어 손으로 만들 기획: $(jq -r '[(.manual // [])[] | "\(.plan_id)(\(.stores)곳)"] | join(", ")' r.json)"
           [ "$DRY" = "1" ] && exit 0
           FAIL=0
           for i in $(seq 0 $(( $(jq '.created | length' r.json) - 1 ))); do
@@ -82,6 +90,25 @@ jobs:
             RES=$(curl -sS --max-time 30 -X POST -H "Authorization: Bearer $SLACK_TOKEN" -H "Content-Type: application/json; charset=utf-8" --data @m.json https://slack.com/api/chat.postMessage)
             if [ "$(echo "$RES" | jq -r .ok)" = "true" ]; then echo "$ID — #ops-partner 에 올렸습니다"; else echo "::error::$ID — 슬랙 실패: $(echo "$RES" | jq -r .error)"; FAIL=1; fi
           done
+          # 자동이 못 만든 게시물 — 「손으로 만들어 주세요」를 기획마다 한 번(1028). 보낸 기획 번호는 manual-sent.json(캐시)에.
+          [ -f manual-sent.json ] || echo '[]' > manual-sent.json
+          for i in $(seq 0 $(( $(jq '.manual // [] | length' r.json) - 1 ))); do
+            [ "$(jq '.manual // [] | length' r.json)" = "0" ] && break
+            P=$(jq -r ".manual[$i].plan_id" r.json)
+            if jq -e --argjson p "$P" 'index($p)' manual-sent.json >/dev/null; then echo "기획 $P — 손으로 만들어 달라는 알림은 이미 보냈습니다"; continue; fi
+            jq -c --arg ch "$CHANNEL" ".manual[$i] | {channel:\$ch, text:.text, unfurl_links:false}" r.json > m.json
+            RES=$(curl -sS --max-time 30 -X POST -H "Authorization: Bearer $SLACK_TOKEN" -H "Content-Type: application/json; charset=utf-8" --data @m.json https://slack.com/api/chat.postMessage)
+            if [ "$(echo "$RES" | jq -r .ok)" = "true" ]; then
+              echo "기획 $P — 손으로 만들어 달라고 #ops-partner 에 알렸습니다"
+              jq --argjson p "$P" '. + [$p]' manual-sent.json > t.json && mv t.json manual-sent.json
+            else echo "::error::기획 $P — 슬랙 실패: $(echo "$RES" | jq -r .error)"; FAIL=1; fi
+          done
           # 초안은 만들어졌는데 슬랙이 실패하면 다음 실행은 「이미 리포트 있음」으로 건너뛴다 — 그래서 여기서 빨갛게 남긴다
           [ "$(jq '.failed | length' r.json)" = "0" ] || { echo "::error::만들지 못한 기획 $(jq -c '[.failed[].plan_id]' r.json)"; FAIL=1; }
           exit $FAIL
+      - name: 손으로 만들어 달라고 알린 기획 저장
+        if: always() && env.DRY == '0' && hashFiles('manual-sent.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: manual-sent.json
+          key: probe-auto-manual-${{ github.run_id }}

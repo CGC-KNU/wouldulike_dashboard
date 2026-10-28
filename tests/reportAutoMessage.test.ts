@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { draftMessage, postedKst, reporterMentions, slackIdOf } from "../src/lib/draft/reportAutoMessage";
+import { draftMessage, manualMessage, manualTargets, postedKst, reporterMentions, slackIdOf } from "../src/lib/draft/reportAutoMessage";
+import type { StoreInsight } from "../src/lib/draft/insights";
 import type { StoreReport } from "../src/lib/draft/types";
 
 /**
@@ -50,4 +51,33 @@ test("올라간 때는 KST — 날짜만 오면 날짜만", () => {
   assert.equal(postedKst("2026-09-15"), "9/15");
   assert.equal(postedKst(null), null);
   assert.equal(postedKst("모름"), null);
+});
+
+/** 1028: 매장은 잡혔는데 숫자를 못 읽어 자동이 못 만든 14일차 게시물 — 기획마다 한 묶음 */
+const ins = (o: Partial<StoreInsight>) => ({ restaurant_id: 1, store: "핵밥", matched_by: "name", plan_id: 81, topic: "한정쿠폰 주 매장 쿠폰 혜택", posted_at: null, scheduled_date: "2026-10-13", permalink: null, age_days: null, available: false, reason: "성과를 못 봅니다", ...o }) as StoreInsight;
+
+test("못 읽은 14~16일차 게시물은 기획 하나에 매장을 모은다 — 날짜는 업로드 예정일로", () => {
+  const list = [ins({}), ins({ restaurant_id: 2, store: "라라더" }), ins({ restaurant_id: null, matched_by: "sponsor", store: "주비 두루 향기롭다" })];
+  const out = manualTargets(list, () => false, "2026-10-28");
+  assert.equal(out.length, 1);
+  assert.deepEqual(out[0].stores, ["핵밥", "라라더", "주비 두루 향기롭다"]);
+});
+
+test("자동이 다루는 것 · 리포트 있는 매장 · 창 밖 · 매장 미확인은 뺀다", () => {
+  assert.equal(manualTargets([ins({ available: true, age_days: 14 })], () => false, "2026-10-28").length, 0, "숫자를 읽은 건 자동이 만든다");
+  assert.deepEqual(manualTargets([ins({}), ins({ restaurant_id: 2, store: "라라더" })], (i) => i.store === "핵밥", "2026-10-28")[0].stores, ["라라더"]);
+  assert.equal(manualTargets([ins({})], () => false, "2026-10-26").length, 0, "13일차");
+  assert.equal(manualTargets([ins({})], () => false, "2026-10-30").length, 0, "17일차");
+  assert.equal(manualTargets([ins({ restaurant_id: null, matched_by: "marker" })], () => false, "2026-10-28").length, 0, "괄호 이름을 못 찾은 건 사람이 정리");
+});
+
+test("손으로 만들기 메시지 — 매장 · 콘텐츠 · 올라간 날 · 이유 · 호출 · 목록 링크", () => {
+  const [m] = manualTargets([ins({}), ins({ restaurant_id: 2, store: "라라더" })], () => false, "2026-10-28");
+  const t = manualMessage(m, "https://app.wouldulike.kr", "가 나");
+  assert.match(t, /손으로 만들어 주세요\* — 핵밥 · 라라더/);
+  assert.match(t, /콘텐츠  한정쿠폰 주 매장 쿠폰 혜택/);
+  assert.match(t, /올라간 날  10\/13 \(14일차 지남\)/);
+  assert.match(t, /— 성과를 못 봅니다/);
+  assert.match(t, /가 나 — \*세틀라이트 Probe/);
+  assert.match(t, /<https:\/\/app\.wouldulike\.kr\/dashboard\/admin\?tab=probe-reports\|게시물 목록 열기>/);
 });
