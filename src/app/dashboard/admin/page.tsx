@@ -11,6 +11,7 @@ import SpotBoard from "./astro/SpotBoard";
 import ProbeHome from "./probe/ProbeHome";
 import InstaTrend from "./probe/InstaTrend";
 import AppMetrics from "./probe/AppMetrics";
+import WebMetrics from "./probe/WebMetrics";
 import CastorHome from "./castor/CastorHome";
 import Atlas from "./atlas/Atlas";
 import Playroom from "./playroom/Playroom";
@@ -87,6 +88,7 @@ type Tab =
   | "probe-home"
   | "probe-metrics"
   | "probe-app"
+  | "probe-web"
   | "probe-quality"
   | "probe-reports"
   | "probe-mileage"
@@ -2133,6 +2135,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "probe-home", label: "홈", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-metrics", label: "매장 지표", icon: "▲", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-app", label: "앱 지표", icon: "▤", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-web", label: "웹 지표", icon: "◎", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-reports", label: "매장 리포트", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-mileage", label: "마일리지 추첨", icon: "◍", allow: (me) => me.permissions.can_restaurants },
@@ -2255,8 +2258,8 @@ const PRODUCTS: {
     key: "probe",
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
-    description: "매장 리포트 · 마일리지 추첨 · 매장·앱 지표 · 정합성",
-    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-quality", "probe-metrics", "probe-app", "probe-insta"],
+    description: "매장 리포트 · 마일리지 추첨 · 매장·앱·웹 지표 · 정합성",
+    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-quality", "probe-metrics", "probe-app", "probe-web", "probe-insta"],
     ready: true,
   },
   {
@@ -2631,6 +2634,7 @@ export default function AdminHomePage() {
           {activeTab === "probe-mileage" && <MileageOps actor={actorName} />}
           {activeTab === "probe-metrics" && <ProbeOverview onGo={go} />}
           {activeTab === "probe-app" && <AppMetrics />}
+          {activeTab === "probe-web" && <WebMetrics />}
           {activeTab === "probe-quality" && (
             <DataQuality onGo={go} actor={actorName} />
           )}
