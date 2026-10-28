@@ -1,6 +1,9 @@
 import { GoogleAuth } from "google-auth-library";
 import { credentialsFromEnv } from "@/lib/bigquery/appMetrics";
-import { buildFunnel, fillDays, mergePages, storeClicks, type StoreClicks, type WebFunnel, type WebPage } from "./webShape";
+import {
+  buildFunnel, ctaTypeSplit, fillDays, leadSplit, locationSplit, mergePages, planSplit, sectionSplit, stepSplit, storeClicks,
+  type Splits, type StoreClicks, type WebFunnel, type WebPage,
+} from "./webShape";
 
 /**
  * Probe · 웹 지표 — 우주라이크 홈(wouldulike.kr)의 GA4 웹 스트림을 Data API 로 읽는다.
@@ -18,6 +21,7 @@ import { buildFunnel, fillDays, mergePages, storeClicks, type StoreClicks, type 
 
 export const WEB_PROPERTY = "494806625";
 const BASE = `https://analyticsdata.googleapis.com/v1beta/properties/${WEB_PROPERTY}:runReport`;
+const BATCH = `https://analyticsdata.googleapis.com/v1beta/properties/${WEB_PROPERTY}:batchRunReports`;
 
 type Expr = Record<string, unknown>;
 const eq = (fieldName: string, value: string): Expr => ({ filter: { fieldName, stringFilter: { matchType: "EXACT", value } } });
@@ -44,6 +48,14 @@ export interface WebMetrics {
   pages: WebPage[];
   funnel: WebFunnel;
   stores: StoreClicks;
+  /** 맞춤 측정기준(1028 등록)으로 나눈 것 — 최근 28일 · 한국. 등록 전 이벤트는 각 `unset` 에 */
+  cta: Splits;
+  /** 입점 신청 버튼만, 위치별 */
+  ctaLocation: Splits;
+  sections: Splits;
+  steps: Splits;
+  leads: Splits;
+  plans: Splits;
   generated_at: string;
 }
 export type WebResult = { ok: true; data: WebMetrics } | { ok: false; reason: "no_key" | "error"; detail?: string };
@@ -75,8 +87,16 @@ export async function readWebMetrics(env: Record<string, string | undefined> = p
     const d28 = [{ startDate: dFrom, endDate: to }];
     const totals = (a: string, b: string) => ({ dateRanges: [{ startDate: a, endDate: b }], metrics: [{ name: "activeUsers" }, { name: "sessions" }, { name: "engagedSessions" }] });
 
-    // Data API 는 속성당 동시 요청 10개까지 — 아래 8개
-    const [daily, w, p, abroad, ch, ev, pg, clk] = await Promise.all([
+    // 맞춤 측정기준 다섯 — batchRunReports 한 번(한 번에 5개까지)
+    const byParam = (event: string | string[], dims: string[], extra?: Expr) => ({
+      dimensionFilter: and(WEB_KR, typeof event === "string" ? eq("eventName", event) : { filter: { fieldName: "eventName", inListFilter: { values: event } } }, ...(extra ? [extra] : [])),
+      dateRanges: d28, dimensions: dims.map((name) => ({ name })), metrics: [{ name: "eventCount" }, { name: "totalUsers" }], limit: 50,
+    });
+    const batch = async (requests: Record<string, unknown>[]): Promise<Report[]> =>
+      (await client.request<{ reports?: Report[] }>({ url: BATCH, method: "POST", data: { requests } })).data.reports ?? [];
+
+    // Data API 는 속성당 동시 요청 10개까지 — 아래 8개 + 묶음 1개
+    const [daily, w, p, abroad, ch, ev, pg, clk, params] = await Promise.all([
       run({ dateRanges: d28, dimensions: [{ name: "date" }], metrics: [{ name: "activeUsers" }, { name: "sessions" }], limit: 40 }),
       run(totals(wFrom, to)),
       run(totals(pFrom, pTo)),
@@ -85,7 +105,19 @@ export async function readWebMetrics(env: Record<string, string | undefined> = p
       run({ dateRanges: d28, dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }, { name: "totalUsers" }], orderBys: [{ metric: { metricName: "eventCount" }, desc: true }], limit: 40 }),
       run({ dateRanges: d28, dimensions: [{ name: "hostName" }, { name: "pagePath" }], metrics: [{ name: "activeUsers" }, { name: "screenPageViews" }], limit: 50 }),
       run({ dimensionFilter: and(WEB_KR, eq("eventName", "click")), dateRanges: d28, dimensions: [{ name: "linkDomain" }, { name: "hostName" }, { name: "pagePath" }], metrics: [{ name: "eventCount" }], limit: 50 }),
+      batch([
+        byParam("cta_click", ["customEvent:cta_type"]),
+        byParam("cta_click", ["customEvent:cta_location"], eq("customEvent:cta_type", "signup")),
+        byParam("section_view", ["customEvent:section_id"]),
+        byParam("signup_step_complete", ["customEvent:step_name"]),
+        // 상담 · 견적은 lead_source 만, 신청 완료는 plan 만 갖는다 — 한 표로 읽고 이벤트 이름으로 가른다
+        byParam(["generate_lead", "sign_up"], ["eventName", "customEvent:lead_source", "customEvent:plan"]),
+      ]),
     ]);
+    const [ctaRep, locRep, secRep, stepRep, lpRep] = params;
+    const vals = (rep: Report | undefined, i = 0) => (rep?.rows ?? []).map((r) => ({ value: dim(r, i), count: num(r, 0), users: num(r, 1) }));
+    const lpRows = (event: string, i: number) => (lpRep?.rows ?? []).filter((r) => dim(r, 0) === event).map((r) => ({ value: dim(r, i), count: num(r, 0), users: num(r, 1) }));
+    const cta = ctaTypeSplit(vals(ctaRep));
 
     const win = (rep: Report, from: string, end: string): WebWindow => {
       const r = rep.rows?.[0];
@@ -106,8 +138,14 @@ export async function readWebMetrics(env: Record<string, string | undefined> = p
         channels: (ch.rows ?? []).map((r) => ({ channel: dim(r, 0), sessions: num(r, 0), users: num(r, 1) })),
         events,
         pages,
-        funnel: buildFunnel(pages, events),
+        funnel: { ...buildFunnel(pages, events), click: cta.rows.find((s) => s.value === "signup")?.users ?? 0 },
         stores: storeClicks((clk.rows ?? []).map((r) => ({ linkDomain: dim(r, 0), host: dim(r, 1), path: dim(r, 2), count: num(r, 0) }))),
+        cta,
+        ctaLocation: locationSplit(vals(locRep)),
+        sections: sectionSplit(vals(secRep)),
+        steps: stepSplit(vals(stepRep)),
+        leads: leadSplit(lpRows("generate_lead", 1)),
+        plans: planSplit(lpRows("sign_up", 2)),
         generated_at: new Date().toISOString(),
       },
     };
