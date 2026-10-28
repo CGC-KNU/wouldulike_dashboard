@@ -130,6 +130,22 @@ export const planSplit = (rows: { value: string; count: number; users: number }[
   splitBy(rows, (v) => ({ FREE: "무료", BOOST: "Boost", PREMIUM: "Premium" })[v] ?? v, ["FREE", "BOOST", "PREMIUM"]);
 export const locationSplit = (rows: { value: string; count: number; users: number }[]) => splitBy(rows, locationLabel);
 
+/** KST 의 오늘에서 n 일 전 날짜(YYYY-MM-DD) */
+export function kstDaysAgo(n: number, now = Date.now()): string {
+  const kst = new Date(now + 9 * 3_600_000);
+  kst.setUTCDate(kst.getUTCDate() - n);
+  return kst.toISOString().slice(0, 10);
+}
+
+/**
+ * Search Console — 검색어가 가려진 몫. 구글은 검색량이 적은 검색어를 개인정보 보호로 빼고 준다.
+ * 전체(측정기준 없이 센 합)에서 검색어 줄의 합을 빼면 그 몫이다. 음수는 0 으로(반올림 · 지연 차이).
+ */
+export function hiddenQueries(total: { clicks: number; impressions: number }, rows: { clicks: number; impressions: number }[]) {
+  const sum = rows.reduce((a, r) => ({ clicks: a.clicks + r.clicks, impressions: a.impressions + r.impressions }), { clicks: 0, impressions: 0 });
+  return { clicks: Math.max(0, total.clicks - sum.clicks), impressions: Math.max(0, total.impressions - sum.impressions) };
+}
+
 /** 28일 일별 — 방문이 없는 날은 행이 없어 0 으로 채운다(웹은 방문이 없으면 실제로 0 이다). dates 는 오래된 날부터 */
 export function fillDays(dates: string[], rows: { date: string; users: number; sessions: number }[]) {
   const by = new Map(rows.map((r) => [r.date, r] as const));

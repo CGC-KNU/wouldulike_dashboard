@@ -1,7 +1,7 @@
 import { GoogleAuth } from "google-auth-library";
 import { credentialsFromEnv } from "@/lib/bigquery/appMetrics";
 import {
-  buildFunnel, ctaTypeSplit, fillDays, leadSplit, locationSplit, mergePages, planSplit, sectionSplit, stepSplit, storeClicks,
+  buildFunnel, ctaTypeSplit, fillDays, kstDaysAgo, leadSplit, locationSplit, mergePages, planSplit, sectionSplit, stepSplit, storeClicks,
   type Splits, type StoreClicks, type WebFunnel, type WebPage,
 } from "./webShape";
 
@@ -63,13 +63,6 @@ export type WebResult = { ok: true; data: WebMetrics } | { ok: false; reason: "n
 interface Row { dimensionValues?: { value: string }[]; metricValues?: { value: string }[] }
 interface Report { rows?: Row[] }
 
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-/** KST 의 오늘에서 n 일 전 날짜(YYYY-MM-DD) */
-function kstDaysAgo(n: number): string {
-  const kst = new Date(Date.now() + 9 * 3_600_000);
-  kst.setUTCDate(kst.getUTCDate() - n);
-  return iso(kst);
-}
 const num = (r: Row, i: number) => Number(r.metricValues?.[i]?.value ?? 0);
 const dim = (r: Row, i: number) => r.dimensionValues?.[i]?.value ?? "";
 
