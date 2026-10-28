@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFunnel, ctaTypeSplit, fillDays, locationLabel, mergePages, pageKey, sectionSplit, stepSplit, storeClicks, storeOf } from "../src/lib/ga4/webShape";
+import { buildFunnel, ctaTypeSplit, fillDays, hiddenQueries, kstDaysAgo, locationLabel, mergePages, pageKey, sectionSplit, stepSplit, storeClicks, storeOf } from "../src/lib/ga4/webShape";
 
 /**
  * Probe · 웹 지표(1028 A) — GA4 응답을 화면 숫자로 바꾸는 부분.
@@ -72,4 +72,16 @@ test("버튼 위치 이름 — 고정 버튼 · 섹션 · 모르는 값", () => 
   assert.equal(locationLabel("msticky"), "모바일 하단 버튼");
   assert.equal(locationLabel("plans"), "요금제");
   assert.equal(locationLabel("hero"), "hero");
+});
+
+test("검색어가 가려진 몫 — 전체에서 검색어 줄 합을 뺀다, 음수는 0", () => {
+  assert.deepEqual(hiddenQueries({ clicks: 3, impressions: 40 }, [{ clicks: 1, impressions: 25 }, { clicks: 0, impressions: 5 }]), { clicks: 2, impressions: 10 });
+  assert.deepEqual(hiddenQueries({ clicks: 0, impressions: 4 }, []), { clicks: 0, impressions: 4 });
+  assert.deepEqual(hiddenQueries({ clicks: 0, impressions: 2 }, [{ clicks: 0, impressions: 3 }]), { clicks: 0, impressions: 0 });
+});
+
+test("KST 날짜 — UTC 로는 전날 밤이어도 한국 날짜로", () => {
+  const utc1530 = Date.parse("2026-10-27T15:30:00Z"); // KST 10/28 00:30
+  assert.equal(kstDaysAgo(0, utc1530), "2026-10-28");
+  assert.equal(kstDaysAgo(1, utc1530), "2026-10-27");
 });

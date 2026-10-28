@@ -16,6 +16,7 @@ import { TagChip } from "./kit";
  * 입점 신청 깔때기 · 페이지별 · 앱 설치 버튼 클릭을 더했다.
  *
  * 1028 B1: 이벤트 매개변수 여섯을 맞춤 측정기준으로 등록 — 섹션 도달 · 신청 단계 · 버튼 종류 · 위치 · 문의 종류 · 플랜으로 나눈다.
+ * 1028 B3: 구글 검색(Search Console) 카드 — 노출 · 클릭 · 순위 · 검색어 · 색인.
  */
 
 interface Win { from: string; to: string; users: number; sessions: number; engaged: number }
@@ -41,6 +42,19 @@ interface Payload {
   plans?: Splits;
   generated_at: string;
 }
+
+/** 구글 검색(Search Console) — /api/probe/web/search. 웹 지표와 따로 읽어 한쪽이 실패해도 다른 쪽은 보인다 */
+interface SearchRow { key: string; clicks: number; impressions: number; position: number }
+interface SearchPayload {
+  from: string;
+  to: string;
+  totals: { clicks: number; impressions: number; ctr: number | null; position: number | null };
+  queries: SearchRow[];
+  hidden: { clicks: number; impressions: number };
+  index: { url: string; label: string; indexed: boolean; state: string; lastCrawl: string | null }[];
+  sitemap: { path: string; submitted: number; lastRead: string | null; errors: number } | null;
+}
+const kmd = (isoTime: string) => md(new Date(Date.parse(isoTime) + 9 * 3_600_000).toISOString().slice(0, 10));
 
 /** 우리가 심은 이벤트 — 안 찍혀도 0 으로 보인다(안 심은 것과 안 눌린 것을 가르려고). 위에서부터 이 순서 */
 const OUR_EVENTS: [string, string][] = [
@@ -122,6 +136,8 @@ export default function WebMetrics() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  /** 구글 검색 — null = 읽는 중 · false = 못 읽음 */
+  const [search, setSearch] = useState<SearchPayload | null | false>(null);
 
   const load = () => {
     setLoading(true);
@@ -131,6 +147,11 @@ export default function WebMetrics() {
       .then(setData)
       .catch(() => { setData(null); setFailed(true); })
       .finally(() => setLoading(false));
+    setSearch(null);
+    fetch("/api/probe/web/search")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(setSearch)
+      .catch(() => setSearch(false));
   };
   useEffect(load, []);
 
@@ -188,6 +209,57 @@ export default function WebMetrics() {
               단계마다 따로 센 사람 수입니다. DM · QR 링크는 홈을 거치지 않고 신청 페이지로 바로 오므로 뒷단이 앞단보다 클 수 있습니다.
               {data.funnel.click !== undefined && " 「입점 신청 버튼 클릭」은 버튼 종류를 등록한 10/28 부터 셉니다."}
             </p>
+          </Card>
+
+          <Card>
+            <Title tag="Search Console · 최근 28일">구글 검색</Title>
+            {search === null ? <p className="text-[13px] text-gray-500">읽는 중입니다…</p>
+              : search === false ? <p className="text-[13px] text-gray-500">구글 검색을 읽지 못했습니다 — 0 이 아니라 모름입니다. 새로고침해 주세요.</p>
+              : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                    {[
+                      ["노출", `${search.totals.impressions.toLocaleString()}회`],
+                      ["클릭", `${search.totals.clicks.toLocaleString()}회`],
+                      ["클릭률", search.totals.ctr === null ? "—" : `${Math.round(search.totals.ctr * 1000) / 10}%`],
+                      ["평균 순위", search.totals.position === null ? "—" : `${Math.round(search.totals.position * 10) / 10}위`],
+                    ].map(([k, val]) => (
+                      <div key={k} className="rounded-xl bg-[#F6F7FF] px-3 py-2">
+                        <p className="text-[11.5px] text-gray-500">{k}</p>
+                        <p className="text-[16px] font-bold text-gray-900 tabular-nums">{val}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {search.queries.length > 0 && (
+                    <table className="w-full text-[13.5px] mb-1">
+                      <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">검색어</th><th className="font-medium pb-1 text-right">노출</th><th className="font-medium pb-1 text-right">클릭</th><th className="font-medium pb-1 text-right">순위</th></tr></thead>
+                      <tbody className="divide-y divide-black/[0.05]">
+                        {search.queries.map((q) => (
+                          <tr key={q.key}>
+                            <td className="py-1.5 text-gray-800 break-all">{q.key}</td>
+                            <td className="py-1.5 text-right tabular-nums">{q.impressions.toLocaleString()}</td>
+                            <td className="py-1.5 text-right tabular-nums">{q.clicks.toLocaleString()}</td>
+                            <td className="py-1.5 text-right tabular-nums text-gray-600">{Math.round(q.position * 10) / 10}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  {search.totals.impressions === 0 ? <p className="text-[13px] text-gray-500">아직 구글 검색 노출이 없습니다.</p>
+                    : search.hidden.impressions > 0 && <p className="text-[12px] text-gray-500">검색량이 적어 구글이 가린 검색어 몫 — 노출 {search.hidden.impressions.toLocaleString()}회 · 클릭 {search.hidden.clicks.toLocaleString()}회</p>}
+                  <p className="text-[12.5px] font-semibold text-gray-600 mt-3 mb-1">색인</p>
+                  <ul className="divide-y divide-black/[0.05]">
+                    {search.index.map((p) => (
+                      <li key={p.url} className="flex items-center justify-between gap-2 py-1.5 text-[13.5px]">
+                        <span className="text-gray-800">{p.label}</span>
+                        <span className={p.indexed ? "text-gray-900" : "text-red-600"}>{p.indexed ? "색인됨" : p.state}{p.lastCrawl && <span className="text-gray-500 ml-2 text-[12px]">크롤링 {kmd(p.lastCrawl)}</span>}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {search.sitemap && <p className="text-[12px] text-gray-500 mt-2">사이트맵 주소 {search.sitemap.submitted}개 제출 · 오류 {search.sitemap.errors}{search.sitemap.lastRead ? ` · 구글이 읽은 날 ${kmd(search.sitemap.lastRead)}` : ""}</p>}
+                  <p className="text-[12px] text-gray-500 mt-2">{md(search.from)}~{md(search.to)} · 구글 검색 숫자는 2~3일 늦게 들어옵니다. 네이버 검색은 조회 API 가 없어 「어디서 왔나」의 검색 줄로 봅니다.</p>
+                </>
+              )}
           </Card>
 
           {data.sections && (
