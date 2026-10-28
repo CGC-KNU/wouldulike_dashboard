@@ -1,5 +1,6 @@
 import { FOUNDERS, GROUPS } from "../atlas";
 import { reportPermalink } from "./reportPage";
+import type { StoreInsight } from "./insights";
 import type { StoreReport } from "./types";
 
 /**
@@ -56,5 +57,37 @@ export function draftMessage(r: StoreReport, origin: string, mentions: string = 
     `${mentions ? `${mentions} — ` : ""}*초안에 인스타 지표 입력을 진행해 주세요.*`,
     ...(insta ? [`• 인스타 게시물 <${insta}|인스타그램에서 보기>`] : []),
     `• 세틀라이트 리포트 <${origin}/dashboard/admin?tab=probe-reports&open=${encodeURIComponent(r.id)}|리포트 열기>`,
+  ].join("\n");
+}
+
+/**
+ * 자동 초안이 **못 만든** 14일차 게시물(1028) — 매장은 잡혔는데 인스타 숫자를 못 읽어(성과 블라인드 · 수집 없음) 조용히 빠지던 것.
+ * 10/13 한정쿠폰 8곳이 그렇게 빠져 1곳만 사람이 만들었다. 게시물(기획) 하나에 한 묶음 — 매장이 여럿이면 한 메시지에 모은다.
+ * 날짜는 성과가 없으면 posted_at 도 비므로 Papillon 업로드 예정일(scheduled_date, KST)로 센다. 살아 있는 리포트가 있는 매장은 뺀다.
+ */
+export function manualTargets(insights: StoreInsight[], hasReport: (i: StoreInsight) => boolean, todayKst: string, minAge = 14, maxAge = 16) {
+  const dayMs = 86_400_000;
+  const ageOf = (i: StoreInsight) => i.age_days ?? (i.scheduled_date ? Math.round((Date.parse(todayKst) - Date.parse(i.scheduled_date)) / dayMs) : null);
+  const byPlan = new Map<number, { plan_id: number; topic: string; scheduled_date: string | null; reason: string | null; stores: string[] }>();
+  for (const i of insights) {
+    if (i.available || (i.restaurant_id === null && i.matched_by !== "sponsor")) continue;
+    const age = ageOf(i);
+    if (age === null || age < minAge || age > maxAge || hasReport(i)) continue;
+    const g = byPlan.get(i.plan_id) ?? { plan_id: i.plan_id, topic: i.topic, scheduled_date: i.scheduled_date, reason: i.reason ?? null, stores: [] };
+    if (!g.stores.includes(i.store)) g.stores.push(i.store);
+    byPlan.set(i.plan_id, g);
+  }
+  return [...byPlan.values()];
+}
+
+export function manualMessage(m: ReturnType<typeof manualTargets>[number], origin: string, mentions: string = reporterMentions()): string {
+  const when = postedKst(m.scheduled_date);
+  return [
+    `:warning: *매장 리포트 — 손으로 만들어 주세요* — ${m.stores.join(" · ")}`,
+    ...(m.topic ? [`• 콘텐츠  ${m.topic}`] : []),
+    ...(when ? [`• 올라간 날  ${when} (14일차 지남)`] : []),
+    `• 자동 초안이 이 게시물의 인스타 숫자를 읽지 못해 만들지 않았습니다${m.reason ? ` — ${m.reason}` : ""}`,
+    `${mentions ? `${mentions} — ` : ""}*세틀라이트 Probe 매장 리포트의 게시물 목록에서 만들어 주세요.*`,
+    `• 세틀라이트 <${origin}/dashboard/admin?tab=probe-reports|게시물 목록 열기>`,
   ].join("\n");
 }

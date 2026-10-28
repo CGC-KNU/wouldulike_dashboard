@@ -39,6 +39,8 @@ export interface StoreInsight {
   plan_id: number;
   topic: string;
   posted_at: string | null;
+  /** Papillon 업로드 예정일(KST) — 성과를 못 읽어 posted_at·age_days 가 비어도 날짜는 안다(1028 손으로 만들기 알림) */
+  scheduled_date: string | null;
   permalink: string | null;
   age_days: number | null;
   co_stores: number;
@@ -166,7 +168,7 @@ export async function buildInsights(): Promise<InsightsResult> {
         : p?.reason;
     return {
       restaurant_id: rid, store: label, matched_by: by, plan_id: plan.id, topic: plan.topic,
-      posted_at: snapshot.post.posted_at, permalink: snapshot.post.permalink, age_days: age, co_stores: snapshot.post.co_stores, checkpoint: cp,
+      posted_at: snapshot.post.posted_at, scheduled_date: plan.scheduled_date ?? null, permalink: snapshot.post.permalink, age_days: age, co_stores: snapshot.post.co_stores, checkpoint: cp,
       targets: { d7: age !== null && age >= 7, d14: age !== null && age >= 14 },
       // 권장 시점은 14일차(민찬 1008) — 14일차 09:00 자동 초안(#259)과 같은 날. 전에는 7일차였다.
       due: reportable && Boolean(p?.available) && age !== null && age >= (redo ? 7 : 14) && (!sent || redo),

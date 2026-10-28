@@ -4,11 +4,12 @@ import { checkCronToken, plausibleCronToken } from "@/lib/draft/cronAuth";
 import { buildInsights } from "@/lib/draft/insights";
 import { fetchReportData } from "@/lib/draft/papillon";
 import { createReportDraft } from "@/lib/draft/reportCreate";
-import { draftMessage, reporterMentions } from "@/lib/draft/reportAutoMessage";
+import { draftMessage, manualMessage, manualTargets, reporterMentions } from "@/lib/draft/reportAutoMessage";
 import { originOf } from "@/lib/draft/reportPage";
 import { listReports } from "@/lib/draft/reportStore";
 import { mintServiceToken, withServiceToken } from "@/lib/draft/serviceAuth";
 import { normName } from "@/lib/draft/sheet";
+import type { StoreInsight } from "@/lib/draft/insights";
 import type { StoreReport } from "@/lib/draft/types";
 
 /**
@@ -28,6 +29,8 @@ import type { StoreReport } from "@/lib/draft/types";
  *    회수는 링크가 나간(LINKED·SENT) 리포트에만 있다 = 이미 보낸 게시물이다. 화면 「만들 때」(insights)와 만들기(reportCreate)는
  *    회수본을 빼지만(사람이 갱신본을 다시 만들 수 있게) 자동은 세야 한다 — 1014 #315 에서 맞췄다가 보낸 게시물에 초안이 또 생겨 되돌렸다.
  *  · 앱 매장이거나 협찬 매장으로 잡힌 게시물만. 매장 표에서 이름을 못 찾은 괄호는 사람이 정리해야 한다.
+ *  · 매장은 잡혔는데 인스타 숫자를 못 읽은 14~16일차 게시물(성과 블라인드 등)은 만들지 않고 `manual` 로 돌려준다 —
+ *    워크플로가 「손으로 만들어 주세요」를 기획마다 한 번 올린다(1028, 10/13 한정쿠폰 8곳이 조용히 빠졌다).
  *
  * 14일차 #ops-partner 알림은 이 메시지 하나다(1008) — 백엔드의 「14일 경과」 알림을 여기로 합쳤다(reportAutoMessage.ts).
  */
@@ -61,9 +64,9 @@ export async function POST(req: Request) {
     const wait: number[] = [];   // 14일차 숫자가 아직 없어 내일로 미룬 기획 번호
     const failed: { plan_id: number; detail: string }[] = [];
     let had = 0;
+    const hasReport = (i: StoreInsight) => reports.some((x) => x.plan_id === i.plan_id && !isD7ReportToRefresh(x, i.store) && (i.restaurant_id !== null ? x.restaurant_id === i.restaurant_id : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(i.store)));
     for (const i of due) {
-      const mine = reports.some((x) => x.plan_id === i.plan_id && !isD7ReportToRefresh(x, i.store) && (i.restaurant_id !== null ? x.restaurant_id === i.restaurant_id : x.restaurant_id === null && normName(x.snapshot?.store?.name ?? "") === normName(i.store)));
-      if (mine) { had++; continue; }
+      if (hasReport(i)) { had++; continue; }
       const rd = await fetchReportData(i.plan_id);
       if (!rd?.available || rd.day !== 14) { wait.push(i.plan_id); continue; }
       if (dry) { created.push({ id: `(dry) plan ${i.plan_id}`, text: "" }); continue; }
@@ -71,6 +74,8 @@ export async function POST(req: Request) {
       if (!out.ok) { failed.push({ plan_id: i.plan_id, detail: out.detail }); continue; }
       created.push({ id: out.report.id, text: draftMessage(out.report, origin, mentions) });
     }
-    return NextResponse.json({ dry, checked: list.insights.length, due: due.length, had_report: had, waiting_d14: wait, created, failed }, { status: failed.length ? 207 : 200 });
+    // 매장은 잡혔는데 숫자를 못 읽어 못 만든 14일차 게시물 — 손으로 만들어 달라는 메시지(1028). 한 번만 보내는 건 워크플로가 센다.
+    const manual = manualTargets(list.insights, hasReport, todayKst(), MIN_AGE, MAX_AGE).map((m) => ({ plan_id: m.plan_id, stores: m.stores.length, text: manualMessage(m, origin, mentions) }));
+    return NextResponse.json({ dry, checked: list.insights.length, due: due.length, had_report: had, waiting_d14: wait, created, failed, manual }, { status: failed.length ? 207 : 200 });
   });
 }
