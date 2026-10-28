@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFunnel, fillDays, mergePages, pageKey, storeClicks, storeOf } from "../src/lib/ga4/webShape";
+import { buildFunnel, ctaTypeSplit, fillDays, locationLabel, mergePages, pageKey, sectionSplit, stepSplit, storeClicks, storeOf } from "../src/lib/ga4/webShape";
 
 /**
  * Probe · 웹 지표(1028 A) — GA4 응답을 화면 숫자로 바꾸는 부분.
@@ -48,4 +48,28 @@ test("깔때기 — 페이지 사람 수와 이벤트 사람 수를 단계별로
 test("일별 — 방문 없는 날은 0 으로 채운다", () => {
   const d = fillDays(["2026-10-26", "2026-10-27"], [{ date: "20261027", users: 6, sessions: 9 }]);
   assert.deepEqual(d, [{ date: "2026-10-26", users: 0, sessions: 0 }, { date: "2026-10-27", users: 6, sessions: 9 }]);
+});
+
+test("맞춤 측정기준 — 등록 전 (not set) 은 따로, 아는 값은 정한 순서로 0 까지 채운다", () => {
+  const c = ctaTypeSplit([{ value: "(not set)", count: 3, users: 2 }, { value: "consult", count: 1, users: 1 }]);
+  assert.deepEqual(c.rows.map((r) => [r.label, r.count]), [["입점 신청 버튼", 0], ["상담 버튼", 1]]);
+  assert.deepEqual(c.unset, { count: 3, users: 2 });
+});
+
+test("섹션은 화면 순서대로, 모르는 섹션은 뒤에", () => {
+  const s = sectionSplit([{ value: "faq", count: 2, users: 2 }, { value: "new-one", count: 5, users: 4 }, { value: "why", count: 3, users: 3 }]);
+  const labels = s.rows.map((r) => r.label);
+  assert.ok(labels.indexOf("왜 우주라이크") < labels.indexOf("자주 묻는 질문"));
+  assert.equal(labels.at(-1), "new-one");
+  assert.equal(s.rows.find((r) => r.value === "app-intro")?.users, 0);
+});
+
+test("신청 단계는 intro → pin 순서", () => {
+  assert.deepEqual(stepSplit([]).rows.map((r) => r.value), ["intro", "store", "owner", "plan", "benefit", "pin"]);
+});
+
+test("버튼 위치 이름 — 고정 버튼 · 섹션 · 모르는 값", () => {
+  assert.equal(locationLabel("msticky"), "모바일 하단 버튼");
+  assert.equal(locationLabel("plans"), "요금제");
+  assert.equal(locationLabel("hero"), "hero");
 });

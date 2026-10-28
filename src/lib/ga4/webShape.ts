@@ -43,6 +43,8 @@ export function mergePages(rows: { host: string; path: string; users: number; vi
 export interface WebFunnel {
   /** 사장님 홈 방문자 */
   home: number;
+  /** 입점 신청 버튼을 누른 사람(cta_type=signup) — 등록(1028) 전 클릭은 빠진다 */
+  click?: number;
   /** 신청 페이지(/join) 도착 */
   join: number;
   /** 신청 단계를 하나라도 넘긴 사람(signup_step_complete) */
@@ -77,6 +79,56 @@ export function storeClicks(rows: { linkDomain: string; host: string; path: stri
   out.byPage.sort((a, b) => b.ios + b.android - (a.ios + a.android));
   return out;
 }
+
+/**
+ * 1028 B1: 이벤트 매개변수를 맞춤 측정기준으로 등록했다(cta_type · cta_location · section_id · lead_source · step_name · plan).
+ * 등록 전에 찍힌 이벤트는 값이 `(not set)` 으로 온다 — 0 도 아니고 다른 값도 아니라 「등록 전」으로 따로 센다.
+ */
+export const NOT_SET = "(not set)";
+
+/** 홈 섹션 — 화면 위에서부터의 순서(wouldulike.kr `main section[id]`) */
+export const SECTIONS: [string, string][] = [
+  ["app-intro", "앱 소개"], ["why", "왜 우주라이크"], ["grow", "함께하는 가게"], ["kit", "입점 키트"], ["steps", "입점 순서"],
+  ["compare", "다른 홍보와 비교"], ["plans", "요금제"], ["content", "만드는 콘텐츠"], ["spot", "스팟 제작"], ["deck", "소개서"],
+  ["faq", "자주 묻는 질문"], ["app", "학생 화면"], ["contact", "상담 신청"],
+];
+/** 버튼 위치 — 섹션 id 이거나, 섹션 밖 고정 버튼의 클래스 */
+const LOCATION_KO: Record<string, string> = { dbar: "상단 고정 바", msticky: "모바일 하단 버튼", page: "기타" };
+export const locationLabel = (v: string) => LOCATION_KO[v] ?? SECTIONS.find(([k]) => k === v)?.[1] ?? v;
+
+/** 입점 신청 단계 — `signup_step_complete` 는 **그 단계를 마치고 다음으로 넘어갈 때** 찍힌다(JoinClient `go`). 약관은 sign_up 이 대신한다 */
+export const STEPS: [string, string][] = [
+  ["intro", "소개 넘김"], ["store", "매장 정보"], ["owner", "사장님 · 카카오 로그인"], ["plan", "플랜 고르기"], ["benefit", "혜택 적기"], ["pin", "PIN 정하기"],
+];
+
+export interface Split { value: string; label: string; count: number; users: number }
+export interface Splits { rows: Split[]; unset: { count: number; users: number } }
+
+/** 값별로 나누고 `(not set)` 은 따로 뺀다. order 가 있으면 그 순서(없는 값은 0 으로 채움), 모르는 값은 뒤에 큰 순 */
+export function splitBy(rows: { value: string; count: number; users: number }[], label: (v: string) => string, order?: string[]): Splits {
+  const unset = { count: 0, users: 0 };
+  const m = new Map<string, Split>();
+  for (const r of rows) {
+    if (r.value === NOT_SET || r.value === "") { unset.count += r.count; unset.users = Math.max(unset.users, r.users); continue; }
+    const cur = m.get(r.value);
+    if (cur) { cur.count += r.count; cur.users = Math.max(cur.users, r.users); }
+    else m.set(r.value, { value: r.value, label: label(r.value), count: r.count, users: r.users });
+  }
+  const known = (order ?? []).map((v) => m.get(v) ?? { value: v, label: label(v), count: 0, users: 0 });
+  const rest = [...m.values()].filter((s) => !order?.includes(s.value)).sort((a, b) => b.count - a.count);
+  return { rows: [...known, ...rest], unset };
+}
+
+const pick = (list: [string, string][]) => (v: string) => list.find(([k]) => k === v)?.[1] ?? v;
+export const sectionSplit = (rows: { value: string; count: number; users: number }[]) => splitBy(rows, pick(SECTIONS), SECTIONS.map(([k]) => k));
+export const stepSplit = (rows: { value: string; count: number; users: number }[]) => splitBy(rows, pick(STEPS), STEPS.map(([k]) => k));
+export const ctaTypeSplit = (rows: { value: string; count: number; users: number }[]) =>
+  splitBy(rows, (v) => ({ signup: "입점 신청 버튼", consult: "상담 버튼" })[v] ?? v, ["signup", "consult"]);
+export const leadSplit = (rows: { value: string; count: number; users: number }[]) =>
+  splitBy(rows, (v) => ({ consult: "입점 상담", spot: "스팟 견적" })[v] ?? v, ["consult", "spot"]);
+export const planSplit = (rows: { value: string; count: number; users: number }[]) =>
+  splitBy(rows, (v) => ({ FREE: "무료", BOOST: "Boost", PREMIUM: "Premium" })[v] ?? v, ["FREE", "BOOST", "PREMIUM"]);
+export const locationSplit = (rows: { value: string; count: number; users: number }[]) => splitBy(rows, locationLabel);
 
 /** 28일 일별 — 방문이 없는 날은 행이 없어 0 으로 채운다(웹은 방문이 없으면 실제로 0 이다). dates 는 오래된 날부터 */
 export function fillDays(dates: string[], rows: { date: string; users: number; sessions: number }[]) {

@@ -14,7 +14,7 @@ const cached = unstable_cache(
     if (!r.ok) throw new Error(r.detail ?? r.reason);
     return r.data;
   },
-  ["probe-web-v2"],
+  ["probe-web-v3"],
   { revalidate: 60 * 60 }
 );
 
