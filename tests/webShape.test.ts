@@ -86,16 +86,15 @@ test("KST 날짜 — UTC 로는 전날 밤이어도 한국 날짜로", () => {
   assert.equal(kstDaysAgo(1, utc1530), "2026-10-27");
 });
 
-test("유입 — 채널 묶음과 출처별을 한 표에서, 캠페인(캠퍼스)은 출처에 붙인다", () => {
+test("유입 — 채널 묶음은 합치고, 출처는 캠페인까지 한 줄씩(인스타 DM · 프로필을 가른다)", () => {
   const t = summarizeTraffic([
-    { channel: "Unassigned", source: "kakao", medium: "message", campaign: "(not set)", sessions: 2 },
-    { channel: "Unassigned", source: "qr", medium: "offline", campaign: "경북대", sessions: 3 },
-    { channel: "Unassigned", source: "qr", medium: "offline", campaign: "영남대", sessions: 1 },
+    { channel: "Organic Social", source: "instagram", medium: "social", campaign: "dm", sessions: 3 },
+    { channel: "Organic Social", source: "instagram", medium: "social", campaign: "partner-always", sessions: 2 },
+    { channel: "Unassigned", source: "qr", medium: "offline", campaign: "knu", sessions: 1 },
     { channel: "Direct", source: "(direct)", medium: "(none)", campaign: "(direct)", sessions: 4 },
   ]);
-  assert.deepEqual(t.channels, [{ channel: "Unassigned", sessions: 6 }, { channel: "Direct", sessions: 4 }]);
-  // 세션이 같으면 들어온 순서 그대로(안정 정렬)
-  assert.deepEqual(t.sources.map((s) => [s.label, s.sessions, s.campaigns]), [
-    ["전단 · QR", 4, ["경북대", "영남대"]], ["직접 입력 · 출처 없는 링크", 4, []], ["카카오톡", 2, []],
+  assert.deepEqual(t.channels, [{ channel: "Organic Social", sessions: 5 }, { channel: "Direct", sessions: 4 }, { channel: "Unassigned", sessions: 1 }]);
+  assert.deepEqual(t.sources.map((s) => [s.label, s.sessions]), [
+    ["직접 입력 · 출처 없는 링크", 4], ["인스타그램 · dm", 3], ["인스타그램 · partner-always", 2], ["전단 · QR · knu", 1],
   ]);
 });
