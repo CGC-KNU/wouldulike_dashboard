@@ -144,17 +144,20 @@ const SOURCE_KO: Record<string, string> = {
 };
 export const sourceLabel = (source: string, medium: string) => SOURCE_KO[`${source} / ${medium}`] ?? `${source} / ${medium}`;
 
-export interface SourceRow { key: string; label: string; sessions: number; campaigns: string[] }
-/** 채널 그룹별 합과 출처 / 매체별 합을 한 표에서 낸다. 세션은 더해도 된다(사람 수는 겹쳐 더하지 않는다). 괄호 캠페인((not set) 등)은 뺀다 */
+export interface SourceRow { key: string; label: string; sessions: number }
+/**
+ * 채널 그룹별 합과 출처 / 매체 / 캠페인별 합을 한 표에서 낸다. 세션은 더해도 된다(사람 수는 겹쳐 더하지 않는다).
+ * 규칙이 매체를 social 하나로 두고 캠페인으로 가르므로(인스타 DM · 프로필), 캠페인까지 한 줄로 나눈다. 괄호 캠페인((not set) 등)은 캠페인 없음.
+ */
 export function summarizeTraffic(rows: { channel: string; source: string; medium: string; campaign: string; sessions: number }[]) {
   const ch = new Map<string, number>();
   const src = new Map<string, SourceRow>();
   for (const r of rows) {
     ch.set(r.channel, (ch.get(r.channel) ?? 0) + r.sessions);
-    const key = `${r.source} / ${r.medium}`;
-    const s = src.get(key) ?? { key, label: sourceLabel(r.source, r.medium), sessions: 0, campaigns: [] };
+    const camp = r.campaign && !r.campaign.startsWith("(") ? r.campaign : "";
+    const key = `${r.source} / ${r.medium}${camp ? ` / ${camp}` : ""}`;
+    const s = src.get(key) ?? { key, label: `${sourceLabel(r.source, r.medium)}${camp ? ` · ${camp}` : ""}`, sessions: 0 };
     s.sessions += r.sessions;
-    if (r.campaign && !r.campaign.startsWith("(") && !s.campaigns.includes(r.campaign)) s.campaigns.push(r.campaign);
     src.set(key, s);
   }
   return {
