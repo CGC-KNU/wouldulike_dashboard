@@ -1,8 +1,8 @@
 import { GoogleAuth } from "google-auth-library";
 import { credentialsFromEnv } from "@/lib/bigquery/appMetrics";
 import {
-  buildFunnel, ctaTypeSplit, fillDays, kstDaysAgo, leadSplit, locationSplit, mergePages, planSplit, sectionSplit, stepSplit, storeClicks,
-  type Splits, type StoreClicks, type WebFunnel, type WebPage,
+  buildFunnel, ctaTypeSplit, fillDays, kstDaysAgo, leadSplit, locationSplit, mergePages, planSplit, sectionSplit, stepSplit, storeClicks, summarizeTraffic,
+  type SourceRow, type Splits, type StoreClicks, type WebFunnel, type WebPage,
 } from "./webShape";
 
 /**
@@ -33,7 +33,7 @@ const WEB_ABROAD = and(WEB, { notExpression: KR });
 
 export interface WebDay { date: string; users: number; sessions: number }
 export interface WebWindow { from: string; to: string; users: number; sessions: number; engaged: number }
-export interface WebChannel { channel: string; sessions: number; users: number }
+export interface WebChannel { channel: string; sessions: number }
 export interface WebEvent { name: string; count: number; users: number }
 export interface WebMetrics {
   /** 최근 7일(어제까지)과 그 앞 7일 — 한국만 */
@@ -44,6 +44,8 @@ export interface WebMetrics {
   /** 최근 28일 일별 — 한국만 */
   days: WebDay[];
   channels: WebChannel[];
+  /** 출처 / 매체(utm) — 채널 그룹이 뭉치는 카카오톡 · QR 을 가른다 */
+  sources: SourceRow[];
   events: WebEvent[];
   pages: WebPage[];
   funnel: WebFunnel;
@@ -94,7 +96,7 @@ export async function readWebMetrics(env: Record<string, string | undefined> = p
       run(totals(wFrom, to)),
       run(totals(pFrom, pTo)),
       run({ dimensionFilter: WEB_ABROAD, dateRanges: [{ startDate: wFrom, endDate: to, name: "week" }, { startDate: dFrom, endDate: to, name: "d28" }], metrics: [{ name: "activeUsers" }] }),
-      run({ dateRanges: d28, dimensions: [{ name: "sessionDefaultChannelGroup" }], metrics: [{ name: "sessions" }, { name: "activeUsers" }], orderBys: [{ metric: { metricName: "sessions" }, desc: true }], limit: 12 }),
+      run({ dateRanges: d28, dimensions: ["sessionDefaultChannelGroup", "sessionSource", "sessionMedium", "sessionCampaignName"].map((name) => ({ name })), metrics: [{ name: "sessions" }], limit: 200 }),
       run({ dateRanges: d28, dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }, { name: "totalUsers" }], orderBys: [{ metric: { metricName: "eventCount" }, desc: true }], limit: 40 }),
       run({ dateRanges: d28, dimensions: [{ name: "hostName" }, { name: "pagePath" }], metrics: [{ name: "activeUsers" }, { name: "screenPageViews" }], limit: 50 }),
       run({ dimensionFilter: and(WEB_KR, eq("eventName", "click")), dateRanges: d28, dimensions: [{ name: "linkDomain" }, { name: "hostName" }, { name: "pagePath" }], metrics: [{ name: "eventCount" }], limit: 50 }),
@@ -111,6 +113,7 @@ export async function readWebMetrics(env: Record<string, string | undefined> = p
     const vals = (rep: Report | undefined, i = 0) => (rep?.rows ?? []).map((r) => ({ value: dim(r, i), count: num(r, 0), users: num(r, 1) }));
     const lpRows = (event: string, i: number) => (lpRep?.rows ?? []).filter((r) => dim(r, 0) === event).map((r) => ({ value: dim(r, i), count: num(r, 0), users: num(r, 1) }));
     const cta = ctaTypeSplit(vals(ctaRep));
+    const traffic = summarizeTraffic((ch.rows ?? []).map((r) => ({ channel: dim(r, 0), source: dim(r, 1), medium: dim(r, 2), campaign: dim(r, 3), sessions: num(r, 0) })));
 
     const win = (rep: Report, from: string, end: string): WebWindow => {
       const r = rep.rows?.[0];
@@ -128,7 +131,8 @@ export async function readWebMetrics(env: Record<string, string | undefined> = p
         prevWeek: win(p, pFrom, pTo),
         abroad: { week: abroadOf("week"), d28: abroadOf("d28") },
         days: fillDays(dates, (daily.rows ?? []).map((r) => ({ date: dim(r, 0), users: num(r, 0), sessions: num(r, 1) }))),
-        channels: (ch.rows ?? []).map((r) => ({ channel: dim(r, 0), sessions: num(r, 0), users: num(r, 1) })),
+        channels: traffic.channels,
+        sources: traffic.sources,
         events,
         pages,
         funnel: { ...buildFunnel(pages, events), click: cta.rows.find((s) => s.value === "signup")?.users ?? 0 },

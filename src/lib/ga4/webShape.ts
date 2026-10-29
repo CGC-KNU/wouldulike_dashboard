@@ -130,6 +130,39 @@ export const planSplit = (rows: { value: string; count: number; users: number }[
   splitBy(rows, (v) => ({ FREE: "무료", BOOST: "Boost", PREMIUM: "Premium" })[v] ?? v, ["FREE", "BOOST", "PREMIUM"]);
 export const locationSplit = (rows: { value: string; count: number; users: number }[]) => splitBy(rows, locationLabel);
 
+/**
+ * 유입 — GA4 채널 그룹은 카카오톡 · QR 처럼 GA4 가 모르는 출처를 전부 「Unassigned」로 뭉친다.
+ * 그래서 출처 / 매체(utm_source / utm_medium)로도 나눠 보인다. 공유 링크 규칙(1029) — 인스타 프로필이 이미 쓰던
+ * `instagram / social / partner-always` 방식에 맞춰 매체는 social, 어디서 보냈는지는 캠페인으로 가른다:
+ * 인스타 DM instagram/social/dm · 카카오톡 kakao/social/dm · 전단 QR qr/offline/<캠퍼스>(QR 은 GA4 묶음에 없어 「분류 없음」).
+ */
+const SOURCE_KO: Record<string, string> = {
+  "(direct) / (none)": "직접 입력 · 출처 없는 링크",
+  "instagram / social": "인스타그램", "l.instagram.com / referral": "인스타 앱(자동 분류)", "m.facebook.com / referral": "페이스북 · 인스타 앱 브라우저",
+  "kakao / social": "카카오톡", "kakao / message": "카카오톡", "qr / offline": "전단 · QR",
+  "google / organic": "구글 검색", "naver / organic": "네이버 검색", "m.search.naver.com / referral": "네이버 검색", "search.naver.com / referral": "네이버 검색",
+};
+export const sourceLabel = (source: string, medium: string) => SOURCE_KO[`${source} / ${medium}`] ?? `${source} / ${medium}`;
+
+export interface SourceRow { key: string; label: string; sessions: number; campaigns: string[] }
+/** 채널 그룹별 합과 출처 / 매체별 합을 한 표에서 낸다. 세션은 더해도 된다(사람 수는 겹쳐 더하지 않는다). 괄호 캠페인((not set) 등)은 뺀다 */
+export function summarizeTraffic(rows: { channel: string; source: string; medium: string; campaign: string; sessions: number }[]) {
+  const ch = new Map<string, number>();
+  const src = new Map<string, SourceRow>();
+  for (const r of rows) {
+    ch.set(r.channel, (ch.get(r.channel) ?? 0) + r.sessions);
+    const key = `${r.source} / ${r.medium}`;
+    const s = src.get(key) ?? { key, label: sourceLabel(r.source, r.medium), sessions: 0, campaigns: [] };
+    s.sessions += r.sessions;
+    if (r.campaign && !r.campaign.startsWith("(") && !s.campaigns.includes(r.campaign)) s.campaigns.push(r.campaign);
+    src.set(key, s);
+  }
+  return {
+    channels: [...ch.entries()].map(([channel, sessions]) => ({ channel, sessions })).sort((a, b) => b.sessions - a.sessions),
+    sources: [...src.values()].sort((a, b) => b.sessions - a.sessions),
+  };
+}
+
 /** KST 의 오늘에서 n 일 전 날짜(YYYY-MM-DD) */
 export function kstDaysAgo(n: number, now = Date.now()): string {
   const kst = new Date(now + 9 * 3_600_000);
