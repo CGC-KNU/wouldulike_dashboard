@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFunnel, ctaTypeSplit, fillDays, hiddenQueries, kstDaysAgo, locationLabel, mergePages, pageKey, sectionSplit, stepSplit, storeClicks, storeOf } from "../src/lib/ga4/webShape";
+import { buildFunnel, ctaTypeSplit, fillDays, hiddenQueries, kstDaysAgo, locationLabel, summarizeTraffic, mergePages, pageKey, sectionSplit, stepSplit, storeClicks, storeOf } from "../src/lib/ga4/webShape";
 
 /**
  * Probe · 웹 지표(1028 A) — GA4 응답을 화면 숫자로 바꾸는 부분.
@@ -84,4 +84,18 @@ test("KST 날짜 — UTC 로는 전날 밤이어도 한국 날짜로", () => {
   const utc1530 = Date.parse("2026-10-27T15:30:00Z"); // KST 10/28 00:30
   assert.equal(kstDaysAgo(0, utc1530), "2026-10-28");
   assert.equal(kstDaysAgo(1, utc1530), "2026-10-27");
+});
+
+test("유입 — 채널 묶음과 출처별을 한 표에서, 캠페인(캠퍼스)은 출처에 붙인다", () => {
+  const t = summarizeTraffic([
+    { channel: "Unassigned", source: "kakao", medium: "message", campaign: "(not set)", sessions: 2 },
+    { channel: "Unassigned", source: "qr", medium: "offline", campaign: "경북대", sessions: 3 },
+    { channel: "Unassigned", source: "qr", medium: "offline", campaign: "영남대", sessions: 1 },
+    { channel: "Direct", source: "(direct)", medium: "(none)", campaign: "(direct)", sessions: 4 },
+  ]);
+  assert.deepEqual(t.channels, [{ channel: "Unassigned", sessions: 6 }, { channel: "Direct", sessions: 4 }]);
+  // 세션이 같으면 들어온 순서 그대로(안정 정렬)
+  assert.deepEqual(t.sources.map((s) => [s.label, s.sessions, s.campaigns]), [
+    ["전단 · QR", 4, ["경북대", "영남대"]], ["직접 입력 · 출처 없는 링크", 4, []], ["카카오톡", 2, []],
+  ]);
 });

@@ -28,7 +28,9 @@ interface Payload {
   prevWeek: Win;
   abroad: { week: number; d28: number };
   days: { date: string; users: number; sessions: number }[];
-  channels: { channel: string; sessions: number; users: number }[];
+  channels: { channel: string; sessions: number }[];
+  /** 출처 / 매체(utm) — 옛 응답(캐시)에는 없다 */
+  sources?: { key: string; label: string; sessions: number; campaigns: string[] }[];
   events: { name: string; count: number; users: number }[];
   pages: Page[];
   funnel: { home: number; click?: number; join: number; step: number; signup: number };
@@ -335,7 +337,20 @@ export default function WebMetrics() {
                 ))}
               </ul>
             )}
-            <p className="text-[12px] text-gray-500 mt-2">검색 등록(구글 · 네이버) 효과는 「검색」 줄이 늘어나는지로 봅니다.</p>
+            {data.sources && data.sources.length > 0 && (
+              <>
+                <p className="text-[12.5px] font-semibold text-gray-600 mt-3 mb-1">출처별(링크에 붙인 utm)</p>
+                <ul className="divide-y divide-black/[0.05]">
+                  {data.sources.map((s) => (
+                    <li key={s.key} className="flex items-center justify-between gap-2 py-1.5 text-[13.5px]">
+                      <span className="text-gray-800 min-w-0">{s.label}{s.campaigns.length > 0 && <span className="text-gray-500 ml-1.5 text-[12px]">{s.campaigns.join(" · ")}</span>}</span>
+                      <b className="tabular-nums text-gray-900 shrink-0">{s.sessions.toLocaleString()}</b>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <p className="text-[12px] text-gray-500 mt-2">검색 등록(구글 · 네이버) 효과는 「검색」 줄이 늘어나는지로 봅니다. 전단 QR 은 위 묶음에서 「분류 없음」으로 잡혀 출처별 목록에서 가릅니다.</p>
           </Card>
 
           <Card>
