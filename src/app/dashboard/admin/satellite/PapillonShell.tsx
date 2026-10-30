@@ -9,6 +9,7 @@ import MyDashboardScreen from "./MyDashboardScreen";
 import OverviewScreen from "./OverviewScreen";
 import PapillonDashboard from "./PapillonDashboard";
 import PlanQuickList from "./PlanQuickList";
+import RefLab from "./RefLab";
 import SettingsScreen from "./SettingsScreen";
 import SponsorshipList from "./SponsorshipList";
 import TaggingConsole from "./TaggingConsole";
@@ -18,6 +19,7 @@ type Screen =
   | "sponsorship"
   | "content-list"
   | "editor-list"
+  | "refs"
   | "overview"
   | "mine"
   | "post-list"
@@ -59,6 +61,7 @@ const NAV: { key: Screen; label: string; leadOnly?: boolean; sepBefore?: boolean
   { key: "sponsorship", label: "협찬" },
   { key: "content-list", label: "콘텐츠 피드백" },
   { key: "editor-list", label: "에디터" },
+  { key: "refs", label: "레퍼런스 (실험실)" },   // 1030 민열님: 다른 음식 매거진 반응으로 주제 잡기
   { key: "overview", label: "오버뷰", sepBefore: true },
   { key: "mine", label: "내 대시보드" },
   { key: "post-list", label: "게시물 상세" },
@@ -125,6 +128,7 @@ export default function PapillonShell({ onBack }: { onBack?: () => void } = {}) 
             emptyLabel="작업 중인 콘텐츠가 없습니다."
           />
         )}
+        {screen === "refs" && <RefLab />}
         {screen === "overview" && <OverviewScreen />}
         {screen === "mine" && <MyDashboardScreen />}
         {screen === "post-list" && (
