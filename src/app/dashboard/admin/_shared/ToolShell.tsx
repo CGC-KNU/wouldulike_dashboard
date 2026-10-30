@@ -38,6 +38,7 @@ import {
   IconMovie,
   IconFileText,
   IconPencil,
+  IconFlask,
   IconPhoto,
   IconPresentationAnalytics,
   IconSettings,
@@ -137,6 +138,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   sponsorship: IconHeartHandshake,
   "content-list": IconMessage2,
   "editor-list": IconPencil,
+  refs: IconFlask,   // 레퍼런스 (실험실) 1030
   overview: IconPresentationAnalytics,
   mine: IconUserCircle,
   "post-list": IconClipboardList,
