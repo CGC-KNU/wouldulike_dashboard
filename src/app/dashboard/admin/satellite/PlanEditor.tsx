@@ -24,7 +24,8 @@ import {
 
 /** 유형별 업로드 제약 — 서버와 같은 규칙을 화면에서도 강제한다 */
 const ACCEPT: Record<MediaType, string> = {
-  carousel: "image/png,image/jpeg,image/webp",
+  // 카드뉴스는 낱장마다 이미지·동영상을 섞을 수 있다 (인스타 캐러셀 VIDEO 낱장)
+  carousel: "image/png,image/jpeg,image/webp,video/mp4,video/quicktime",
   image: "image/png,image/jpeg,image/webp",
   reel: "video/mp4,video/quicktime",
 };
@@ -33,7 +34,7 @@ const ACCEPT: Record<MediaType, string> = {
  * 에디터 — 실제로 매주 쓰는 화면 (설계서 §07-4)
  *
  * 하드 제한 3개를 여기서 강제한다. 발행 시점에 터지면 이미 마감이 지난 뒤다.
- *   · 이미지 10장  — 11장째 파일 선택 자체를 막는다
+ *   · 10장(이미지·동영상 합산) — 11장째 파일 선택 자체를 막는다
  *   · 해시태그 5개 — 입력 중 카운터로 보여주고 초과 시 저장을 거부한다
  *   · JPEG 변환    — 업로드하면 서버가 바로 변환한다. 변환 전에는 준비완료로 못 넘어간다
  */
@@ -195,7 +196,7 @@ export default function PlanEditor({
     if (!files || !plan) return;
     const list = Array.from(files);
 
-    // 릴스는 동영상 1개, 카드뉴스는 이미지 10장
+    // 릴스는 동영상 1개, 카드뉴스는 이미지·동영상 섞어 10장
     const remaining = plan.is_reel ? 1 - plan.assets.length : plan.limits.max_cards - plan.assets.length;
 
     if (remaining <= 0) {
@@ -737,7 +738,7 @@ export default function PlanEditor({
                 </div>
                 {plan.assets.length > 0 && plan.can_edit && (
                   <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
-                    파일이 올라간 뒤에는 유형을 바꿀 수 없습니다. 릴스는 동영상, 카드뉴스는 이미지만 받습니다.
+                    파일이 올라간 뒤에는 유형을 바꿀 수 없습니다. 릴스는 동영상 1개, 카드뉴스는 이미지·동영상을 섞어 10장까지 받습니다.
                   </p>
                 )}
                 {plan.is_reel && (
@@ -774,7 +775,7 @@ export default function PlanEditor({
                     <p className="text-[11px] text-gray-400 mt-0.5">
                       {plan.is_reel
                         ? "MP4 또는 MOV · 1개만 발행됩니다"
-                        : "끌어서 순서를 바꿉니다 · 첫 장이 표지입니다"}
+                        : "이미지·동영상 섞어 10장 · 끌어서 순서를 바꿉니다 · 첫 장이 표지입니다"}
                     </p>
                   </div>
                   <span
@@ -849,7 +850,7 @@ export default function PlanEditor({
                 <p className="text-[10px] text-gray-400 mt-2.5 leading-relaxed">
                   {plan.is_reel
                     ? "동영상은 변환 없이 원본이 그대로 발행됩니다. 인코딩은 인스타가 처리하며 최대 5분 걸릴 수 있습니다."
-                    : "PNG 로 올려도 서버가 발행용 JPEG 로 변환합니다. 원본은 그대로 보관됩니다."}
+                    : "PNG 로 올려도 서버가 발행용 JPEG 로 변환합니다. 동영상(MP4·MOV)은 원본 그대로 발행되고 인코딩에 최대 5분 걸릴 수 있습니다. 모든 장은 첫 장 비율에 맞춰 잘립니다 — 영상도 같은 비율로 맞춰 주세요."}
                 </p>
               </section>
 
@@ -1371,6 +1372,8 @@ function AssetTile({
   onAltTextChange?: (v: string) => void;
 }) {
   const isVideo = asset.kind === "video";
+  // 카드뉴스 칸의 동영상은 다른 장과 같은 정사각 썸네일로 — 컨트롤이 있으면 끌어서 순서 바꾸기가 안 된다
+  const reelVideo = isVideo && !showOrder;
   const canDrag = editable && draggableTile;
   const [altOpen, setAltOpen] = useState(false);
   const [altDraft, setAltDraft] = useState(asset.alt_text);
@@ -1389,13 +1392,27 @@ function AssetTile({
         onDrop();
       }}
       className={`relative rounded-xl overflow-hidden border border-gray-100 bg-gray-50 group ${
-        isVideo ? "aspect-[9/16]" : "aspect-square"
+        reelVideo ? "aspect-[9/16]" : "aspect-square"
       } ${canDrag ? "cursor-grab" : ""}`}
     >
       {asset.preview_url ? (
-        isVideo ? (
+        reelVideo ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <video src={asset.preview_url} controls playsInline className="w-full h-full object-cover bg-black" />
+        ) : isVideo ? (
+          <>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              src={asset.preview_url}
+              muted
+              playsInline
+              preload="metadata"
+              className="w-full h-full object-cover bg-black pointer-events-none"
+            />
+            <span className="absolute bottom-1 right-1 text-[9px] font-bold text-white bg-black/50 rounded px-1">
+              ▶
+            </span>
+          </>
         ) : (
           <PreviewableImg src={asset.preview_url} alt={`${index + 1}번째 장`} className="w-full h-full object-cover" />
         )
