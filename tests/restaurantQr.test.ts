@@ -3,17 +3,40 @@ import assert from "node:assert/strict";
 import {
   buildRestaurantQrGuideHtml,
   groupByCampus,
+  legacyBridgeLink,
   normalizeQrRestaurants,
   restaurantQrLink,
+  webStampLink,
 } from "../src/lib/restaurantQr";
 
-test("매장 QR 주소는 브릿지 + type=restaurant + 번호 + 인쇄물", () => {
+test("웹 스탬프 QR 주소는 /s/{번호}?src=", () => {
+  assert.equal(webStampLink("https://stamp.example.com/", 317), "https://stamp.example.com/s/317?src=sticker");
+  assert.equal(webStampLink("https://stamp.example.com", 30, "poster"), "https://stamp.example.com/s/30?src=poster");
+});
+
+test("전환일(12/1 KST) 전에는 기존 브릿지, 이후에는 웹 주소", () => {
+  process.env.NEXT_PUBLIC_STAMP_WEB_BASE = "https://stamp.example.com";
+  try {
+    const before = new Date("2026-11-30T14:59:59Z"); // 11/30 23:59:59 KST
+    const after = new Date("2026-11-30T15:00:00Z"); // 12/01 00:00 KST
+    assert.equal(restaurantQrLink(317, "sticker", before), legacyBridgeLink(317));
+    assert.equal(restaurantQrLink(317, "sticker", after), "https://stamp.example.com/s/317?src=sticker");
+  } finally {
+    delete process.env.NEXT_PUBLIC_STAMP_WEB_BASE;
+  }
+});
+
+test("웹 주소가 없으면 전환일이 지나도 기존 브릿지", () => {
+  assert.equal(restaurantQrLink(317, "sticker", new Date("2027-01-01T00:00:00Z")), legacyBridgeLink(317));
+});
+
+test("기존 브릿지 주소는 type=restaurant + type=restaurant + 번호 + 인쇄물", () => {
   assert.equal(
-    restaurantQrLink(317),
+    legacyBridgeLink(317),
     "https://cgc-knu.github.io/wouldulike_deeplink/?type=restaurant&id=317&src=sticker",
   );
   assert.equal(
-    restaurantQrLink(30, "poster"),
+    legacyBridgeLink(30, "poster"),
     "https://cgc-knu.github.io/wouldulike_deeplink/?type=restaurant&id=30&src=poster",
   );
 });

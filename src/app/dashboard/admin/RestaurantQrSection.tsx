@@ -11,6 +11,9 @@ import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 import {
   QR_PRINT_SOURCES,
   groupByCampus,
+  isWebStampActive,
+  webStampBase,
+  webStampStart,
   restaurantQrLink,
   type QrPrintSource,
   type QrRestaurant,
@@ -133,10 +136,17 @@ export default function RestaurantQrSection() {
         </a>
       </div>
       <p className="text-xs text-gray-400">
-        앱 식당 탭에 보이는 매장이 자동으로 올라옵니다. 처음 찍으면 쿠폰, 다음부터는 스탬프 적립 화면이 열립니다.
+        앱 식당 탭에 보이는 매장이 자동으로 올라옵니다. 전환일 이후에는 QR을 찍으면 웹 스탬프 적립 화면이 열리고, 적립 후 앱 설치로 이어집니다.
         {restaurants && restaurants.length > 0 && ` 현재 ${restaurants.length}곳.`}
       </p>
 
+      {!isWebStampActive() && (
+        <p className="text-xs rounded-lg bg-amber-50 text-amber-700 px-3 py-2">
+          {webStampBase()
+            ? `지금은 기존 앱 흐름 QR입니다(이미 붙인 QR과 동일). ${webStampStart().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}부터 웹 스탬프 QR로 자동 전환됩니다.`
+            : "웹 스탬프 주소(NEXT_PUBLIC_STAMP_WEB_BASE)가 설정되지 않아 기존 앱 흐름 QR이 표시됩니다."}
+        </p>
+      )}
       {err && <p className="text-xs text-red-500">{err}</p>}
 
       {restaurants === null ? (

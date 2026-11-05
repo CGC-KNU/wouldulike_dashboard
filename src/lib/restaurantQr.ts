@@ -22,8 +22,43 @@ export interface QrRestaurant {
   campus: string;
 }
 
-export function restaurantQrLink(restaurantId: number, src: QrPrintSource = "sticker"): string {
+/**
+ * 웹 스탬프(wouldulike_experience) 배포 주소. 정해지면 NEXT_PUBLIC_STAMP_WEB_BASE 에 넣는다.
+ */
+export function webStampBase(): string {
+  return (process.env.NEXT_PUBLIC_STAMP_WEB_BASE ?? "").trim().replace(/\/+$/, "");
+}
+
+/** 이 날(KST 0시) 전까지는 이미 붙인 QR 과 같은 기존 앱 흐름 주소를 유지한다. */
+export const DEFAULT_WEB_STAMP_START = "2026-12-01T00:00:00+09:00";
+
+export function webStampStart(): Date {
+  const raw = (process.env.NEXT_PUBLIC_STAMP_WEB_START ?? "").trim();
+  const d = new Date(raw || DEFAULT_WEB_STAMP_START);
+  return Number.isNaN(d.getTime()) ? new Date(DEFAULT_WEB_STAMP_START) : d;
+}
+
+/** 웹 스탬프 QR 을 쓸 때인가: 웹 주소가 있고, 전환일이 지났다. */
+export function isWebStampActive(now: Date = new Date()): boolean {
+  return webStampBase() !== "" && now.getTime() >= webStampStart().getTime();
+}
+
+/** 웹 스탬프 QR: https://<웹도메인>/s/{매장번호}?src=sticker */
+export function webStampLink(base: string, restaurantId: number, src: QrPrintSource = "sticker"): string {
+  return `${base.replace(/\/+$/, "")}/s/${restaurantId}?src=${src}`;
+}
+
+/** 기존 앱 흐름 브릿지 주소. 전환일 전, 또는 웹 주소가 없을 때 쓴다. */
+export function legacyBridgeLink(restaurantId: number, src: QrPrintSource = "sticker"): string {
   return `${QR_BRIDGE_BASE}?type=restaurant&id=${restaurantId}&src=${src}`;
+}
+
+export function restaurantQrLink(
+  restaurantId: number,
+  src: QrPrintSource = "sticker",
+  now: Date = new Date(),
+): string {
+  return isWebStampActive(now) ? webStampLink(webStampBase(), restaurantId, src) : legacyBridgeLink(restaurantId, src);
 }
 
 const CAMPUS_ORDER = ["경북대", "계명대", "영남대"];
@@ -92,6 +127,9 @@ export function buildRestaurantQrGuideHtml(
   const date = formatKoDate(opts.generatedAt ?? new Date());
   const summary = groups.map((g) => `${esc(g.campus)} ${g.restaurants.length}`).join(", ");
   const example = restaurantQrLink(317);
+  const addrPrefix = isWebStampActive(opts.generatedAt)
+    ? `${esc(webStampBase())}/s/<b>매장번호</b>?src=sticker`
+    : `${esc(QR_BRIDGE_BASE)}?type=restaurant&amp;id=<b>매장번호</b>&amp;src=sticker`;
 
   const sections = groups
     .map((g) => {
@@ -156,9 +194,9 @@ ${rows}
 
 <h2>QR에 넣을 주소</h2>
 <p>테이블 스티커는 아래 주소입니다. 숫자만 매장 번호로 바꿉니다.</p>
-<span class="addr">${esc(QR_BRIDGE_BASE)}?type=restaurant&amp;id=<b>매장번호</b>&amp;src=sticker</span>
+<span class="addr">${addrPrefix}</span>
 <p>예) 라라더(317): <a href="${esc(example)}"><code>${esc(example)}</code></a></p>
-<p><code>type=restaurant</code>와 <code>src=sticker</code>는 그대로 둡니다. <code>id</code>만 매장 번호입니다.</p>
+<p><code>src=sticker</code>는 그대로 두고, 매장 번호만 바꿉니다.</p>
 <p>포스터는 끝의 <code>sticker</code>를 <code>poster</code>로, 테이블 텐트는 <code>tent</code>로 바꿉니다. 쿠폰·스탬프 동작은 같고, 나중에 어떤 인쇄물이 효과가 있었는지만 구분됩니다. 한 매장에 스티커와 포스터를 같이 쓰면 주소를 두 개 만듭니다.</p>
 
 <h2>손님이 찍으면</h2>
