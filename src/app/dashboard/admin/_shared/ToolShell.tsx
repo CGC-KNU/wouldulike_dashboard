@@ -118,6 +118,7 @@ const NAV_ICON: Record<string, typeof IconBuildingStore> = {
   "probe-metrics": IconChartBar,
   "probe-quality": IconAlertTriangle,
   "probe-mileage": IconGift,
+  "probe-surveys": IconClipboardList,
   "probe-reports": IconFileDescription,
   "probe-insta": IconBrandInstagram,
   "hubble-map": IconMap2,

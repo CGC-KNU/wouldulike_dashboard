@@ -30,6 +30,7 @@ import DuplicateStoreChoice, { dupsOf, type DupStore } from "./astro/DuplicateSt
 import ProbeOverview from "./probe/ProbeOverview";
 import DataQuality from "./probe/DataQuality";
 import MileageOps from "./probe/MileageOps";
+import SurveyOps from "./probe/SurveyOps";
 import Reports from "./probe/Reports";
 import CastorMap from "./castor/CastorMap";
 import dynamic from "next/dynamic";
@@ -94,6 +95,7 @@ type Tab =
   | "probe-quality"
   | "probe-reports"
   | "probe-mileage"
+  | "probe-surveys"
   | "probe-insta"
   // Castor(앱 구조·여정)
   | "hubble-map"
@@ -2142,6 +2144,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-reports", label: "매장 리포트", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-mileage", label: "마일리지 추첨", icon: "◍", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-surveys", label: "설문 조사", icon: "?", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-insta", label: "인스타 추이", icon: "◫", allow: (me) => me.permissions.can_restaurants },
 
   // ── Hubble — 파트너 탐색(1010). 영업 권한(Astro 와 같음).
@@ -2262,7 +2265,7 @@ const PRODUCTS: {
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
     description: "매장 리포트 · 마일리지 추첨 · 매장·앱·웹 지표 · 정합성",
-    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-quality", "probe-metrics", "probe-live", "probe-app", "probe-web", "probe-insta"],
+    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-surveys", "probe-quality", "probe-metrics", "probe-live", "probe-app", "probe-web", "probe-insta"],
     ready: true,
   },
   {
@@ -2635,6 +2638,7 @@ export default function AdminHomePage() {
           {activeTab === "probe-home" && <ProbeHome onGo={go} />}
           {activeTab === "probe-reports" && <Reports onGo={go} />}
           {activeTab === "probe-mileage" && <MileageOps actor={actorName} />}
+          {activeTab === "probe-surveys" && <SurveyOps />}
           {activeTab === "probe-metrics" && <ProbeOverview onGo={go} />}
           {activeTab === "probe-live" && <LiveMetrics />}
           {activeTab === "probe-app" && <AppMetrics />}
