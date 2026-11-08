@@ -12,6 +12,7 @@ import ProbeHome from "./probe/ProbeHome";
 import InstaTrend from "./probe/InstaTrend";
 import AppMetrics from "./probe/AppMetrics";
 import WebMetrics from "./probe/WebMetrics";
+import LiveMetrics from "./probe/LiveMetrics";
 import CastorHome from "./castor/CastorHome";
 import Atlas from "./atlas/Atlas";
 import Playroom from "./playroom/Playroom";
@@ -87,6 +88,7 @@ type Tab =
   // Probe(지표·데이터)
   | "probe-home"
   | "probe-metrics"
+  | "probe-live"
   | "probe-app"
   | "probe-web"
   | "probe-quality"
@@ -2134,6 +2136,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   //    마케팅에게 지표를 열려면 입금 규칙을 뺀 별도 탭으로 — 여기서 조용히 권한을 넓히지 않는다.
   { key: "probe-home", label: "홈", icon: "⌂", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-metrics", label: "매장 지표", icon: "▲", allow: (me) => me.permissions.can_restaurants },
+  { key: "probe-live", label: "실시간 지표", icon: "◉", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-app", label: "앱 지표", icon: "▤", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-web", label: "웹 지표", icon: "◎", allow: (me) => me.permissions.can_restaurants },
   { key: "probe-quality", label: "정합성 점검", icon: "!", allow: (me) => me.permissions.can_restaurants },
@@ -2259,7 +2262,7 @@ const PRODUCTS: {
     name: "Probe",
     subtitle: "지표 · 데이터 분석",
     description: "매장 리포트 · 마일리지 추첨 · 매장·앱·웹 지표 · 정합성",
-    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-quality", "probe-metrics", "probe-app", "probe-web", "probe-insta"],
+    tabs: ["probe-home", "probe-reports", "probe-mileage", "probe-quality", "probe-metrics", "probe-live", "probe-app", "probe-web", "probe-insta"],
     ready: true,
   },
   {
@@ -2633,6 +2636,7 @@ export default function AdminHomePage() {
           {activeTab === "probe-reports" && <Reports onGo={go} />}
           {activeTab === "probe-mileage" && <MileageOps actor={actorName} />}
           {activeTab === "probe-metrics" && <ProbeOverview onGo={go} />}
+          {activeTab === "probe-live" && <LiveMetrics />}
           {activeTab === "probe-app" && <AppMetrics />}
           {activeTab === "probe-web" && <WebMetrics />}
           {activeTab === "probe-quality" && (
