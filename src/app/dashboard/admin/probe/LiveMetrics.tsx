@@ -7,6 +7,7 @@ import { Button, Card, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
 import { TagChip } from "./kit";
 import { LIVE_FAILURES, LIVE_STEPS, type Ga4Live } from "@/lib/bigquery/liveShape";
 import type { LiveDb } from "@/app/api/probe/live/route";
+import NowCard from "./NowCard";
 
 /**
  * Probe · 실시간 지표 — 지금부터 24시간(민찬 1108). 매장 지표와 앱 지표 사이.
@@ -104,9 +105,11 @@ export default function LiveMetrics() {
     <>
       <PageHeader
         title="실시간 지표"
-        description="지금부터 24시간 전까지 앱에서 일어난 일입니다. 쿠폰 · 스탬프 · 가입은 DB 원장이라 바로 반영되고, GA4 칸은 앱이 이벤트를 묶어 보내 수 분~1시간 늦게 붙는 잠정값입니다. 「미확인」은 0 이 아니라 읽지 못한 값입니다."
+        description="맨 위 「지금」 칸은 GA4 실시간 최근 30분(5분 칸)이고, 그 아래는 지금부터 24시간 전까지 앱에서 일어난 일입니다. 쿠폰 · 스탬프 · 가입은 DB 원장이라 바로 반영되고, GA4 칸은 앱이 이벤트를 묶어 보내 수 분~1시간 늦게 붙는 잠정값입니다. 「미확인」은 0 이 아니라 읽지 못한 값입니다."
         actions={<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>}
       />
+
+      <div className="mb-4"><NowCard /></div>
 
       {!loading && failed && (
         <div className="mb-4"><Notice tone="red" title="지금 읽지 못했습니다">실시간 지표를 읽지 못했습니다. 없는 것이 아니라 확인하지 못한 것입니다 — 다시 불러와 주세요.</Notice></div>
