@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+/** 손님 앱 토큰 → 점주 토큰. 점주가 아니거나 백엔드가 거절하면 null. */
+async function exchangeForOwnerToken(appAccess: string): Promise<{ access: string; refresh?: string } | null> {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/auth/app-token/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: appAccess }),
+      cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as { is_owner?: boolean; access?: string; refresh?: string };
+    if (!res.ok || !data.is_owner || !data.access) {
+      console.warn("[kakao/route] owner token exchange failed:", res.status);
+      return null;
+    }
+    return { access: data.access, refresh: data.refresh };
+  } catch (e) {
+    console.error("[kakao/route] owner token exchange error:", e);
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const { code, redirect_uri, onboard, join } = (await req.json()) as { code?: string; redirect_uri?: string; onboard?: boolean; join?: boolean };
 
@@ -48,7 +69,6 @@ export async function POST(req: NextRequest) {
 
   const body = await backendRes.json();
   const access: string = body.token?.access ?? body.access;
-  const refresh: string = body.token?.refresh ?? body.refresh;
   const is_owner: boolean = body.is_owner ?? false;
   const is_staff_account: boolean = body.is_staff_account ?? false;
   const kakaoId: number | undefined = body.user?.kakao_id;
@@ -93,19 +113,31 @@ export async function POST(req: NextRequest) {
   }
 
   if (is_owner) {
-    cookieStore.set("access_token", access, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30,
-    });
-    cookieStore.set("refresh_token", refresh, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 90,
-    });
-    return NextResponse.json({ success: true });
+    // 카카오 로그인이 주는 토큰은 **손님 앱 토큰**이다 — is_owner·restaurant_id 클레임이 없다.
+    // 백엔드는 0925(ba6df18)부터 /api/astro/ 등 사내 도구 길에서 이 토큰을 401 로 거절하므로,
+    // 그대로 쿠키에 심으면 재로그인한 점주만 데이터 조회가 전부 실패한다 (PIN 첫 인증은 verify-owner 가
+    // 점주 토큰을 줘서 멀쩡했다). 그래서 여기서 점주 토큰으로 교환해서 심는다.
+    // 매장이 여럿이면 백엔드가 가장 최근에 인증한 매장으로 연다.
+    const owner = await exchangeForOwnerToken(access);
+    if (owner) {
+      cookieStore.set("access_token", owner.access, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 30,
+      });
+      if (owner.refresh) {
+        cookieStore.set("refresh_token", owner.refresh, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 90,
+        });
+      }
+      return NextResponse.json({ success: true });
+    }
+    // 교환이 안 되면 **일반 토큰을 세션으로 쓰지 않는다** (쓰면 로그인은 된 듯한데 화면이 빈다).
+    // PIN 인증으로 넘기면 verify-owner 가 점주 토큰을 준다 — 이미 연결된 매장이면 PIN 으로 다시 들어온다.
   }
 
   // 신규 / 미인증 → pending_token 세팅 후 PIN 인증 유도
