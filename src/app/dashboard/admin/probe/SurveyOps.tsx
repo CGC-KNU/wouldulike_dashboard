@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconRefresh } from "@tabler/icons-react";
+import { IconPlus, IconRefresh } from "@tabler/icons-react";
 import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Select, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
+import { SurveyCreateSlideOver, SurveyEditSlideOver } from "./SurveyEditor";
 
 /**
  * Probe · 설문 조사 — 앱 내 설문을 켜고 끄고 결과를 본다 (1109 민찬).
@@ -10,7 +11,9 @@ import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Select
  * 설문 하나에 보상 쿠폰 캠페인 · 홈 배너가 묶여 있어서, 켜기/끄기는 백엔드(surveys/ops.py)가 셋을 같이 움직인다.
  * 앱은 열린 설문을 하나만 받아 가므로 백엔드가 둘째 설문 켜기를 막는다(409).
  * 결과는 「끝낸 응답」(답 + 쿠폰 수령)만 센다. 쿠폰 고르기에서 나가면 답도 남지 않는다(11/8 결정).
- * 테스트 계정은 백엔드에서 뺀다. 문항 · 선택지 만들기는 아직 백엔드 명령(setup_survey)으로 한다.
+ * 테스트 계정은 백엔드에서 뺀다.
+ * 설문 내용(문구 · 문항 · 선택지) 고치기와 새 설문 만들기는 SurveyEditor.tsx — 보상 쿠폰도 설문마다 새로 만든다.
+ * 켜져 있는 동안은 「진행 현황」을 15초마다 다시 읽는다.
  */
 
 type State = "live" | "scheduled" | "ended" | "off";
@@ -23,8 +26,13 @@ interface Survey {
 }
 interface Option { value: string; label: string; count: number; fast: number }
 interface Question { code: string; badge: string; text: string; answered: number; options: Option[] }
+interface Progress {
+  seconds_left: number | null; opened: number; completed: number; in_progress: number;
+  completion_rate: number | null; fast: number; last_submitted_at: string | null; last_24h: number;
+  hourly: { hour: string; count: number }[]; as_of: string;
+}
 interface Results {
-  survey: Survey; version: number | null; versions: number[]; fast_seconds: number;
+  survey: Survey; progress?: Progress; version: number | null; versions: number[]; fast_seconds: number;
   totals: { opened: number; completed: number; fast: number };
   questions: Question[]; by_campus: Record<string, number>; by_entry: Record<string, number>; by_day: Record<string, number>;
 }
@@ -33,6 +41,14 @@ const S_LABEL: Record<State, string> = { live: "응답 받는 중", scheduled: "
 const S_TONE: Record<State, ChipTone> = { live: "green", scheduled: "navy", ended: "gray", off: "gray" };
 const ENTRY_LABEL: Record<string, string> = { push: "푸시 알림", home_promo: "홈 프로모", home_featured: "홈 세로배너", wallet_card: "쿠폰함 카드", deeplink: "링크", unknown: "모름" };
 const DAY_CHOICES = [3, 5, 7, 10, 14];
+const REFRESH_MS = 15_000;
+
+const leftLabel = (sec: number | null) => {
+  if (sec === null) return "마감 없음";
+  if (sec <= 0) return "마감";
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  return d > 0 ? `${d}일 ${h}시간` : h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+};
 
 const kst = (iso: string | null) => {
   if (!iso) return "—";
@@ -53,6 +69,10 @@ export default function SurveyOps() {
   const [days, setDays] = useState(7);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "amber" | "red" | "blue"; text: string } | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [auto, setAuto] = useState(true);
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
 
   const loadList = useCallback(async () => {
     setListErr(null);
@@ -78,6 +98,7 @@ export default function SurveyOps() {
       const j = await r.json();
       if (!r.ok) throw new Error(j?.detail ?? `응답 ${r.status}`);
       setRes(j as Results);
+      setRefreshedAt(new Date());
     } catch (e) {
       setRes(null);
       setResErr(e instanceof Error ? e.message : "결과를 읽지 못했습니다");
@@ -93,6 +114,26 @@ export default function SurveyOps() {
   useEffect(() => { if (code) void loadResults(code, version); else setRes(null); }, [code, version, loadResults]);
 
   const survey = res?.survey ?? list?.find((s) => s.code === code) ?? null;
+
+  // 응답을 받는 동안은 진행 현황을 15초마다 다시 읽는다
+  const live = survey?.state === "live";
+  useEffect(() => {
+    if (!live || !auto || !code) return;
+    const t = setInterval(() => { void loadList(); void loadResults(code, version); }, REFRESH_MS);
+    return () => clearInterval(t);
+  }, [live, auto, code, version, loadList, loadResults]);
+
+  async function afterEdit(note: string) {
+    setMsg({ tone: "blue", text: note });
+    await loadList();
+    if (code) await loadResults(code, version);
+  }
+  async function afterCreate(newCode: string) {
+    setMsg({ tone: "blue", text: `「${newCode}」를 만들었습니다 — 꺼진 채입니다. 내용을 확인하고 켜세요` });
+    setVersion(null);
+    await loadList();
+    setCode(newCode);
+  }
 
   async function toggle(action: "open" | "close") {
     if (!survey || busy) return;
@@ -121,13 +162,13 @@ export default function SurveyOps() {
   return (
     <>
       <PageHeader title="설문 조사" description="앱 내 설문을 켜고 끄고, 끝낸 응답(답 + 쿠폰 수령)을 봅니다. 테스트 계정은 빠져 있습니다."
-        actions={<Button icon={<IconRefresh />} onClick={() => { void reload(); if (code) void loadResults(code, version); }} disabled={loading}>다시 읽기</Button>} />
+        actions={<><Button icon={<IconPlus />} onClick={() => setCreateOpen(true)}>새 설문</Button><Button icon={<IconRefresh />} onClick={() => { void reload(); if (code) void loadResults(code, version); }} disabled={loading}>다시 읽기</Button></>} />
 
       {listErr && <div className="mb-4"><Notice tone="red" title="설문 목록을 읽지 못했습니다">{listErr}</Notice></div>}
       {msg && <div className="mb-4"><Notice tone={msg.tone} title={msg.text} /></div>}
 
       {loading && !list ? <Card><Skeleton rows={4} cols={3} /></Card> : list && list.length === 0 ? (
-        <Card><Empty title="아직 만든 설문이 없습니다" detail="첫 설문은 백엔드에서 python manage.py setup_survey --apply 로 만듭니다(꺼진 채로 생깁니다). 만든 뒤 여기서 켜세요." /></Card>
+        <Card><Empty title="아직 만든 설문이 없습니다" detail="오른쪽 위 「새 설문」으로 만드세요. 꺼진 채로 생기고, 내용을 확인한 뒤 여기서 켭니다." /></Card>
       ) : survey && (
         <>
           {list && list.length > 1 && (
@@ -149,6 +190,7 @@ export default function SurveyOps() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <Button onClick={() => setEditOpen(true)} disabled={busy}>내용 고치기</Button>
                 {survey.state === "live" || survey.state === "scheduled" ? (
                   <Button onClick={() => toggle("close")} disabled={busy}>끄기</Button>
                 ) : (
@@ -167,6 +209,37 @@ export default function SurveyOps() {
           </section>
 
           {resErr && <div className="mb-4"><Notice tone="red" title="결과를 읽지 못했습니다">{resErr}</Notice></div>}
+
+          {res?.progress && (
+            <Card className="mb-4" title="진행 현황"
+              description={live ? `응답 받는 중${refreshedAt ? ` · ${refreshedAt.toLocaleTimeString("ko-KR", { hour12: false })} 기준` : ""}` : "마지막으로 읽은 값"}
+              actions={live ? (
+                <label className="inline-flex items-center gap-2 text-[12px] text-gray-700 select-none">
+                  <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> 15초마다 새로 읽기
+                </label>
+              ) : undefined}>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
+                <Kpi label="끝낸 사람" value={res.progress.completed} suffix="명" hint={`최근 24시간 ${res.progress.last_24h}명`} />
+                <Kpi label="연 사람" value={res.progress.opened} suffix="명" hint="로그인한 사람만 셉니다" />
+                <Kpi label="아직 못 끝냄" value={res.progress.in_progress} suffix="명" hint="열었지만 쿠폰은 안 받음" />
+                <Kpi label="완료율" value={res.progress.completion_rate === null ? "—" : `${Math.round(res.progress.completion_rate * 100)}`} suffix={res.progress.completion_rate === null ? undefined : "%"} />
+                <Kpi label="남은 시간" value={leftLabel(res.progress.seconds_left)} hint={`마감 ${kst(survey.end_at)}`} />
+              </div>
+              <div className="mt-4">
+                <p className="text-[12px] font-semibold text-gray-700 mb-1.5">최근 24시간 완료 수 <span className="font-normal text-gray-500">· 마지막 응답 {kst(res.progress.last_submitted_at)}</span></p>
+                <div className="flex items-end gap-[3px] h-16" role="img" aria-label="최근 24시간 시간대별 완료 수">
+                  {(() => {
+                    const top = Math.max(1, ...res.progress.hourly.map((h) => h.count));
+                    return res.progress.hourly.map((h) => (
+                      <span key={h.hour} title={`${kst(h.hour)} · ${h.count}명`} className="flex-1 bg-navy rounded-t-[3px]"
+                        style={{ height: `${Math.max(h.count ? 6 : 2, (h.count / top) * 100)}%`, opacity: h.count ? 1 : 0.15 }} />
+                    ));
+                  })()}
+                </div>
+                <div className="flex justify-between text-[11px] text-gray-400 mt-1"><span>{kst(res.progress.hourly[0]?.hour ?? null)}</span><span>지금</span></div>
+              </div>
+            </Card>
+          )}
 
           {res && totals && (
             <>
@@ -206,9 +279,12 @@ export default function SurveyOps() {
             </>
           )}
 
-          <p className="text-[12px] text-gray-600 leading-relaxed">새 설문 만들기(문항 · 선택지 · 보상 쿠폰 · 배너)는 <Chip tone="gray">개발 중</Chip> — 지금은 백엔드 명령으로 만들고 여기서 켭니다. 한 번에 하나만 켤 수 있습니다.</p>
+          <p className="text-[12px] text-gray-600 leading-relaxed">설문은 한 번에 하나만 켤 수 있습니다. 문구는 언제든 고칠 수 있고, 이미 답이 있는 문항 · 선택지는 지울 수 없습니다. 문항이 바뀌면 판(v)이 올라가 집계가 나뉩니다.</p>
         </>
       )}
+
+      <SurveyEditSlideOver code={code} open={editOpen} onClose={() => setEditOpen(false)} onSaved={(note) => void afterEdit(note)} />
+      <SurveyCreateSlideOver open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(c) => void afterCreate(c)} />
     </>
   );
 }
