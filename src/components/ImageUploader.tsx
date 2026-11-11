@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { uploadFailureMessage } from "@/lib/uploadError";
 import { useImagePreview } from "@/components/ImagePreview";
 
@@ -75,6 +75,8 @@ interface Props {
   maxImages?: number;
   uploadType?: "restaurant" | "banner" | "popup";
   label?: string;
+  /** 저장 버튼을 누르기 전 목록이 바뀔 때마다 알려 준다 — 부모가 "올렸는데 저장 안 한" 사진을 대신 저장할 수 있게 */
+  onChange?: (urls: string[]) => void;
 }
 
 export default function ImageUploader({
@@ -84,8 +86,12 @@ export default function ImageUploader({
   maxImages = 5,
   uploadType = "restaurant",
   label,
+  onChange,
 }: Props) {
   const [urls, setUrls] = useState<string[]>(initialUrls);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useEffect(() => { onChangeRef.current?.(urls); }, [urls]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");

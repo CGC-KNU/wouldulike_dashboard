@@ -546,20 +546,57 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
   }, "스탬프를 등록하고 있습니다");
 
   const couponBlank = d.coupons.some((c) => !c.benefit.trim());
-  const saveCoupons = () => run(async () => {
+  const writeCoupons = async () => {
     const list = d.coupons.filter((c) => c.benefit.trim());
-    if (!list.length) throw new Error("쿠폰 혜택을 적어 주세요.");
-    if (couponBlank) throw new Error("비어 있는 쿠폰 칸이 있습니다. 채우거나 삭제해 주세요.");
     await replaceBenefits("GENERAL", list.map((c) => ({ title: c.benefit.trim(), subtitle: c.cond.trim(), notes: c.cond.trim() })));
     setSavedCoupons(list.length);
+  };
+  const saveCoupons = () => run(async () => {
+    if (!d.coupons.some((c) => c.benefit.trim())) throw new Error("쿠폰 혜택을 적어 주세요.");
+    if (couponBlank) throw new Error("비어 있는 쿠폰 칸이 있습니다. 채우거나 삭제해 주세요.");
+    await writeCoupons();
   }, "쿠폰을 등록하고 있습니다");
 
-  const saveSpecial = () => run(async () => {
-    const sp = d.special;
-    if (!sp?.benefit.trim()) throw new Error("한정 쿠폰 혜택을 적어 주세요.");
+  const writeSpecial = async () => {
+    const sp = d.special!;
     await saveSpecialPending({ title: sp.benefit.trim(), subtitle: sp.cond.trim(), notes: sp.cond.trim() });
     setSpecialSaved(true);
+  };
+  const saveSpecial = () => run(async () => {
+    if (!d.special?.benefit.trim()) throw new Error("한정 쿠폰 혜택을 적어 주세요.");
+    await writeSpecial();
   }, "한정 쿠폰을 등록하고 있습니다");
+
+  /**
+   * 대표 사진 저장 — 실패를 삼키지 않는다.
+   * 1111 실측: 온보딩을 마친 계대·영대 5곳이 전부 사진 0장. 예전엔 PATCH 실패를 `.catch(() => null)` 로 버려서
+   * 업로더는 "저장됨"을 띄우고 실제로는 안 남았다.
+   */
+  const writePhotos = async (urls: string[]) => {
+    await post(`/api/dashboard/restaurant${rq}`, { s3_image_urls: urls }, "PATCH");
+    patch({ photo_urls: urls });
+  };
+  // 업로더에 올렸지만 [저장]을 안 누른 사진 — 「다음」에서 대신 저장한다
+  const [photoDraft, setPhotoDraft] = useState<string[] | null>(null);
+
+  /**
+   * 「다음」 = **적어 둔 혜택을 저장하고 넘어간다.** (1111)
+   *
+   * 서지·수연 제보: 계대·영대 매장이 온보딩을 마쳤는데 쿠폰이 안 보였다. 쿠폰·한정 쿠폰은 칸마다 [등록]을
+   * 따로 눌러야 저장되는데 「다음」은 스탬프만 보고 넘어갔다. 사장님은 적기만 하고 「다음」을 눌렀고,
+   * 적은 내용은 그 폰 세션에만 남았다가 창을 닫으면서 사라졌다. 오류도 없었다.
+   * 그래서 적어 두고 [등록]을 안 누른 칸이 있으면 여기서 대신 저장한다. 빈 칸만 섞인 쿠폰은 빈 칸을 빼고 저장한다.
+   */
+  const unsavedCoupons = savedCoupons === 0 && d.coupons.some((c) => c.benefit.trim());
+  const unsavedSpecial = paid && !specialSaved && Boolean(d.special?.benefit.trim());
+  const unsavedPhotos = photoDraft !== null && JSON.stringify(photoDraft) !== JSON.stringify(d.photo_urls);
+  const next = () => run(async () => {
+    if (!stampSaved) throw new Error("스탬프를 등록해야 다음으로 갈 수 있습니다.");
+    if (unsavedCoupons) await writeCoupons();
+    if (unsavedSpecial) await writeSpecial();
+    if (unsavedPhotos && photoDraft) await writePhotos(photoDraft);
+    onNext();
+  }, "적어 두신 혜택을 저장하고 있습니다");
 
   return (
     <section>
@@ -709,10 +746,12 @@ function Step3({ d, patch, meta, rq, busy, run, post, onBack, onNext, nextLabel 
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <p className="text-[14px] font-bold text-gray-900 mb-1">④ 대표 사진</p>
         <p className="text-[12.5px] text-gray-600 mb-3">앱에 가장 먼저 보이는 사진입니다. 메뉴 사진 한 장이면 충분합니다.</p>
-        <ImageUploader initialUrls={d.photo_urls} uploadType="restaurant" maxImages={3} restaurantId={Number(new URLSearchParams(rq).get("rid")) || undefined} onSave={async (urls: string[]) => { patch({ photo_urls: urls }); await fetch(`/api/dashboard/restaurant${rq}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ s3_image_urls: urls }) }).catch(() => null); }} />
+        <ImageUploader initialUrls={d.photo_urls} uploadType="restaurant" maxImages={3} restaurantId={Number(new URLSearchParams(rq).get("rid")) || undefined} onChange={setPhotoDraft} onSave={writePhotos} />
       </div>
 
-      <Nav onBack={onBack} onNext={onNext} nextLabel={nextLabel} nextDisabled={!stampSaved} nextHint={stampSaved ? undefined : "스탬프를 등록해야 다음으로 갈 수 있습니다"} />
+      <Nav onBack={onBack} onNext={next} nextLabel={nextLabel} nextDisabled={busy || !stampSaved}
+        nextHint={!stampSaved ? "스탬프를 등록해야 다음으로 갈 수 있습니다"
+          : (unsavedCoupons || unsavedSpecial || unsavedPhotos) ? "적어 두신 쿠폰·사진은 「다음」을 누르면 함께 저장됩니다" : undefined} />
     </section>
   );
 }
