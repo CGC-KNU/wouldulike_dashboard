@@ -8,20 +8,22 @@ import { Button, Card, Chip, Empty, FilterPills, Notice, PageHeader, Spinner, Te
  * 레퍼런스 (실험실) — 1030 민열님.
  *
  * 팀원이 계정을 넣지 않는다. 세틀라이트가 매일 새벽(05:40) 비슷한 유형의 F&B 매거진 · 큐레이션 계정을 찾아 모으고,
- * 요즘 뜨는 계정(왜 핫했나 · 착안점 · 특징)과 F&B 유행(늘어난 해시태그 · 우리 큐레이션에 쓰는 법)을 정리한다.
+ * 요즘 뜨는 계정(왜 핫했나 · 착안점 · 특징)과 F&B 유행(반응 좋았던 글의 썸네일 · 캡션에서 뽑은 「상황 + 소재」)을 정리한다.
  * 「반응 좋았던 글」은 계정 평소(중앙값) 대비 배수, 「주제 추천」은 그 글들을 근거로 캐러셀 주제 5개(버튼).
+ * 1111 아윤님 피드백 — 해시태그 유행 폐기 · 썸네일로 한눈에 · 주제는 구체적인 상황 + 소재 · AI 생성 음식 콘텐츠 계정은 AI 가 걸러 낸다(「다시 넣기」).
  * 계산 · 저장은 백엔드 services/refs.py(AdminConfig papillon:ref*).
  */
 
-interface RefPost { permalink: string; ts: string; kind: string; eng: number | null; ratio: number | null; rate: number | null; caption: string; tags?: string[] }
+interface RefPost { permalink: string; ts: string; kind: string; eng: number | null; ratio: number | null; rate: number | null; caption: string; thumb?: string }
 interface Metrics { eng_rate: number | null; posts_4w: number; hot_share: number; growth_7d: number | null; growth_28d: number | null; hot_score: number }
-interface RefAccount { handle: string; name?: string; bio?: string; followers?: number; carousel_share?: number; likes_hidden?: boolean; error?: string; source?: string; first_seen?: string; metrics?: Metrics; posts: RefPost[] }
-interface Trend { tag: string; posts: number; accounts: number; before: number; rise: number; avg_ratio: number | null; examples: { handle: string; permalink: string; ratio: number | null }[] }
-interface Scan { scanned_at: string; by: string; added: string[]; accounts: RefAccount[]; trends: Trend[] }
-interface Insight { made_at: string; accounts: { handle: string; type: string; why_hot: string; angle: string; features: string }[]; trends: { name: string; what: string; evidence: string; use: string }[] }
-interface Idea { title: string; pattern: string; evidence: string; angle: string; for_us: string; slides: string; refs: { handle: string; permalink: string; ratio: number; kind: string }[] }
+interface RefAccount { handle: string; name?: string; bio?: string; followers?: number; carousel_share?: number; likes_hidden?: boolean; error?: string; source?: string; first_seen?: string; fit?: string; fit_reason?: string; metrics?: Metrics; posts: RefPost[] }
+interface Scan { scanned_at: string; by: string; added: string[]; filtered?: string[]; accounts: RefAccount[] }
+interface Ref { handle: string; permalink: string; ratio: number; kind: string; thumb?: string }
+interface Trend { name: string; situation?: string; material?: string; what: string; cover?: string; evidence: string; use: string; refs?: Ref[] }
+interface Insight { made_at: string; based_on?: number; accounts: { handle: string; type: string; why_hot: string; angle: string; features: string }[]; trends: Trend[] }
+interface Idea { title: string; situation?: string; material?: string; pattern: string; evidence: string; angle: string; for_us: string; cover?: string; slides: string; refs: Ref[] }
 interface Ideas { made_at: string; by: string; focus: string; based_on: number; ideas: Idea[] }
-interface Pool { count: number; probed: number; excluded: string[]; candidates_left: number }
+interface Pool { count: number; probed: number; excluded: string[]; auto_excluded?: Record<string, { reason: string; at: string }>; candidates_left: number }
 
 type View = "accounts" | "trends" | "posts" | "ideas";
 type Period = "14" | "30" | "60";
@@ -37,7 +39,7 @@ export default function RefLab() {
   const [ideas, setIdeas] = useState<Ideas | null>(null);
   const [hotRatio, setHotRatio] = useState(1.3);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"" | "scan" | "ideas" | "exclude">("");
+  const [busy, setBusy] = useState<"" | "scan" | "ideas" | "exclude" | "include">("");
   const [err, setErr] = useState("");
   const [view, setView] = useState<View>("accounts");
   const [focus, setFocus] = useState("");
@@ -59,7 +61,7 @@ export default function RefLab() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  async function call(k: "scan" | "ideas" | "exclude", url: string, body?: unknown) {
+  async function call(k: "scan" | "ideas" | "exclude" | "include", url: string, body?: unknown) {
     setBusy(k); setErr("");
     try {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
@@ -75,7 +77,7 @@ export default function RefLab() {
   }
 
   const ranked = useMemo(
-    () => (scan?.accounts ?? []).filter((a) => !a.error && a.metrics).sort((x, y) => (y.metrics!.hot_score) - (x.metrics!.hot_score)),
+    () => (scan?.accounts ?? []).filter((a) => !a.error && a.metrics && a.fit !== "안맞음").sort((x, y) => (y.metrics!.hot_score) - (x.metrics!.hot_score)),
     [scan],
   );
   const why = useMemo(() => new Map((insight?.accounts ?? []).map((x) => [x.handle, x])), [insight]);
@@ -84,13 +86,14 @@ export default function RefLab() {
     if (!scan) return [];
     const since = Date.now() - Number(period) * 86400000;
     const out: (RefPost & { handle: string })[] = [];
-    for (const a of scan.accounts) for (const p of a.posts) {
+    for (const a of scan.accounts) for (const p of a.fit === "안맞음" ? [] : a.posts) {
       if (p.ratio === null || p.ratio < hotRatio || new Date(p.ts).getTime() < since) continue;
       if (kind !== "all" && p.kind !== kind) continue;
       out.push({ ...p, handle: a.handle });
     }
     return out.sort((x, y) => (y.ratio ?? 0) - (x.ratio ?? 0)).slice(0, 40);
   }, [scan, period, kind, hotRatio]);
+  const filtered = Object.entries(pool?.auto_excluded ?? {}).sort((x, y) => y[1].at.localeCompare(x[1].at));
 
   if (loading) return <div className="py-16 flex justify-center"><Spinner /></div>;
 
@@ -98,7 +101,7 @@ export default function RefLab() {
     <div>
       <PageHeader
         title="레퍼런스 (실험실)"
-        description="세틀라이트가 매일 새벽 비슷한 유형의 F&B 매거진 · 큐레이션 계정을 찾아 모으고, 요즘 뜨는 계정과 F&B 유행을 정리합니다."
+        description="세틀라이트가 매일 새벽 실제 매장을 소개하는 F&B 매거진 · 큐레이션 계정을 찾아 모으고(AI 생성 음식 콘텐츠 계정은 걸러 냅니다), 요즘 뜨는 계정과 F&B 유행을 정리합니다."
         actions={
           <Button variant="primary" disabled={!!busy} onClick={async () => { const d = await call("scan", "/api/satellite/refs/scan"); if (d) { setScan(d.scan); setInsight(d.insight); load(); } }}>
             {busy === "scan" ? "모으는 중… 1분쯤" : "지금 다시 모으기"}
@@ -109,6 +112,7 @@ export default function RefLab() {
           {scan ? `마지막 갱신 ${agoLabel(scan.scanned_at)} (${scan.by})` : "아직 한 번도 모으지 않았습니다"}
           {pool && ` · 모은 계정 ${pool.count}곳 · 확인한 후보 ${pool.probed}개 · 남은 후보 ${pool.candidates_left}개`}
           {scan?.added?.length ? ` · 새로 찾음 ${scan.added.map((h) => `@${h}`).join(" ")}` : ""}
+          {filtered.length ? ` · 걸러 낸 계정 ${filtered.length}곳` : ""}
         </p>
       </PageHeader>
 
@@ -125,7 +129,7 @@ export default function RefLab() {
               onChange={setView}
               options={[
                 { key: "accounts", label: "뜨는 계정", count: ranked.length },
-                { key: "trends", label: "F&B 유행", count: scan.trends.length },
+                { key: "trends", label: "F&B 유행", count: insight?.trends.length ?? 0 },
                 { key: "posts", label: "반응 좋았던 글" },
                 { key: "ideas", label: "주제 추천" },
               ]}
@@ -137,7 +141,7 @@ export default function RefLab() {
               {ranked.map((a, i) => {
                 const m = a.metrics!;
                 const w = why.get(a.handle);
-                const best = [...a.posts].filter((p) => p.ratio).sort((x, y) => (y.ratio ?? 0) - (x.ratio ?? 0)).slice(0, 2);
+                const best = [...a.posts].filter((p) => p.ratio).sort((x, y) => (y.ratio ?? 0) - (x.ratio ?? 0)).slice(0, 3);
                 return (
                   <Card key={a.handle}>
                     <div className="flex items-start justify-between gap-2">
@@ -168,12 +172,8 @@ export default function RefLab() {
                       <p className="mt-3 text-[12.5px] text-gray-500">분석은 다음 갱신 때 붙습니다(상위 8곳).</p>
                     )}
                     {best.length > 0 && (
-                      <div className="mt-2.5 flex flex-wrap gap-1.5">
-                        {best.map((p) => (
-                          <a key={p.permalink} href={p.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center h-6 px-2 rounded-full bg-navy/[0.07] text-navy text-[12px] hover:underline">
-                            {p.kind} · 평소의 {p.ratio}×
-                          </a>
-                        ))}
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        {best.map((p) => <ThumbLink key={p.permalink} href={p.permalink} thumb={p.thumb} label={`${p.kind} · ${p.ratio}×`} />)}
                       </div>
                     )}
                   </Card>
@@ -182,43 +182,51 @@ export default function RefLab() {
             </div>
           )}
 
-          {view === "trends" && (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-              <Card title="F&B 유행 주제" description={insight ? `${agoLabel(insight.made_at)} 분석 · 아래 해시태그와 반응 좋았던 글 근거` : "다음 갱신 때 붙습니다."}>
-                {!insight?.trends.length ? (
-                  <p className="text-[13px] text-gray-500">아직 분석이 없습니다.</p>
-                ) : (
-                  <ol className="space-y-3">
-                    {insight.trends.map((t, i) => (
-                      <li key={i} className="rounded-[14px] border border-black/[0.07] p-3.5">
-                        <h3 className="text-[15px] font-semibold text-gray-900">{t.name}</h3>
-                        <dl className="mt-2 grid gap-1.5 text-[13px] leading-relaxed">
-                          <Row label="무엇" value={t.what} />
-                          <Row label="근거" value={t.evidence} />
-                          <Row label="우리 큐레이션에" value={t.use} />
-                        </dl>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </Card>
-              <Card title="최근 2주 늘어난 해시태그" description="두 곳 이상이 쓴 태그만 · 괄호는 그 전 2주 글 수" flush>
-                {scan.trends.length === 0 ? (
-                  <p className="px-4 py-8 text-[13px] text-gray-500">여러 계정에서 같이 늘어난 태그가 아직 없습니다.</p>
-                ) : (
-                  <ol className="divide-y divide-black/[0.06]">
-                    {scan.trends.map((t) => (
-                      <li key={t.tag} className="px-4 py-2.5 flex items-center gap-3 text-[13px]">
-                        <span className="font-semibold text-gray-900 min-w-0 truncate flex-1">#{t.tag}</span>
-                        <span className="text-gray-500 tabular-nums whitespace-nowrap">{t.accounts}곳 · {t.posts}편({t.before})</span>
-                        <span className="text-navy font-semibold tabular-nums w-14 text-right">{t.avg_ratio === null ? "—" : `${t.avg_ratio}×`}</span>
-                        <a href={t.examples[0]?.permalink} target="_blank" rel="noreferrer" className="text-[12px] text-navy hover:underline">예시</a>
-                      </li>
-                    ))}
-                  </ol>
-                )}
+          {view === "accounts" && filtered.length > 0 && (
+            <div className="mt-4">
+              <Card title={`AI 가 걸러 낸 계정 ${filtered.length}곳`} description="썸네일 · 캡션을 보고 우리 방향(실제 매장을 실사진으로 소개)과 안 맞는다고 본 계정입니다. 잘못 걸렀으면 다시 넣어 주세요 — 다음 갱신부터 모읍니다." flush>
+                <ul className="divide-y divide-black/[0.06]">
+                  {filtered.map(([h, v]) => (
+                    <li key={h} className="px-4 py-2.5 flex items-center gap-3 text-[13px]">
+                      <a href={`https://instagram.com/${h}`} target="_blank" rel="noreferrer" className="font-semibold text-gray-900 hover:underline shrink-0">@{h}</a>
+                      <span className="text-gray-500 min-w-0 flex-1 truncate">{v.reason || "이유 없음"}</span>
+                      <button type="button" disabled={busy === "include"} className="text-[12px] text-navy hover:underline shrink-0"
+                        onClick={async () => { if (await call("include", "/api/satellite/refs", { include: h })) load(); }}>
+                        다시 넣기
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </Card>
             </div>
+          )}
+
+          {view === "trends" && (
+            <Card title="F&B 유행 주제" description={insight ? `${agoLabel(insight.made_at)} 분석 · 최근 4주 반응 좋았던 글${insight.based_on ? ` ${insight.based_on}편` : ""}의 썸네일 · 캡션에서 「어떤 상황에 어떤 소재」를 뽑았습니다` : "다음 갱신 때 붙습니다."}>
+              {!insight?.trends.length ? (
+                <p className="text-[13px] text-gray-500">아직 분석이 없습니다.</p>
+              ) : (
+                <ol className="grid gap-3 lg:grid-cols-2">
+                  {insight.trends.map((t, i) => (
+                    <li key={i} className="rounded-[14px] border border-black/[0.07] p-3.5">
+                      <h3 className="text-[15px] font-semibold text-gray-900 text-balance">{t.name}</h3>
+                      <SituationChips situation={t.situation} material={t.material} />
+                      {!!t.refs?.length && (
+                        <div className="mt-2.5 flex flex-wrap gap-2">
+                          {t.refs.map((r) => <ThumbLink key={r.permalink} href={r.permalink} thumb={r.thumb} label={`@${r.handle} · ${r.ratio}×`} />)}
+                        </div>
+                      )}
+                      <dl className="mt-2.5 grid gap-1.5 text-[13px] leading-relaxed">
+                        <Row label="무엇" value={t.what} />
+                        <Row label="표지" value={t.cover ?? ""} />
+                        <Row label="근거" value={t.evidence} />
+                        <Row label="우리 큐레이션에" value={t.use} />
+                      </dl>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </Card>
           )}
 
           {view === "posts" && (
@@ -233,6 +241,9 @@ export default function RefLab() {
                 <ol className="divide-y divide-black/[0.06]">
                   {posts.map((p) => (
                     <li key={p.permalink} className="px-4 py-3 flex gap-3">
+                      <a href={p.permalink} target="_blank" rel="noreferrer" className="shrink-0">
+                        <Thumb src={p.thumb} size={76} />
+                      </a>
                       <div className="w-14 shrink-0 text-right">
                         <div className="text-[18px] font-bold text-navy tabular-nums leading-none">{p.ratio}×</div>
                         <div className="text-[11px] text-gray-500 mt-1">평소 대비</div>
@@ -255,9 +266,9 @@ export default function RefLab() {
           )}
 
           {view === "ideas" && (
-            <Card title="주제 추천" description={ideas ? `${agoLabel(ideas.made_at)} ${ideas.by} · 반응 좋았던 글 ${ideas.based_on}편 근거${ideas.focus ? ` · 방향 「${ideas.focus}」` : ""}` : "반응 좋았던 글을 근거로 캐러셀 주제 5개 · 착안점 · 우리식 변형 · 장 구성을 제안합니다."}>
+            <Card title="주제 추천" description={ideas ? `${agoLabel(ideas.made_at)} ${ideas.by} · 반응 좋았던 글 ${ideas.based_on}편 근거${ideas.focus ? ` · 방향 「${ideas.focus}」` : ""}` : "반응 좋았던 글(썸네일 · 캡션)을 근거로 「상황 + 소재」가 분명한 캐러셀 주제 5개 · 표지 · 장 구성을 제안합니다."}>
               <div className="flex gap-2 mb-4">
-                <Textarea rows={1} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="(선택) 보고 싶은 방향 — 예: 시험 기간, 혼밥, 11월 신메뉴" aria-label="추천 방향" />
+                <Textarea rows={1} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="(선택) 보고 싶은 방향 — 예: 기말고사 야식, 크리스마스 데이트, 혼밥" aria-label="추천 방향" />
                 <Button variant="primary" className="shrink-0" disabled={!!busy} onClick={async () => { const d = await call("ideas", "/api/satellite/refs/ideas", { focus }); if (d) setIdeas(d.ideas); }}>
                   {busy === "ideas" ? "생각하는 중…" : "주제 추천 받기"}
                 </Button>
@@ -269,20 +280,18 @@ export default function RefLab() {
                   {ideas.ideas.map((it, i) => (
                     <li key={i} className="rounded-[14px] border border-black/[0.07] p-3.5">
                       <h3 className="text-[15px] font-semibold text-gray-900 text-balance">{i + 1}. {it.title}</h3>
+                      <SituationChips situation={it.situation} material={it.material} />
                       <dl className="mt-2 grid gap-1.5 text-[13px] leading-relaxed">
                         <Row label="먹힌 이유" value={it.pattern} />
                         <Row label="근거" value={it.evidence} />
                         <Row label="착안점" value={it.angle} />
                         <Row label="우리식으로" value={it.for_us} />
+                        <Row label="표지" value={it.cover ?? ""} />
                         <Row label="장 구성" value={it.slides} />
                       </dl>
                       {it.refs.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {it.refs.map((r) => (
-                            <a key={r.permalink} href={r.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center h-6 px-2 rounded-full bg-navy/[0.07] text-navy text-[12px] hover:underline">
-                              @{r.handle} · {r.ratio}×
-                            </a>
-                          ))}
+                        <div className="mt-2.5 flex flex-wrap gap-2">
+                          {it.refs.map((r) => <ThumbLink key={r.permalink} href={r.permalink} thumb={r.thumb} label={`@${r.handle} · ${r.ratio}×`} />)}
                         </div>
                       )}
                     </li>
@@ -312,6 +321,36 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="grid grid-cols-[5.5rem_1fr] gap-2">
       <dt className="text-gray-500">{label}</dt>
       <dd className="text-gray-800">{value}</dd>
+    </div>
+  );
+}
+
+/** 인스타 CDN 썸네일 — 주소가 며칠 뒤 만료되니(매일 새벽 다시 모은다) 못 불러오면 회색 칸으로. */
+function Thumb({ src, size }: { src?: string; size: number }) {
+  const [broken, setBroken] = useState(false);
+  const box = { width: size, height: size };
+  if (!src || broken) return <div style={box} className="rounded-[10px] bg-black/[0.05] grid place-items-center text-[10.5px] text-gray-400">썸네일 없음</div>;
+  return (
+    <img src={src} alt="" style={box} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)}
+      className="rounded-[10px] object-cover bg-black/[0.05] border border-black/[0.06]" />
+  );
+}
+
+function ThumbLink({ href, thumb, label }: { href: string; thumb?: string; label: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="group w-[92px]">
+      <Thumb src={thumb} size={92} />
+      <span className="mt-1 block text-[11.5px] text-navy truncate group-hover:underline">{label}</span>
+    </a>
+  );
+}
+
+function SituationChips({ situation, material }: { situation?: string; material?: string }) {
+  if (!situation && !material) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {situation && <Chip tone="navy">상황 · {situation}</Chip>}
+      {material && <Chip tone="gray">소재 · {material}</Chip>}
     </div>
   );
 }
