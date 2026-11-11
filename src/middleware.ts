@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ownerRouteMethods } from "./lib/owner/routes";
 
 const PUBLIC_PATHS = ["/login", "/auth/", "/api/auth/"];
 // 크론 전용 — 판정은 라우트가 백엔드에 묻는다(cronAuth.ts). 앱 지표 보고서(0927) · 매장 리포트 미리보기(0928)
@@ -60,6 +61,13 @@ function toLogin(req: NextRequest): NextResponse {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  if (pathname.startsWith("/api/app/owner/")) {
+    const allowed = ownerRouteMethods(pathname);
+    const headers = { "Cache-Control": "private, no-store" };
+    if (!allowed) return NextResponse.json({ code: "not_found" }, { status: 404, headers });
+    if (!allowed.includes(req.method)) return NextResponse.json({ code: "method_not_allowed" }, { status: 405, headers: { ...headers, Allow: allowed.join(", ") } });
+    return NextResponse.next(); // Route authentication accepts Bearer only.
+  }
 
   // 온보딩 화면 리허설용 토큰 발급 — **개발 서버에서만.** 운영 빌드에서는 이 줄이 통하지 않고
   // 라우트 자체도 404 를 낸다. 서명만 하는 길이라 매장 PIN 을 건드리지 않는다 (0924).

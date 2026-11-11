@@ -5,6 +5,7 @@ const config: Config = {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/lib/owner/plans.ts", // 웹·앱 공유 플랜의 웹 카드 스타일도 생성한다.
   ],
   theme: {
     extend: {
