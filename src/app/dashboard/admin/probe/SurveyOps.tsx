@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconPlus, IconRefresh } from "@tabler/icons-react";
-import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Select, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, Empty, FilterPills, Input, Kpi, Notice, PageHeader, Select, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
 import { SurveyCreateSlideOver, SurveyEditSlideOver } from "./SurveyEditor";
 
 /**
@@ -55,6 +55,10 @@ const kst = (iso: string | null) => {
   const d = new Date(iso);
   return d.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
 };
+/** ISO → <input type="datetime-local"> 값 (한국 시간) */
+const toKstInput = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 16) : "");
+/** datetime-local 값(한국 시간) → 서버로 보낼 ISO */
+const fromKstInput = (v: string) => `${v}:00+09:00`;
 const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 1000) / 10}%` : "—");
 
 export default function SurveyOps() {
@@ -72,6 +76,10 @@ export default function SurveyOps() {
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [auto, setAuto] = useState(true);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [pStart, setPStart] = useState("");
+  const [pEnd, setPEnd] = useState("");
+  const [noEnd, setNoEnd] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
 
   const loadList = useCallback(async () => {
@@ -156,6 +164,38 @@ export default function SurveyOps() {
     }
   }
 
+  function openPeriod() {
+    if (!survey) return;
+    setPStart(toKstInput(survey.start_at));
+    setPEnd(toKstInput(survey.end_at));
+    setNoEnd(!survey.end_at);
+    setPeriodOpen(true);
+  }
+
+  async function savePeriod() {
+    if (!survey || busy) return;
+    if (!pStart) { setMsg({ tone: "red", text: "시작 시각을 입력하세요" }); return; }
+    if (!noEnd && !pEnd) { setMsg({ tone: "red", text: "마감 시각을 입력하거나 「마감 없음」을 고르세요" }); return; }
+    setBusy(true); setMsg(null);
+    try {
+      // 설문 · 보상 쿠폰 수령 마감 · 홈 배너 노출 기간을 백엔드(surveys/ops.py set_period)가 같이 맞춘다
+      const r = await fetch("/api/probe/surveys/content", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: survey.code, start_at: fromKstInput(pStart), end_at: noEnd ? null : fromKstInput(pEnd) }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.detail ?? `응답 ${r.status}`);
+      setMsg({ tone: "blue", text: `기간을 바꿨습니다 — ${kst(j.survey?.start_at ?? null)} ~ ${j.survey?.end_at ? kst(j.survey.end_at) : "마감 없음"}` });
+      setPeriodOpen(false);
+      await loadList();
+      await loadResults(survey.code, version);
+    } catch (e) {
+      setMsg({ tone: "red", text: `기간을 바꾸지 못했습니다: ${e instanceof Error ? e.message : "알 수 없는 오류"}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const totals = res?.totals;
   const completed = totals ? totals.completed - (skipFast ? totals.fast : 0) : 0;
 
@@ -172,7 +212,7 @@ export default function SurveyOps() {
       ) : survey && (
         <>
           {list && list.length > 1 && (
-            <div className="mb-3"><FilterPills soft label="설문" value={survey.code} onChange={(c) => { setCode(c); setVersion(null); }} options={list.map((s) => ({ key: s.code, label: s.title }))} /></div>
+            <div className="mb-3"><FilterPills soft label="설문" value={survey.code} onChange={(c) => { setCode(c); setVersion(null); setPeriodOpen(false); }} options={list.map((s) => ({ key: s.code, label: s.title }))} /></div>
           )}
 
           <section className="bg-white rounded-[18px] border border-black/[0.05] shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-24px_rgba(5,0,114,0.25)] p-4 mb-4" aria-label="설문 상태">
@@ -191,6 +231,7 @@ export default function SurveyOps() {
               </div>
               <div className="flex items-center gap-2">
                 <Button onClick={() => setEditOpen(true)} disabled={busy}>내용 고치기</Button>
+                <Button onClick={openPeriod} disabled={busy}>기간 수정</Button>
                 {survey.state === "live" || survey.state === "scheduled" ? (
                   <Button onClick={() => toggle("close")} disabled={busy}>끄기</Button>
                 ) : (
@@ -203,6 +244,22 @@ export default function SurveyOps() {
                 )}
               </div>
             </div>
+            {periodOpen && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 px-3 py-2.5 rounded-[10px] bg-gray-50 text-[13px] text-gray-700">
+                <span>시작</span>
+                <Input className="w-auto" type="datetime-local" aria-label="시작 시각" value={pStart} onChange={(e) => setPStart(e.target.value)} disabled={busy} />
+                <span>마감</span>
+                <Input className="w-auto" type="datetime-local" aria-label="마감 시각" value={pEnd} onChange={(e) => setPEnd(e.target.value)} disabled={busy || noEnd} />
+                <label className="inline-flex items-center gap-1.5 select-none">
+                  <input type="checkbox" checked={noEnd} onChange={(e) => setNoEnd(e.target.checked)} disabled={busy} /> 마감 없음
+                </label>
+                <span className="text-[12px] text-gray-500">한국 시간 · 보상 쿠폰 수령 마감과 홈 배너 기간도 같이 바뀝니다</span>
+                <span className="ml-auto flex items-center gap-2">
+                  <Button onClick={() => setPeriodOpen(false)} disabled={busy}>취소</Button>
+                  <Button variant="primary" onClick={() => void savePeriod()} disabled={busy}>저장</Button>
+                </span>
+              </div>
+            )}
             {survey.state === "live" && survey.reward_campaign_active === false && (
               <p className="mt-3 px-3 py-2 rounded-[10px] bg-amber-400/15 text-[13px] text-amber-900">설문은 열려 있는데 보상 쿠폰 캠페인이 꺼져 있습니다 — 답한 사람이 쿠폰을 못 받습니다. 끄고 다시 켜면 같이 맞춰집니다.</p>
             )}
