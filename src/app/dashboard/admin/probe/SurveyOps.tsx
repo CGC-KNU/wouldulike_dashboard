@@ -288,8 +288,8 @@ export default function SurveyOps() {
                   {(() => {
                     const top = Math.max(1, ...res.progress.hourly.map((h) => h.count));
                     return res.progress.hourly.map((h) => (
-                      <span key={h.hour} title={`${kst(h.hour)} · ${h.count}명`} className="flex-1 bg-navy rounded-t-[3px]"
-                        style={{ height: `${Math.max(h.count ? 6 : 2, (h.count / top) * 100)}%`, opacity: h.count ? 1 : 0.15 }} />
+                      <span key={h.hour} title={`${kst(h.hour)} · ${h.count}명`} className="flex-1 rounded-t-[3px]"
+                        style={{ background: "var(--bar-ink)", height: `${Math.max(h.count ? 6 : 2, (h.count / top) * 100)}%`, opacity: h.count ? 1 : 0.15 }} />
                     ));
                   })()}
                 </div>
@@ -357,7 +357,7 @@ function QuestionCard({ n, q, skipFast }: { n: number; q: Question; skipFast: bo
           <li key={o.value} className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-3 text-[13px]">
             <span className="text-gray-800 truncate" title={o.label}>{o.label}</span>
             <span className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <span className="block h-full bg-navy rounded-full" style={{ width: `${(o.n / top) * 100}%`, opacity: o.n === top ? 1 : 0.55 }} />
+              <span className="block h-full rounded-full" style={{ background: "var(--bar-ink)", width: `${(o.n / top) * 100}%`, opacity: o.n === top ? 1 : 0.55 }} />
             </span>
             <span className="tabular-nums text-right w-[5.5rem]"><b className="text-gray-900">{o.n}</b> <span className="text-gray-500">· {pct(o.n, total)}</span></span>
           </li>

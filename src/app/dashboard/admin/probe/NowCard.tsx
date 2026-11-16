@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { Card } from "../_shared/ui";
-import { Fold } from "./kit";
+import { BAR_NOW, BAR_PAST, Fold } from "./kit";
 import { LIVE_FAILURES, LIVE_STEPS } from "@/lib/bigquery/liveShape";
 import { NOW_BUCKETS, bucketLabel, type Ga4Now } from "@/lib/ga4/realtimeShape";
 
@@ -22,10 +22,6 @@ const ORDER = Array.from({ length: NOW_BUCKETS }, (_, i) => NOW_BUCKETS - 1 - i)
 const shortLabel = (i: number) => (i === 0 ? "지금" : `${i * 5}분 전`);
 
 const hm = (iso: string) => new Date(Date.parse(iso) + 9 * 3_600_000).toISOString().slice(11, 16);
-
-/** 막대 색 — 지나간 칸은 옅게, 지금 칸만 짙게. LiveMetrics 의 24시간 막대와 같이 쓴다 */
-export const BAR_PAST = "#C7D2FE";
-export const BAR_NOW = "#4F46E5";
 
 export default function NowCard() {
   const [now, setNow] = useState<Ga4Now | null>(null);

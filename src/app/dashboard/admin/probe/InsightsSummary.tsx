@@ -5,7 +5,7 @@ import { Card, Empty, Kpi, Notice, Skeleton, Table, Td, Th, periodLocal } from "
 import type { SummaryPayload, Trend, TrendMonth, TrendPoint } from "@/app/api/probe/insights/summary/route";
 import { DOT_MONTHS, axisTicks, compactKo, dayRange, monthBounds, monthTick, niceMax } from "@/lib/draft/insightsTrend";
 import { flowOf } from "@/lib/bigquery/liveShape";
-import { Fold } from "./kit";
+import { Fold, FlowTag } from "./kit";
 
 /**
  * Probe · 인스타 성과 **추이** — 매장 리포트 화면 아래.
@@ -108,9 +108,7 @@ function TrendView({ trend, reach }: { trend: Trend; reach: { now: number | null
         <Kpi label="계정 도달 (7일)" value={reach === null ? "…" : reachNow === null ? "미확인" : reachNow.toLocaleString()} suffix={reachNow !== null ? "명" : undefined}
           hint={reach === null ? "읽는 중" : reachNow === null ? "Meta 가 값을 주지 않았습니다 — 0 이 아니라 모름" : reachAgo !== null ? `4주 전 7일 ${reachAgo.toLocaleString()}명` : "같은 사람은 한 번"}
           extra={reachFlow ? (
-            <span className={`inline-flex items-center h-6 px-2 mt-2 rounded-md text-[12px] font-semibold ${reachFlow === "up" ? "bg-indigo-50 text-indigo-700" : reachFlow === "down" ? "bg-amber-50 text-amber-800" : "bg-black/[0.05] text-gray-600"}`}>
-              {reachFlow === "same" ? `4주 전과 비슷 (${pct})` : `${reachFlow === "up" ? "▲" : "▼"} 4주 전보다 ${pct}`}
-            </span>
+            <FlowTag flow={reachFlow} className="mt-2">{reachFlow === "same" ? `4주 전과 비슷 (${pct})` : `4주 전보다 ${pct}`}</FlowTag>
           ) : undefined} />
         <SplitKpi label={`${day}일차 조회 중앙값 · 형식별`} items={["carousel", "reel"].map((f) => { const m = medianOf(months, f); return { label: FORMAT_KO[f], color: COLOR[f], value: m ? m.v : null, sub: m ? `${m.label} · ${m.n}건` : `${day}일차 5건부터` }; })} />
       </div>

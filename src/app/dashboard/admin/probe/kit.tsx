@@ -1,6 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import type { Flow } from "@/lib/bigquery/liveShape";
+import { Card } from "../_shared/ui";
 
 /**
  * Probe 화면 공통 부품 — 세틀라이트 Probe 목업 수정안(1021 최종본)의 규칙.
@@ -110,4 +112,45 @@ export const MISSING_WARN_HOURS = 12;
 export function missingAppWarnNow(date: string, nowMs: number = Date.now()): boolean {
   const draw = Date.parse(`${date}T11:00:00+09:00`);
   return nowMs < draw && nowMs >= draw - MISSING_WARN_HOURS * 3600_000;
+}
+
+/* ═══════════ 흐름 칸 (1116) — 지표 다섯 화면이 같이 쓴다 ═══════════ */
+
+/** 막대 색 — 지난 칸은 옅게, 지금 칸만 짙게. 표 안 막대는 BAR_INK. 값은 globals.css 변수(다크 모드가 따로 덮는다) */
+export const BAR_PAST = "var(--bar-past)";
+export const BAR_NOW = "var(--bar-now)";
+export const BAR_INK = "var(--bar-ink)";
+
+/** 견준 말 표지 — 많음 ▲ · 비슷 · 적음 ▼. 글에는 화살표를 넣지 않는다(여기서 붙인다) */
+export function FlowTag({ flow, children, className = "" }: { flow: Flow; children: ReactNode; className?: string }) {
+  return (
+    <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold ${className}`} style={{ background: `var(--flow-${flow}-bg)`, color: `var(--flow-${flow}-fg)` }}>
+      {flow === "up" ? "▲ " : flow === "down" ? "▼ " : ""}{children}
+    </span>
+  );
+}
+
+/**
+ * 흐름 칸 — 제목 · 큰 숫자 · 견준 말 · 보조 줄, 그 아래 그림(children).
+ * value 가 null · undefined 면 「미확인」(0 이 아니라 모름). 읽는 중이면 「-」이고 견준 말 · 보조 줄을 비운다.
+ */
+export function FlowCard({ title, value, unit, tag, sub, loading, children }: {
+  title: ReactNode; value: number | string | null | undefined; unit?: string;
+  tag?: { flow: Flow; text: ReactNode } | null; sub?: ReactNode; loading?: boolean; children?: ReactNode;
+}) {
+  const known = !loading && value !== null && value !== undefined;
+  const shown = loading ? "-" : !known ? "미확인" : typeof value === "number" ? value.toLocaleString() : value;
+  return (
+    <Card>
+      <p className="text-[13px] font-semibold text-gray-900">{title}</p>
+      <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 mt-2">
+        <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900">
+          {shown}{known && unit && <span className="text-[14px] font-semibold text-gray-400 ml-1">{unit}</span>}
+        </p>
+        {!loading && tag && <FlowTag flow={tag.flow} className="mb-0.5">{tag.text}</FlowTag>}
+      </div>
+      <p className="text-[12px] text-gray-500 mt-1.5 truncate">{loading || !sub ? "\u00a0" : sub}</p>
+      {children}
+    </Card>
+  );
 }

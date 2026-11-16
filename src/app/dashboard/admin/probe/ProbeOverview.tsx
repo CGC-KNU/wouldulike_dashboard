@@ -6,7 +6,7 @@ import type { StoreActivity, StoreMetric } from "@/lib/draft/types";
 import { campusOfMetric, failReasonLabel, isFailing, isSilent, previousPeriod, summarizeActivity, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
 import { allCampuses } from "../astro/CampusPicker";
 import { Button, Card, Chip, Empty, FilterPills, Notice, PageHeader, Skeleton, SlideOver, Table, Td, Th, periodLocal, rowClickable } from "../_shared/ui";
-import { Fold, MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
+import { BAR_INK, BAR_NOW, Fold, FlowCard, MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
 import { flowOf } from "@/lib/bigquery/liveShape";
 import { fetchJson } from "../_shared/fetchJson";
 import type { StoreMonth } from "@/app/api/probe/store-history/route";
@@ -201,7 +201,7 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
   const nUsed = aff.filter((s) => !s.unavailable && !s.hidden_from_app && !isSilent(s)).length;
   const nUnknown = aff.length - nHidden - nSilent - nUsed;
   const segments: { key: string; label: string; n: number; color: string; scope?: Scope; why: string }[] = [
-    { key: "used", label: "쓰임", n: nUsed, color: "#4F46E5", why: "이번 달 쿠폰이나 스탬프가 한 번이라도 쓰인 매장" },
+    { key: "used", label: "쓰임", n: nUsed, color: BAR_NOW, why: "이번 달 쿠폰이나 스탬프가 한 번이라도 쓰인 매장" },
     ...(ga.unseen === null || ga.seen_unused === null
       ? [{ key: "silent", label: "조용함", n: nSilent, color: "#FBBF24", scope: "silent" as Scope, why: "이번 달 쿠폰 · 스탬프 0" }]
       : [
@@ -380,7 +380,7 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
                         <PlanTag tier={s.tier} />
                         {silent && <TagChip>조용함</TagChip>}
                         {s.hidden_from_app && <TagChip>앱에서 숨김</TagChip>}
-                        {s.benefit_count === 0 && <span className="inline-flex items-center h-5 px-1.5 rounded-md bg-amber-50 text-[11px] font-medium text-amber-800 whitespace-nowrap">혜택 없음</span>}
+                        {s.benefit_count === 0 && <span className="inline-flex items-center h-5 px-1.5 rounded-md text-[11px] font-medium whitespace-nowrap" style={{ background: "var(--flow-down-bg)", color: "var(--flow-down-fg)" }}>혜택 없음</span>}
                       </span>
                     </Td>
                     <Td align="right">
@@ -515,11 +515,7 @@ function StorePanel({ s, a, vouchers, previous, reportPeriod, onClose, onGo }: {
  * 이번 달 흐름 한 칸 — 숫자 하나 · 「지난달 이맘때」와 견준 말 · 많이 쓰인 매장 막대(누르면 그 매장 패널).
  * 지난달 같은 날짜까지의 합을 모르면 말을 달지 않는다.
  */
-const MONTH_FLOW = {
-  up: ["▲ 지난달 이맘때보다 많음", "bg-indigo-50 text-indigo-700"],
-  same: ["지난달 이맘때와 비슷", "bg-black/[0.05] text-gray-600"],
-  down: ["▼ 지난달 이맘때보다 적음", "bg-amber-50 text-amber-800"],
-} as const;
+const MONTH_FLOW = { up: "지난달 이맘때보다 많음", same: "지난달 이맘때와 비슷", down: "지난달 이맘때보다 적음" } as const;
 function MonthCard({ title, value, unit, prev, prevMonth, note, top, loading, onOpen }: {
   title: string; value: number | null; unit: string; prev: number | null; prevMonth: string | null; note?: string;
   top: { id: number; name: string; n: number }[]; loading: boolean; onOpen: (id: number) => void;
@@ -528,15 +524,7 @@ function MonthCard({ title, value, unit, prev, prevMonth, note, top, loading, on
   const max = Math.max(1, ...top.map((t) => t.n));
   const sub = [prev !== null && prevMonth ? `${prevMonth} 같은 날까지 ${prev.toLocaleString()}${unit}` : "지난달 이맘때 미확인", note].filter(Boolean).join(" · ");
   return (
-    <Card>
-      <p className="text-[13px] font-semibold text-gray-900">{title}</p>
-      <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 mt-2">
-        <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900">
-          {loading ? "-" : value === null ? "미확인" : value.toLocaleString()}{value !== null && <span className="text-[14px] font-semibold text-gray-400 ml-1">{unit}</span>}
-        </p>
-        {flow && <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold mb-0.5 ${MONTH_FLOW[flow][1]}`}>{MONTH_FLOW[flow][0]}</span>}
-      </div>
-      <p className="text-[12px] text-gray-500 mt-1.5 truncate">{loading ? " " : sub}</p>
+    <FlowCard title={title} value={value} unit={unit} loading={loading} tag={flow ? { flow, text: MONTH_FLOW[flow] } : null} sub={sub}>
       {loading ? <div className="h-28 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : (
         <div className="mt-3 border-t border-black/[0.06] pt-2.5">
           <p className="text-[12.5px] font-medium text-gray-700 mb-1.5">많이 쓰인 매장</p>
@@ -546,7 +534,7 @@ function MonthCard({ title, value, unit, prev, prevMonth, note, top, loading, on
                 <li key={t.id}>
                   <button type="button" onClick={() => onOpen(t.id)} className="group grid w-full grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)_2.5rem] items-center gap-2 text-left text-[13px]">
                     <span className="truncate text-gray-800 group-hover:underline">{t.name}</span>
-                    <span className="h-2.5 rounded-full bg-black/[0.04] overflow-hidden"><span className="block h-full rounded-full bg-[#4F46E5]" style={{ width: `${(t.n / max) * 100}%` }} /></span>
+                    <span className="h-2.5 rounded-full bg-black/[0.04] overflow-hidden"><span className="block h-full rounded-full" style={{ width: `${(t.n / max) * 100}%`, background: BAR_NOW }} /></span>
                     <b className="tabular-nums text-right text-gray-900">{t.n.toLocaleString()}</b>
                   </button>
                 </li>
@@ -555,7 +543,7 @@ function MonthCard({ title, value, unit, prev, prevMonth, note, top, loading, on
           )}
         </div>
       )}
-    </Card>
+    </FlowCard>
   );
 }
 
@@ -599,7 +587,7 @@ function MonthBars({ months }: { months: { period: string; c: number; s: number;
             <div key={x.period} className="flex-1 flex flex-col items-center gap-1" title={tip} aria-label={tip}>
               <div className="w-full max-w-[28px] flex flex-col justify-end" style={{ height: H, opacity: x.partial ? 0.5 : 1 }}>
                 <i className="block rounded-t-[3px]" style={{ height: (x.s / top) * H, background: "var(--chart-carousel)" }} />
-                <i className="block" style={{ height: (x.c / top) * H, background: "#050072", borderRadius: x.s ? 0 : "3px 3px 0 0" }} />
+                <i className="block" style={{ height: (x.c / top) * H, background: BAR_INK, borderRadius: x.s ? 0 : "3px 3px 0 0" }} />
               </div>
               <span className="text-[11px] text-gray-500">{+x.period.slice(5)}월</span>
             </div>
@@ -607,7 +595,7 @@ function MonthBars({ months }: { months: { period: string; c: number; s: number;
         })}
       </div>
       <ul className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[12px] text-gray-600">
-        <li className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: "#050072" }} />쿠폰 사용(식사권 제외)</li>
+        <li className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: BAR_INK }} />쿠폰 사용(식사권 제외)</li>
         <li className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: "var(--chart-carousel)" }} />스탬프</li>
         <li>이번 달은 지금까지라 옅게</li>
       </ul>
@@ -621,7 +609,7 @@ function Bar({ value, max, unavailable }: { value: number; max: number; unavaila
   return (
     <span className="inline-flex items-center gap-2 justify-end w-full">
       <span className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden max-w-[5rem]">
-        <span className="block h-full bg-navy rounded-full" style={{ width: `${(value / max) * 100}%` }} />
+        <span className="block h-full rounded-full" style={{ width: `${(value / max) * 100}%`, background: BAR_INK }} />
       </span>
       <span className={`tabular-nums w-8 text-right ${value === 0 ? "text-gray-500" : "text-gray-800 font-medium"}`}>{value.toLocaleString()}</span>
     </span>
