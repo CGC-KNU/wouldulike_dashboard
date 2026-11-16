@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconAlertTriangle, IconBrandSlack, IconExternalLink, IconRefresh } from "@tabler/icons-react";
 import { PanelSection, Unknown, daysBetween, md, missingAppWarnNow, openDateOf, weekdayOf } from "./kit";
+import { fetchJson } from "../_shared/fetchJson";
 import { Button, Card, Chip, DraftBadge, Field, FilterPills, Input, Kpi, Notice, PageHeader, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, rowClickable, todayLocal, type ChipTone } from "../_shared/ui";
 
 /**
@@ -32,7 +33,8 @@ export default function MileageOps({ actor }: { actor: string }) {
   // 딥링크 `?open=<id>` — 슬랙 알림 · 홈 「오늘 할 일」에서 바로 이 항목을 연다
   useEffect(() => { try { const o = new URL(window.location.href).searchParams.get("open"); if (o) setOpenId(o); } catch { /* 무시 */ } }, []);
 
-  const load = useCallback(() => { setLoading(true); fetch("/api/probe/mileage").then((r) => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false)); }, []);
+  // 응답이 실패하면 null — 전에는 오류 응답을 그대로 읽어 「보류된 회차 0」 · 빈 표가 떴다(1116 점검 A3). 저장 뒤 다시 읽기도 새로 읽는다
+  const load = useCallback(() => { setLoading(true); fetchJson<Payload>("/api/probe/mileage", { fresh: true }).then(setData).finally(() => setLoading(false)); }, []);
   useEffect(load, [load]);
 
   const today = todayLocal();
@@ -81,6 +83,10 @@ export default function MileageOps({ actor }: { actor: string }) {
       <PageHeader title="마일리지 추첨" description="수 · 금 11시 마감 · 마감 직후 추첨. 응모는 마감 3일 전에 열리고, 응모가 비면 추첨이 보류됩니다."
         actions={<>{data?.draft && <DraftBadge note={data.draft_note} />}{data && <a href={data.sheet_url} target="_blank" rel="noreferrer"><Button icon={<IconExternalLink />}>운영 시트</Button></a>}{data && <a href={`https://slack.com/app_redirect?channel=${data.slack_channel}`} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{data.slack_channel}</Button></a>}<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 읽기</Button></>} />
 
+      {!loading && !data && (
+        <div className="mb-4"><Notice tone="red" title="마일리지 기록을 읽지 못했습니다">아래 칸은 0 이 아니라 모름입니다. 「다시 읽기」를 눌러 주세요. 급하면 운영 시트를 봅니다.</Notice></div>
+      )}
+
       {/* 응모·당첨은 앱 DB 실측으로 채운다. 그걸 못 읽었을 때만 사람이 시트를 본다 (1013 — 전에는 이 경고가 늘 떴다) */}
       {data && data.pool_source === "manual" && (
         <div className="mb-4">
@@ -113,15 +119,15 @@ export default function MileageOps({ actor }: { actor: string }) {
       <div className="sat-stagger grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
         <Kpi label={`${monthNo}월 식사권 사용`} value={loading ? "-" : v ? usedInMonth.length : "미확인"} suffix={v ? `장 · ${usedStores}곳` : undefined}
           hint={!v ? "앱 기록을 못 읽었습니다" : `${md(payDate)} 정산 대상 · 시작부터 ${v.redeemed}/${v.issued}장 사용${v.issued ? `(${Math.round((v.redeemed / v.issued) * 100)}%)` : ""} · 안 쓰고 만료 ${v.expired}`} />
-        <Kpi label="보류된 회차" value={loading ? "-" : held} tone="alert" hint={`${monthNo}월 · 응모가 비어 추첨 못 함`} />
+        <Kpi label="보류된 회차" value={loading ? "-" : data ? held : "미확인"} tone="alert" hint={`${monthNo}월 · 응모가 비어 추첨 못 함`} />
         <Kpi label="7일 안 만료 식사권" value={loading ? "-" : v ? expiring.length : "미확인"} suffix={v ? "장" : undefined}
           hint={!v ? "앱 기록을 못 읽었습니다" : expiring.length ? `${md(expiring.map((x) => x.expires_at as string).sort()[0])}까지 · 당첨자에게 알리면 살릴 수 있습니다` : "지금 미사용 식사권은 모두 7일 넘게 남았습니다"} />
       </div>
 
       <Card flush className="mb-4" title={`${monthNo}월 회차`}
-        description={`${month === "2026-09" ? "1주차 없음 · 4주차는 추석 적립분 몰아 방출 + 상품 2배 (0902 확정)" : "수 · 금 11:00 마감 · 행을 누르면 응모 · 식사권 · 결과를 봅니다"} · ${monthNo}월 추첨 완료 ${drawn}회${progress ? ` · 당첨 ${wins}명` : ""}`}
+        description={`${month === "2026-09" ? "1주차 없음 · 4주차는 추석 적립분 몰아 방출 + 상품 2배 (0902 확정)" : "수 · 금 11:00 마감 · 행을 누르면 응모 · 식사권 · 결과를 봅니다"} ${data ? ` · ${monthNo}월 추첨 완료 ${drawn}회` : ""}${progress ? ` · 당첨 ${wins}명` : ""}`}
         actions={months.length > 1 ? <FilterPills soft label="달" value={month} onChange={setPickedMonth} options={months.map((m) => ({ key: m, label: `${Number(m.slice(5, 7))}월` }))} /> : undefined}>
-        {loading ? <Skeleton rows={8} cols={5} /> : (
+        {loading ? <Skeleton rows={8} cols={5} /> : !data ? <p className="px-4 py-6 text-[13px] text-gray-500">회차 목록을 읽지 못했습니다 — 0 이 아니라 모름입니다.</p> : (
           <Table minWidth="44rem">
             <thead><tr><Th width="6rem">회차</Th><Th width="8rem">좌석</Th><Th width="11rem">상품</Th><Th width="7rem" align="right">응모 (앱)</Th><Th width="5rem" align="right">당첨</Th><Th width="5rem" align="right">사람 확인</Th><Th width="6.5rem">결과</Th><Th>메모</Th></tr></thead>
             <tbody>

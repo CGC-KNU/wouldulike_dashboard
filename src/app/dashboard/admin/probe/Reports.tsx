@@ -41,6 +41,8 @@ const S_LABEL: Record<ReportStatus, string> = { DRAFT: "초안", APPROVED: "승�
 const S_TONE: Record<ReportStatus, ChipTone> = { DRAFT: "gray", APPROVED: "navy", LINKED: "navy", SENT: "green", REVOKED: "gray" };
 const M_LABEL: Record<string, string> = { saved: "저장", reach: "도달", views: "조회", shares: "공유", likes: "좋아요", comments: "댓글", profile_visits: "프로필 방문", follows: "팔로우" };
 const postKey = (p: Pick<Post, "plan_id" | "restaurant_id" | "store">) => `${p.plan_id}-${p.restaurant_id ?? p.store}`;
+/** 승인하면 #ops-partner 에 올라가는 판 — .github/workflows/probe-report-share.yml 과 같아야 한다. 장 수가 바뀌면 여기 하나만 고친다 */
+const SHARE_FILES = "PNG 3장과 HTML";
 
 /** 게시물 한 줄이 어느 단계인가 — 게시물과 리포트를 한 줄로 잇는다(1022 목업) */
 type Stage = "make" | "draft" | "send" | "wait" | "blocked" | "sent";
@@ -163,7 +165,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
 
   return (
     <>
-      <PageHeader title="매장 리포트" description="Papillon 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 게시 14일차 09:00 에 초안이 생기고, 지표를 넣어 승인하면 PNG 3장 + HTML 이 #ops-partner 에 올라갑니다. 카톡으로 보낸 뒤 「보냄 표시」까지 하면 끝입니다."
+      <PageHeader title="매장 리포트" description={`Papillon 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 게시 14일차 09:00 에 초안이 생기고, 지표를 넣어 승인하면 ${SHARE_FILES}이 #ops-partner 에 올라갑니다. 카톡으로 보낸 뒤 「보냄 표시」까지 하면 끝입니다.`}
         actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{TOOLS.probe.slack.channel}</Button></a><Button icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>}>
         <FilterPills soft label="리포트 종류" value={tab} onChange={setTab} options={[{ key: "posts", label: "게시물 리포트" }, { key: "monthly", label: "매장 월간 보고서" }]} />
       </PageHeader>
@@ -264,7 +266,7 @@ function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: 
       </PanelSection>
       <PanelSection title="카톡용 텍스트 (파일 대신 글로 보낼 때)">
         {p.report ? <pre className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800 bg-gray-50 rounded-lg p-3 font-[inherit]">{p.report}</pre> : <p className="text-[13px] text-gray-500">지표가 모이면 자동으로 문장이 만들어집니다.</p>}
-        <p className="text-[12px] text-gray-500 mt-2">리포트 해석 글과 같은 문장이고, 우리 채널의 다른 게시물과 견주지 않습니다. 리포트를 만들면 이 텍스트 대신 사진 · 게시물 성과 · 해석 글이 PNG 두 장으로 나갑니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
+        <p className="text-[12px] text-gray-500 mt-2">리포트 해석 글과 같은 문장이고, 우리 채널의 다른 게시물과 견주지 않습니다. 리포트를 만들면 이 텍스트 대신 사진 · 게시물 성과 · 해석 글이 {SHARE_FILES}로 나갑니다. <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-navy">인사이트 캡처 <IconExternalLink size={11} aria-hidden="true" /></a></p>
       </PanelSection>
     </SlideOver>
   );
@@ -327,7 +329,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
     try {
       const res = await fetch(`/api/probe/reports/${r.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, reason }) });
       const d = await res.json().catch(() => ({})); if (!res.ok) { setMsg({ tone: "red", text: d.detail, problems: d.problems }); return; }
-      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "finalize" ? "승인했습니다. 잠시 뒤 #ops-partner 에 PNG 3장과 HTML 이 올라갑니다." : action === "sent" ? "사장님께 보냄으로 표시했습니다. 이 리포트는 「보냄」으로 넘어갑니다." : "링크를 회수했습니다." }); onChanged();
+      setMsg({ tone: "green", text: action === "refresh" ? "지금 수치로 다시 읽었습니다. 자동으로 쓴 문장은 새 숫자로 다시 썼고, 손으로 고친 문장은 그대로 두었습니다." : action === "finalize" ? `승인했습니다. 잠시 뒤 #ops-partner 에 ${SHARE_FILES}이 올라갑니다.` : action === "sent" ? "사장님께 보냄으로 표시했습니다. 이 리포트는 「보냄」으로 넘어갑니다." : "링크를 회수했습니다." }); onChanged();
     } finally { setBusy(false); }
   }
   /**
@@ -337,7 +339,7 @@ export function ReportEditor({ r, onClose, onChanged }: { r: StoreReport; onClos
   function approve() {
     const left = manualMissing(r.snapshot.manual, { carousel, curation });
     const warn = left.length ? `아직 인스타 지표를 다 입력하지 않았습니다.\n\n비어 있는 항목\n${left.map((x) => `· ${x}`).join("\n")}\n\n` : "";
-    if (!window.confirm(`${warn}승인하면 #ops-partner 에 PNG 3장과 HTML 이 바로 올라갑니다.${left.length ? "\n이대로 승인할까요?" : "\n승인할까요?"}`)) return;
+    if (!window.confirm(`${warn}승인하면 #ops-partner 에 ${SHARE_FILES}이 바로 올라갑니다.${left.length ? "\n이대로 승인할까요?" : "\n승인할까요?"}`)) return;
     void act("finalize");
   }
 
