@@ -6,7 +6,7 @@ import type { StoreActivity, StoreMetric } from "@/lib/draft/types";
 import { campusOfMetric, failReasonLabel, isFailing, isSilent, previousPeriod, summarizeActivity, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
 import { allCampuses } from "../astro/CampusPicker";
 import { Button, Card, Chip, Empty, FilterPills, Notice, PageHeader, Skeleton, SlideOver, Table, Td, Th, periodLocal, rowClickable } from "../_shared/ui";
-import { AsOf, BAR_INK, BAR_NOW, Fold, FlowCard, MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
+import { AsOf, BAR_INK, BAR_NOW, BAR_PAST, Fold, FlowCard, MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
 import { flowOf } from "@/lib/bigquery/liveShape";
 import { fetchJson } from "../_shared/fetchJson";
 import type { StoreMonth } from "@/app/api/probe/store-history/route";
@@ -39,7 +39,7 @@ import type { StoreMonth } from "@/app/api/probe/store-history/route";
  *
  * 1116 민찬: 직관적으로 · 지금의 흐름을 숫자 + 그래프로 · 간단하게(실시간 지표 #389 와 같은 결).
  *   ① 매장 상태 한 줄 — 제휴 매장이 「쓰임 · 보고 안 씀 · 안 보임 · 앱에서 숨김」으로 어떻게 나뉘는지 띠 하나. 조각을 누르면 그 범위로 좁힌다
- *   ② 이번 달 흐름 두 칸 — 쿠폰 사용 · 스탬프 적립. 숫자 + 「지난달 이맘때」와 견준 말 + 많이 쓰인 매장 막대
+ *   ② 이번 달 흐름 두 칸 — 쿠폰 사용 · 스탬프 적립. 숫자 + 「지난달 이맘때」와 견준 말 + 매장별 몫(이름 없이, 1116 점검 C1)
  *   ③ 표는 다섯 열(매장 · 쿠폰 · 스탬프 · 상세 열람 · 사용 실패). 식사권 · 마일리지 · 혜택 수 · 재방문은 행을 눌러 여는 매장 패널에 있다
  * 「지난달 이맘때」 = 지난달 1일부터 오늘과 같은 날짜까지(같은 길이라 견줘도 된다). 차이가 ±2√(합) 안이면 「비슷」(flowOf).
  * 읽는 법 · 출처 줄은 표 아래에 접어 둔다.
@@ -212,8 +212,11 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
     ...(nUnknown > 0 ? [{ key: "unknown", label: "미확인", n: nUnknown, color: "#E5E7EB", why: "지표를 읽지 못한 매장 — 0 이 아니라 모름" }] : []),
   ];
   const stampNow = totals?.stamp_earned ?? 0;
-  const top = (value: (s: StoreMetric) => number) =>
-    aff.filter((s) => !s.unavailable && value(s) > 0).sort((a, b) => value(b) - value(a) || a.name.localeCompare(b.name, "ko")).slice(0, 5).map((s) => ({ id: s.restaurant_id, name: s.name, n: value(s) }));
+  /**
+   * 매장별 몫 — 이름 없이 건수만, 많은 순(1116 점검 C1). 매장 이름과 순서가 화면 맨 위에 크게 나오면 캡처 한 장이 동종 매장 순위가 된다
+   * (월간 보고서 탭 · 매장 패널이 비교를 일부러 뺀 까닭). 쏠림만 보이면 된다 — 어느 매장인지는 아래 표에서 본다.
+   */
+  const shares = (value: (s: StoreMetric) => number) => aff.filter((s) => !s.unavailable && value(s) > 0).map(value).sort((a, b) => b - a);
   const prevMonth = previous?.state === "ok" ? monthLabel(previous.period) : null;
   const openStore = stores.find((s) => s.restaurant_id === openId) ?? null;
 
@@ -332,8 +335,8 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
 
       <p className="text-[13px] font-semibold text-gray-900 mb-2">이번 달 흐름</p>
       <div className="grid gap-4 lg:grid-cols-2 items-start mb-5">
-        <MonthCard title="쿠폰 사용" value={loading || storesUnreadable ? null : netCoupon} unit="건" prev={prevNet} prevMonth={prevMonth} note="식사권 제외" top={top(couponNet)} loading={loading} onOpen={setOpenId} />
-        <MonthCard title="스탬프 적립" value={loading || storesUnreadable ? null : stampNow} unit="건" prev={prevStamp} prevMonth={prevMonth} top={top((s) => s.stamp_earned_this_month)} loading={loading} onOpen={setOpenId} />
+        <MonthCard title="쿠폰 사용" value={loading || storesUnreadable ? null : netCoupon} unit="건" prev={prevNet} prevMonth={prevMonth} note="식사권 제외" shares={shares(couponNet)} loading={loading} />
+        <MonthCard title="스탬프 적립" value={loading || storesUnreadable ? null : stampNow} unit="건" prev={prevStamp} prevMonth={prevMonth} shares={shares((s) => s.stamp_earned_this_month)} loading={loading} />
       </div>
 
       <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description="행을 누르면 식사권 · 혜택 수 · 재방문 · 월별 기록까지 열립니다.">
@@ -357,6 +360,27 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
             <Empty title="이 조건에 해당하는 매장이 없습니다" detail={campus === "all" ? "다른 범위를 눌러 보세요." : `${campus} 에는 아직 이 범위의 제휴 매장이 없습니다.`} />
           )
         ) : (
+          <>
+          {/* 폰 — 매장 한 곳이 두 줄(1116 점검 B10). 표를 쌓으면 한 곳이 다섯 줄이라 45곳이면 화면 열 장이 넘는다 */}
+          <ul className="sm:hidden divide-y divide-black/[0.05]">
+            {rows.map((s) => {
+              const a = act ? act[String(s.restaurant_id)] ?? NO_ACTIVITY : null;
+              const n = (v: number) => <b className={`font-semibold ${v ? "text-gray-900" : "text-gray-500"}`}>{v.toLocaleString()}</b>;
+              return (
+                <li key={s.restaurant_id}>
+                  <button type="button" onClick={() => setOpenId(s.restaurant_id)} className="w-full text-left px-4 py-2.5">
+                    <span className="flex items-center gap-1.5 flex-wrap"><span className="font-semibold text-gray-900 text-[14px]">{s.name}</span><StoreTags s={s} /></span>
+                    <span className="block text-[12.5px] text-gray-600 tabular-nums mt-0.5">
+                      {s.unavailable ? <>지표 <Unknown /></> : <>쿠폰 {n(couponNet(s))} · 스탬프 {n(s.stamp_earned_this_month)}</>}
+                      {" · "}열람 {a ? n(a.detail_devices) : <Unknown />}
+                      {" · "}실패 {a ? <b className={`font-semibold ${a.failed_devices ? (a.coupon_unresolved ? "text-amber-800" : "text-gray-900") : "text-gray-500"}`}>{a.failed_devices}</b> : <Unknown />}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden sm:block">
           <Table minWidth="44rem">
             <thead>
               <tr>
@@ -369,18 +393,13 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
             </thead>
             <tbody>
               {rows.map((s) => {
-                const silent = isSilent(s);
                 const a = act ? act[String(s.restaurant_id)] ?? NO_ACTIVITY : null;
                 return (
                   <tr key={s.restaurant_id} className={rowClickable} onClick={() => setOpenId(s.restaurant_id)}>
                     <Td>
                       <span className="inline-flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-900">{s.name}</span>
-                        {/* 플랜 표지 — Premium(최고 등급) 남색 · Boost 페리윙클 · 무료는 표지 없음 */}
-                        <PlanTag tier={s.tier} />
-                        {silent && <TagChip>조용함</TagChip>}
-                        {s.hidden_from_app && <TagChip>앱에서 숨김</TagChip>}
-                        {s.benefit_count === 0 && <span className="inline-flex items-center h-5 px-1.5 rounded-md text-[11px] font-medium whitespace-nowrap" style={{ background: "var(--flow-down-bg)", color: "var(--flow-down-fg)" }}>혜택 없음</span>}
+                        <StoreTags s={s} />
                       </span>
                     </Td>
                     <Td align="right">
@@ -398,6 +417,8 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
               })}
             </tbody>
           </Table>
+          </div>
+          </>
         )}
       </Card>
 
@@ -512,38 +533,51 @@ function StorePanel({ s, a, vouchers, previous, reportPeriod, onClose, onGo }: {
 }
 
 /**
- * 이번 달 흐름 한 칸 — 숫자 하나 · 「지난달 이맘때」와 견준 말 · 많이 쓰인 매장 막대(누르면 그 매장 패널).
- * 지난달 같은 날짜까지의 합을 모르면 말을 달지 않는다.
+ * 이번 달 흐름 한 칸 — 숫자 하나 · 「지난달 이맘때」와 견준 말 · 매장별 몫(이름 없는 막대, 많은 순).
+ * 지난달 같은 날짜까지의 합을 모르면 말을 달지 않는다. 윗자리 두 곳이 전체에서 얼마를 차지하는지를 한 줄로.
  */
 const MONTH_FLOW = { up: "지난달 이맘때보다 많음", same: "지난달 이맘때와 비슷", down: "지난달 이맘때보다 적음" } as const;
-function MonthCard({ title, value, unit, prev, prevMonth, note, top, loading, onOpen }: {
+function MonthCard({ title, value, unit, prev, prevMonth, note, shares, loading }: {
   title: string; value: number | null; unit: string; prev: number | null; prevMonth: string | null; note?: string;
-  top: { id: number; name: string; n: number }[]; loading: boolean; onOpen: (id: number) => void;
+  shares: number[]; loading: boolean;
 }) {
   const flow = flowOf(value, prev);
-  const max = Math.max(1, ...top.map((t) => t.n));
+  const max = Math.max(1, ...shares);
+  const total = shares.reduce((a, n) => a + n, 0);
+  const top2 = shares.slice(0, 2).reduce((a, n) => a + n, 0);
   const sub = [prev !== null && prevMonth ? `${prevMonth} 같은 날까지 ${prev.toLocaleString()}${unit}` : "지난달 이맘때 미확인", note].filter(Boolean).join(" · ");
   return (
     <FlowCard title={title} value={value} unit={unit} loading={loading} tag={flow ? { flow, text: MONTH_FLOW[flow] } : null} sub={sub}>
-      {loading ? <div className="h-28 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : (
+      {loading ? <div className="h-24 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : (
         <div className="mt-3 border-t border-black/[0.06] pt-2.5">
-          <p className="text-[12.5px] font-medium text-gray-700 mb-1.5">많이 쓰인 매장</p>
-          {top.length === 0 ? <p className="text-[13px] text-gray-500">{value === null ? "읽지 못했습니다 — 0 이 아니라 모름입니다." : "이번 달 아직 없습니다."}</p> : (
-            <ul className="space-y-1.5">
-              {top.map((t) => (
-                <li key={t.id}>
-                  <button type="button" onClick={() => onOpen(t.id)} className="group grid w-full grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)_2.5rem] items-center gap-2 text-left text-[13px]">
-                    <span className="truncate text-gray-800 group-hover:underline">{t.name}</span>
-                    <span className="h-2.5 rounded-full bg-black/[0.04] overflow-hidden"><span className="block h-full rounded-full" style={{ width: `${(t.n / max) * 100}%`, background: BAR_NOW }} /></span>
-                    <b className="tabular-nums text-right text-gray-900">{t.n.toLocaleString()}</b>
-                  </button>
-                </li>
+          <p className="text-[12.5px] text-gray-700 mb-2">
+            {shares.length === 0 ? (value === null ? "읽지 못했습니다 — 0 이 아니라 모름입니다." : "이번 달 아직 없습니다.")
+              : <>쓰인 매장 <b className="text-gray-900">{shares.length}곳</b>{shares.length > 2 && total > 0 && <> · 윗자리 2곳이 전체의 <b className="text-gray-900">{Math.round((top2 / total) * 100)}%</b></>}</>}
+          </p>
+          {shares.length > 0 && (
+            <div className="flex items-end gap-[3px] h-16" role="img" aria-label={`매장별 ${unit} 수, 많은 순: ${shares.join(", ")}`}>
+              {shares.map((n, i) => (
+                <span key={i} className="flex-1 max-w-[28px] rounded-t-[3px]" title={`${n.toLocaleString()}${unit}`}
+                  style={{ height: `${Math.max(6, (n / max) * 100)}%`, background: i < 2 && shares.length > 2 ? BAR_NOW : BAR_PAST }} />
               ))}
-            </ul>
+            </div>
           )}
+          {shares.length > 0 && <p className="text-[11.5px] text-gray-500 mt-1.5">막대 하나가 매장 한 곳(많은 순) · 매장 이름은 아래 표에서</p>}
         </div>
       )}
     </FlowCard>
+  );
+}
+
+/** 매장 이름 옆 표지 — 플랜(Premium 남색 · Boost 페리윙클 · 무료는 없음) · 조용함 · 앱에서 숨김 · 혜택 없음. 표와 폰 목록이 같이 쓴다 */
+function StoreTags({ s }: { s: StoreMetric }) {
+  return (
+    <>
+      <PlanTag tier={s.tier} />
+      {isSilent(s) && <TagChip>조용함</TagChip>}
+      {s.hidden_from_app && <TagChip>앱에서 숨김</TagChip>}
+      {s.benefit_count === 0 && <span className="inline-flex items-center h-5 px-1.5 rounded-md text-[11px] font-medium whitespace-nowrap" style={{ background: "var(--flow-down-bg)", color: "var(--flow-down-fg)" }}>혜택 없음</span>}
+    </>
   );
 }
 
