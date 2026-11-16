@@ -122,9 +122,9 @@ export const BAR_NOW = "var(--bar-now)";
 export const BAR_INK = "var(--bar-ink)";
 
 /** 견준 말 표지 — 많음 ▲ · 비슷 · 적음 ▼. 글에는 화살표를 넣지 않는다(여기서 붙인다) */
-export function FlowTag({ flow, children, className = "" }: { flow: Flow; children: ReactNode; className?: string }) {
+export function FlowTag({ flow, children, className = "", small }: { flow: Flow; children: ReactNode; className?: string; small?: boolean }) {
   return (
-    <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold ${className}`} style={{ background: `var(--flow-${flow}-bg)`, color: `var(--flow-${flow}-fg)` }}>
+    <span className={`inline-flex items-center ${small ? "h-5 px-1.5 text-[11px]" : "h-6 px-2 text-[12px]"} rounded-md font-semibold whitespace-nowrap ${className}`} style={{ background: `var(--flow-${flow}-bg)`, color: `var(--flow-${flow}-fg)` }}>
       {flow === "up" ? "▲ " : flow === "down" ? "▼ " : ""}{children}
     </span>
   );
