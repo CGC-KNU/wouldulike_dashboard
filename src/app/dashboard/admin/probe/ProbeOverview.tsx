@@ -463,7 +463,7 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
 
 /**
  * 매장 패널 — 그 매장 하나의 기록. 순위 · 평균 대비는 넣지 않는다: 리포트나 영업 자료로 나가면 두 계약 모두 금지한 동종 매장 비교가 된다.
- * 월별 막대 · 계약 기간 누적 · 계약 판은 월별 기록표를 매장마다 읽는 집계가 아직 없어(개발 중) 이번 달과 지난달만 보인다.
+ * 계약 판 · 계약 기간 누적은 넣지 않는다 — Probe 는 앱 안 기록만 본다(민찬 1023). 계약은 Astro 매장 상세에서 본다(1116 점검 C3).
  */
 function StorePanel({ s, a, vouchers, previous, reportPeriod, onClose, onGo }: { s: StoreMetric; a: StoreActivity | null; vouchers: number | null; previous: PreviousState | null; reportPeriod: string; onClose: () => void; onGo?: (tab: string) => void }) {
   const prevOk = previous?.state === "ok" && s.prev;
@@ -525,7 +525,7 @@ function StorePanel({ s, a, vouchers, previous, reportPeriod, onClose, onGo }: {
             <MetricBox label="식사권 사용" value={months.every((m) => m.v === null) ? <Pending /> : `${sumOf("v")}장`} sub={partialSum("v") ? "굳은 달만" : undefined} />
             <MetricBox label="누적 단골" value={s.unavailable ? <Unknown /> : `${s.loyal_total}명`} sub="스탬프 3번 이상" />
           </div>
-          <p className="text-[12px] text-gray-600 mt-2 leading-relaxed">「쓴 사람」 합은 달마다 센 계정을 더한 것이라 같은 사람이 여러 달에 나오면 그만큼 겹칩니다. 계약 판(PDF · 전자 약관 v4)과 월간 보고서 발송 여부는 <Chip tone="gray">개발 중</Chip> — 계약은 Astro 매장 상세 「계약」에서 봅니다.</p>
+          <p className="text-[12px] text-gray-600 mt-2 leading-relaxed">「쓴 사람」 합은 달마다 센 계정을 더한 것이라 같은 사람이 여러 달에 나오면 그만큼 겹칩니다.</p>
         </PanelSection>
       )}
     </SlideOver>

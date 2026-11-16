@@ -69,6 +69,17 @@ export default function MileageOps({ actor }: { actor: string }) {
   const usedInMonth = allVouchers.filter((x) => x.status === "REDEEMED" && x.redeemed_at?.startsWith(month));
   const usedStores = new Set(usedInMonth.map((x) => x.restaurant_id ?? x.restaurant_name)).size;
   const expiring = allVouchers.filter((x) => x.status === "ISSUED" && x.expires_at && daysBetween(today, x.expires_at) >= 0 && daysBetween(today, x.expires_at) <= 7);
+  /** 정산 — 이번 달 사용된 식사권을 매장별로(1116 점검 C3). 권종(5,000 · 10,000원) · 지급 완료는 응답에 없어 운영 시트에서 본다 */
+  const settle = useMemo(() => {
+    const m = new Map<string, { name: string; n: number; last: string }>();
+    for (const x of usedInMonth) {
+      const k = String(x.restaurant_id ?? x.restaurant_name ?? "?");
+      const cur = m.get(k) ?? { name: x.restaurant_name ?? (x.restaurant_id ? `매장 ${x.restaurant_id}` : "매장 미상"), n: 0, last: "" };
+      cur.n += 1; if ((x.redeemed_at ?? "") > cur.last) cur.last = x.redeemed_at ?? "";
+      m.set(k, cur);
+    }
+    return [...m.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, "ko"));
+  }, [usedInMonth]);
   const payDate = (() => { const [y, m] = month.split("-").map(Number); return `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-10`; })();
 
   async function patch(id: string, body: Partial<Pick<Round, "pool_count" | "result" | "note">>) {
@@ -177,7 +188,21 @@ export default function MileageOps({ actor }: { actor: string }) {
           )}
         </Card>
       </details>
-      <p className="text-[12px] text-gray-600 leading-relaxed">식사권 정산표(매장별 5,000원권 · 10,000원권 · 지급 완료 표시)는 <Chip tone="gray">개발 중</Chip> — 지금은 위 「식사권 사용」 장 수 · 매장 수와 운영 시트의 정산 탭으로 봅니다.</p>
+      {v && (
+        <Card flush className="mb-4" title={`${monthNo}월 식사권 정산 · 매장별`} description={`${md(payDate)} 정산 대상 · 사용된 식사권 ${usedInMonth.length}장 · 권종(5,000원 · 10,000원)과 지급 완료 표시는 운영 시트 정산 탭에서 봅니다`}
+          actions={data ? <a href={data.sheet_url} target="_blank" rel="noreferrer"><Button size="sm" icon={<IconExternalLink />}>정산 탭</Button></a> : undefined}>
+          {settle.length === 0 ? <p className="px-4 py-5 text-[13px] text-gray-500">{monthNo}월에 사용된 식사권이 아직 없습니다.</p> : (
+            <Table minWidth="24rem" stack={false}>
+              <thead><tr><Th>매장</Th><Th width="6rem" align="right">사용</Th><Th width="7rem" align="right">마지막 사용</Th></tr></thead>
+              <tbody>
+                {settle.map((x) => (
+                  <tr key={x.name}><Td><span className="font-medium text-gray-900">{x.name}</span></Td><Td align="right" numeric>{x.n}장</Td><Td align="right" numeric className="text-gray-500">{x.last ? md(new Date(Date.parse(x.last) + 9 * 3_600_000).toISOString().slice(0, 10)) : "—"}</Td></tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card>
+      )}
 
       {open && <RoundPanel r={open} prog={prog(open)} onClose={() => setOpenId(null)} onPatch={patch} onCreated={load} />}
     </>
