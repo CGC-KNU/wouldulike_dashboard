@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { IconAlertTriangle, IconBrandSlack, IconChartBar, IconCheck, IconFileDescription, IconGift } from "@tabler/icons-react";
+import { IconAlertTriangle, IconBrandSlack, IconChartBar, IconCheck, IconClipboardList, IconFileDescription, IconGift } from "@tabler/icons-react";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import { isFailing, isSilent } from "@/lib/draft/storeMetrics";
 import type { QualityIssue, StoreActivity, StoreMetric, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, Notice, PageHeader, Skeleton, todayLocal } from "../_shared/ui";
 import { fetchJson } from "../_shared/fetchJson";
-import { Unknown, md, missingAppWarnNow, openDateOf, ownerOf, weekdayOf } from "./kit";
+import { FlowTag, Unknown, md, missingAppWarnNow, openDateOf, ownerOf, weekdayOf } from "./kit";
+import { flowOf, type Flow } from "@/lib/bigquery/liveShape";
 
 /**
  * Probe · 홈 — 「오늘 할 일」(1022 목업, 기획팀 검토 D2).
@@ -15,6 +16,8 @@ import { Unknown, md, missingAppWarnNow, openDateOf, ownerOf, weekdayOf } from "
  * 예전 홈은 메뉴 요약 카드를 되풀이해 다음에 할 일을 못 모아 줬다. 이제 줄 하나가 일 하나이고, 버튼이 그 일을 바로 연다.
  *   오늘 추첨 · 리포트 만들 때 · 초안 입력/승인 대기 · 카톡 보낸 뒤 보냄 표시 · 앱 회차 없음 · 정합성 높음 · 사용 실패 매장
  * 아래 한 줄 지표(WAU · 쿠폰 사용 · 조용한 유료 매장 · 7일 안 만료 쿠폰)는 각 지표 화면의 입구다.
+ * 1116 점검 B2 · B3: 한 줄 지표에 「지금 N명」과 견준 말(지표 탭과 같은 규칙 — flowOf), 할 일에 설문 줄(응답 받는 중 · 마감 임박 · 보상 쿠폰 꺼짐).
+ * 견준 말에 쓰는 두 응답(app/trend · live/now)은 느리거나 없어도 된다 — 숫자는 먼저 뜨고 말만 빠진다.
  *
  * 못 읽은 출처는 줄을 지어내지 않는다 — 위에서 무엇을 못 읽었는지 말하고, 그 출처의 줄은 아예 만들지 않는다(0 이 아니라 모름).
  * 지난달 월간 보고서 미발송 · 식사권 정산 D-N · 캠페인 편입 기한(v4)은 기록이 아직 없어(목업에서도 「개발 중」) 줄을 두지 않았다.
@@ -22,6 +25,7 @@ import { Unknown, md, missingAppWarnNow, openDateOf, ownerOf, weekdayOf } from "
 
 interface Round { id: string; date: string; weekday: string; result: "scheduled" | "drawn" | "held" | "skipped"; pool_count: number | null }
 interface DayProgress { entries: number; people: number; winners: number }
+interface SurveyRow { code: string; title: string; state: "live" | "scheduled" | "ended" | "off"; end_at: string | null; reward_campaign_active: boolean | null; counts: { opened: number; completed: number } }
 interface Task { icon: ReactNode; title: string; n?: number; status?: ReactNode; meta: ReactNode; label: string; go: string; todo: boolean }
 
 const R_LABEL = { scheduled: "예정", drawn: "추첨 완료", held: "보류", skipped: "미운용" } as const;
@@ -35,6 +39,11 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const [reps, setReps] = useState<{ reports?: StoreReport[] } | null>(null);
   const [mil, setMil] = useState<{ rounds?: Round[]; progress?: Record<string, DayProgress> | null } | null>(null);
   const [act, setAct] = useState<{ ok?: boolean; window?: unknown; stores?: Record<string, StoreActivity> } | null>(null);
+  /** 설문 목록 — null 은 읽는 중 · false 는 못 읽음 */
+  const [surveys, setSurveys] = useState<SurveyRow[] | null | false>(null);
+  /** 견준 말용 — 12주 추이(WAU 마지막 두 주) · 지금 몇 명. 없어도 숫자는 뜬다 */
+  const [trend, setTrend] = useState<{ series?: { wau?: (number | null)[] } } | null>(null);
+  const [nowUsers, setNowUsers] = useState<number | null>(null);
 
   /**
    * 0925: 못 읽은 것을 `{}` 로 채웠다. `{}` 는 참이라 `loading` 이 꺼지고, 화면은
@@ -59,6 +68,13 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
     j("/api/probe/mileage", "마일리지", setMil);
     // GA4 는 느리다 — 늦거나 실패해도 나머지 줄은 먼저 뜬다. 실패하면 「사용 실패 매장」 줄만 없다
     fetchJson<Record<string, any>>("/api/probe/store-activity").then((d) => setAct(d ?? { ok: false })); // eslint-disable-line @typescript-eslint/no-explicit-any
+    // 설문 · 추이 · 지금 — 할 일 목록을 기다리게 하지 않는다
+    fetchJson<{ surveys?: SurveyRow[] }>("/api/probe/surveys").then((d) => {
+      setSurveys(d?.surveys ?? false);
+      if (!d) setFailed((prev) => (prev.includes("설문 조사") ? prev : [...prev, "설문 조사"]));
+    });
+    fetchJson<{ series?: { wau?: (number | null)[] } }>("/api/probe/app/trend", { timeout: 60000, retries: 0 }).then(setTrend);
+    fetchJson<{ now?: { total?: { users?: number } } | null }>("/api/probe/live/now").then((d) => setNowUsers(d?.now?.total?.users ?? null));
   }, []);
 
   const today = todayLocal();
@@ -112,6 +128,19 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
       T.push({ icon: <IconAlertTriangle size={16} />, title: "정합성 높음", n: highs.length, status: <Chip tone="red" dot>높음</Chip>, meta: `담당 ${owners.map(([o, n]) => `${o} ${n}`).join(" · ")}`, label: "보기", go: "probe-quality?sev=high", todo: true });
     }
 
+    // ── 설문 — 응답 받는 중이면 한 줄. 보상 쿠폰 캠페인이 꺼져 있거나 하루 안에 마감이면 할 일
+    for (const sv of surveys ? surveys.filter((x) => x.state === "live") : []) {
+      const noReward = sv.reward_campaign_active === false;
+      const left = sv.end_at ? Date.parse(sv.end_at) - Date.now() : null;
+      const soon = left !== null && left > 0 && left <= 24 * 3_600_000;
+      const end = sv.end_at ? new Date(Date.parse(sv.end_at) + 9 * 3_600_000).toISOString() : null;
+      T.push({ icon: <IconClipboardList size={16} />, title: `설문 ${sv.title}`,
+        status: noReward ? <Chip tone="amber">보상 쿠폰 꺼짐</Chip> : soon ? <Chip tone="amber">오늘 마감</Chip> : <Chip tone="green" dot>응답 받는 중</Chip>,
+        meta: noReward ? "설문은 열려 있는데 보상 쿠폰 캠페인이 꺼져 있습니다 — 답한 사람이 쿠폰을 못 받습니다"
+          : `끝낸 사람 ${sv.counts.completed.toLocaleString()}명 · 연 사람 ${sv.counts.opened.toLocaleString()}명${end ? ` · 마감 ${+end.slice(5, 7)}/${+end.slice(8, 10)} ${end.slice(11, 16)}` : " · 마감 없음"}`,
+        label: "보기", go: "probe-surveys", todo: noReward || soon });
+    }
+
     // ── 사용 실패 매장 — GA4. 못 읽었으면 줄이 없다
     if (act?.ok && act.window && act.stores) {
       const failing = stores.filter((s) => isFailing(s, act.stores?.[String(s.restaurant_id)]));
@@ -119,19 +148,36 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
       if (failing.length) T.push({ icon: <IconChartBar size={16} />, title: "사용 실패 매장", n: failing.length, meta: `학생이 쿠폰 · 스탬프를 못 쓴 매장${unresolved ? ` — 아직 못 쓴 쿠폰 ${unresolved}장` : ""} · ${names(failing.map((s) => s.name))}`, label: "보기", go: "probe-metrics?scope=failing", todo: true });
     }
     return T;
-  }, [loading, mil, reps, ins, q, act, stores, today]);
+  }, [loading, mil, reps, ins, q, act, stores, today, surveys]);
 
   const firstTodo = tasks.findIndex((t) => t.todo);
-  const wau = metric("wau"), coupon = metric("coupon_used"), expiring = metric("coupon_expiring");
+  const wau = metric("wau"), expiring = metric("coupon_expiring");
   const silentPaid = stores.filter((s) => isSilent(s) && (s.tier === "BOOST" || s.tier === "CONTENT")).length;
   /** 지표를 읽은 매장이 하나도 없으면 조용한 매장은 셀 수 없다 — 0곳이 아니라 모름(1116 점검 A4) */
   const storesRead = stores.some((s) => !s.unavailable);
   const val = (m: { value: number | null; unit?: string } | undefined, unit: string) => (!m || m.value === null ? null : `${m.value.toLocaleString()}${unit}`);
-  const stat = (label: string, value: string | null, go: string) => (
+  const stat = (label: string, value: string | null, go: string, tag?: { flow: Flow; text: string } | null) => (
     <button key={label} type="button" onClick={() => onGo(go)} className="inline-flex items-center gap-2 px-3 py-2 rounded-[10px] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)] text-[12px] text-gray-600 hover:bg-navy/[0.05] transition-colors">
-      {label}{value === null ? <Unknown /> : <b className="text-[15px] text-gray-900 tabular-nums">{value}</b>}
+      {label}{value === null ? <Unknown /> : <b className="text-[15px] text-gray-900 tabular-nums">{value}</b>}{value !== null && tag && <FlowTag small flow={tag.flow}>{tag.text}</FlowTag>}
     </button>
   );
+  // 견준 말 — 앱 지표 · 매장 지표 탭과 같은 기준. WAU 는 끝난 주 둘, 쿠폰은 매장 지표의 지난달 같은 날짜까지(식사권 뺀 값)
+  const wauTag = (() => {
+    const v = trend?.series?.wau;
+    const a = v?.[v.length - 2], b = v?.[v.length - 1];
+    if (a == null || b == null) return null;
+    const f = flowOf(b, a)!;
+    return { flow: f, text: f === "same" ? "전주와 비슷" : `전주보다 ${b - a > 0 ? "+" : ""}${b - a}` };
+  })();
+  const readStores = stores.filter((s) => !s.unavailable);
+  const sameAll = readStores.length > 0 && readStores.every((s) => s.prev_same);
+  const couponStore = readStores.reduce((a, s) => a + s.coupon_redeemed_this_month - (s.voucher_redeemed ?? 0), 0);
+  const couponPrev = sameAll ? readStores.reduce((a, s) => a + (s.prev_same!.coupon_redeemed - s.prev_same!.voucher_redeemed), 0) : null;
+  const couponTag = (() => {
+    if (!storesRead || couponPrev === null) return null;
+    const f = flowOf(couponStore, couponPrev)!;
+    return { flow: f, text: f === "same" ? "지난달 이맘때와 비슷" : `지난달 이맘때보다 ${couponStore - couponPrev > 0 ? "+" : ""}${couponStore - couponPrev}` };
+  })();
   const dow = weekdayOf(today);
 
   return (
@@ -161,8 +207,9 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
       </Card>
 
       <div className="flex flex-wrap gap-2" aria-label="지표 한 줄">
-        {stat("주간 활성(WAU)", val(wau, "명"), "probe-app?grp=usage")}
-        {stat("이번 달 쿠폰 사용", val(coupon, "건"), "probe-app?grp=funnel")}
+        {nowUsers !== null && stat("지금 앱을 쓰는 사람", `${nowUsers.toLocaleString()}명`, "probe-live")}
+        {stat("주간 활성(WAU)", val(wau, "명"), "probe-app?grp=usage", wauTag)}
+        {stat("이번 달 쿠폰 사용", storesRead ? `${couponStore.toLocaleString()}건` : null, "probe-metrics", couponTag)}
         {stat("조용한 유료 매장", storesRead ? `${silentPaid}곳` : null, "probe-metrics?scope=silent")}
         {stat("7일 안 만료 쿠폰", val(expiring, "장"), "probe-app?grp=funnel")}
       </div>
