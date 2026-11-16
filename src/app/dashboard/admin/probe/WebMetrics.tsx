@@ -2,9 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { IconRefresh } from "@tabler/icons-react";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
-import { Button, Card, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
-import { TagChip } from "./kit";
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { Button, Card, FilterPills, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
+import { Fold, TagChip } from "./kit";
+import { flowOf, type Flow } from "@/lib/bigquery/liveShape";
+import { BAR_NOW, BAR_PAST } from "./NowCard";
 
 /**
  * Probe · 웹 지표 — 우주라이크 홈(wouldulike.kr). 매장 지표 · 앱 지표 아래 세 번째 지표 화면.
@@ -17,7 +19,14 @@ import { TagChip } from "./kit";
  *
  * 1028 B1: 이벤트 매개변수 여섯을 맞춤 측정기준으로 등록 — 섹션 도달 · 신청 단계 · 버튼 종류 · 위치 · 문의 종류 · 플랜으로 나눈다.
  * 1028 B3: 구글 검색(Search Console) 카드 — 노출 · 클릭 · 순위 · 검색어 · 색인.
+ *
+ * 1116 민찬: 직관적으로 · 지금의 흐름을 숫자 + 그래프로 · 간단하게(실시간 #389 · 매장 #390 · 앱 #391 과 같은 결).
+ *   ① 맨 위 두 칸 — 방문자(7일, 앞 7일과 견준 말 + 28일 일별 막대, 짙은 칸이 최근 7일) · 입점 신청 완료(28일 + 깔때기)
+ *   ② 숫자 넷 — 참여 세션 · 상담/견적 · 앱 설치 버튼 · 구글 검색 클릭
+ *   ③ 나머지 카드 여덟은 묶음 넷(어디서 왔나 · 입점 신청 · 구글 검색 · 앱 설치/이벤트)으로 — 한 번에 한 묶음만 보인다
+ * 견준 말은 flowOf(±2√합) — 방문이 적어 작은 차이는 「비슷」이다. 읽는 법은 맨 아래에 접어 둔다.
  */
+const FLOW_TONE: Record<Flow, string> = { up: "bg-indigo-50 text-indigo-700", same: "bg-black/[0.05] text-gray-600", down: "bg-amber-50 text-amber-800" };
 
 interface Win { from: string; to: string; users: number; sessions: number; engaged: number }
 interface Page { key: string; label: string; users: number; views: number }
@@ -90,15 +99,15 @@ function Title({ children, tag }: { children: string; tag: string }) {
 }
 
 /** 순서 있는 막대 — 섹션 도달 · 신청 단계 · 깔때기. 막대 길이는 그 목록의 가장 큰 값 기준 */
-function Bars({ rows, unit }: { rows: { label: string; n: number }[]; unit: string }) {
+function Bars({ rows, unit, plain }: { rows: { label: string; n: number; note?: string }[]; unit: string; plain?: boolean }) {
   const max = Math.max(1, ...rows.map((r) => r.n));
   return (
     <ol className="space-y-2">
       {rows.map((r, i) => (
         <li key={r.label}>
           <div className="flex items-center justify-between gap-2 text-[13.5px]">
-            <span className="text-gray-800 min-w-0 truncate">{i + 1}. {r.label}</span>
-            <b className="tabular-nums text-gray-900 shrink-0">{r.n.toLocaleString()}{unit}</b>
+            <span className="text-gray-800 min-w-0 truncate">{plain ? "" : `${i + 1}. `}{r.label}</span>
+            <span className="tabular-nums shrink-0"><b className="text-gray-900">{r.n.toLocaleString()}{unit}</b>{r.note && <span className="text-gray-500 ml-2">{r.note}</span>}</span>
           </div>
           <div className="h-2 mt-1 rounded-full bg-[#EEF1FF] overflow-hidden"><div className="h-full rounded-full bg-[#6366F1]" style={{ width: `${(r.n / max) * 100}%` }} /></div>
         </li>
@@ -170,11 +179,16 @@ export default function WebMetrics() {
   ] : [];
   const autoEvents = (data?.events ?? []).filter((e) => !OUR_EVENTS.some(([k]) => k === e.name));
 
+  const [tab, setTab] = useState<"in" | "join" | "search" | "app">("in");
+  const visit = data ? flowOf(data.week.users, data.prevWeek.users) : null;
+  const visitD = data ? data.week.users - data.prevWeek.users : 0;
+  const signed = (d: number) => `${d > 0 ? "+" : ""}${d.toLocaleString()}`;
+
   return (
     <>
       <PageHeader
         title="웹 지표"
-        description="우주라이크 홈(wouldulike.kr)에 누가 오고, 어디서 오고, 무엇을 눌렀는지를 봅니다. 한국 방문만 셉니다. 「미확인」은 0 이 아니라 읽지 못한 값입니다."
+        description="우주라이크 홈(wouldulike.kr)에 누가 오고, 입점 신청까지 가는지를 봅니다. 한국 방문만 셉니다."
         actions={<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>}
       />
 
@@ -186,230 +200,263 @@ export default function WebMetrics() {
         </div>
       )}
 
-      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-2">
-        <Kpi label="방문자(한국)" value={v(data?.week.users)} suffix={data ? "명" : undefined}
-          hint={data ? delta(data.week.users, data.prevWeek.users) : "최근 7일"} extra={data?.abroad.week ? <Sub>해외 {data.abroad.week}명 뺌(봇 추정)</Sub> : undefined} />
-        <Kpi label="참여 세션" value={v(data?.week.engaged)} suffix={data ? "회" : undefined}
+      <div className="grid gap-4 lg:grid-cols-2 items-start mb-4">
+        <Card>
+          <p className="text-[13px] font-semibold text-gray-900">방문자 · 최근 7일</p>
+          <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 mt-2">
+            <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900">
+              {v(data?.week.users)}{data && <span className="text-[14px] font-semibold text-gray-400 ml-1">명</span>}
+            </p>
+            {data && visit && <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold mb-0.5 ${FLOW_TONE[visit]}`}>
+              {visit === "same" ? `앞 7일과 비슷 (${signed(visitD)}명)` : `${visit === "up" ? "▲" : "▼"} 앞 7일보다 ${signed(visitD)}명`}
+            </span>}
+          </div>
+          <p className="text-[12px] text-gray-500 mt-1.5 truncate">{data ? `${range} · 앞 7일 ${data.prevWeek.users.toLocaleString()}명${data.abroad.week ? ` · 해외 ${data.abroad.week}명 뺌(봇 추정)` : ""}` : " "}</p>
+          {loading ? <div className="h-32 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : !data ? <p className="text-[13px] text-gray-500 mt-3">읽지 못했습니다 — 0 이 아니라 모름입니다.</p> : (
+            <>
+              <div className="h-32 mt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.days.map((d) => ({ ...d, label: md(d.date) }))} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}>
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6b7280" }} interval={6} tickLine={false} axisLine={false} />
+                    <Tooltip cursor={{ fill: "rgba(99,102,241,0.08)" }} formatter={(n: number, _k, p) => [`${n}명 · 세션 ${p.payload.sessions}회`, "방문자"]} labelFormatter={(l) => String(l)} />
+                    <Bar dataKey="users" radius={[3, 3, 0, 0]}>
+                      {data.days.map((d) => <Cell key={d.date} fill={d.date >= data.week.from ? BAR_NOW : BAR_PAST} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-[12px] text-gray-500 mt-1.5">하루 방문자 28일 · 짙은 칸이 최근 7일입니다.</p>
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <p className="text-[13px] font-semibold text-gray-900">입점 신청 완료 · 최근 28일</p>
+          <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900 mt-2">
+            {v(data ? (ev("sign_up")?.count ?? 0) : undefined)}{data && <span className="text-[14px] font-semibold text-gray-400 ml-1">건</span>}
+          </p>
+          <p className="text-[12px] text-gray-500 mt-1.5 truncate">제출에 성공한 신청 · 아래는 거기까지 간 사람 수</p>
+          {loading ? <div className="h-32 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : !data ? <p className="text-[13px] text-gray-500 mt-3">읽지 못했습니다 — 0 이 아니라 모름입니다.</p> : (
+            <div className="mt-3"><Bars rows={funnel} unit="명" /></div>
+          )}
+        </Card>
+      </div>
+
+      <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">
+        <Kpi label="참여 세션 · 7일" value={v(data?.week.engaged)} suffix={data ? "회" : undefined}
           hint={data ? delta(data.week.engaged, data.prevWeek.engaged) : "최근 7일"} extra={data ? <Sub>세션 {data.week.sessions}회 중</Sub> : undefined} />
-        <Kpi label="입점 신청 완료" value={v(data ? (ev("sign_up")?.count ?? 0) : undefined)} suffix={data ? "건" : undefined} hint="최근 28일" extra={<Sub>sign_up · 제출 성공 뒤</Sub>} />
+        <Kpi label="상담 · 견적 제출" value={v(data ? (ev("generate_lead")?.count ?? 0) : undefined)} suffix={data ? "건" : undefined} hint="최근 28일" />
         <Kpi label="앱 설치 버튼 클릭" value={v(data ? data.stores.ios + data.stores.android : undefined)} suffix={data ? "회" : undefined}
           hint="최근 28일" extra={data ? <Sub>iOS {data.stores.ios} · 안드로이드 {data.stores.android}</Sub> : undefined} />
+        <Kpi label="구글 검색 클릭" value={search === null ? "…" : search === false ? "미확인" : search.totals.clicks.toLocaleString()} suffix={search ? "회" : undefined}
+          hint={search === null ? "읽는 중" : search === false ? "0 이 아니라 모름" : `노출 ${search.totals.impressions.toLocaleString()}회 · 최근 28일`} />
       </div>
-      <p className="text-[12px] text-gray-600 mb-4">
-        어제까지의 7일{range ? `(${range})` : ""}을 그 앞 7일과 견줍니다(오늘은 끝나지 않아 뺍니다). 해외 방문은 미국 데이터센터 도시에서 참여 없이 찍혀 봇으로 보고 셈에서 뺐습니다.
-        참여 세션은 10초 넘게 머물렀거나 두 쪽 이상 본 세션입니다. 방문이 아직 적어 증감은 숫자만 보이고 색 판정은 하지 않습니다. GA4 응답은 1시간 캐시합니다.
-      </p>
 
       {loading ? (
         <Card flush><Skeleton rows={6} cols={4} /></Card>
       ) : !data ? null : (
-        <div className="grid gap-4 lg:grid-cols-2 items-start">
-          <Card>
-            <Title tag="GA4 · 최근 28일 · 사람">입점 신청 깔때기</Title>
-            <Bars rows={funnel} unit="명" />
-            <p className="text-[12px] text-gray-500 mt-3">
-              단계마다 따로 센 사람 수입니다. DM · QR 링크는 홈을 거치지 않고 신청 페이지로 바로 오므로 뒷단이 앞단보다 클 수 있습니다.
-              {data.funnel.click !== undefined && " 「입점 신청 버튼 클릭」은 버튼 종류를 등록한 10/28 부터 셉니다."}
-            </p>
-          </Card>
-
-          <Card>
-            <Title tag="Search Console · 최근 28일">구글 검색</Title>
-            {search === null ? <p className="text-[13px] text-gray-500">읽는 중입니다…</p>
-              : search === false ? <p className="text-[13px] text-gray-500">구글 검색을 읽지 못했습니다 — 0 이 아니라 모름입니다. 새로고침해 주세요.</p>
-              : (
+        <>
+          <div className="mb-3">
+            <FilterPills soft label="자세히" value={tab} onChange={setTab} options={[
+              { key: "in", label: "어디서 왔나" }, { key: "join", label: "입점 신청" }, { key: "search", label: "구글 검색" }, { key: "app", label: "앱 설치 · 이벤트" },
+            ]} />
+          </div>
+          {tab === "in" && (
+            <div className="grid gap-4 lg:grid-cols-2 items-start">
+            <Card>
+              <Title tag="GA4 · 최근 28일 · 세션">어디서 왔나</Title>
+              {data.channels.length === 0 ? <p className="text-[13px] text-gray-500">아직 읽을 방문이 없습니다.</p> : (
+                <Bars rows={data.channels.map((c) => ({ label: CHANNEL_KO[c.channel] ?? c.channel, n: c.sessions, note: chTotal ? `${Math.round((c.sessions / chTotal) * 100)}%` : undefined }))} unit="회" plain />
+              )}
+              {data.sources && data.sources.length > 0 && (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                    {[
-                      ["노출", `${search.totals.impressions.toLocaleString()}회`],
-                      ["클릭", `${search.totals.clicks.toLocaleString()}회`],
-                      ["클릭률", search.totals.ctr === null ? "—" : `${Math.round(search.totals.ctr * 1000) / 10}%`],
-                      ["평균 순위", search.totals.position === null ? "—" : `${Math.round(search.totals.position * 10) / 10}위`],
-                    ].map(([k, val]) => (
-                      <div key={k} className="rounded-xl bg-[#F6F7FF] px-3 py-2">
-                        <p className="text-[11.5px] text-gray-500">{k}</p>
-                        <p className="text-[16px] font-bold text-gray-900 tabular-nums">{val}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {search.queries.length > 0 && (
-                    <table className="w-full text-[13.5px] mb-1">
-                      <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">검색어</th><th className="font-medium pb-1 text-right">노출</th><th className="font-medium pb-1 text-right">클릭</th><th className="font-medium pb-1 text-right">순위</th></tr></thead>
-                      <tbody className="divide-y divide-black/[0.05]">
-                        {search.queries.map((q) => (
-                          <tr key={q.key}>
-                            <td className="py-1.5 text-gray-800 break-all">{q.key}</td>
-                            <td className="py-1.5 text-right tabular-nums">{q.impressions.toLocaleString()}</td>
-                            <td className="py-1.5 text-right tabular-nums">{q.clicks.toLocaleString()}</td>
-                            <td className="py-1.5 text-right tabular-nums text-gray-600">{Math.round(q.position * 10) / 10}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                  {search.totals.impressions === 0 ? <p className="text-[13px] text-gray-500">아직 구글 검색 노출이 없습니다.</p>
-                    : search.hidden.impressions > 0 && <p className="text-[12px] text-gray-500">검색량이 적어 구글이 가린 검색어 몫 — 노출 {search.hidden.impressions.toLocaleString()}회 · 클릭 {search.hidden.clicks.toLocaleString()}회</p>}
-                  <p className="text-[12.5px] font-semibold text-gray-600 mt-3 mb-1">색인</p>
+                  <p className="text-[12.5px] font-semibold text-gray-600 mt-3 mb-1">출처별(링크에 붙인 utm)</p>
                   <ul className="divide-y divide-black/[0.05]">
-                    {search.index.map((p) => (
-                      <li key={p.url} className="flex items-center justify-between gap-2 py-1.5 text-[13.5px]">
-                        <span className="text-gray-800">{p.label}</span>
-                        <span className={p.indexed ? "text-gray-900" : "text-red-600"}>{p.indexed ? "색인됨" : p.state}{p.lastCrawl && <span className="text-gray-500 ml-2 text-[12px]">크롤링 {kmd(p.lastCrawl)}</span>}</span>
+                    {data.sources.map((s) => (
+                      <li key={s.key} className="flex items-center justify-between gap-2 py-1.5 text-[13.5px]">
+                        <span className="text-gray-800 min-w-0">{s.label}</span>
+                        <b className="tabular-nums text-gray-900 shrink-0">{s.sessions.toLocaleString()}</b>
                       </li>
                     ))}
                   </ul>
-                  {search.sitemap && <p className="text-[12px] text-gray-500 mt-2">사이트맵 주소 {search.sitemap.submitted}개 제출 · 오류 {search.sitemap.errors}{search.sitemap.lastRead ? ` · 구글이 읽은 날 ${kmd(search.sitemap.lastRead)}` : ""}</p>}
-                  <p className="text-[12px] text-gray-500 mt-2">{md(search.from)}~{md(search.to)} · 구글 검색 숫자는 2~3일 늦게 들어옵니다. 네이버 검색은 조회 API 가 없어 「어디서 왔나」의 검색 줄로 봅니다.</p>
                 </>
               )}
-          </Card>
-
-          {data.sections && (
-            <Card>
-              <Title tag="GA4 · 최근 28일 · 사람">섹션 도달</Title>
-              <Bars rows={data.sections.rows.map((s) => ({ label: s.label, n: s.users }))} unit="명" />
-              <p className="text-[12px] text-gray-500 mt-3">사장님 홈 섹션이 화면에 절반 이상 보인 사람 수입니다(위에서부터 순서). 어디서 줄어드는지가 이탈 지점입니다.</p>
-              <Unset s={data.sections} />
+              <p className="text-[12px] text-gray-500 mt-2">검색 등록(구글 · 네이버) 효과는 「검색」 줄이 늘어나는지로 봅니다. 전단 QR 은 위 묶음에서 「분류 없음」으로 잡혀 출처별 목록에서 가릅니다.</p>
             </Card>
-          )}
 
-          {data.steps && (
             <Card>
-              <Title tag="GA4 · 최근 28일 · 사람">입점 신청 단계</Title>
-              <Bars rows={[...data.steps.rows.map((s) => ({ label: s.label, n: s.users })), { label: "약관 동의 · 제출 완료", n: data.funnel.signup }]} unit="명" />
-              <p className="text-[12px] text-gray-500 mt-3">각 단계를 마치고 다음으로 넘어간 사람 수입니다. 마지막 줄은 제출에 성공한 사람(sign_up)입니다.</p>
-              <Unset s={data.steps} />
+              <Title tag="GA4 · 최근 28일">페이지별</Title>
+              {data.pages.length === 0 ? <p className="text-[13px] text-gray-500">아직 읽을 방문이 없습니다.</p> : (
+                <table className="w-full text-[13.5px]">
+                  <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">페이지</th><th className="font-medium pb-1 text-right">사람</th><th className="font-medium pb-1 text-right">조회</th></tr></thead>
+                  <tbody className="divide-y divide-black/[0.05]">
+                    {data.pages.map((p) => (
+                      <tr key={p.key}>
+                        <td className="py-1.5 text-gray-800">{p.label}{p.label !== p.key && <span className="text-gray-400 ml-1.5 text-[11.5px]">{p.key}</span>}</td>
+                        <td className="py-1.5 text-right tabular-nums">{p.users.toLocaleString()}</td>
+                        <td className="py-1.5 text-right tabular-nums text-gray-600">{p.views.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </Card>
-          )}
 
-          {data.cta && (
-            <Card>
-              <Title tag="GA4 · 최근 28일 · 이벤트">버튼 · 문의 나눠 보기</Title>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <SplitTable title="누른 버튼" s={data.cta} unit="회" />
-                <SplitTable title="입점 신청 버튼 위치" s={data.ctaLocation} unit="회" />
-                <SplitTable title="상담 · 견적 제출" s={data.leads} unit="건" />
-                <SplitTable title="신청 플랜" s={data.plans} unit="건" />
-              </div>
-            </Card>
-          )}
-
-          <Card>
-            <Title tag="GA4 · 최근 28일 · 한국">일별 방문자</Title>
-            <div className="h-44">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.days.map((d) => ({ ...d, label: md(d.date) }))} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#6b7280" }} interval={6} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={{ fill: "rgba(99,102,241,0.08)" }} formatter={(n: number, _k, p) => [`${n}명 · 세션 ${p.payload.sessions}회`, "방문자"]} labelFormatter={(l) => String(l)} />
-                  <Bar dataKey="users" fill="#6366F1" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
             </div>
-          </Card>
+          )}
+          {tab === "join" && (
+            <div className="grid gap-4 lg:grid-cols-2 items-start">
+            {data.sections && (
+              <Card>
+                <Title tag="GA4 · 최근 28일 · 사람">섹션 도달</Title>
+                <Bars rows={data.sections.rows.map((s) => ({ label: s.label, n: s.users }))} unit="명" />
+                <p className="text-[12px] text-gray-500 mt-3">사장님 홈 섹션이 화면에 절반 이상 보인 사람 수입니다(위에서부터 순서). 어디서 줄어드는지가 이탈 지점입니다.</p>
+                <Unset s={data.sections} />
+              </Card>
+            )}
 
-          <Card>
-            <Title tag="GA4 · 최근 28일">페이지별</Title>
-            {data.pages.length === 0 ? <p className="text-[13px] text-gray-500">아직 읽을 방문이 없습니다.</p> : (
+            {data.steps && (
+              <Card>
+                <Title tag="GA4 · 최근 28일 · 사람">입점 신청 단계</Title>
+                <Bars rows={[...data.steps.rows.map((s) => ({ label: s.label, n: s.users })), { label: "약관 동의 · 제출 완료", n: data.funnel.signup }]} unit="명" />
+                <p className="text-[12px] text-gray-500 mt-3">각 단계를 마치고 다음으로 넘어간 사람 수입니다. 마지막 줄은 제출에 성공한 사람(sign_up)입니다.</p>
+                <Unset s={data.steps} />
+              </Card>
+            )}
+
+            {data.cta && (
+              <Card>
+                <Title tag="GA4 · 최근 28일 · 이벤트">버튼 · 문의 나눠 보기</Title>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SplitTable title="누른 버튼" s={data.cta} unit="회" />
+                  <SplitTable title="입점 신청 버튼 위치" s={data.ctaLocation} unit="회" />
+                  <SplitTable title="상담 · 견적 제출" s={data.leads} unit="건" />
+                  <SplitTable title="신청 플랜" s={data.plans} unit="건" />
+                </div>
+              </Card>
+            )}
+
+              {!data.sections && !data.steps && !data.cta && <Card><p className="text-[13px] text-gray-500">섹션 · 신청 단계 · 버튼별 값을 아직 받지 못했습니다(옛 응답). 다시 불러와 주세요.</p></Card>}
+            </div>
+          )}
+          {tab === "search" && (
+            <div>
+            <Card>
+              <Title tag="Search Console · 최근 28일">구글 검색</Title>
+              {search === null ? <p className="text-[13px] text-gray-500">읽는 중입니다…</p>
+                : search === false ? <p className="text-[13px] text-gray-500">구글 검색을 읽지 못했습니다 — 0 이 아니라 모름입니다. 새로고침해 주세요.</p>
+                : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                      {[
+                        ["노출", `${search.totals.impressions.toLocaleString()}회`],
+                        ["클릭", `${search.totals.clicks.toLocaleString()}회`],
+                        ["클릭률", search.totals.ctr === null ? "—" : `${Math.round(search.totals.ctr * 1000) / 10}%`],
+                        ["평균 순위", search.totals.position === null ? "—" : `${Math.round(search.totals.position * 10) / 10}위`],
+                      ].map(([k, val]) => (
+                        <div key={k} className="rounded-xl bg-[#F6F7FF] px-3 py-2">
+                          <p className="text-[11.5px] text-gray-500">{k}</p>
+                          <p className="text-[16px] font-bold text-gray-900 tabular-nums">{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {search.queries.length > 0 && (
+                      <table className="w-full text-[13.5px] mb-1">
+                        <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">검색어</th><th className="font-medium pb-1 text-right">노출</th><th className="font-medium pb-1 text-right">클릭</th><th className="font-medium pb-1 text-right">순위</th></tr></thead>
+                        <tbody className="divide-y divide-black/[0.05]">
+                          {search.queries.map((q) => (
+                            <tr key={q.key}>
+                              <td className="py-1.5 text-gray-800 break-all">{q.key}</td>
+                              <td className="py-1.5 text-right tabular-nums">{q.impressions.toLocaleString()}</td>
+                              <td className="py-1.5 text-right tabular-nums">{q.clicks.toLocaleString()}</td>
+                              <td className="py-1.5 text-right tabular-nums text-gray-600">{Math.round(q.position * 10) / 10}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    {search.totals.impressions === 0 ? <p className="text-[13px] text-gray-500">아직 구글 검색 노출이 없습니다.</p>
+                      : search.hidden.impressions > 0 && <p className="text-[12px] text-gray-500">검색량이 적어 구글이 가린 검색어 몫 — 노출 {search.hidden.impressions.toLocaleString()}회 · 클릭 {search.hidden.clicks.toLocaleString()}회</p>}
+                    <p className="text-[12.5px] font-semibold text-gray-600 mt-3 mb-1">색인</p>
+                    <ul className="divide-y divide-black/[0.05]">
+                      {search.index.map((p) => (
+                        <li key={p.url} className="flex items-center justify-between gap-2 py-1.5 text-[13.5px]">
+                          <span className="text-gray-800">{p.label}</span>
+                          <span className={p.indexed ? "text-gray-900" : "text-red-600"}>{p.indexed ? "색인됨" : p.state}{p.lastCrawl && <span className="text-gray-500 ml-2 text-[12px]">크롤링 {kmd(p.lastCrawl)}</span>}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {search.sitemap && <p className="text-[12px] text-gray-500 mt-2">사이트맵 주소 {search.sitemap.submitted}개 제출 · 오류 {search.sitemap.errors}{search.sitemap.lastRead ? ` · 구글이 읽은 날 ${kmd(search.sitemap.lastRead)}` : ""}</p>}
+                    <p className="text-[12px] text-gray-500 mt-2">{md(search.from)}~{md(search.to)} · 구글 검색 숫자는 2~3일 늦게 들어옵니다. 네이버 검색은 조회 API 가 없어 「어디서 왔나」의 검색 줄로 봅니다.</p>
+                  </>
+                )}
+            </Card>
+
+            </div>
+          )}
+          {tab === "app" && (
+            <div className="grid gap-4 lg:grid-cols-2 items-start">
+            <Card>
+              <Title tag="GA4 · 최근 28일 · 바깥 링크 클릭">앱 설치 버튼</Title>
+              {data.stores.byPage.length === 0 ? <p className="text-[13px] text-gray-500">아직 앱스토어 · 플레이스토어로 나간 클릭이 없습니다.</p> : (
+                <table className="w-full text-[13.5px]">
+                  <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">어느 페이지에서</th><th className="font-medium pb-1 text-right">iOS</th><th className="font-medium pb-1 text-right">안드로이드</th></tr></thead>
+                  <tbody className="divide-y divide-black/[0.05]">
+                    {data.stores.byPage.map((p) => (
+                      <tr key={p.key}>
+                        <td className="py-1.5 text-gray-800">{p.label}</td>
+                        <td className="py-1.5 text-right tabular-nums">{p.ios.toLocaleString()}</td>
+                        <td className="py-1.5 text-right tabular-nums">{p.android.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <p className="text-[12px] text-gray-500 mt-2">버튼을 누른 횟수입니다 — 실제 설치까지 이어졌는지는 아직 잇지 못합니다.</p>
+            </Card>
+
+            <Card>
+              <Title tag="GA4 · 최근 28일 · 이벤트">무엇을 했나</Title>
               <table className="w-full text-[13.5px]">
-                <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">페이지</th><th className="font-medium pb-1 text-right">사람</th><th className="font-medium pb-1 text-right">조회</th></tr></thead>
+                <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">이벤트</th><th className="font-medium pb-1 text-right">횟수</th><th className="font-medium pb-1 text-right">사람</th></tr></thead>
                 <tbody className="divide-y divide-black/[0.05]">
-                  {data.pages.map((p) => (
-                    <tr key={p.key}>
-                      <td className="py-1.5 text-gray-800">{p.label}{p.label !== p.key && <span className="text-gray-400 ml-1.5 text-[11.5px]">{p.key}</span>}</td>
-                      <td className="py-1.5 text-right tabular-nums">{p.users.toLocaleString()}</td>
-                      <td className="py-1.5 text-right tabular-nums text-gray-600">{p.views.toLocaleString()}</td>
+                  {OUR_EVENTS.map(([k, ko]) => {
+                    const e = ev(k);
+                    return (
+                      <tr key={k}>
+                        <td className="py-1.5 text-gray-800">{ko}<span className="text-gray-400 ml-1.5 text-[11.5px]">{k}</span></td>
+                        <td className="py-1.5 text-right tabular-nums">{(e?.count ?? 0).toLocaleString()}</td>
+                        <td className="py-1.5 text-right tabular-nums text-gray-600">{(e?.users ?? 0).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                  {autoEvents.map((e) => (
+                    <tr key={e.name} className="text-gray-500">
+                      <td className="py-1.5">{AUTO_KO[e.name] ?? e.name}<span className="text-gray-400 ml-1.5 text-[11.5px]">{e.name} · 자동</span></td>
+                      <td className="py-1.5 text-right tabular-nums">{e.count.toLocaleString()}</td>
+                      <td className="py-1.5 text-right tabular-nums">{e.users.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </Card>
+              <p className="text-[12px] text-gray-500 mt-2">「상담 · 견적 제출」은 지금 입력 검증 전에 찍혀 실패한 시도도 셉니다 — 홈페이지 쪽 수정 전까지는 참고만 합니다.</p>
+            </Card>
 
-          <Card>
-            <Title tag="GA4 · 최근 28일 · 세션">어디서 왔나</Title>
-            {data.channels.length === 0 ? <p className="text-[13px] text-gray-500">아직 읽을 방문이 없습니다.</p> : (
-              <ul className="divide-y divide-black/[0.05]">
-                {data.channels.map((c) => (
-                  <li key={c.channel} className="flex items-center justify-between py-2 text-[13.5px]">
-                    <span className="text-gray-800">{CHANNEL_KO[c.channel] ?? c.channel}</span>
-                    <span className="tabular-nums text-gray-900"><b>{c.sessions.toLocaleString()}</b><span className="text-gray-500 ml-2">{chTotal ? `${Math.round((c.sessions / chTotal) * 100)}%` : ""}</span></span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {data.sources && data.sources.length > 0 && (
-              <>
-                <p className="text-[12.5px] font-semibold text-gray-600 mt-3 mb-1">출처별(링크에 붙인 utm)</p>
-                <ul className="divide-y divide-black/[0.05]">
-                  {data.sources.map((s) => (
-                    <li key={s.key} className="flex items-center justify-between gap-2 py-1.5 text-[13.5px]">
-                      <span className="text-gray-800 min-w-0">{s.label}</span>
-                      <b className="tabular-nums text-gray-900 shrink-0">{s.sessions.toLocaleString()}</b>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <p className="text-[12px] text-gray-500 mt-2">검색 등록(구글 · 네이버) 효과는 「검색」 줄이 늘어나는지로 봅니다. 전단 QR 은 위 묶음에서 「분류 없음」으로 잡혀 출처별 목록에서 가릅니다.</p>
-          </Card>
-
-          <Card>
-            <Title tag="GA4 · 최근 28일 · 바깥 링크 클릭">앱 설치 버튼</Title>
-            {data.stores.byPage.length === 0 ? <p className="text-[13px] text-gray-500">아직 앱스토어 · 플레이스토어로 나간 클릭이 없습니다.</p> : (
-              <table className="w-full text-[13.5px]">
-                <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">어느 페이지에서</th><th className="font-medium pb-1 text-right">iOS</th><th className="font-medium pb-1 text-right">안드로이드</th></tr></thead>
-                <tbody className="divide-y divide-black/[0.05]">
-                  {data.stores.byPage.map((p) => (
-                    <tr key={p.key}>
-                      <td className="py-1.5 text-gray-800">{p.label}</td>
-                      <td className="py-1.5 text-right tabular-nums">{p.ios.toLocaleString()}</td>
-                      <td className="py-1.5 text-right tabular-nums">{p.android.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <p className="text-[12px] text-gray-500 mt-2">버튼을 누른 횟수입니다 — 실제 설치까지 이어졌는지는 아직 잇지 못합니다.</p>
-          </Card>
-
-          <Card>
-            <Title tag="GA4 · 최근 28일 · 이벤트">무엇을 했나</Title>
-            <table className="w-full text-[13.5px]">
-              <thead><tr className="text-left text-[12px] text-gray-500"><th className="font-medium pb-1">이벤트</th><th className="font-medium pb-1 text-right">횟수</th><th className="font-medium pb-1 text-right">사람</th></tr></thead>
-              <tbody className="divide-y divide-black/[0.05]">
-                {OUR_EVENTS.map(([k, ko]) => {
-                  const e = ev(k);
-                  return (
-                    <tr key={k}>
-                      <td className="py-1.5 text-gray-800">{ko}<span className="text-gray-400 ml-1.5 text-[11.5px]">{k}</span></td>
-                      <td className="py-1.5 text-right tabular-nums">{(e?.count ?? 0).toLocaleString()}</td>
-                      <td className="py-1.5 text-right tabular-nums text-gray-600">{(e?.users ?? 0).toLocaleString()}</td>
-                    </tr>
-                  );
-                })}
-                {autoEvents.map((e) => (
-                  <tr key={e.name} className="text-gray-500">
-                    <td className="py-1.5">{AUTO_KO[e.name] ?? e.name}<span className="text-gray-400 ml-1.5 text-[11.5px]">{e.name} · 자동</span></td>
-                    <td className="py-1.5 text-right tabular-nums">{e.count.toLocaleString()}</td>
-                    <td className="py-1.5 text-right tabular-nums">{e.users.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-[12px] text-gray-500 mt-2">「상담 · 견적 제출」은 지금 입력 검증 전에 찍혀 실패한 시도도 셉니다 — 홈페이지 쪽 수정 전까지는 참고만 합니다.</p>
-          </Card>
-
-          <Card>
-            <p className="text-[14px] font-semibold text-gray-900 mb-2">읽는 법</p>
-            <ul className="text-[13px] text-gray-600 leading-relaxed list-disc pl-4 space-y-1">
-              <li>방문자는 GA4 「활성 사용자」(웹 스트림 · 한국만)입니다. 앱 지표의 기기 단위 숫자와 합치지 않습니다.</li>
-              <li>같은 속성에 앱 이벤트도 들어 있어 모든 조회에 「플랫폼 = 웹」을 걸었습니다.</li>
-              <li>버튼 종류 · 위치 · 섹션 · 신청 단계 · 플랜 · 문의 종류는 10/28 에 GA4 맞춤 측정기준으로 등록해 그날부터 나뉩니다. 그 전 이벤트는 「등록 전」으로 따로 적습니다.</li>
-              <li>네이버 웹로그와 Clarity는 조회 방법이 마땅치 않아 연결하지 않았습니다 — 각 콘솔에서 봅니다.</li>
-            </ul>
-          </Card>
-        </div>
+            </div>
+          )}
+        </>
       )}
+
+      <Fold label="숫자 읽는 법">
+        <ul className="text-[12px] text-gray-600 leading-relaxed list-disc pl-4 space-y-1">
+          <li>어제까지의 7일{range ? `(${range})` : ""}을 그 앞 7일과 견줍니다(오늘은 끝나지 않아 뺍니다). 방문이 적어 차이가 크지 않으면 「비슷」으로 봅니다.</li>
+          <li>해외 방문은 미국 데이터센터 도시에서 참여 없이 찍혀 봇으로 보고 셈에서 뺐습니다. 참여 세션은 10초 넘게 머물렀거나 두 쪽 이상 본 세션입니다.</li>
+          <li>입점 신청 깔때기는 단계마다 따로 센 사람 수입니다. DM · QR 링크는 홈을 거치지 않고 신청 페이지로 바로 오므로 뒷단이 앞단보다 클 수 있습니다.{data?.funnel.click !== undefined && " 「입점 신청 버튼 클릭」은 버튼 종류를 등록한 10/28 부터 셉니다."}</li>
+          <li>방문자는 GA4 「활성 사용자」(웹 스트림 · 한국만)입니다. 앱 지표의 기기 단위 숫자와 합치지 않습니다. 같은 속성에 앱 이벤트도 들어 있어 모든 조회에 「플랫폼 = 웹」을 걸었습니다.</li>
+          <li>버튼 종류 · 위치 · 섹션 · 신청 단계 · 플랜 · 문의 종류는 10/28 에 GA4 맞춤 측정기준으로 등록해 그날부터 나뉩니다. 그 전 이벤트는 「등록 전」으로 따로 적습니다.</li>
+          <li>네이버 웹로그와 Clarity는 조회 방법이 마땅치 않아 연결하지 않았습니다 — 각 콘솔에서 봅니다. GA4 응답은 1시간 캐시합니다. 「미확인」은 0 이 아니라 읽지 못한 값입니다.</li>
+        </ul>
+      </Fold>
     </>
   );
 }
