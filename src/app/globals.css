@@ -19,6 +19,11 @@
   /* 차트 포맷 색 — 카드뉴스·릴스. 색약 검사(dataviz validate_palette: 밝기 띠·채도·CVD ΔE·대비)를 흰 카드 위에서 통과한 값 */
   --chart-carousel: #5558DD;
   --chart-reel: #C27A0E;
+  /* Probe 흐름 칸(1116) — 막대의 지난 칸 · 지금 칸 · 표 막대, 견준 말 표지 셋. 다크 블록이 덮어쓴다(kit.tsx FlowTag · BAR_*) */
+  --bar-past: #C7D2FE; --bar-now: #4F46E5; --bar-ink: #050072;
+  --flow-up-bg: #EEF2FF; --flow-up-fg: #4338CA;
+  --flow-same-bg: rgb(0 0 0 / 0.05); --flow-same-fg: #4B5563;
+  --flow-down-bg: #FFFBEB; --flow-down-fg: #92400E;
   color-scheme: light;
 }
 
@@ -33,6 +38,11 @@
   /* 같은 색을 다크 카드(#12123A) 위에서 다시 검사해 고른 단계 — 자동 반전이 아니다 */
   --chart-carousel: #7275EA;
   --chart-reel: #C4821E;
+  /* 밤에는 지난 칸을 바닥 쪽으로 낮추고 지금 칸을 밝힌다 — 낮 값을 그대로 쓰면 강조가 뒤집힌다 */
+  --bar-past: #34367A; --bar-now: #9A9CF2; --bar-ink: #7275EA;
+  --flow-up-bg: rgb(99 102 224 / 0.24); --flow-up-fg: #C7C9F7;
+  --flow-same-bg: rgb(255 255 255 / 0.08); --flow-same-fg: rgb(190 192 222);
+  --flow-down-bg: rgb(245 158 11 / 0.2); --flow-down-fg: #FCD34D;
   color-scheme: dark;
 }
 :root[data-theme="dark"] .bg-white { background-color: #12123A; }

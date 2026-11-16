@@ -4,9 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { IconRefresh } from "@tabler/icons-react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { Button, Card, FilterPills, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
-import { Fold, TagChip } from "./kit";
-import { flowOf, type Flow } from "@/lib/bigquery/liveShape";
-import { BAR_NOW, BAR_PAST } from "./NowCard";
+import { BAR_NOW, BAR_PAST, Fold, FlowCard, TagChip } from "./kit";
+import { flowOf } from "@/lib/bigquery/liveShape";
 
 /**
  * Probe · 웹 지표 — 우주라이크 홈(wouldulike.kr). 매장 지표 · 앱 지표 아래 세 번째 지표 화면.
@@ -26,7 +25,7 @@ import { BAR_NOW, BAR_PAST } from "./NowCard";
  *   ③ 나머지 카드 여덟은 묶음 넷(어디서 왔나 · 입점 신청 · 구글 검색 · 앱 설치/이벤트)으로 — 한 번에 한 묶음만 보인다
  * 견준 말은 flowOf(±2√합) — 방문이 적어 작은 차이는 「비슷」이다. 읽는 법은 맨 아래에 접어 둔다.
  */
-const FLOW_TONE: Record<Flow, string> = { up: "bg-indigo-50 text-indigo-700", same: "bg-black/[0.05] text-gray-600", down: "bg-amber-50 text-amber-800" };
+
 
 interface Win { from: string; to: string; users: number; sessions: number; engaged: number }
 interface Page { key: string; label: string; users: number; views: number }
@@ -109,7 +108,7 @@ function Bars({ rows, unit, plain }: { rows: { label: string; n: number; note?: 
             <span className="text-gray-800 min-w-0 truncate">{plain ? "" : `${i + 1}. `}{r.label}</span>
             <span className="tabular-nums shrink-0"><b className="text-gray-900">{r.n.toLocaleString()}{unit}</b>{r.note && <span className="text-gray-500 ml-2">{r.note}</span>}</span>
           </div>
-          <div className="h-2 mt-1 rounded-full bg-[#EEF1FF] overflow-hidden"><div className="h-full rounded-full bg-[#6366F1]" style={{ width: `${(r.n / max) * 100}%` }} /></div>
+          <div className="h-2 mt-1 rounded-full bg-black/[0.05] overflow-hidden"><div className="h-full rounded-full" style={{ width: `${(r.n / max) * 100}%`, background: BAR_NOW }} /></div>
         </li>
       ))}
     </ol>
@@ -201,17 +200,9 @@ export default function WebMetrics() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2 items-start mb-4">
-        <Card>
-          <p className="text-[13px] font-semibold text-gray-900">방문자 · 최근 7일</p>
-          <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 mt-2">
-            <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900">
-              {v(data?.week.users)}{data && <span className="text-[14px] font-semibold text-gray-400 ml-1">명</span>}
-            </p>
-            {data && visit && <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold mb-0.5 ${FLOW_TONE[visit]}`}>
-              {visit === "same" ? `앞 7일과 비슷 (${signed(visitD)}명)` : `${visit === "up" ? "▲" : "▼"} 앞 7일보다 ${signed(visitD)}명`}
-            </span>}
-          </div>
-          <p className="text-[12px] text-gray-500 mt-1.5 truncate">{data ? `${range} · 앞 7일 ${data.prevWeek.users.toLocaleString()}명${data.abroad.week ? ` · 해외 ${data.abroad.week}명 뺌(봇 추정)` : ""}` : " "}</p>
+        <FlowCard title="방문자 · 최근 7일" value={data?.week.users} unit="명" loading={loading}
+          tag={data && visit ? { flow: visit, text: visit === "same" ? `앞 7일과 비슷 (${signed(visitD)}명)` : `앞 7일보다 ${signed(visitD)}명` } : null}
+          sub={data ? `${range} · 앞 7일 ${data.prevWeek.users.toLocaleString()}명${data.abroad.week ? ` · 해외 ${data.abroad.week}명 뺌(봇 추정)` : ""}` : null}>
           {loading ? <div className="h-32 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : !data ? <p className="text-[13px] text-gray-500 mt-3">읽지 못했습니다 — 0 이 아니라 모름입니다.</p> : (
             <>
               <div className="h-32 mt-2">
@@ -228,18 +219,14 @@ export default function WebMetrics() {
               <p className="text-[12px] text-gray-500 mt-1.5">하루 방문자 28일 · 짙은 칸이 최근 7일입니다.</p>
             </>
           )}
-        </Card>
+        </FlowCard>
 
-        <Card>
-          <p className="text-[13px] font-semibold text-gray-900">입점 신청 완료 · 최근 28일</p>
-          <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900 mt-2">
-            {v(data ? (ev("sign_up")?.count ?? 0) : undefined)}{data && <span className="text-[14px] font-semibold text-gray-400 ml-1">건</span>}
-          </p>
-          <p className="text-[12px] text-gray-500 mt-1.5 truncate">제출에 성공한 신청 · 아래는 거기까지 간 사람 수</p>
+        <FlowCard title="입점 신청 완료 · 최근 28일" value={data ? (ev("sign_up")?.count ?? 0) : undefined} unit="건" loading={loading}
+          sub={data ? "제출에 성공한 신청 · 아래는 거기까지 간 사람 수" : null}>
           {loading ? <div className="h-32 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : !data ? <p className="text-[13px] text-gray-500 mt-3">읽지 못했습니다 — 0 이 아니라 모름입니다.</p> : (
             <div className="mt-3"><Bars rows={funnel} unit="명" /></div>
           )}
-        </Card>
+        </FlowCard>
       </div>
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-5">

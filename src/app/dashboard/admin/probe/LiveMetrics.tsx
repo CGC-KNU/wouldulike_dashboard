@@ -6,8 +6,8 @@ import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from "rechar
 import { Button, Card, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
 import { LIVE_FAILURES, LIVE_STEPS, flowOf, peakOf, type Ga4Live } from "@/lib/bigquery/liveShape";
 import type { LiveDb } from "@/app/api/probe/live/route";
-import NowCard, { BAR_NOW, BAR_PAST } from "./NowCard";
-import { Fold } from "./kit";
+import NowCard from "./NowCard";
+import { BAR_NOW, BAR_PAST, Fold, FlowCard as FlowShell } from "./kit";
 
 /**
  * Probe · 실시간 지표 — 지금부터 24시간(민찬 1108). 매장 지표와 앱 지표 사이.
@@ -41,11 +41,7 @@ const usual = (v: number | null | undefined) => (v === null || v === undefined ?
 const UNREAD = <p className="text-[13px] text-gray-500">읽지 못했습니다 — 0 이 아니라 모름입니다.</p>;
 const RECENT_SHOWN = 8;
 
-const FLOW = {
-  up: ["▲ 평소보다 많음", "bg-indigo-50 text-indigo-700"],
-  same: ["평소와 비슷", "bg-black/[0.05] text-gray-600"],
-  down: ["▼ 평소보다 적음", "bg-amber-50 text-amber-800"],
-} as const;
+const FLOW_TEXT = { up: "평소보다 많음", same: "평소와 비슷", down: "평소보다 적음" } as const;
 
 interface HourRow { label: string; n: number; tip?: string }
 
@@ -58,15 +54,8 @@ function FlowCard({ title, value, unit, base, sub, rows, tipName, loading }: {
   const peak = peakOf(rows);
   const known = value !== null && value !== undefined;
   return (
-    <Card>
-      <p className="text-[13px] font-semibold text-gray-900">{title}</p>
-      <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 mt-2">
-        <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900">
-          {loading ? "-" : fmt(value)}{known && <span className="text-[14px] font-semibold text-gray-400 ml-1">{unit}</span>}
-        </p>
-        {flow && <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold mb-0.5 ${FLOW[flow][1]}`}>{FLOW[flow][0]}</span>}
-      </div>
-      <p className="text-[12px] text-gray-500 mt-1.5 truncate">{known ? <>{usual(base)}{base !== null && base !== undefined ? unit : ""}{sub && <> · {sub}</>}</> : " "}</p>
+    <FlowShell title={title} value={value} unit={unit} loading={loading} tag={flow ? { flow, text: FLOW_TEXT[flow] } : null}
+      sub={known ? <>{usual(base)}{base !== null && base !== undefined ? unit : ""}{sub && <> · {sub}</>}</> : null}>
       {loading ? <div className="h-32 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : !rows.length ? <div className="mt-3">{UNREAD}</div> : (
         <>
           <div className="h-32 mt-2">
@@ -86,7 +75,7 @@ function FlowCard({ title, value, unit, base, sub, rows, tipName, loading }: {
           </p>
         </>
       )}
-    </Card>
+    </FlowShell>
   );
 }
 

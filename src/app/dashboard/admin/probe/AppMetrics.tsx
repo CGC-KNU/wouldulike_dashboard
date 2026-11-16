@@ -3,9 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { IconChartBar, IconRefresh } from "@tabler/icons-react";
 import { Button, Card, FilterPills, Notice, PageHeader, Skeleton } from "../_shared/ui";
-import { Fold, TagChip, Unknown, takeParam } from "./kit";
+import { BAR_NOW, BAR_PAST, Fold, FlowCard, TagChip, Unknown, takeParam } from "./kit";
 import { flowOf, type Flow } from "@/lib/bigquery/liveShape";
-import { BAR_NOW, BAR_PAST } from "./NowCard";
 import { PERIOD_LABEL, type AppPeriod, type AppPeriodKey } from "@/lib/draft/appPeriods";
 import AppReportPicker from "./AppReportPicker";
 
@@ -87,8 +86,6 @@ function compare(key: string, value: number | null, data: Payload | null, trend:
   const u = count ? "명" : "%p";
   return { flow, text: flow === "same" ? `전주와 비슷 (${sign(d, u)})` : `전주보다 ${sign(d, u)}` };
 }
-const FLOW_TONE: Record<Flow, string> = { up: "bg-indigo-50 text-indigo-700", same: "bg-black/[0.05] text-gray-600", down: "bg-amber-50 text-amber-800" };
-const FLOW_MARK: Record<Flow, string> = { up: "▲ ", same: "", down: "▼ " };
 
 /** 12주 막대 — 왼쪽이 12주 전, 오른쪽 끝 짙은 칸이 가장 최근에 끝난 주. 못 읽은 주(null)는 점선 칸으로 비운다(0 이 아니다) */
 function WeekBars({ values, weeks, unit }: { values: (number | null)[]; weeks: { start: string; end: string }[]; unit: string }) {
@@ -102,7 +99,7 @@ function WeekBars({ values, weeks, unit }: { values: (number | null)[]; weeks: {
         {values.map((n, i) => (
           <span key={i} className="flex-1 flex items-end h-full" title={n === null ? `${w(i)} · 미확인` : `${w(i)} · ${n.toLocaleString()}${unit}`}>
             {n === null
-              ? <i className="block w-full h-full rounded-[3px] border border-dashed border-black/[0.12]" />
+              ? <i className="block w-full h-full rounded-[3px] border border-dashed border-[rgb(var(--g-300))]" />
               : <i className="block w-full rounded-t-[3px]" style={{ height: Math.max(2, (n / top) * H), background: i === values.length - 1 ? BAR_NOW : BAR_PAST }} />}
           </span>
         ))}
@@ -200,19 +197,11 @@ export default function AppMetrics() {
           const c = compare(key, m?.value ?? null, data, trend);
           const series = trend ? trend.series[key] : null;
           return (
-            <Card key={key}>
-              <p className="text-[13px] font-semibold text-gray-900">{title}</p>
-              <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 mt-2">
-                <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900">
-                  {loading ? "-" : unread ? "미확인" : m!.value!.toLocaleString()}{!loading && !unread && m!.unit && <span className="text-[14px] font-semibold text-gray-400 ml-1">{m!.unit}</span>}
-                </p>
-                {!loading && c && <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold mb-0.5 ${FLOW_TONE[c.flow]}`}>{FLOW_MARK[c.flow]}{c.text}</span>}
-              </div>
-              <p className="text-[12px] text-gray-500 mt-1.5 truncate">{hint}</p>
+            <FlowCard key={key} title={title} value={unread ? null : m!.value!} unit={m?.unit} loading={loading} tag={c} sub={hint}>
               {trend === null ? <div className="mt-3 rounded-lg bg-black/[0.03] animate-pulse" style={{ height: 90 }} />
                 : !series ? <p className="text-[12px] text-gray-500 mt-3">12주 추이를 읽지 못했습니다 — 변화가 없다는 뜻이 아닙니다.</p>
                 : <WeekBars values={series} weeks={trend ? trend.weeks : []} unit={key === "wau" || key === "users_redeemed" ? "명" : "%"} />}
-            </Card>
+            </FlowCard>
           );
         })}
       </div>
@@ -224,7 +213,7 @@ export default function AppMetrics() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <FilterPills soft label="지표 묶음" value={cur?.key ?? "usage"} onChange={setGrp} options={groups.map((g) => ({ key: g.key, label: g.title, count: g.metrics.length }))} />
             <label className="inline-flex items-center gap-1.5 text-[12.5px] text-gray-600 cursor-pointer select-none">
-              <input type="checkbox" className="accent-[#4F46E5]" checked={notes} onChange={(e) => setNotes(e.target.checked)} /> 설명 보기
+              <input type="checkbox" className="accent-[var(--bar-now)]" checked={notes} onChange={(e) => setNotes(e.target.checked)} /> 설명 보기
             </label>
           </div>
           {cur && (
@@ -244,7 +233,7 @@ export default function AppMetrics() {
                       </dt>
                       {/* 비율 칸은 얇은 막대로 — 0~100% 어디쯤인지 숫자를 읽기 전에 보인다 */}
                       {m.unit === "%" && m.value !== null && m.value >= 0 && m.value <= 100 && (
-                        <span className="hidden sm:block w-24 h-1.5 rounded-full bg-black/[0.05] overflow-hidden shrink-0" aria-hidden><span className="block h-full rounded-full bg-[#4F46E5]" style={{ width: `${m.value}%` }} /></span>
+                        <span className="hidden sm:block w-24 h-1.5 rounded-full bg-black/[0.05] overflow-hidden shrink-0" aria-hidden><span className="block h-full rounded-full" style={{ width: `${m.value}%`, background: BAR_NOW }} /></span>
                       )}
                       <dd className="shrink-0 flex items-center justify-end gap-2 min-w-[7.5rem]">
                         <span className="flex flex-wrap justify-end gap-1" title={period(m.period)?.range ?? undefined}>
