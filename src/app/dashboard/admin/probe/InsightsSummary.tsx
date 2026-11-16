@@ -4,6 +4,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Card, Empty, Kpi, Notice, Skeleton, Table, Td, Th, periodLocal } from "../_shared/ui";
 import type { SummaryPayload, Trend, TrendMonth, TrendPoint } from "@/app/api/probe/insights/summary/route";
 import { DOT_MONTHS, axisTicks, compactKo, dayRange, monthBounds, monthTick, niceMax } from "@/lib/draft/insightsTrend";
+import { flowOf } from "@/lib/bigquery/liveShape";
+import { Fold } from "./kit";
 
 /**
  * Probe · 인스타 성과 **추이** — 매장 리포트 화면 아래.
@@ -17,6 +19,9 @@ import { DOT_MONTHS, axisTicks, compactKo, dayRange, monthBounds, monthTick, nic
  *  · N일차가 없는 게시물은 **지금까지 쌓인 값**을 속 빈 회색 점으로 — 보이되 견주지 않게. 중앙값에도 안 넣는다.
  *  · 합계(조회 합·저장 합)는 뺐다. 발행 수와 릴스 비중을 따라 움직여서 "잘하고 있나"에 답하지 못한다.
  *  · 판정 글(좋아짐·나빠짐)은 붙이지 않는다 — Probe 화면에서 판정을 걷어 낸 흐름(#240·#243)과 같다.
+ *
+ * 1116 민찬(간단하게): 그림은 그대로 두고 글을 줄였다 — 계정 도달의 4주 전 대비를 표지 하나로(많음 · 비슷 · 적음은 사실이지 판정이 아니다),
+ * 범례는 이름만, 점 읽는 법 · 월별 표는 접어 둔다.
  */
 
 /** 포맷 순서는 고정 — 색이 포맷을 따라간다. 기간이 바뀌어도 카드뉴스는 늘 같은 색이다. */
@@ -90,12 +95,23 @@ function TrendView({ trend, reach }: { trend: Trend; reach: { now: number | null
   const noneIn = points.filter((p) => inRange(p) && p.basis === "none").length;
   const before = points.filter((p) => !inRange(p)).length;
 
+  const reachNow = reach && reach.now !== null ? reach.now : null;
+  const reachAgo = reach && reach.ago ? reach.ago : null;
+  const reachFlow = reachNow !== null && reachAgo !== null ? flowOf(reachNow, reachAgo) : null;
+  const reachPct = reachNow !== null && reachAgo !== null ? Math.round(((reachNow - reachAgo) / reachAgo) * 1000) / 10 : null;
+  const pct = reachPct === null ? "" : `${reachPct > 0 ? "+" : ""}${reachPct}%`;
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         <Kpi label="최근 4주 발행" value={recent.posts} suffix="건" hint={`카드뉴스 ${recent.by_format.carousel ?? 0} · 릴스 ${recent.by_format.reel ?? 0}${recent.by_format.image ? ` · 기타 ${recent.by_format.image}` : ""}`} />
-        <Kpi label="계정 도달 (7일)" value={reach === null ? "…" : reach === false || reach.now === null ? "미확인" : reach.now.toLocaleString()} suffix={reach && reach.now !== null ? "명" : undefined}
-          hint={reach === null ? "읽는 중" : reach === false || reach.now === null ? "Meta 가 값을 주지 않았습니다 — 0 이 아니라 모름" : reach.ago ? `4주 전 7일 ${reach.ago.toLocaleString()}명 대비 ${reach.now >= reach.ago ? "+" : ""}${Math.round(((reach.now - reach.ago) / reach.ago) * 1000) / 10}% · 같은 사람은 한 번` : "같은 사람은 한 번"} />
+        <Kpi label="계정 도달 (7일)" value={reach === null ? "…" : reachNow === null ? "미확인" : reachNow.toLocaleString()} suffix={reachNow !== null ? "명" : undefined}
+          hint={reach === null ? "읽는 중" : reachNow === null ? "Meta 가 값을 주지 않았습니다 — 0 이 아니라 모름" : reachAgo !== null ? `4주 전 7일 ${reachAgo.toLocaleString()}명` : "같은 사람은 한 번"}
+          extra={reachFlow ? (
+            <span className={`inline-flex items-center h-6 px-2 mt-2 rounded-md text-[12px] font-semibold ${reachFlow === "up" ? "bg-indigo-50 text-indigo-700" : reachFlow === "down" ? "bg-amber-50 text-amber-800" : "bg-black/[0.05] text-gray-600"}`}>
+              {reachFlow === "same" ? `4주 전과 비슷 (${pct})` : `${reachFlow === "up" ? "▲" : "▼"} 4주 전보다 ${pct}`}
+            </span>
+          ) : undefined} />
         <SplitKpi label={`${day}일차 조회 중앙값 · 형식별`} items={["carousel", "reel"].map((f) => { const m = medianOf(months, f); return { label: FORMAT_KO[f], color: COLOR[f], value: m ? m.v : null, sub: m ? `${m.label} · ${m.n}건` : `${day}일차 5건부터` }; })} />
       </div>
 
@@ -107,13 +123,13 @@ function TrendView({ trend, reach }: { trend: Trend; reach: { now: number | null
         {months.length ? <VolumeChart months={months} formats={present} /> : <Empty title="발행된 게시물이 없습니다" />}
       </Card>
 
-      <Card title="게시물 한 편 조회수" description={`최근 ${DOT_MONTHS}개월 · 점 하나가 게시물 하나 · 누르면 인스타에서 열립니다`}>
+      <Card title="게시물 한 편 조회수" description={`최근 ${DOT_MONTHS}개월 · 점 하나가 게시물 하나 · 높을수록 많이 본 게시물 · 누르면 인스타에서 열립니다`}>
         <div className="mb-3">
           <Legend
             items={[
-              { key: "timely", label: `${day}일차 (게시 후 ${dayRange(day)}에 잰 값)`, swatch: <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="rgb(var(--g-700))" /></svg> },
-              { key: "late", label: "늦게 잰 값 — 지금까지 쌓인 조회수, 견주지 않음", swatch: <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="3.75" fill="none" stroke="rgb(var(--g-400))" strokeWidth="1.5" /></svg> },
-              { key: "median", label: `월 중앙값 (${day}일차 5건부터)`, swatch: <svg width="14" height="12" aria-hidden><line x1="1" y1="6" x2="13" y2="6" stroke="rgb(var(--g-700))" strokeWidth="2" strokeLinecap="round" /></svg> },
+              { key: "timely", label: `${day}일차 조회수`, swatch: <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="rgb(var(--g-700))" /></svg> },
+              { key: "late", label: "늦게 잰 값(견주지 않음)", swatch: <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="3.75" fill="none" stroke="rgb(var(--g-400))" strokeWidth="1.5" /></svg> },
+              { key: "median", label: "월 중앙값", swatch: <svg width="14" height="12" aria-hidden><line x1="1" y1="6" x2="13" y2="6" stroke="rgb(var(--g-700))" strokeWidth="2" strokeLinecap="round" /></svg> },
             ]}
           />
         </div>
@@ -126,13 +142,16 @@ function TrendView({ trend, reach }: { trend: Trend; reach: { now: number | null
         ) : (
           <Empty title={`최근 ${DOT_MONTHS}개월에 그릴 게시물이 없습니다`} />
         )}
-        <ul className="mt-3 space-y-1 text-[12px] text-gray-500 leading-relaxed">
+        <Fold label="점 읽는 법">
+        <ul className="space-y-1 text-[12px] text-gray-500 leading-relaxed">
+          <li>채운 점은 {day}일차 — 게시 후 {dayRange(day)}에 잰 값이라 서로 견줄 수 있습니다. 속 빈 점은 늦게 잰 값(지금까지 쌓인 조회수)이고, 월 중앙값 선은 {day}일차가 한 달에 5건 모이면 그립니다.</li>
           <li>정밀 수집이 9월 10일에 시작돼, 그보다 {day}일 넘게 앞서 올린 게시물은 대부분 {day}일차가 없습니다. 속 빈 점은 언제 잰 값인지가 제각각이라 서로 견주면 안 됩니다.</li>
           {pendingIn > 0 && <li>아직 {day}일차를 기다리는 {pendingIn}건은 {day}일차가 찍히면 점이 생깁니다.</li>}
           {noneIn > 0 && <li>수치가 한 번도 안 들어온 {noneIn}건은 그리지 않았습니다.</li>}
           {before > 0 && <li>그 전 {before}건은 위 월별 발행 수와 아래 표에만 있습니다.</li>}
           {counts.timely === 0 && <li>아직 {day}일차를 제때 잰 게시물이 없습니다.</li>}
         </ul>
+        </Fold>
       </Card>
 
       <MonthTable months={months} formats={present} day={day} />
@@ -371,11 +390,8 @@ function DotTip({ p, day, left, top, width }: { p: TrendPoint; day: number; left
 function MonthTable({ months, formats, day }: { months: TrendMonth[]; formats: readonly string[]; day: number }) {
   const medianFormats = formats.filter((f) => f !== "image");
   return (
-    <details className="group">
-      <summary className="cursor-pointer select-none text-[12.5px] font-semibold text-gray-600 hover:text-gray-900 w-fit">
-        월별 표 <span className="text-gray-400 font-normal">— 그림의 숫자를 표로</span>
-      </summary>
-      <div className="mt-2">
+    <Fold label="월별 표 — 그림의 숫자를 표로">
+      <div>
         <Card flush>
           <Table minWidth="36rem">
             <thead>
@@ -410,6 +426,6 @@ function MonthTable({ months, formats, day }: { months: TrendMonth[]; formats: r
           중앙값은 {day}일차를 제때 잰 게시물이 5건 이상일 때만 냅니다 — 그보다 적으면 「—」입니다(0 이 아닙니다). 옆의 작은 숫자가 그 건수입니다.
         </p>
       </div>
-    </details>
+    </Fold>
   );
 }
