@@ -5,8 +5,9 @@ import { IconExternalLink, IconRefresh } from "@tabler/icons-react";
 import type { StoreActivity, StoreMetric } from "@/lib/draft/types";
 import { campusOfMetric, failReasonLabel, isFailing, isSilent, previousPeriod, summarizeActivity, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
 import { allCampuses } from "../astro/CampusPicker";
-import { Button, Card, Chip, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, SlideOver, Table, Td, Th, periodLocal, rowClickable } from "../_shared/ui";
-import { MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
+import { Button, Card, Chip, Empty, FilterPills, Notice, PageHeader, Skeleton, SlideOver, Table, Td, Th, periodLocal, rowClickable } from "../_shared/ui";
+import { Fold, MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
+import { flowOf } from "@/lib/bigquery/liveShape";
 import { fetchJson } from "../_shared/fetchJson";
 import type { StoreMonth } from "@/app/api/probe/store-history/route";
 
@@ -35,9 +36,16 @@ import type { StoreMonth } from "@/app/api/probe/store-history/route";
  * 지난달(1014) — 쿠폰 사용·스탬프 숫자 밑에 작은 줄로 「9월 N」. 백엔드 월별 스냅샷(한 달 전체)이다.
  * 이번 달 누계만 있으면 월초에 모든 매장이 「조용함」으로 뜨는데, 옆에 지난달이 있으면 달이 막 시작해서인지 바로 보인다.
  * 이번 달은 아직 다 안 흘렀으니 둘을 빼거나 나누지 않는다 — 나란히 놓기만 한다.
+ *
+ * 1116 민찬: 직관적으로 · 지금의 흐름을 숫자 + 그래프로 · 간단하게(실시간 지표 #389 와 같은 결).
+ *   ① 매장 상태 한 줄 — 제휴 매장이 「쓰임 · 보고 안 씀 · 안 보임 · 앱에서 숨김」으로 어떻게 나뉘는지 띠 하나. 조각을 누르면 그 범위로 좁힌다
+ *   ② 이번 달 흐름 두 칸 — 쿠폰 사용 · 스탬프 적립. 숫자 + 「지난달 이맘때」와 견준 말 + 많이 쓰인 매장 막대
+ *   ③ 표는 다섯 열(매장 · 쿠폰 · 스탬프 · 상세 열람 · 사용 실패). 식사권 · 마일리지 · 혜택 수 · 재방문은 행을 눌러 여는 매장 패널에 있다
+ * 「지난달 이맘때」 = 지난달 1일부터 오늘과 같은 날짜까지(같은 길이라 견줘도 된다). 차이가 ±2√(합) 안이면 「비슷」(flowOf).
+ * 읽는 법 · 출처 줄은 표 아래에 접어 둔다.
  */
 
-type SortKey = "name" | "coupon" | "stamp" | "voucher" | "mileage" | "benefit" | "detail" | "failed" | "revisit";
+type SortKey = "name" | "coupon" | "stamp" | "detail" | "failed";
 
 /** GA4 칸 응답. window 가 null 이면 이번 달 확정 테이블이 아직 없다(매달 1일). */
 interface ActivityState {
@@ -160,19 +168,15 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
     const num = (s: StoreMetric) =>
       sort.key === "coupon" ? couponNet(s)
       : sort.key === "stamp" ? s.stamp_earned_this_month
-      : sort.key === "voucher" ? s.voucher_redeemed ?? vouchers?.[String(s.restaurant_id)] ?? 0
-      : sort.key === "mileage" ? s.mileage_earners ?? 0
-      : sort.key === "benefit" ? s.benefit_count ?? 0
       : sort.key === "detail" ? a(s).detail_devices
-      : sort.key === "failed" ? a(s).failed_devices
-      : s.revisit_this_month;
+      : a(s).failed_devices;
     return [...list].sort((a, b) => {
       if (sort.key === "name") return a.name.localeCompare(b.name, "ko") * dir;
       // 못 읽은 매장은 정렬 방향과 상관없이 맨 아래
       if (a.unavailable !== b.unavailable) return a.unavailable ? 1 : -1;
       return (num(a) - num(b)) * dir || a.name.localeCompare(b.name, "ko");
     });
-  }, [inCampus, scope, sort, act, vouchers]);
+  }, [inCampus, scope, sort, act]);
 
   const max = useMemo(
     () => ({
@@ -190,6 +194,27 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
   const prevNet = sameOk ? inCampus.reduce((a, s) => a + (prevCouponNet(s) ?? 0), 0) : null;
   const prevStamp = sameOk ? inCampus.reduce((a, s) => a + (s.prev_same?.stamp_earned ?? 0), 0) : null;
   const silentPaid = inCampus.filter((s) => isSilent(s) && (s.tier === "BOOST" || s.tier === "CONTENT")).length;
+  // 매장 상태 띠 — 제휴 매장을 겹치지 않게 넷(+ 못 읽음)으로 나눈다
+  const aff = inCampus.filter((s) => s.is_affiliate);
+  const nHidden = aff.filter((s) => s.hidden_from_app).length;
+  const nSilent = aff.filter(isSilent).length;
+  const nUsed = aff.filter((s) => !s.unavailable && !s.hidden_from_app && !isSilent(s)).length;
+  const nUnknown = aff.length - nHidden - nSilent - nUsed;
+  const segments: { key: string; label: string; n: number; color: string; scope?: Scope; why: string }[] = [
+    { key: "used", label: "쓰임", n: nUsed, color: "#4F46E5", why: "이번 달 쿠폰이나 스탬프가 한 번이라도 쓰인 매장" },
+    ...(ga.unseen === null || ga.seen_unused === null
+      ? [{ key: "silent", label: "조용함", n: nSilent, color: "#FBBF24", scope: "silent" as Scope, why: "이번 달 쿠폰 · 스탬프 0" }]
+      : [
+          { key: "seen", label: "보고 안 씀", n: ga.seen_unused, color: "#FBBF24", scope: "silent" as Scope, why: "상세는 열어 봤지만 쿠폰 · 스탬프 0 — 혜택 · 안내를 볼 곳" },
+          { key: "unseen", label: "안 보임", n: ga.unseen, color: "#F87171", scope: "silent" as Scope, why: "상세를 연 기기도 0 — 노출을 볼 곳" },
+        ]),
+    { key: "hidden", label: "앱에서 숨김", n: nHidden, color: "#D1D5DB", scope: "hidden", why: "학생에게 안 보이는 매장" },
+    ...(nUnknown > 0 ? [{ key: "unknown", label: "미확인", n: nUnknown, color: "#E5E7EB", why: "지표를 읽지 못한 매장 — 0 이 아니라 모름" }] : []),
+  ];
+  const stampNow = totals?.stamp_earned ?? 0;
+  const top = (value: (s: StoreMetric) => number) =>
+    aff.filter((s) => !s.unavailable && value(s) > 0).sort((a, b) => value(b) - value(a) || a.name.localeCompare(b.name, "ko")).slice(0, 5).map((s) => ({ id: s.restaurant_id, name: s.name, n: value(s) }));
+  const prevMonth = previous?.state === "ok" ? monthLabel(previous.period) : null;
   const openStore = stores.find((s) => s.restaurant_id === openId) ?? null;
 
   const toggle = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
@@ -200,7 +225,7 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
     <>
       <PageHeader
         title="매장 지표"
-        description="앱 안에서 일어난 일(쿠폰·스탬프·식사권)을 매장별로 봅니다. 행을 누르면 그 매장의 기록이 열립니다. 인스타 성과는 Papillon 이 원본입니다."
+        description="이번 달 앱에서 쿠폰 · 스탬프가 어느 매장에서 쓰였는지 봅니다. 행을 누르면 그 매장의 기록이 열립니다."
         actions={<Button icon={<IconRefresh />} onClick={() => load(true)} disabled={loading}>다시 불러오기</Button>}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -263,37 +288,55 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
           </Notice>
         </div>
       )}
-      {!loading && !vouchers && (
-        <div className="mb-4">
-          <Notice tone="amber" title="앱 마일리지 기록을 읽지 못했습니다">식사권 사용 칸은 0 이 아니라 모름입니다.</Notice>
-        </div>
-      )}
-
-      <div className="sat-stagger grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-5">
-        <Kpi label="제휴 매장" value={loading ? "-" : totals?.affiliate ?? 0} hint={`유료 ${totals?.paid ?? 0} · 무료 ${totals?.free ?? 0}곳`} />
-        <Kpi
-          soft
-          label="조용한 매장"
-          value={loading ? "-" : totals?.silent ?? 0}
-          hint={ga.unseen === null ? `이번 달 쿠폰·스탬프 0 · 유료 ${silentPaid}` : `유료 ${silentPaid} · 안 보임 ${ga.unseen} · 보고 안 씀 ${ga.seen_unused}`}
-          onClick={() => setScope("silent")}
-          active={scope === "silent"}
-        />
-        <Kpi
-          soft
-          label="사용 실패"
-          value={loading || ga.failing === null ? "-" : ga.failing}
-          suffix={loading || ga.failing === null ? undefined : "곳"}
-          hint={ga.failing === null ? (activity ? "GA4 를 못 읽음" : "GA4 읽는 중") : ga.coupon_unresolved ? `아직 못 쓴 쿠폰 ${ga.coupon_unresolved}장` : "쿠폰 사용·스탬프 적립 실패"}
-          onClick={() => setScope("failing")}
-          active={scope === "failing"}
-        />
-        <Kpi label="쿠폰 사용 · 매장 합계" value={loading ? "-" : (netCoupon ?? 0).toLocaleString()} suffix="건" hint={sameHint(prevNet, previous, "식사권 제외", totals?.prev_coupon_redeemed)} />
-        <Kpi label="이번 달 스탬프 적립" value={loading ? "-" : (totals?.stamp_earned ?? 0).toLocaleString()} suffix="건" hint={sameHint(prevStamp, previous, undefined, totals?.prev_stamp_earned)} />
+      <div className="mb-4">
+        <Card>
+          <div className="grid gap-x-8 gap-y-3 sm:grid-cols-[minmax(0,200px)_minmax(0,1fr)] items-center">
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-gray-900">이번 달 쓰인 매장</p>
+              <p className="text-[44px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900 mt-2">
+                {loading ? "-" : storesUnreadable ? "미확인" : nUsed}{!storesUnreadable && <span className="text-[15px] font-semibold text-gray-400 ml-1">/ {loading ? "-" : aff.length}곳</span>}
+              </p>
+              <p className="text-[12px] text-gray-500 mt-1.5">{campus === "all" ? "제휴 매장" : `${campus} 제휴 매장`} · 유료 {totals?.paid ?? 0} · 무료 {totals?.free ?? 0}</p>
+            </div>
+            <div className="min-w-0">
+              {loading ? <div className="h-16 rounded-lg bg-black/[0.03] animate-pulse" /> : aff.length === 0 ? <p className="text-[13px] text-gray-500">{storesUnreadable ? "읽지 못했습니다 — 0 이 아니라 모름입니다." : "이 조건에 제휴 매장이 없습니다."}</p> : (
+                <>
+                  <div className="flex h-7 w-full overflow-hidden rounded-md" role="img" aria-label={segments.map((g) => `${g.label} ${g.n}곳`).join(", ")}>
+                    {segments.filter((g) => g.n > 0).map((g) => (
+                      <span key={g.key} title={`${g.label} ${g.n}곳 — ${g.why}`} className="h-full border-r-2 border-white last:border-r-0" style={{ width: `${(g.n / aff.length) * 100}%`, background: g.color }} />
+                    ))}
+                  </div>
+                  <ul className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5">
+                    {segments.map((g) => {
+                      const body = <><span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ background: g.color }} /><span className="text-gray-700">{g.label}</span><b className="tabular-nums text-gray-900">{g.n}</b></>;
+                      return (
+                        <li key={g.key} title={g.why}>
+                          {g.scope ? <button type="button" onClick={() => setScope(g.scope!)} className="inline-flex items-center gap-1.5 text-[13px] hover:underline">{body}</button>
+                            : <span className="inline-flex items-center gap-1.5 text-[13px]">{body}</span>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p className="text-[12px] text-gray-500 mt-2">
+                    {silentPaid > 0 && <>조용한 매장 중 <b className="font-semibold text-gray-800">유료 {silentPaid}곳</b>. </>}
+                    {ga.failing === null ? (activity ? "사용 실패는 읽지 못했습니다(미확인)." : "사용 실패를 읽는 중입니다.")
+                      : ga.failing === 0 ? "쿠폰 사용 · 스탬프 적립 실패는 없습니다."
+                      : <button type="button" onClick={() => setScope("failing")} className="font-semibold text-red-600 hover:underline">사용 실패 {ga.failing}곳{ga.coupon_unresolved ? ` · 아직 못 쓴 쿠폰 ${ga.coupon_unresolved}장` : ""} →</button>}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </Card>
       </div>
 
-      <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description={`합계는 지표를 읽은 매장만으로 계산합니다. 앱에서 숨긴 매장은 조용한 매장에서 뺍니다. 상세 열람·사용 실패는 GA4 기기 수, 나머지는 DB 입니다.${testExcluded ? ` 테스트 매장 ${testExcluded}곳은 뺐습니다(Astro 와 같은 기준).` : ""}`}
-        actions={stores.length > 0 && stores.every((s) => s.active_users == null) ? <TagChip>마일리지 적립한 사람 · 쓴 사람 · 집계 전</TagChip> : undefined}>
+      <p className="text-[13px] font-semibold text-gray-900 mb-2">이번 달 흐름</p>
+      <div className="grid gap-4 lg:grid-cols-2 items-start mb-5">
+        <MonthCard title="쿠폰 사용" value={loading || storesUnreadable ? null : netCoupon} unit="건" prev={prevNet} prevMonth={prevMonth} note="식사권 제외" top={top(couponNet)} loading={loading} onOpen={setOpenId} />
+        <MonthCard title="스탬프 적립" value={loading || storesUnreadable ? null : stampNow} unit="건" prev={prevStamp} prevMonth={prevMonth} top={top((s) => s.stamp_earned_this_month)} loading={loading} onOpen={setOpenId} />
+      </div>
+
+      <Card flush title={`${campus === "all" ? "" : `${campus} `}매장 ${rows.length}곳`} description="행을 누르면 식사권 · 혜택 수 · 재방문 · 월별 기록까지 열립니다.">
         {loading ? (
           <Skeleton rows={8} cols={5} />
         ) : rows.length === 0 ? (
@@ -314,25 +357,20 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
             <Empty title="이 조건에 해당하는 매장이 없습니다" detail={campus === "all" ? "다른 범위를 눌러 보세요." : `${campus} 에는 아직 이 범위의 제휴 매장이 없습니다.`} />
           )
         ) : (
-          <Table minWidth="68rem">
+          <Table minWidth="44rem">
             <thead>
               <tr>
                 <Th onClick={() => toggle("name")} sorted={sort.key === "name" ? sort.dir : null}>매장</Th>
                 {th("coupon", "쿠폰 사용(식사권 제외)", "8.5rem")}
                 {th("stamp", "스탬프", "7.5rem")}
-                {th("voucher", "식사권 사용", "5.5rem")}
-                {th("mileage", "마일리지 적립한 사람", "6rem")}
-                {th("benefit", "혜택 수", "5rem")}
                 {th("detail", "상세 열람", "6rem")}
                 {th("failed", "사용 실패", "8rem")}
-                {th("revisit", "스탬프 재방문", "6.5rem")}
               </tr>
             </thead>
             <tbody>
               {rows.map((s) => {
                 const silent = isSilent(s);
                 const a = act ? act[String(s.restaurant_id)] ?? NO_ACTIVITY : null;
-                const vu = vouchers ? vouchers[String(s.restaurant_id)] ?? 0 : null;
                 return (
                   <tr key={s.restaurant_id} className={rowClickable} onClick={() => setOpenId(s.restaurant_id)}>
                     <Td>
@@ -342,22 +380,19 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
                         <PlanTag tier={s.tier} />
                         {silent && <TagChip>조용함</TagChip>}
                         {s.hidden_from_app && <TagChip>앱에서 숨김</TagChip>}
+                        {s.benefit_count === 0 && <span className="inline-flex items-center h-5 px-1.5 rounded-md bg-amber-50 text-[11px] font-medium text-amber-800 whitespace-nowrap">혜택 없음</span>}
                       </span>
                     </Td>
                     <Td align="right">
                       <Bar value={couponNet(s)} max={max.coupon} unavailable={s.unavailable} />
-                      <span className="block text-[11px] tabular-nums mt-0.5 text-gray-500">{[s.coupon_users != null ? `${s.coupon_users.toLocaleString()}명` : "", prevNote(prevCouponNet(s), s.prev?.coupon_redeemed, previous)].filter(Boolean).join(" · ")}</span>
+                      {(couponNet(s) > 0 || (prevCouponNet(s) ?? s.prev?.coupon_redeemed ?? 0) > 0) && <span className="block text-[11px] tabular-nums mt-0.5 text-gray-500">{[s.coupon_users != null ? `${s.coupon_users.toLocaleString()}명` : "", prevNote(prevCouponNet(s), s.prev?.coupon_redeemed, previous)].filter(Boolean).join(" · ")}</span>}
                     </Td>
                     <Td align="right">
                       <Bar value={s.stamp_earned_this_month} max={max.stamp} unavailable={s.unavailable} />
-                      <span className="block text-[11px] tabular-nums mt-0.5 text-gray-500">{prevNote(s.prev_same?.stamp_earned ?? null, s.prev?.stamp_earned, previous)}</span>
+                      {(s.stamp_earned_this_month > 0 || (s.prev_same?.stamp_earned ?? s.prev?.stamp_earned ?? 0) > 0) && <span className="block text-[11px] tabular-nums mt-0.5 text-gray-500">{prevNote(s.prev_same?.stamp_earned ?? null, s.prev?.stamp_earned, previous)}</span>}
                     </Td>
-                    <Td align="right" numeric className={!(s.voucher_redeemed ?? vu) ? "text-gray-500" : "text-gray-800"}>{s.voucher_redeemed != null ? s.voucher_redeemed : vu === null ? <Unknown why="앱 마일리지 기록을 읽지 못했습니다" /> : vu}</Td>
-                    <Td align="right" numeric className={!s.mileage_earners ? "text-gray-500" : "text-gray-800"}>{s.mileage_earners != null ? s.mileage_earners : <Pending />}</Td>
-                    <Td align="right" numeric>{s.benefit_count == null ? <Unknown why="혜택 목록을 읽지 못했습니다" /> : s.benefit_count === 0 ? <span className="font-semibold text-amber-800">0</span> : <span className="text-gray-800">{s.benefit_count}</span>}</Td>
                     <Td align="right" numeric className={!a || !a.detail_devices ? "text-gray-500" : "text-gray-800"}>{a ? a.detail_devices : <Unknown why="GA4 를 읽지 못했습니다" />}</Td>
                     <Td align="right"><Failed a={a} /></Td>
-                    <Td align="right" numeric className={s.unavailable ? "text-gray-500" : "text-gray-800"}>{s.unavailable ? <Unknown /> : s.has_stamp_benefit === false ? <span className="text-[12px] text-gray-500 whitespace-nowrap">— 스탬프 없음</span> : s.revisit_this_month}</Td>
                   </tr>
                 );
               })}
@@ -366,8 +401,13 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
         )}
       </Card>
 
+      <Fold label="숫자 읽는 법 · 출처">
+        <p className="text-[12px] text-gray-500 mt-1">
+          「쓰임」은 이번 달 쿠폰이나 스탬프가 한 번이라도 쓰인 매장, 「보고 안 씀」은 상세를 연 기기는 있는데 둘 다 0, 「안 보임」은 상세를 연 기기도 0 인 매장입니다. 앱에서 숨긴 매장은 조용한 매장에서 뺍니다.
+          「지난달 이맘때」는 지난달 1일부터 오늘과 같은 날짜까지이고, 차이가 크지 않으면 「비슷」으로 봅니다. 합계는 지표를 읽은 매장만으로 계산합니다.{testExcluded ? ` 테스트 매장 ${testExcluded}곳은 뺐습니다(Astro 와 같은 기준).` : ""}
+        </p>
       {generatedAt && (
-        <p className="text-[12px] text-gray-500 mt-3">
+        <p className="text-[12px] text-gray-500 mt-1">
           {new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(generatedAt))} 기준 · 60초 캐시
         </p>
       )}
@@ -392,6 +432,8 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
               ? "이번 달 GA4 확정 테이블이 아직 없어 상세 열람·사용 실패가 비어 있습니다(매달 1일)."
               : `상세 열람·사용 실패: GA4 ${md(activity.window.from)}~${md(activity.window.to)} · 기기 단위 · 확정 테이블이라 오늘은 빠집니다. 쿠폰 사용·스탬프는 DB 이번 달(지금까지).`}
       </p>
+
+      </Fold>
 
       {openStore && <StorePanel s={openStore} a={act ? act[String(openStore.restaurant_id)] ?? NO_ACTIVITY : null} vouchers={vouchers ? vouchers[String(openStore.restaurant_id)] ?? 0 : null} previous={previous} reportPeriod={reportPeriod} onClose={() => setOpenId(null)} onGo={onGo} />}
     </>
@@ -469,13 +511,52 @@ function StorePanel({ s, a, vouchers, previous, reportPeriod, onClose, onGo }: {
   );
 }
 
-/** KPI 밑 — 「식사권 제외 · 9월 같은 날까지 N건」. 같은 날짜까지를 못 받았으면(옛 백엔드) 지난달 전체로 내려간다. 못 읽었으면 그렇다고만 — 0 으로 적지 않는다. */
-function sameHint(same: number | null, previous: PreviousState | null, lead: string | undefined, full: number | null | undefined): string {
-  const head = lead ? `${lead} · ` : "";
-  if (!previous) return head.replace(/ · $/, "");
-  if (same !== null && previous.state === "ok") return `${head}${monthLabel(previous.period)} 같은 날짜까지 ${same.toLocaleString()}건`;
-  if (previous.state !== "ok" || full == null) return `${head}지난달 모름`;
-  return `${head}${monthLabel(previous.period)} 전체 ${full.toLocaleString()}건`;
+/**
+ * 이번 달 흐름 한 칸 — 숫자 하나 · 「지난달 이맘때」와 견준 말 · 많이 쓰인 매장 막대(누르면 그 매장 패널).
+ * 지난달 같은 날짜까지의 합을 모르면 말을 달지 않는다.
+ */
+const MONTH_FLOW = {
+  up: ["▲ 지난달 이맘때보다 많음", "bg-indigo-50 text-indigo-700"],
+  same: ["지난달 이맘때와 비슷", "bg-black/[0.05] text-gray-600"],
+  down: ["▼ 지난달 이맘때보다 적음", "bg-amber-50 text-amber-800"],
+} as const;
+function MonthCard({ title, value, unit, prev, prevMonth, note, top, loading, onOpen }: {
+  title: string; value: number | null; unit: string; prev: number | null; prevMonth: string | null; note?: string;
+  top: { id: number; name: string; n: number }[]; loading: boolean; onOpen: (id: number) => void;
+}) {
+  const flow = flowOf(value, prev);
+  const max = Math.max(1, ...top.map((t) => t.n));
+  const sub = [prev !== null && prevMonth ? `${prevMonth} 같은 날까지 ${prev.toLocaleString()}${unit}` : "지난달 이맘때 미확인", note].filter(Boolean).join(" · ");
+  return (
+    <Card>
+      <p className="text-[13px] font-semibold text-gray-900">{title}</p>
+      <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1 mt-2">
+        <p className="text-[36px] leading-none font-bold tracking-[-0.03em] tabular-nums text-gray-900">
+          {loading ? "-" : value === null ? "미확인" : value.toLocaleString()}{value !== null && <span className="text-[14px] font-semibold text-gray-400 ml-1">{unit}</span>}
+        </p>
+        {flow && <span className={`inline-flex items-center h-6 px-2 rounded-md text-[12px] font-semibold mb-0.5 ${MONTH_FLOW[flow][1]}`}>{MONTH_FLOW[flow][0]}</span>}
+      </div>
+      <p className="text-[12px] text-gray-500 mt-1.5 truncate">{loading ? " " : sub}</p>
+      {loading ? <div className="h-28 mt-3 rounded-lg bg-black/[0.03] animate-pulse" /> : (
+        <div className="mt-3 border-t border-black/[0.06] pt-2.5">
+          <p className="text-[12.5px] font-medium text-gray-700 mb-1.5">많이 쓰인 매장</p>
+          {top.length === 0 ? <p className="text-[13px] text-gray-500">{value === null ? "읽지 못했습니다 — 0 이 아니라 모름입니다." : "이번 달 아직 없습니다."}</p> : (
+            <ul className="space-y-1.5">
+              {top.map((t) => (
+                <li key={t.id}>
+                  <button type="button" onClick={() => onOpen(t.id)} className="group grid w-full grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)_2.5rem] items-center gap-2 text-left text-[13px]">
+                    <span className="truncate text-gray-800 group-hover:underline">{t.name}</span>
+                    <span className="h-2.5 rounded-full bg-black/[0.04] overflow-hidden"><span className="block h-full rounded-full bg-[#4F46E5]" style={{ width: `${(t.n / max) * 100}%` }} /></span>
+                    <b className="tabular-nums text-right text-gray-900">{t.n.toLocaleString()}</b>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 /** 숫자 밑 작은 글 — 「9월 같은 날까지 12」(받았을 때) 또는 「9월 12」(지난달 한 달 전체, 옛 백엔드). 못 읽었으면 비운다 */

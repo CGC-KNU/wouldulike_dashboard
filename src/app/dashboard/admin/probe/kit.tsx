@@ -31,6 +31,18 @@ export function TagChip({ children }: { children: ReactNode }) {
   return <span className="inline-flex items-center h-5 px-1.5 rounded-md bg-black/[0.05] text-[11px] font-medium text-gray-600 whitespace-nowrap">{children}</span>;
 }
 
+/** 접어 두는 칸 — 눌러야 펼쳐진다 */
+export function Fold({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <details className="group mt-3 border-t border-black/[0.06] pt-2.5">
+      <summary className="cursor-pointer select-none list-none text-[12.5px] font-medium text-gray-600 hover:text-gray-900 [&::-webkit-details-marker]:hidden">
+        <span className="inline-block w-3 transition-transform group-open:rotate-90">›</span> {label}
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
 /**
  * 딥링크 인자 한 번 읽고 버리기 — 홈 「오늘 할 일」 같은 곳에서 `?stage=make` 처럼 넘긴 값을
  * 화면이 처음 열릴 때 한 번만 쓴다. 안 지우면 다른 메뉴로 갔다 와도 그 필터가 남는다.

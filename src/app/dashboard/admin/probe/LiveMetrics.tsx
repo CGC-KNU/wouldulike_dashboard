@@ -6,7 +6,8 @@ import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from "rechar
 import { Button, Card, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
 import { LIVE_FAILURES, LIVE_STEPS, flowOf, peakOf, type Ga4Live } from "@/lib/bigquery/liveShape";
 import type { LiveDb } from "@/app/api/probe/live/route";
-import NowCard, { BAR_NOW, BAR_PAST, Fold } from "./NowCard";
+import NowCard, { BAR_NOW, BAR_PAST } from "./NowCard";
+import { Fold } from "./kit";
 
 /**
  * Probe · 실시간 지표 — 지금부터 24시간(민찬 1108). 매장 지표와 앱 지표 사이.
