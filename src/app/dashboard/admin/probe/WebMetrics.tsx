@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { IconRefresh } from "@tabler/icons-react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { Button, Card, FilterPills, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
-import { BAR_NOW, BAR_PAST, Fold, FlowCard, TagChip } from "./kit";
+import { AsOf, BAR_NOW, BAR_PAST, Fold, FlowCard, TagChip } from "./kit";
 import { flowOf } from "@/lib/bigquery/liveShape";
 
 /**
@@ -188,7 +188,7 @@ export default function WebMetrics() {
       <PageHeader
         title="웹 지표"
         description="우주라이크 홈(wouldulike.kr)에 누가 오고, 입점 신청까지 가는지를 봅니다. 한국 방문만 셉니다."
-        actions={<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>}
+        actions={<><AsOf at={data?.generated_at} /><Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 읽기</Button></>}
       />
 
       {!loading && failed && (

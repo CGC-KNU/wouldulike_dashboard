@@ -130,7 +130,7 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
   return (
     <>
       <PageHeader
-        title="데이터 정합성 점검"
+        title="정합성 점검"
         description="매장·혜택·기획전·입금 기록·캠퍼스를 서로 비교해 어긋난 곳을 찾습니다. 매장 이름을 누르면 고치는 화면이 바로 열리고, 고친 뒤 「처리함」을 누르면 어디까지 했는지 남습니다."
         actions={
           <>
@@ -139,7 +139,7 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
               {copied ? "복사했습니다" : "슬랙용 복사"}
             </Button>
             <Button icon={<IconRefresh />} onClick={load} disabled={loading}>
-              다시 점검
+              다시 읽기
             </Button>
           </>
         }
@@ -148,7 +148,7 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
       {!loading && !data && (
         <div className="mb-4">
           <Notice tone="red" title="점검 결과를 읽지 못했습니다">
-            아래 숫자는 0 이 아니라 모름입니다 — <strong>이상 없음이 아닙니다.</strong> 「다시 점검」을 눌러 주세요.
+            아래 숫자는 0 이 아니라 모름입니다 — <strong>이상 없음이 아닙니다.</strong> 「다시 읽기」를 눌러 주세요.
           </Notice>
         </div>
       )}
@@ -252,10 +252,10 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
                   })}
                 </ul>
 
-                <div className="mt-3 pt-3 border-t border-black/[0.06] flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-gray-600">
+                <div className="mt-3 pt-3 border-t border-black/[0.06] text-[12px] text-gray-600">
                   <span>고치는 법: <span className="text-gray-800">{head.hint}</span></span>
-                  <span>비교: <code className="bg-black/[0.05] px-1 rounded text-[11px]">{head.source}</code></span>
-                  <span>규칙 {head.rule}</span>
+                  {/* 무엇과 무엇을 견줬는지 · 규칙 코드는 개발자용 — 마우스를 올리면 보인다 */}
+                  <span className="ml-2 text-gray-400 cursor-help" title={`비교: ${head.source} · 규칙 ${head.rule}`}>ⓘ</span>
                 </div>
               </Card>
             );
@@ -264,8 +264,7 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
       )}
 
       <p className="text-[12px] text-gray-600 mt-4 leading-relaxed">
-        다음 단계: 이 점검을 매일 아침 돌려 <span className="font-semibold text-gray-800">높음</span>이 새로 생겼을 때만 슬랙에 올립니다. 매일 다 올리면 아무도 안 봅니다.
-        「처리함」은 이 브라우저에만 남습니다 — 팀이 같이 보는 처리함은 <Chip tone="gray">개발 중</Chip>입니다.
+        「처리함」은 이 브라우저에만 남습니다 — 다른 사람 화면과 홈 · 사이드바의 「높음」 개수에는 반영되지 않습니다.
       </p>
     </>
   );

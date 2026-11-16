@@ -6,7 +6,7 @@ import type { StoreActivity, StoreMetric } from "@/lib/draft/types";
 import { campusOfMetric, failReasonLabel, isFailing, isSilent, previousPeriod, summarizeActivity, summarizeStoreMetrics } from "@/lib/draft/storeMetrics";
 import { allCampuses } from "../astro/CampusPicker";
 import { Button, Card, Chip, Empty, FilterPills, Notice, PageHeader, Skeleton, SlideOver, Table, Td, Th, periodLocal, rowClickable } from "../_shared/ui";
-import { BAR_INK, BAR_NOW, Fold, FlowCard, MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
+import { AsOf, BAR_INK, BAR_NOW, Fold, FlowCard, MetricBox, PanelSection, PlanTag, Pending, TagChip, Unknown, takeParam } from "./kit";
 import { flowOf } from "@/lib/bigquery/liveShape";
 import { fetchJson } from "../_shared/fetchJson";
 import type { StoreMonth } from "@/app/api/probe/store-history/route";
@@ -226,7 +226,7 @@ export default function ProbeOverview({ onGo }: { onGo?: (tab: string) => void }
       <PageHeader
         title="매장 지표"
         description="이번 달 앱에서 쿠폰 · 스탬프가 어느 매장에서 쓰였는지 봅니다. 행을 누르면 그 매장의 기록이 열립니다."
-        actions={<Button icon={<IconRefresh />} onClick={() => load(true)} disabled={loading}>다시 불러오기</Button>}
+        actions={<><AsOf at={generatedAt} /><Button icon={<IconRefresh />} onClick={() => load(true)} disabled={loading}>다시 읽기</Button></>}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <FilterPills

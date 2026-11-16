@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IconChartBar, IconRefresh } from "@tabler/icons-react";
 import { Button, Card, FilterPills, Notice, PageHeader, Skeleton } from "../_shared/ui";
-import { BAR_NOW, BAR_PAST, Fold, FlowCard, TagChip, Unknown, takeParam } from "./kit";
+import { AsOf, BAR_NOW, BAR_PAST, Fold, FlowCard, TagChip, Unknown, takeParam } from "./kit";
 import { flowOf, type Flow } from "@/lib/bigquery/liveShape";
 import { PERIOD_LABEL, type AppPeriod, type AppPeriodKey } from "@/lib/draft/appPeriods";
 import AppReportPicker from "./AppReportPicker";
@@ -160,7 +160,8 @@ export default function AppMetrics() {
         description="학생이 앱을 켜고, 매장으로 가고, 다시 돌아오는지를 봅니다. 막대는 최근 12주이고 짙은 칸이 가장 최근 주입니다."
         actions={
           <>
-            <Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>
+            <AsOf at={data?.generated_at} />
+            <Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 읽기</Button>
             <span ref={pickRef} className="relative inline-flex">
               <Button icon={<IconChartBar />} onClick={() => setPick((v) => !v)} aria-haspopup="dialog" aria-expanded={pick}>보고서 뽑기</Button>
               {pick && (

@@ -154,3 +154,13 @@ export function FlowCard({ title, value, unit, tag, sub, loading, children }: {
     </Card>
   );
 }
+
+/** 머리 버튼 옆 「16:48 기준」 — 화면마다 같은 자리(1116 점검 B11). 시각을 모르면 아무것도 그리지 않는다 */
+export function AsOf({ at }: { at?: string | null }) {
+  if (!at) return null;
+  const t = Date.parse(at);
+  if (Number.isNaN(t)) return null;
+  const k = new Date(t + 9 * 3_600_000).toISOString();
+  const today = new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10) === k.slice(0, 10);
+  return <span className="self-center text-[12px] text-gray-500 tabular-nums whitespace-nowrap">{today ? "" : `${+k.slice(5, 7)}/${+k.slice(8, 10)} `}{k.slice(11, 16)} 기준</span>;
+}

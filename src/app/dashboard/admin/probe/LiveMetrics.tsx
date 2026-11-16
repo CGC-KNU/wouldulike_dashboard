@@ -7,7 +7,7 @@ import { Button, Card, Kpi, Notice, PageHeader, Skeleton } from "../_shared/ui";
 import { LIVE_FAILURES, LIVE_STEPS, flowOf, peakOf, type Ga4Live } from "@/lib/bigquery/liveShape";
 import type { LiveDb } from "@/app/api/probe/live/route";
 import NowCard from "./NowCard";
-import { BAR_NOW, BAR_PAST, Fold, FlowCard as FlowShell } from "./kit";
+import { AsOf, BAR_NOW, BAR_PAST, Fold, FlowCard as FlowShell } from "./kit";
 
 /**
  * Probe · 실시간 지표 — 지금부터 24시간(민찬 1108). 매장 지표와 앱 지표 사이.
@@ -145,7 +145,7 @@ export default function LiveMetrics() {
       <PageHeader
         title="실시간 지표"
         description="지금 앱을 쓰는 사람과, 지난 24시간이 평소와 견줘 어떤지 봅니다. 막대는 오른쪽 끝(짙은 칸)이 지금입니다."
-        actions={<Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 불러오기</Button>}
+        actions={<><AsOf at={data?.generated_at} /><Button icon={<IconRefresh />} onClick={load} disabled={loading}>다시 읽기</Button></>}
       />
 
       {!loading && failed && (
