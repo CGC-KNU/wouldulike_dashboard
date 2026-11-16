@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconArrowRight, IconCheck, IconCopy, IconRefresh } from "@tabler/icons-react";
+import { IconArrowRight, IconCopy, IconRefresh } from "@tabler/icons-react";
 import type { QualityIssue, QualitySeverity } from "@/lib/draft/types";
 import { storeFixTarget } from "@/lib/draft/quality";
-import { Button, Card, Chip, DraftBadge, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, focusRing, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, DraftBadge, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, type ChipTone } from "../_shared/ui";
 import { OWNERS, TagChip, takeParam, ownerOf, type Owner } from "./kit";
 import { fetchJson } from "../_shared/fetchJson";
 
@@ -57,6 +57,8 @@ interface Payload {
 const DONE_KEY = "probe.quality.done.v1";
 type Done = Record<string, { by: string; at: string }>;
 const keyOf = (i: QualityIssue) => `${i.rule}:${i.subject}`;
+/** 묶음마다 처음 펼쳐 두는 매장 수 */
+const SHOWN = 6;
 function readDone(): Done { try { return JSON.parse(localStorage.getItem(DONE_KEY) ?? "{}") as Done; } catch { return {}; } }
 
 export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => void; actor?: string }) {
@@ -78,6 +80,8 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
     return next;
   });
   const isDone = (i: QualityIssue) => keyOf(i) in done;
+  /** 「N곳 더 보기」를 펼친 묶음 */
+  const [more, setMore] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
     setLoading(true);
@@ -131,7 +135,7 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
     <>
       <PageHeader
         title="정합성 점검"
-        description="매장·혜택·기획전·입금 기록·캠퍼스를 서로 비교해 어긋난 곳을 찾습니다. 매장 이름을 누르면 고치는 화면이 바로 열리고, 고친 뒤 「처리함」을 누르면 어디까지 했는지 남습니다."
+        description="매장·혜택·기획전·입금 기록·캠퍼스를 서로 비교해 어긋난 곳을 찾습니다. 「고치러 가기」로 고치는 화면을 열고, 고친 뒤 왼쪽을 체크하면 어디까지 했는지 남습니다."
         actions={
           <>
             {data?.draft && <DraftBadge note={data.draft_note} />}
@@ -214,43 +218,41 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
                   <div className="flex items-center gap-2 shrink-0">
                     <TagChip>담당 {ownerOf(head)}</TagChip>
                     {fix && onGo && (
-                      <Button size="sm" icon={<IconArrowRight />} onClick={() => onGo(fix.tab)} title="목록 화면으로 갑니다 — 한 곳씩 고칠 때는 아래 매장 이름을 누르세요">
+                      <Button size="sm" icon={<IconArrowRight />} onClick={() => onGo(fix.tab)} title="목록 화면으로 갑니다 — 한 곳씩 고칠 때는 아래 「고치러 가기」를 누르세요">
                         {fix.label}
                       </Button>
                     )}
                   </div>
                 </div>
 
-                <ul className="flex flex-wrap gap-2 mt-3">
-                  {list.map((i) => {
-                    // 매장 이름을 누르면 그 매장을 고치는 자리로 — 갈 곳이 없는 항목(후보·기획전)은 글자만
+                {/* 매장 한 곳 = 한 줄. 왼쪽 체크가 「처리함」, 오른쪽이 고치는 화면(1116 점검 B7). 여섯 곳까지 펼치고 나머지는 더 보기 */}
+                <ul className="mt-3 divide-y divide-black/[0.05]">
+                  {(more.has(`${head.rule}:${head.severity}`) ? list : list.slice(0, SHOWN)).map((i) => {
                     const to = storeFixTarget(i);
                     const href = to && "href" in to ? to.href : null;
                     const tab = to && "tab" in to ? to.tab : null;
-                    const cls = "inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-[6px]";
-                    const link = `${cls} text-[#5558DD] bg-navy/[0.05] hover:bg-navy/[0.1] ${focusRing}`;
                     const d = isDone(i);
+                    const go = "inline-flex items-center gap-1 text-[12.5px] font-medium text-[#5558DD] hover:underline shrink-0";
                     return (
-                      <li key={i.id} className={`inline-flex items-center gap-1 ${d ? "opacity-60" : ""}`}>
-                        {href ? (
-                          <a href={href} target="_blank" rel="noreferrer" className={link} title="쿠폰 & 스탬프 편집 화면을 새 탭으로 엽니다">{i.subject}<IconArrowRight size={14} aria-hidden="true" /></a>
-                        ) : tab && onGo ? (
-                          <button type="button" onClick={() => onGo(tab)} className={link} title="Astro 매장 상세를 엽니다">{i.subject}<IconArrowRight size={14} aria-hidden="true" /></button>
-                        ) : (
-                          <span className={`${cls} text-gray-700 bg-black/[0.05]`}>{i.subject}</span>
-                        )}
-                        {d ? (
-                          <>
-                            <Chip tone="green">처리함 · {done[keyOf(i)].by}</Chip>
-                            <Button size="sm" variant="ghost" onClick={() => mark(i, false)}>되돌리기</Button>
-                          </>
-                        ) : (
-                          <Button size="sm" variant="ghost" icon={<IconCheck />} onClick={() => mark(i, true)}>처리함</Button>
-                        )}
+                      <li key={i.id} className={`flex items-center justify-between gap-3 py-1.5 ${d ? "opacity-60" : ""}`}>
+                        <label className="flex items-center gap-2 min-w-0 cursor-pointer select-none text-[13.5px]">
+                          <input type="checkbox" className="w-4 h-4 shrink-0 accent-[var(--bar-now)]" checked={d} onChange={(e) => mark(i, e.target.checked)} aria-label={`${i.subject} 처리함`} />
+                          <span className={`truncate ${d ? "line-through text-gray-500" : "text-gray-900"}`}>{i.subject}</span>
+                          {d && <Chip tone="green">처리함 · {done[keyOf(i)].by}</Chip>}
+                        </label>
+                        {href ? <a href={href} target="_blank" rel="noreferrer" className={go} title="쿠폰 & 스탬프 편집 화면을 새 탭으로 엽니다">고치러 가기<IconArrowRight size={14} aria-hidden="true" /></a>
+                          : tab && onGo ? <button type="button" onClick={() => onGo(tab)} className={go} title="Astro 매장 상세를 엽니다">고치러 가기<IconArrowRight size={14} aria-hidden="true" /></button>
+                          : null}
                       </li>
                     );
                   })}
                 </ul>
+                {list.length > SHOWN && (
+                  <button type="button" className="mt-1 text-[12.5px] font-medium text-[#5558DD] hover:underline"
+                    onClick={() => setMore((m) => { const n = new Set(m); const k = `${head.rule}:${head.severity}`; if (n.has(k)) n.delete(k); else n.add(k); return n; })}>
+                    {more.has(`${head.rule}:${head.severity}`) ? "접기" : `${list.length - SHOWN}곳 더 보기`}
+                  </button>
+                )}
 
                 <div className="mt-3 pt-3 border-t border-black/[0.06] text-[12px] text-gray-600">
                   <span>고치는 법: <span className="text-gray-800">{head.hint}</span></span>

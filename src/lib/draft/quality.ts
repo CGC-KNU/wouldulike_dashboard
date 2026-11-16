@@ -84,7 +84,7 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
         title: "제휴 매장인데 플랜이 지정되지 않았습니다",
         subject: r.name,
         detail: "앱에는 노출되지만 FREE/BOOST/CONTENT 중 어느 것도 지정돼 있지 않습니다.",
-        hint: "매장 이름을 누르면 Astro 매장 상세가 열립니다. 「계약」 블록의 플랜에서 지정하세요. 슬랙 메시징의 '유료 식당' 판정도 이 값을 씁니다.",
+        hint: "「고치러 가기」를 누르면 Astro 매장 상세가 열립니다. 「계약」 블록의 플랜에서 지정하세요. 슬랙 메시징의 '유료 식당' 판정도 이 값을 씁니다.",
         source: "restaurants.tier",
       }, r);
     }
@@ -97,7 +97,7 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
         title: "유료 매장인데 등록된 혜택이 0건입니다",
         subject: r.name,
         detail: `플랜 ${r.tier} 인데 활성 쿠폰·스탬프 혜택이 하나도 없습니다. 앱 사용자에게는 빈 매장으로 보입니다.`,
-        hint: "매장 이름을 누르면 그 매장의 쿠폰 & 스탬프 편집 화면이 새 탭으로 열립니다. 일반/한정 쿠폰을 등록하세요.",
+        hint: "「고치러 가기」를 누르면 그 매장의 쿠폰 & 스탬프 편집 화면이 새 탭으로 열립니다. 일반/한정 쿠폰을 등록하세요.",
         source: "restaurants.tier × restaurant_benefits",
       }, r);
     }
@@ -127,7 +127,7 @@ export function checkQuality({ restaurants: all, benefits, featured, ops: opsLis
           title: "비활성 매장에 활성 혜택이 남아 있습니다",
           subject: r.name,
           detail: "제휴가 끝났는데 쿠폰·스탬프 혜택이 아직 활성 상태입니다.",
-          hint: "매장 이름을 누르면 쿠폰 & 스탬프 편집 화면이 새 탭으로 열립니다. 혜택을 끄거나, 제휴를 다시 이어 갈 매장이면 그대로 두세요.",
+          hint: "「고치러 가기」를 누르면 쿠폰 & 스탬프 편집 화면이 새 탭으로 열립니다. 혜택을 끄거나, 제휴를 다시 이어 갈 매장이면 그대로 두세요.",
           source: "restaurants.is_affiliate × restaurant_benefits",
         }, r);
       }

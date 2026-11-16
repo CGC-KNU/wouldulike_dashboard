@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconPlus, IconRefresh } from "@tabler/icons-react";
-import { Button, Card, Chip, Empty, FilterPills, Input, Kpi, Notice, PageHeader, Select, Skeleton, Table, Td, Th, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, Empty, FilterPills, Input, Kpi, Notice, PageHeader, Select, Skeleton, type ChipTone } from "../_shared/ui";
 import { SurveyCreateSlideOver, SurveyEditSlideOver } from "./SurveyEditor";
 
 /**
@@ -14,6 +14,9 @@ import { SurveyCreateSlideOver, SurveyEditSlideOver } from "./SurveyEditor";
  * 테스트 계정은 백엔드에서 뺀다.
  * 설문 내용(문구 · 문항 · 선택지) 고치기와 새 설문 만들기는 SurveyEditor.tsx — 보상 쿠폰도 설문마다 새로 만든다.
  * 켜져 있는 동안은 「진행 현황」을 15초마다 다시 읽는다.
+ *
+ * 1116 점검 B6: 끝낸 사람 · 연 사람은 아래 결과 칸에서 한 번만 센다(판 · 빠른 응답 빼기가 걸리는 쪽). 위 진행 현황은 흐름만 —
+ * 최근 24시간 · 아직 못 끝냄 · 완료율 · 남은 시간 + 시간대 막대. 학교별 · 들어온 길 · 날짜별은 표 대신 막대.
  */
 
 type State = "live" | "scheduled" | "ended" | "off";
@@ -275,15 +278,14 @@ export default function SurveyOps() {
                   <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> 15초마다 새로 읽기
                 </label>
               ) : undefined}>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
-                <Kpi label="끝낸 사람" value={res.progress.completed} suffix="명" hint={`최근 24시간 ${res.progress.last_24h}명`} />
-                <Kpi label="연 사람" value={res.progress.opened} suffix="명" hint="로그인한 사람만 셉니다" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                <Kpi label="최근 24시간 끝냄" value={res.progress.last_24h} suffix="명" hint={`마지막 응답 ${kst(res.progress.last_submitted_at)}`} />
                 <Kpi label="아직 못 끝냄" value={res.progress.in_progress} suffix="명" hint="열었지만 쿠폰은 안 받음" />
                 <Kpi label="완료율" value={res.progress.completion_rate === null ? "—" : `${Math.round(res.progress.completion_rate * 100)}`} suffix={res.progress.completion_rate === null ? undefined : "%"} />
                 <Kpi label="남은 시간" value={leftLabel(res.progress.seconds_left)} hint={`마감 ${kst(survey.end_at)}`} />
               </div>
               <div className="mt-4">
-                <p className="text-[12px] font-semibold text-gray-700 mb-1.5">최근 24시간 완료 수 <span className="font-normal text-gray-500">· 마지막 응답 {kst(res.progress.last_submitted_at)}</span></p>
+                <p className="text-[12px] font-semibold text-gray-700 mb-1.5">최근 24시간 완료 수 <span className="font-normal text-gray-500">· 한 칸이 한 시간</span></p>
                 <div className="flex items-end gap-[3px] h-16" role="img" aria-label="최근 24시간 시간대별 완료 수">
                   {(() => {
                     const top = Math.max(1, ...res.progress.hourly.map((h) => h.count));
@@ -367,18 +369,23 @@ function QuestionCard({ n, q, skipFast }: { n: number; q: Question; skipFast: bo
   );
 }
 
+/** 학교별 · 들어온 길 · 날짜별 — 문항 카드와 같은 막대 모양. 날짜별은 날짜 순서 그대로(푸시를 보낸 날이 튄다) */
 function Breakdown({ title, description, rows, total, label = (k) => k, keepOrder }: { title: string; description?: string; rows: Record<string, number>; total: number; label?: (k: string) => string; keepOrder?: boolean }) {
   const entries = useMemo(() => { const e = Object.entries(rows); return keepOrder ? e : e.sort((a, b) => b[1] - a[1]); }, [rows, keepOrder]);
+  const top = Math.max(1, ...entries.map(([, v]) => v));
   return (
-    <Card flush title={title} description={description}>
-      <Table minWidth="12rem" stack={false}>
-        <thead><tr><Th>{title === "날짜별" ? "날짜" : "항목"}</Th><Th align="right">명</Th><Th align="right">비율</Th></tr></thead>
-        <tbody>
+    <Card title={title} description={description}>
+      {entries.length === 0 ? <p className="text-[13px] text-gray-500">없습니다.</p> : (
+        <ul className="space-y-1.5">
           {entries.map(([k, v]) => (
-            <tr key={k}><Td>{label(k)}</Td><Td align="right" numeric>{v}</Td><Td align="right" numeric className="text-gray-500">{pct(v, total)}</Td></tr>
+            <li key={k} className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-2 text-[13px]">
+              <span className="text-gray-800 truncate" title={label(k)}>{label(k)}</span>
+              <span className="h-2 bg-gray-100 rounded-full overflow-hidden"><span className="block h-full rounded-full" style={{ background: "var(--bar-ink)", width: `${(v / top) * 100}%` }} /></span>
+              <span className="tabular-nums text-right w-[5rem]"><b className="text-gray-900">{v}</b> <span className="text-gray-500">· {pct(v, total)}</span></span>
+            </li>
           ))}
-        </tbody>
-      </Table>
+        </ul>
+      )}
     </Card>
   );
 }
