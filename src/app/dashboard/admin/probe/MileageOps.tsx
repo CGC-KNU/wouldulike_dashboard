@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconAlertTriangle, IconBrandSlack, IconExternalLink, IconRefresh } from "@tabler/icons-react";
-import { PanelSection, Unknown, daysBetween, md, missingAppWarnNow, openDateOf, weekdayOf } from "./kit";
+import { BAR_NOW, PanelSection, Unknown, daysBetween, md, missingAppWarnNow, openDateOf, weekdayOf } from "./kit";
 import { fetchJson } from "../_shared/fetchJson";
 import { Button, Card, Chip, DraftBadge, Field, FilterPills, Input, Kpi, Notice, PageHeader, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, rowClickable, todayLocal, type ChipTone } from "../_shared/ui";
 
@@ -14,6 +14,9 @@ import { Button, Card, Chip, DraftBadge, Field, FilterPills, Input, Kpi, Notice,
  * 사람이 손으로 적은 기록이 실제와 달랐다. 그래서 이 화면은 앱 DB 실측을 먼저 보여 준다. 마감은 11:00 KST 다. 봇(Libra)이 알림은 보내는데 **응모풀을 어디서 가져오는지**가
  * 정해지지 않아서다(0909 민찬 "어디서 캡쳐하면 돼?"). 이 화면은 그 빈 자리를 먼저 보이게 하고, 회차마다 사람이 확인한 기록을 남긴다.
  * 시트(우주라이크_마일리지_운영)가 정본이고 여기는 운영 기록이다.
+ *
+ * 1116 점검 B5: 「앱 기록을 못 읽음」은 「이번 회차」 카드 안에서 한 번만 말한다(다음 회차가 없을 때만 위 상자).
+ * 회차 표는 다섯 열 — 좌석 · 상품 · 사람 확인은 매 회차 같거나 대부분 비어 있어 회차 패널로 뺐다. 응모는 숫자 + 막대(그 달 가장 많은 회차 기준).
  */
 
 interface Round { id: string; date: string; weekday: "수" | "금"; seats: { fixed: number; random: number }; prizes: string; pool_auto?: boolean; result_auto?: boolean; pool_count: number | null; pool_checked_by: string | null; pool_checked_at: string | null; result: "scheduled" | "drawn" | "held" | "skipped"; note: string | null; updated_by: string | null; updated_at: string | null }
@@ -75,6 +78,8 @@ export default function MileageOps({ actor }: { actor: string }) {
   }
 
   const np = next ? prog(next) : null;
+  /** 응모 막대 길이 기준 — 그 달 가장 많은 회차 */
+  const maxEntries = Math.max(1, ...monthRounds.map((r) => prog(r)?.entries ?? 0));
   const tp = todayRound ? prog(todayRound) : null;
   const dash = <span className="text-gray-500">—</span>;
 
@@ -88,7 +93,7 @@ export default function MileageOps({ actor }: { actor: string }) {
       )}
 
       {/* 응모·당첨은 앱 DB 실측으로 채운다. 그걸 못 읽었을 때만 사람이 시트를 본다 (1013 — 전에는 이 경고가 늘 떴다) */}
-      {data && data.pool_source === "manual" && (
+      {data && data.pool_source === "manual" && !next && (
         <div className="mb-4">
           <Notice tone="amber" title="앱 기록(응모·당첨)을 읽지 못했습니다">
             「미확인」은 0 이 아니라 모름입니다. 이번 회차는 운영 시트의 &apos;응모풀&apos; 탭을 직접 확인해 회차 패널의 사람 확인 칸에 적어 주세요.
@@ -128,8 +133,8 @@ export default function MileageOps({ actor }: { actor: string }) {
         description={`${month === "2026-09" ? "1주차 없음 · 4주차는 추석 적립분 몰아 방출 + 상품 2배 (0902 확정)" : "수 · 금 11:00 마감 · 행을 누르면 응모 · 식사권 · 결과를 봅니다"} ${data ? ` · ${monthNo}월 추첨 완료 ${drawn}회` : ""}${progress ? ` · 당첨 ${wins}명` : ""}`}
         actions={months.length > 1 ? <FilterPills soft label="달" value={month} onChange={setPickedMonth} options={months.map((m) => ({ key: m, label: `${Number(m.slice(5, 7))}월` }))} /> : undefined}>
         {loading ? <Skeleton rows={8} cols={5} /> : !data ? <p className="px-4 py-6 text-[13px] text-gray-500">회차 목록을 읽지 못했습니다 — 0 이 아니라 모름입니다.</p> : (
-          <Table minWidth="44rem">
-            <thead><tr><Th width="6rem">회차</Th><Th width="8rem">좌석</Th><Th width="11rem">상품</Th><Th width="7rem" align="right">응모 (앱)</Th><Th width="5rem" align="right">당첨</Th><Th width="5rem" align="right">사람 확인</Th><Th width="6.5rem">결과</Th><Th>메모</Th></tr></thead>
+          <Table minWidth="36rem">
+            <thead><tr><Th width="7rem">회차</Th><Th width="15rem">응모</Th><Th width="5rem" align="right">당첨</Th><Th width="6.5rem">결과</Th><Th>메모</Th></tr></thead>
             <tbody>
               {monthRounds.map((r) => {
                 const p = prog(r);
@@ -138,15 +143,17 @@ export default function MileageOps({ actor }: { actor: string }) {
                 return (
                   <tr key={r.id} className={`${rowClickable} ${isNext || isToday ? "bg-navy/[0.03]" : ""}`} onClick={() => setOpenId(r.id)}>
                     <Td><span className="font-semibold text-gray-900 whitespace-nowrap">{md(r.date)} ({r.weekday})</span>{(isToday || isNext) && <span className="block text-[11px] text-navy font-semibold">{isToday ? "오늘" : "다음"}</span>}</Td>
-                    <Td className="text-[12px] text-gray-600 whitespace-nowrap">확정 {r.seats.fixed} · 랜덤 {r.seats.random}</Td>
-                    <Td className="text-[12px] text-gray-600 whitespace-nowrap">{r.result === "skipped" ? "—" : r.prizes}</Td>
-                    {/* 앱 DB 실측 — 못 읽으면 「미확인」(모름), 읽었는데 없으면 0 · 「앱에 없음」. 사람이 적은 숫자와 섞지 않는다. */}
-                    <Td align="right" numeric>
-                      {p ? <><span className="font-semibold text-gray-900">{p.entries}</span>{p.people > 0 && <span className="block text-[11px] text-gray-500 font-normal">{p.people}명</span>}</>
+                    {/* 앱 DB 실측 — 못 읽으면 「미확인」(모름), 읽었는데 없으면 「앱에 없음」. 사람이 적은 숫자는 「사람 확인」으로 따로 적는다 */}
+                    <Td>
+                      {p ? (
+                        <span className="flex items-center gap-2">
+                          <span className="w-24 h-2 rounded-full bg-black/[0.05] overflow-hidden shrink-0"><span className="block h-full rounded-full" style={{ width: `${(p.entries / maxEntries) * 100}%`, background: BAR_NOW }} /></span>
+                          <span className="tabular-nums whitespace-nowrap"><b className="text-gray-900">{p.entries}건</b>{p.people > 0 && <span className="text-gray-500 text-[12px]"> · {p.people}명</span>}</span>
+                        </span>
+                      ) : r.pool_count !== null ? <span className="text-[12px] text-gray-600 tabular-nums">{r.pool_count}명 <span className="text-gray-400">(사람 확인)</span></span>
                         : unreadable ? <Unknown why="앱 마일리지 기록을 읽지 못했습니다" /> : r.result === "scheduled" ? <Chip tone={missingIds.has(r.id) ? "amber" : "gray"}>앱에 없음</Chip> : dash}
                     </Td>
                     <Td align="right" numeric className="text-gray-700">{p ? p.winners : unreadable ? <Unknown /> : dash}</Td>
-                    <Td align="right" numeric className="text-gray-600">{r.pool_count !== null ? r.pool_count : unreadable ? <Unknown /> : dash}</Td>
                     <Td><Chip tone={R_TONE[r.result]} dot={r.result === "held"}>{R_LABEL[r.result]}</Chip></Td>
                     <Td className="text-[12px] text-gray-500 truncate max-w-[16rem]">{r.note ?? ""}</Td>
                   </tr>
@@ -241,7 +248,7 @@ function RoundPanel({ r, prog, onClose, onPatch, onCreated }: { r: Round; prog: 
               </div>
             ))}
           </div>
-          <p className="text-[12px] text-gray-500 mt-2">마감은 그날 11:00, 응모 시작은 3일 전입니다. 9월은 전부 랜덤, 10월부터 5,000원은 확정권(그 회차에 가장 많이 응모한 사람)입니다.</p>
+          <p className="text-[12px] text-gray-500 mt-2">마감은 그날 11:00, 응모 시작은 3일 전입니다. 5,000원은 확정권(그 회차에 가장 많이 응모한 사람), 10,000원은 랜덤(응모권 비례)입니다.</p>
           <Button variant="primary" onClick={create} disabled={creating} className="mt-2">{creating ? "만드는 중…" : "앱에 회차 만들기"}</Button>
           {createMsg && <p className="text-[12px] text-gray-600 mt-2">{createMsg}</p>}
         </PanelSection>
