@@ -91,7 +91,7 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
     const draft = reports.filter((r) => r.status === "DRAFT");
     const send = reports.filter((r) => r.status === "APPROVED" || r.status === "LINKED");
     const rname = (r: StoreReport) => r.snapshot.store.name;
-    if (make.length) T.push({ icon: <IconFileDescription size={16} />, title: "리포트 만들 때", n: make.length, meta: `D+14 지났는데 리포트가 없는 게시물 — ${names(make.map((i) => i.store))}`, label: "만들기", go: "probe-reports?stage=make", todo: true });
+    if (make.length) T.push({ icon: <IconFileDescription size={16} />, title: "리포트 만들 때", n: make.length, meta: `14일차가 지났는데 리포트가 없는 게시물 — ${names(make.map((i) => i.store))}`, label: "만들기", go: "probe-reports?stage=make", todo: true });
     if (draft.length) T.push({ icon: <IconFileDescription size={16} />, title: "초안 지표 입력 · 승인 대기", n: draft.length, meta: `인스타 인사이트 숫자를 넣고 승인하면 슬랙에 PNG 가 올라갑니다 — ${names(draft.map(rname))}`, label: "이어서", go: `probe-reports?open=${draft[0].id}`, todo: true });
     if (send.length) T.push({ icon: <IconCheck size={16} />, title: "카톡 보낸 뒤 보냄 표시 대기", n: send.length, meta: `승인은 끝났고, 사장님께 보냈다는 표시가 아직 없습니다 — ${names(send.map(rname))}`, label: "보냄 표시", go: `probe-reports?open=${send[0].id}`, todo: true });
 
@@ -136,10 +136,10 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
 
   return (
     <>
-      <PageHeader title="오늘 할 일" description={`${md(today)}(${dow}) 기준 · 버튼을 누르면 그 일을 바로 엽니다.${failed.length ? ` ${failed.join(" · ")} 을(를) 읽지 못했습니다 — 그 출처의 줄은 없고, 0 이 아니라 모름입니다.` : ""}`}
+      <PageHeader title="오늘 할 일" description={`${md(today)}(${dow}) 기준 · 버튼을 누르면 그 일을 바로 엽니다.`}
         actions={<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{TOOLS.probe.slack.channel}</Button></a>} />
 
-      {failed.length > 0 && !loading && <div className="mb-4"><Notice tone="amber" title="일부 출처를 읽지 못했습니다">{failed.join(" · ")} — 「미확인」은 0 이 아니라 모름입니다.</Notice></div>}
+      {failed.length > 0 && !loading && <div className="mb-4"><Notice tone="amber" title="일부 출처를 읽지 못했습니다">{failed.join(" · ")} — 그 출처의 할 일 줄은 없고, 「미확인」은 0 이 아니라 모름입니다.</Notice></div>}
 
       <Card flush className="mb-4">
         {loading ? <Skeleton rows={4} cols={2} /> : tasks.length === 0 ? (

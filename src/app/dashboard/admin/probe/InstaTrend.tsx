@@ -14,7 +14,7 @@ export default function InstaTrend() {
   const [loading, setLoading] = useState(true);
   return (
     <>
-      <PageHeader title="인스타 성과 추이" description="우주라이크 인스타 채널이 얼마나 올렸고, 한 편이 얼마나 나갔는지 봅니다. 매장별 성과는 「매장 리포트」에서 봅니다."
+      <PageHeader title="인스타 추이" description="우주라이크 인스타 채널이 얼마나 올렸고, 한 편이 얼마나 나갔는지 봅니다. 매장별 성과는 「매장 리포트」에서 봅니다."
         actions={<Button icon={<IconRefresh />} onClick={() => setKey((k) => k + 1)} disabled={loading}>다시 읽기</Button>} />
       <InsightsSummary reloadKey={key} onLoading={setLoading} />
     </>

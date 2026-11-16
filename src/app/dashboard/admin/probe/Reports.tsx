@@ -8,7 +8,7 @@ import { measuredPoint, templateMissing } from "@/lib/draft/reportTemplateData";
 import { TOOLS, slackUrl } from "@/lib/satellite";
 import MonthlyReports from "./MonthlyReports";
 import { fetchJson, rememberJson } from "../_shared/fetchJson";
-import { PanelSection, TagChip, Unknown, md, takeParam } from "./kit";
+import { Fold, PanelSection, TagChip, Unknown, md, takeParam } from "./kit";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notice, PageHeader, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 
@@ -51,7 +51,7 @@ const STAGE: Record<Stage, { label: string; tone: ChipTone; dot?: boolean }> = {
   draft: { label: "입력 · 승인", tone: "navy" },
   send: { label: "전송 대기", tone: "navy" },
   sent: { label: "보냄", tone: "green" },
-  wait: { label: "D+14 전", tone: "gray" },
+  wait: { label: "14일차 전", tone: "gray" },
   blocked: { label: "수치 없음", tone: "gray" },
 };
 const STAGE_ORDER: Record<Stage, number> = { make: 0, draft: 1, send: 2, wait: 3, blocked: 4, sent: 5 };
@@ -132,8 +132,10 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   /** 리포트 만들기 — 시기와 상관없이. 이미 살아 있는 리포트가 있으면(409) 갱신본 여부를 되묻는다. */
   const [making, setMaking] = useState<string | null>(null);
   const [askForce, setAskForce] = useState<string | null>(null);
+  /** 만들기 실패 — 전에는 브라우저 알림 창이었다. 다른 실패처럼 표 위 안내로(1116 점검 B4) */
+  const [makeErr, setMakeErr] = useState<string | null>(null);
   async function make(p: Post, force = false) {
-    if (making) return; setMaking(postKey(p));
+    if (making) return; setMaking(postKey(p)); setMakeErr(null);
     // 1003: 만들기 → 인스타 API 숫자를 굳힌 뒤 → **인스타그램 게시물을 연다.** 거기서 인사이트를 보고 손으로 옮길 값
     // (장별 좋아요 · 연령 비중)을 편집 화면에 적는다. 팝업 차단을 피하려면 누른 그 순간에 탭을 열어야 해서,
     // 빈 탭을 먼저 열고 리포트가 만들어지면 그 탭을 인스타그램으로 보낸다. 못 만들면 탭을 닫는다.
@@ -145,7 +147,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       const res = await fetch("/api/probe/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: p.restaurant_id, store_name: p.restaurant_id === null ? p.store : undefined, plan_id: p.plan_id, force }) });
       const d = await res.json().catch(() => ({}));
       if (res.status === 409 && !force) { setAskForce(postKey(p)); return; }
-      if (!res.ok) { setAskForce(null); alert(d.detail ?? "만들지 못했습니다."); return; }
+      if (!res.ok) { setAskForce(null); setMakeErr(`${p.store} 리포트를 만들지 못했습니다 — ${d.detail ?? "잠시 뒤 다시 눌러 주세요."}`); return; }
       setAskForce(null); setOpenPost(null); load(); setOpenId(d.report?.id ?? null);
       if (tab && insta) { try { tab.opener = null; } catch { /* 무시 */ } tab.location.href = insta; opened = true; }
     } finally { setMaking(null); if (tab && !opened) tab.close(); }
@@ -165,7 +167,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
 
   return (
     <>
-      <PageHeader title="매장 리포트" description={`Papillon 게시물에 제휴 매장이 들어가면 자동으로 잡힙니다. 게시 14일차 09:00 에 초안이 생기고, 지표를 넣어 승인하면 ${SHARE_FILES}이 #ops-partner 에 올라갑니다. 카톡으로 보낸 뒤 「보냄 표시」까지 하면 끝입니다.`}
+      <PageHeader title="매장 리포트" description="게시물마다 리포트를 만들어 사장님께 보냅니다. 오른쪽 끝 버튼이 지금 할 일입니다."
         actions={<>{note && <DraftBadge note={note} />}<a href={slackUrl(TOOLS.probe)} target="_blank" rel="noreferrer"><Button icon={<IconBrandSlack />}>#{TOOLS.probe.slack.channel}</Button></a><Button icon={<IconRefresh />} onClick={() => load()} disabled={postsLoading}>다시 읽기</Button></>}>
         <FilterPills soft label="리포트 종류" value={tab} onChange={setTab} options={[{ key: "posts", label: "게시물 리포트" }, { key: "monthly", label: "매장 월간 보고서" }]} />
       </PageHeader>
@@ -173,10 +175,11 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       {tab === "monthly" ? <MonthlyReports /> : (
         <>
           {posts && (posts.checked.performance_denied ?? 0) > 0 && <div className="mb-4"><Notice tone="amber" title={`게시물 ${posts.checked.performance_denied}개는 성과를 못 읽었습니다`}>제목에 「(매장 포함)」 표시가 있는 제휴식당 콘텐츠만 성과가 열려 있습니다(마케팅팀 합의 0920). 표시가 없는 콘텐츠는 수치가 비고 「만들 때」에 안 잡힙니다 — 마케팅팀에 제목 표시를 부탁하세요.</Notice></div>}
+          {makeErr && <div className="mb-4"><Notice tone="red" title={makeErr} /></div>}
           {!postsLoading && !posts && <div className="mb-4"><Notice tone="red" title="게시물 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>할 일이 없다는 뜻이 아닙니다.</strong> 「다시 읽기」를 눌러 주세요.</Notice></div>}
           {posts && !posts.papillon_reachable && <div className="mb-4"><Notice tone="red" title="Papillon 기획 목록을 읽지 못했습니다">아래가 비어 있어도 <strong>홍보한 적 없음이 아닙니다.</strong> 백엔드 연결을 확인하세요.</Notice></div>}
 
-          <Card flush title="게시물 · 리포트" description={`한 줄이 게시물 하나입니다. 행을 누르면 게시물이나 리포트가 열리고, 오른쪽 끝 버튼이 지금 할 일입니다. 살핀 기획 ${posts?.checked.plans ?? 0} · 제휴 매장 ${posts?.checked.stores ?? 0}곳`}>
+          <Card flush title="게시물 · 리포트" description={posts ? `한 줄이 게시물 하나입니다 · 살핀 기획 ${posts.checked.plans} · 제휴 매장 ${posts.checked.stores}곳` : "한 줄이 게시물 하나입니다"}>
             <div className="flex flex-wrap items-center gap-1.5 px-4 py-3 border-b border-black/[0.06]" role="group" aria-label="단계">
               {pill("todo", "할 일", todoN)}
               <span className="w-px h-5 bg-gray-200 mx-1" aria-hidden="true" />
@@ -203,8 +206,8 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
                     return (
                       <tr key={r?.id ?? k} className={rowClickable} onClick={() => (r ? setOpenId(r.id) : setOpenPost(k))}>
                         <Td><span className="inline-flex items-center gap-1.5 flex-wrap"><span className="font-semibold text-gray-900">{p.store}</span>{p.restaurant_id === null && (p.matched_by === "sponsor" ? <TagChip>앱 밖 협찬</TagChip> : <Chip tone="amber">매장 미확인</Chip>)}</span><span className="block text-[11px] text-gray-500 truncate max-w-[20rem]">{p.topic}{p.co_stores > 1 ? ` · ${p.co_stores}곳 함께` : ""}</span></Td>
-                        <Td className="text-[12px] text-gray-600 whitespace-nowrap">{p.posted_at ? md(p.posted_at) : "-"}{p.age_days !== null && <span className="block text-[11px] text-gray-500">D+{p.age_days}</span>}</Td>
-                        <Td><Chip tone={STAGE[stage].tone} dot={STAGE[stage].dot}>{stage === "wait" && p.age_days !== null ? `D+14 까지 ${Math.max(0, 14 - p.age_days)}일` : STAGE[stage].label}</Chip></Td>
+                        <Td className="text-[12px] text-gray-600 whitespace-nowrap">{p.posted_at ? md(p.posted_at) : "-"}{p.age_days !== null && <span className="block text-[11px] text-gray-500">{p.age_days}일차</span>}</Td>
+                        <Td><Chip tone={STAGE[stage].tone} dot={STAGE[stage].dot}>{stage === "wait" && p.age_days !== null ? `14일차까지 ${Math.max(0, 14 - p.age_days)}일` : STAGE[stage].label}</Chip></Td>
                         <Td align="right">{num(it, "saved")}</Td>
                         <Td align="right">{num(it, "reach")}</Td>
                         <Td align="right"><span onClick={(e) => e.stopPropagation()} className="inline-flex">{action}</span></Td>
@@ -216,6 +219,14 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
             )}
           </Card>
 
+          <Fold label="리포트가 나가는 과정">
+            <ol className="list-decimal pl-4 text-[12.5px] text-gray-700 space-y-1">
+              <li>Papillon 기획 제목에 제휴 매장이 들어가면 발행 즉시 여기 잡힙니다(예: 「(정든밤 포함)」).</li>
+              <li>게시 14일차 09:00 에 초안이 생깁니다. 「전체」에서 시기와 상관없이 먼저 만들 수도 있습니다.</li>
+              <li>인스타그램 인사이트 숫자를 넣고 승인하면 {SHARE_FILES}이 #ops-partner 에 올라갑니다.</li>
+              <li>사장님께 카톡으로 보낸 뒤 「보냄 표시」를 누르면 끝입니다.</li>
+            </ol>
+          </Fold>
           <p className="text-[12px] text-gray-600 mt-3 leading-relaxed">
             숫자는 인스타그램 수치 그대로이고, 우리 채널의 다른 게시물과 견준 순위·판정은 보이지 않습니다. 스냅샷에는 매장 이름과 게시물·지표만 들어갑니다 — 연락처·사업자번호·PIN 은 절대 실리지 않습니다.
             {onGo && <button type="button" onClick={() => onGo("astro-ops")} className="ml-1 text-[#5558DD] font-medium hover:underline">파트너 매장에서 담당 확인 →</button>}
@@ -240,7 +251,7 @@ function ProposalBasis({ p }: { p?: StoreReport["proposals"][number] }) {
 function PostPanel({ p, onClose, onMake, making, askForce, onOpenReport }: { p: Post; onClose: () => void; onMake: (force: boolean) => void; making: boolean; askForce: boolean; onOpenReport: (id: string) => void }) {
   const [copied, setCopied] = useState(false);
   async function copy() { if (!p.report) return; try { await navigator.clipboard.writeText(p.report); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* 무시 */ } }
-  const cp = p.age_days === null ? "게시일 모름" : p.targets.d14 ? `D+${p.age_days} · 2주 총정리 시점` : p.targets.d7 ? `D+${p.age_days} · 1주 시점` : `D+${p.age_days} · 초기 반응`;
+  const cp = p.age_days === null ? "게시일 모름" : p.targets.d14 ? `${p.age_days}일차 · 2주 총정리 시점` : p.targets.d7 ? `${p.age_days}일차 · 1주 시점` : `D+${p.age_days} · 초기 반응`;
   return (
     <SlideOver open onClose={onClose} title={p.store} subtitle={p.topic} badge={<Chip tone={p.due ? "amber" : "gray"}>{cp}</Chip>} width="lg"
       footer={<>
