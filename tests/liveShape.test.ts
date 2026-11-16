@@ -48,3 +48,15 @@ test("기준선 = 지난 4주 평균, 한 주라도 비면 null", () => {
   assert.equal(averageWeeks([week(1, 3), week(2, 4), week(4, 5)]), null);
   assert.equal(averageWeeks([week(1, 3), week(2, 4), { ...week(3, 0), events: 0 }, week(4, 5)]), null);
 });
+
+test("흐름 — 차이가 ±2√(지금+평소) 안이면 비슷, 모르면 null", async () => {
+  const { flowOf, peakOf } = await import("../src/lib/bigquery/liveShape");
+  assert.equal(flowOf(4, 2), "same"); // 차이 2 ≤ 2√6
+  assert.equal(flowOf(30, 10), "up"); // 차이 20 > 2√40
+  assert.equal(flowOf(2, 20), "down");
+  assert.equal(flowOf(0, 0), "same");
+  assert.equal(flowOf(null, 3), null);
+  assert.equal(flowOf(3, null), null);
+  assert.equal(peakOf([{ n: 0 }, { n: 0 }]), null);
+  assert.deepEqual(peakOf([{ n: 1, l: "a" }, { n: 3, l: "b" }, { n: 3, l: "c" }]), { n: 3, l: "c" });
+});

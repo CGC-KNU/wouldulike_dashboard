@@ -120,3 +120,24 @@ export function averageWeeks(rows: (Row & { w: number })[], weeks = BASELINE_WEE
   };
 }
 
+
+/** 평소(4주 평균)와 견준 흐름 — 화면이 「평소보다 많음 · 비슷 · 적음」으로 읽어 준다 */
+export type Flow = "up" | "same" | "down";
+const NOISE_Z = 2;
+/**
+ * 차이가 ±2√(지금 + 평소) 안이면 「비슷」 — 앱 지표 보고서의 건수 규칙(#335)과 같다.
+ * 하루 볼륨이 작아 2건과 4건의 차이를 「두 배」로 읽지 않게. 어느 쪽이든 모르면 null.
+ */
+export function flowOf(now: number | null | undefined, usual: number | null | undefined): Flow | null {
+  if (now === null || now === undefined || usual === null || usual === undefined) return null;
+  const d = now - usual;
+  if (Math.abs(d) <= NOISE_Z * Math.sqrt(now + usual)) return "same";
+  return d > 0 ? "up" : "down";
+}
+
+/** 가장 큰 칸 — 모두 0 이거나 비었으면 null. 같으면 나중(지금에 가까운) 칸 */
+export function peakOf<T extends { n: number }>(rows: T[]): T | null {
+  let best: T | null = null;
+  for (const r of rows) if (r.n > 0 && (!best || r.n >= best.n)) best = r;
+  return best;
+}
