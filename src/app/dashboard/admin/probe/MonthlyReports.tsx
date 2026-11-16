@@ -6,6 +6,7 @@ import { campusOfMetric, previousPeriod } from "@/lib/draft/storeMetrics";
 import type { StoreMetric } from "@/lib/draft/types";
 import { Button, Card, Chip, Empty, Skeleton, Table, Td, Th } from "../_shared/ui";
 import { PlanTag, TagChip } from "./kit";
+import { fetchJson } from "../_shared/fetchJson";
 
 /**
  * Probe · 매장 리포트 · 매장 월간 보고서 탭 (1022 목업).
@@ -18,16 +19,23 @@ import { PlanTag, TagChip } from "./kit";
  */
 export default function MonthlyReports() {
   const [stores, setStores] = useState<StoreMetric[] | null>(null);
-  useEffect(() => { fetch("/api/probe/overview").then((r) => r.json()).then((d) => setStores(d.stores ?? [])).catch(() => setStores([])); }, []);
+  /** 목록을 못 읽었는가 — 「매장 없음」과 가른다(1116 점검 A3) */
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    fetchJson<{ stores?: StoreMetric[]; stores_unreadable?: boolean }>("/api/probe/overview").then((d) => {
+      setFailed(!d || Boolean(d.stores_unreadable));
+      setStores(d?.stores ?? []);
+    });
+  }, []);
   const month = previousPeriod();
   const monthNo = Number(month.slice(5, 7));
   const list = useMemo(() => (stores ?? []).filter((s) => s.is_affiliate && !s.hidden_from_app).sort((a, b) => campusOfMetric(a).localeCompare(campusOfMetric(b), "ko") || a.name.localeCompare(b.name, "ko")), [stores]);
   return (
     <>
       <Card flush title={`${monthNo}월 매장 월간 보고서`}
-        description={`사장님께 보내는 지난달 앱 기록입니다. 앱에서 숨긴 매장은 뺐습니다${stores ? ` · ${list.length}곳` : ""}`}
+        description={`사장님께 보내는 지난달 앱 기록입니다. 앱에서 숨긴 매장은 뺐습니다${stores && !failed ? ` · ${list.length}곳` : ""}`}
         actions={<a href="/r/partners" target="_blank" rel="noreferrer" title="모든 제휴 매장에 같은 내용으로 보내는 앱 전체 보고서"><Button size="sm" icon={<IconExternalLink />}>가게 공통 보고서</Button></a>}>
-        {!stores ? <Skeleton rows={6} cols={4} /> : list.length === 0 ? <Empty title="보고서를 낼 매장이 없습니다" detail="매장 목록을 못 읽었거나 앱에 보이는 제휴 매장이 없습니다." /> : (
+        {!stores ? <Skeleton rows={6} cols={4} /> : failed ? <Empty title="매장 목록을 읽지 못했습니다" detail="매장이 없다는 뜻이 아닙니다. 새로고침해 주세요." /> : list.length === 0 ? <Empty title="보고서를 낼 매장이 없습니다" detail="앱에 보이는 제휴 매장이 없습니다." /> : (
           <Table minWidth="40rem">
             <thead><tr><Th>매장</Th><Th width="6rem">캠퍼스</Th><Th width="7.5rem">상태</Th><Th width="9rem" align="right">보고서</Th></tr></thead>
             <tbody>

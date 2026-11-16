@@ -124,6 +124,8 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
   const firstTodo = tasks.findIndex((t) => t.todo);
   const wau = metric("wau"), coupon = metric("coupon_used"), expiring = metric("coupon_expiring");
   const silentPaid = stores.filter((s) => isSilent(s) && (s.tier === "BOOST" || s.tier === "CONTENT")).length;
+  /** 지표를 읽은 매장이 하나도 없으면 조용한 매장은 셀 수 없다 — 0곳이 아니라 모름(1116 점검 A4) */
+  const storesRead = stores.some((s) => !s.unavailable);
   const val = (m: { value: number | null; unit?: string } | undefined, unit: string) => (!m || m.value === null ? null : `${m.value.toLocaleString()}${unit}`);
   const stat = (label: string, value: string | null, go: string) => (
     <button key={label} type="button" onClick={() => onGo(go)} className="inline-flex items-center gap-2 px-3 py-2 rounded-[10px] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)] text-[12px] text-gray-600 hover:bg-navy/[0.05] transition-colors">
@@ -161,7 +163,7 @@ export default function ProbeHome({ onGo }: { onGo: (tab: string) => void }) {
       <div className="flex flex-wrap gap-2" aria-label="지표 한 줄">
         {stat("주간 활성(WAU)", val(wau, "명"), "probe-app?grp=usage")}
         {stat("이번 달 쿠폰 사용", val(coupon, "건"), "probe-app?grp=funnel")}
-        {stat("조용한 유료 매장", ov ? `${silentPaid}곳` : null, "probe-metrics?scope=silent")}
+        {stat("조용한 유료 매장", storesRead ? `${silentPaid}곳` : null, "probe-metrics?scope=silent")}
         {stat("7일 안 만료 쿠폰", val(expiring, "장"), "probe-app?grp=funnel")}
       </div>
     </>

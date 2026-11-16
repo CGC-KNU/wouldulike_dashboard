@@ -6,6 +6,7 @@ import type { QualityIssue, QualitySeverity } from "@/lib/draft/types";
 import { storeFixTarget } from "@/lib/draft/quality";
 import { Button, Card, Chip, DraftBadge, Empty, FilterPills, Kpi, Notice, PageHeader, Skeleton, focusRing, type ChipTone } from "../_shared/ui";
 import { OWNERS, TagChip, takeParam, ownerOf, type Owner } from "./kit";
+import { fetchJson } from "../_shared/fetchJson";
 
 /**
  * Probe · 데이터 정합성 점검.
@@ -80,10 +81,9 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch("/api/probe/quality")
-      .then((r) => r.json())
+    // 응답이 실패하면 null — 전에는 「높음 0 · 보통 0 · 낮음 0」이 떠 「이상 없음」으로 읽혔다(1116 점검 A3)
+    fetchJson<Payload>("/api/probe/quality", { fresh: true })
       .then(setData)
-      .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, []);
   useEffect(load, [load]);
@@ -108,12 +108,14 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
     return [...m.values()].sort((a, b) => order[a[0].severity] - order[b[0].severity] || Number(left(a) === 0) - Number(left(b) === 0) || b.length - a.length);
   }, [issues, done]);
 
+  /** 화면과 같은 숫자 · 같은 목록 — 「처리함」을 뺀 것. 전에는 서버 전체 수를 복사해 화면 숫자와 달랐다(1116 점검 A5) */
   async function copyAll() {
     if (!data) return;
     const today = new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric" }).format(new Date());
     const text = [
-      `[데이터 정합성 ${today}] 높음 ${data.counts.high} · 보통 ${data.counts.medium} · 낮음 ${data.counts.low}`,
-      ...data.issues.map((i) => `- [${SEV_LABEL[i.severity]}] ${i.subject}: ${i.title}`),
+      `[데이터 정합성 ${today}] 높음 ${counts.high} · 보통 ${counts.medium} · 낮음 ${counts.low}`,
+      ...open.map((i) => `- [${SEV_LABEL[i.severity]}] ${i.subject}: ${i.title}`),
+      ...(doneN ? [`(처리함 ${doneN}건 제외)`] : []),
     ].join("\n");
     try {
       await navigator.clipboard.writeText(text);
@@ -143,6 +145,14 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
         }
       />
 
+      {!loading && !data && (
+        <div className="mb-4">
+          <Notice tone="red" title="점검 결과를 읽지 못했습니다">
+            아래 숫자는 0 이 아니라 모름입니다 — <strong>이상 없음이 아닙니다.</strong> 「다시 점검」을 눌러 주세요.
+          </Notice>
+        </div>
+      )}
+
       {/* 백엔드를 못 읽으면 규칙 대부분이 침묵한다. '이상 없음'과 반드시 구별한다. */}
       {data && !data.backend_reachable && (
         <div className="mb-4">
@@ -164,13 +174,13 @@ export default function DataQuality({ onGo, actor }: { onGo?: (tab: string) => v
       )}
 
       <div className="sat-stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-4">
-        <Kpi soft label="높음" value={loading ? "-" : counts.high} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => setSev(sev === "high" ? "all" : "high")} active={sev === "high"} />
-        <Kpi soft label="보통" value={loading ? "-" : counts.medium} hint="곧 문제가 됨" onClick={() => setSev(sev === "medium" ? "all" : "medium")} active={sev === "medium"} />
-        <Kpi soft label="낮음" value={loading ? "-" : counts.low} hint="비어 있는 칸" onClick={() => setSev(sev === "low" ? "all" : "low")} active={sev === "low"} />
-        <Kpi label="점검 범위" value={loading ? "-" : data?.checked.restaurants ?? 0} suffix="매장" hint={data ? `혜택 ${data.checked.benefits} · 기획전 ${data.checked.featured} · 후보 ${data.checked.leads}${data.checked.test_excluded ? ` · 테스트 매장 ${data.checked.test_excluded}곳 제외` : ""}${doneN ? ` · 처리함 ${doneN}건은 위 숫자에서 뺐습니다` : ""}` : undefined} />
+        <Kpi soft label="높음" value={loading ? "-" : data ? counts.high : "미확인"} tone="alert" hint="사용자에게 이미 보이는 문제" onClick={() => setSev(sev === "high" ? "all" : "high")} active={sev === "high"} />
+        <Kpi soft label="보통" value={loading ? "-" : data ? counts.medium : "미확인"} hint="곧 문제가 됨" onClick={() => setSev(sev === "medium" ? "all" : "medium")} active={sev === "medium"} />
+        <Kpi soft label="낮음" value={loading ? "-" : data ? counts.low : "미확인"} hint="비어 있는 칸" onClick={() => setSev(sev === "low" ? "all" : "low")} active={sev === "low"} />
+        <Kpi label="점검 범위" value={loading ? "-" : data ? data.checked.restaurants : "미확인"} suffix="매장" hint={data ? `혜택 ${data.checked.benefits} · 기획전 ${data.checked.featured} · 후보 ${data.checked.leads}${data.checked.test_excluded ? ` · 테스트 매장 ${data.checked.test_excluded}곳 제외` : ""}${doneN ? ` · 처리함 ${doneN}건은 위 숫자에서 뺐습니다` : ""}` : undefined} />
       </div>
       <div className="mb-4">
-        <FilterPills soft label="담당" value={owner} onChange={setOwner} options={[{ key: "all", label: "담당 전체", count: ownerCount("all") }, ...OWNERS.map((o) => ({ key: o, label: o, count: ownerCount(o) }))]} />
+        <FilterPills soft label="담당" value={owner} onChange={setOwner} options={[{ key: "all", label: "담당 전체", count: data ? ownerCount("all") : undefined }, ...OWNERS.map((o) => ({ key: o, label: o, count: data ? ownerCount(o) : undefined }))]} />
       </div>
 
       {loading ? (
