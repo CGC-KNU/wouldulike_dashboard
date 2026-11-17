@@ -153,7 +153,7 @@ export interface Client {
   run: <T>(query: string, params?: Record<string, string>) => Promise<T[]>;
 }
 
-export function clientFromEnv(env: Record<string, string | undefined>): Client | null {
+export function clientFromEnv(env: Record<string, string | undefined>, options: { jobTimeoutMs?: number } = {}): Client | null {
   const credentials = credentialsFromEnv(env);
   if (!credentials) return null;
   const dataset = env.BQ_DATASET || DEFAULT_DATASET;
@@ -162,7 +162,7 @@ export function clientFromEnv(env: Record<string, string | undefined>): Client |
   return {
     dataset,
     run: async <T>(query: string, params?: Record<string, string>): Promise<T[]> => {
-      const [rows] = await bq.query({ query, ...(params ? { params } : {}), maximumBytesBilled: MAX_BYTES });
+      const [rows] = await bq.query({ query, ...(params ? { params } : {}), maximumBytesBilled: MAX_BYTES, ...options });
       return rows as T[];
     },
   };

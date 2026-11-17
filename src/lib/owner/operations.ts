@@ -2,6 +2,7 @@ import { backend, Backend, JsonObject, OwnerError, OwnerRequestContext, ownerCal
 import { invoiceVisible, reportStatus } from "./presentation";
 import { PLANS } from "./plans";
 import { submitBenefitRequest } from "./benefitRequests";
+import { attachStoreViews } from "./homeMetrics";
 
 export const EDITABLE_FIELDS = ["description", "phone_number", "main_menu", "url", "address", "category", "promotion_text", "s3_image_urls"];
 export function validateBody(body: unknown, fields: readonly string[]): JsonObject {
@@ -43,11 +44,14 @@ export async function ownerOperation(ctx: OwnerRequestContext, route: string, me
       invoice: invoiceVisible(home.billing.invoice) ? home.billing.invoice : null };
     if (route === "plan") return { store: home.store, billing: home.billing,
       plans: PLANS.map(({ id, displayName, price, priceSub, features }) => ({ id, displayName, price, priceSub, features })) };
-    const [promo, reports] = await Promise.allSettled([get("/api/dashboard/promo-files/"), publishedReports(ctx, call)]);
+    const [promo, reports, enriched] = await Promise.allSettled([
+      get("/api/dashboard/promo-files/"), publishedReports(ctx, call),
+      attachStoreViews(home as Parameters<typeof attachStoreViews>[0]),
+    ]);
     for (const r of [promo, reports]) {
       if (r.status === "rejected" && r.reason instanceof OwnerError && [401, 403, 409].includes(r.reason.status)) throw r.reason;
     }
-    return { ...home, promo: promo.status === "fulfilled" ? promo.value : null,
+    return { ...(enriched.status === "fulfilled" ? enriched.value : home), promo: promo.status === "fulfilled" ? promo.value : null,
       report_status: reportStatus(home.store.contract_days ?? null, reports.status === "fulfilled" ? reports.value.length : null),
       partial_errors: [promo.status === "rejected" ? "promo" : null, reports.status === "rejected" ? "reports" : null].filter(Boolean) };
   }
