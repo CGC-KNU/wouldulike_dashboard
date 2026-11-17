@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import StorePicker, { type PickStore } from "./StorePicker";
 import { decodeJwt } from "@/lib/jwt";
 import PartnerHome, { type PartnerHomeData } from "./PartnerHome";
+import { attachStoreViews } from "@/lib/owner/homeMetrics";
 
 /**
  * 파트너 뷰 첫 화면 (민열님 0919). 폼이 아니라 **숫자와 "우주라이크가 한 일"** 이 먼저다.
@@ -15,7 +16,8 @@ async function fetchHome(token: string, rid?: string): Promise<PartnerHomeData |
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     if (!res.ok) return null;
     // 0925: 파싱이 실패하면 null 이어야 한다. `{}` 는 참이라 화면이 '읽었다'고 믿고 터진다.
-    return (await res.json().catch(() => null)) as PartnerHomeData | null;
+    const home = (await res.json().catch(() => null)) as PartnerHomeData | null;
+    return home ? await attachStoreViews(home) : null;
   } catch { return null; }
 }
 
@@ -66,18 +68,6 @@ export default async function OwnerHomePage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      {/* 0924: 이 띠가 "쿠폰·스탬프 지표를 곧 붙입니다" 라고 말하는 동안 바로 아래에 그 숫자가
-          이미 있었다. 사장님은 숫자를 보면서 "아직 없다" 는 말을 같이 읽었다.
-          숫자는 이제 앱에서 실제로 찍힌 것을 센다. 그러니 **아직 없는 것만** 적는다. */}
-      <div className="mx-auto max-w-5xl px-4 pt-4">
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-[13px] font-semibold text-amber-900">아직 붙이는 중인 것</p>
-          <p className="text-[12.5px] text-amber-800 mt-0.5">
-            콘텐츠가 몇 명에게 닿았는지와 저장·공유 수는 월간 리포트로 먼저 보내 드리고 있습니다.
-            아래 숫자는 <b>우주라이크 앱에서 실제로 찍힌 것</b>입니다.
-          </p>
-        </div>
-      </div>
       <PartnerHome data={home} ridParam={rid ? `?rid=${rid}` : ""} promo={promo} />
     </>
   );
