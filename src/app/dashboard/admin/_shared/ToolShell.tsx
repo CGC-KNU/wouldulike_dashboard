@@ -307,7 +307,7 @@ export function Dock({ tools, active, onSwitch, onHome, libra }: ToolDock) {
     /* 폰에서는 도크가 화면보다 넓다(툴 5개 + 런처 + 리브라 = 약 420px).
        예전에는 가운데 정렬만 해서 양끝이 잘려 나갔다 — 왼쪽 '전체'와 오른쪽 '리브라랑 대화'가 반씩 잘렸다.
        이제 화면 폭을 넘지 않게 묶고 그 안에서 가로로 민다. 데스크톱에서는 넘칠 일이 없어 그대로다. */
-    <nav aria-label="툴 바꾸기" className="fixed left-0 right-0 bottom-4 z-30 flex justify-center px-3 pointer-events-none">
+    <nav aria-label="툴 바꾸기" className="lg:hidden fixed left-0 right-0 bottom-4 z-30 flex justify-center px-3 pointer-events-none">
       <ul className="pointer-events-auto inline-flex items-end gap-1 px-2 py-1.5 rounded-[22px] bg-white/70 backdrop-blur-2xl saturate-150 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.06),0_24px_48px_-24px_rgba(5,0,114,0.5)] max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <li className="shrink-0">
           <button type="button" onClick={onHome} aria-label="런처" className={`group flex flex-col items-center w-[52px] sm:w-14 py-1 rounded-2xl transition-transform duration-150 ease-out hover:-translate-y-0.5 active:scale-95 ${focusRing}`}>

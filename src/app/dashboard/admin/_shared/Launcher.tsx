@@ -163,7 +163,8 @@ export default function Launcher({ available, extras = [], userName, username = 
       </div>
 
       {/* ④ 앱 — 일 이름으로 묶어 바로 들어가기 */}
-      <section aria-labelledby="h-apps" className="mt-7">
+      {/* 넓은 화면에선 왼쪽 레일(AppRail)이 같은 일을 한다 — 폰에서만 보인다 (1121) */}
+      <section aria-labelledby="h-apps" className="mt-7 lg:hidden">
         <SectionHead id="h-apps" title="바로 가기" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
           {groups.map((g) => (
