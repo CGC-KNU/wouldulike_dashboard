@@ -22,8 +22,11 @@ export default function CommandPalette({ tabs, go }: { tabs: { key: string; labe
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setOpen((o) => !o); }
       if (e.key === "Escape") setOpen(false);
     };
+    // 위쪽 줄 검색창(HeaderTools)이 누르면 연다 (1121)
+    const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("satellite:search", onOpen);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("satellite:search", onOpen); };
   }, []);
   useEffect(() => {
     if (!open) return;

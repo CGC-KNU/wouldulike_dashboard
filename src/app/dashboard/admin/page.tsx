@@ -51,6 +51,7 @@ import "./castor/castor.css";
 import Launcher from "./_shared/Launcher";
 import CommandPalette from "./_shared/CommandPalette";
 import AppRail from "./_shared/AppRail";
+import HeaderTools from "./_shared/HeaderTools";
 import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
 import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
 import { useWeekIssues } from "./_shared/useWeekIssues";
@@ -2416,7 +2417,8 @@ export default function AdminHomePage() {
       if (tab) url.searchParams.set("tab", tab);
       else url.searchParams.delete("tab");
       url.searchParams.delete("open"); // 딥링크는 한 번 쓰고 버린다
-      window.history.replaceState(null, "", url.toString());
+      // 1121: 위쪽 ‹ › (슬랙처럼)가 먹도록 기록을 쌓는다. 같은 주소면 쌓지 않는다
+      if (url.toString() !== window.location.href) window.history.pushState(null, "", url.toString());
     } catch { /* file:// 등 */ }
   }
 
@@ -2437,6 +2439,18 @@ export default function AdminHomePage() {
     setActiveTab(null);
   }
 
+  // 뒤로 · 앞으로(1121) — 주소의 ?tab 을 읽어 그 툴 · 탭으로. 없으면 메인
+  useEffect(() => {
+    const onPop = () => {
+      const tab = new URL(window.location.href).searchParams.get("tab") as Tab | null;
+      const owner = tab ? PRODUCTS.find((p) => p.tabs.includes(tab)) : null;
+      if (owner && tab) { setSelectedProduct(owner.key); setActiveTab(tab); }
+      else { setSelectedProduct(null); setActiveTab(null); }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   /** 다른 제품의 탭으로도 뛴다 — 매장 상세의 'Papillon 열기', 정합성의 '고치러 가기' 등. */
   function go(target: string) {
     // "astro-ops?open=256" 처럼 항목까지 지정할 수 있다 — 캘린더·알림에서 바로 연다
@@ -2447,7 +2461,7 @@ export default function AdminHomePage() {
     url.searchParams.set("tab", tab);
     url.searchParams.delete("open");
     if (query) for (const [k, v] of new URLSearchParams(query)) url.searchParams.set(k, v);
-    window.history.replaceState(null, "", url.toString());
+    window.history.pushState(null, "", url.toString());
     setActiveTab(tab as Tab);
   }
 
@@ -2503,22 +2517,29 @@ export default function AdminHomePage() {
   if (activeTab === "playroom") return <Playroom onBack={backToProducts} />;
 
   /* ─── 왼쪽 앱 레일 (1121 민열님: 슬랙처럼 왼쪽에) — lg 이상에서만 보인다. 메인 · 툴 어디서든 같은 자리 ─── */
-  const railItems = availableProducts.filter((p) => p.ready && p.key !== "orbit" && p.key !== "atlas").map((p) => ({ key: p.key, name: p.name }));
+  const railItems = availableProducts.filter((p) => p.ready && p.key !== "orbit" && p.key !== "atlas" && p.key !== "drive").map((p) => ({ key: p.key, name: p.name }));
   const railBadge = (k: string) => (k === "astro" ? (satStatus?.billing?.unpaid ?? 0) + (satStatus?.leads?.stale ?? 0)
     : k === "probe" && satStatus?.probe ? satStatus.probe.due + satStatus.probe.held : 0);
+  const libraCtx = {
+    channelUrl: slackUrl(TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra),
+    channel: (TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra).slack.channel,
+    context: selectedProduct ? `${PRODUCTS.find((p) => p.key === selectedProduct)?.name ?? ""} · ${TABS.find((x) => x.key === activeTab)?.label ?? ""}` : "메인",
+  };
+  /** 위쪽 줄 가운데(‹ › · 검색 · 리브라) + 검색 창 — 메인 · 툴 공통 (1121) */
+  const palette = <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />;
+  const headerTools = <HeaderTools libra={libraCtx} />;
   const rail = availableProducts.length > 1 ? (
     <AppRail items={railItems} active={selectedProduct} onHome={backToProducts} onSelect={(k) => selectProduct(k as Product)} badge={railBadge}
-      libra={{ channelUrl: slackUrl(TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra), channel: (TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra).slack.channel,
-        context: selectedProduct ? (PRODUCTS.find((p) => p.key === selectedProduct)?.name ?? "") : "메인" }}
       user={{ name: me.display_name || me.username, title: me.title, role: me.department_label }} />
   ) : null;
 
   /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
   if (!selectedProduct) {
     return (
-      <div className={rail ? "lg:pl-[76px]" : ""}>
+      <div className={rail ? "lg:pl-[64px]" : ""}>
         {rail}
-        <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
+        {palette}
+        {headerTools}
         <Launcher
           available={availableProducts.filter((p) => p.ready && p.key !== "drive" && p.key !== "playroom").map((p) => p.key as ToolKey)}
           extras={availableProducts.filter((p) => p.ready && p.key === "drive").map((p) => ({ key: p.key, name: p.name, subtitle: p.subtitle, description: p.description }))}
@@ -2545,8 +2566,10 @@ export default function AdminHomePage() {
   const showProductPicker = availableProducts.length > 1;
 
   return (
-    <div className={rail ? "lg:pl-[76px]" : ""}>
+    <div className={rail ? "lg:pl-[64px]" : ""}>
     {rail}
+    {palette}
+    {headerTools}
     <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
       <div className={`flex items-center justify-between mb-3 px-1 ${rail ? "lg:hidden" : ""}`}>
         {showProductPicker ? (
