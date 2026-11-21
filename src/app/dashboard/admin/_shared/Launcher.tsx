@@ -122,13 +122,13 @@ export default function Launcher({ available, extras = [], userName, username = 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {/* ② 파트너 매장 — 상권 탭 · 매장별 쿠폰 · 스탬프 · 할 일 (1121 2차) */}
         <section aria-labelledby="h-stores" className={`${tile} p-4 min-w-0`}>
-          <SectionHead id="h-stores" title="파트너 매장" note={astro ? `할 일 ${blockers.filter((b) => b.kind !== "lead").length}건` : "읽는 중…"} action={{ label: "영업 홈", onClick: () => go("astro-home") }} inner />
+          <SectionHead id="h-stores" title="파트너 매장" note={astro ? `할 일 ${blockers.filter((b) => b.kind !== "lead").length}건` : "읽는 중…"} action={{ label: "Astro 열기", onClick: () => go("astro-home") }} inner />
           <HomeStores stores={astro?.stores ?? null} metrics={metrics} blockers={blockers} leadStale={status?.leads?.stale} meetings={status?.leads?.meetings} onGo={go} />
         </section>
 
         {/* ③ 마케팅 — 인스타 매거진 성장 · 최근 동향 */}
         <section aria-labelledby="h-mkt" className={`${tile} p-4 min-w-0`}>
-          <SectionHead id="h-mkt" title="마케팅 · 인스타 매거진" note="@w_ouldulike" action={{ label: "Papillon", onClick: () => go("satellite") }} inner />
+          <SectionHead id="h-mkt" title="마케팅 · 인스타 매거진" note="@w_ouldulike" action={{ label: "Papillon 열기", onClick: () => go("satellite") }} inner />
           <div className="grid grid-cols-3 gap-2">
             <Mini label="팔로워" value={mkt?.followers ?? undefined} sub={mkt === undefined ? "읽는 중" : mkt?.growth_28d !== null && mkt?.growth_28d !== undefined ? `28일 ${pctTxt(mkt.growth_28d)}` : mkt?.growth_7d !== null && mkt?.growth_7d !== undefined ? `7일 ${pctTxt(mkt.growth_7d)}` : "성장률은 기록 쌓는 중"} />
             <Mini label="7일 도달" value={pol.input.reach.last7} sub={wk.reach?.pct !== null && wk.reach?.pct !== undefined ? `4주 전 대비 ${pctTxt(wk.reach.pct)}` : wk.reach?.note ?? ""} title={wk.reach?.hint} />
@@ -139,7 +139,7 @@ export default function Launcher({ available, extras = [], userName, username = 
           <div className="mt-3 pt-3 border-t border-black/[0.06]">
             <div className="flex items-baseline justify-between gap-2 mb-1.5">
               <p className="text-[11.5px] font-semibold text-gray-500">요즘 F&B 동향 {mkt?.trend_src === "tags" && "· 늘어난 해시태그"}</p>
-              <button type="button" onClick={() => go("satellite?screen=refs")} className="text-[12px] font-semibold text-navy hover:underline">레퍼런스에서 보기</button>
+              <button type="button" onClick={() => go("satellite?screen=refs")} className={`shrink-0 text-[12px] font-semibold text-navy hover:underline rounded ${focusRing}`}>레퍼런스 열기 →</button>
             </div>
             {!mkt?.trends?.length ? (
               <p className="text-[12.5px] text-gray-500">{mkt === undefined ? "읽는 중…" : "아직 정리된 동향이 없습니다 — 매일 새벽 갱신됩니다."}</p>
@@ -273,7 +273,7 @@ function PostFlow({ posts, onMore }: { posts: RecentOwnPost[]; onMore: () => voi
     <div className="mt-3 pt-3 border-t border-black/[0.06]">
       <div className="flex items-baseline justify-between gap-2 mb-2">
         <p className="text-[11.5px] font-semibold text-gray-500">우리 최근 게시물 {posts.length}편 · 조회 <span className="font-normal">(진한 막대 = 7일차 · 옅은 막대 = 아직 차는 중)</span></p>
-        <button type="button" onClick={onMore} className={`shrink-0 text-[12px] font-semibold text-navy hover:underline rounded ${focusRing}`}>게시물 상세</button>
+        <button type="button" onClick={onMore} className={`shrink-0 text-[12px] font-semibold text-navy hover:underline rounded ${focusRing}`}>게시물 상세 열기 →</button>
       </div>
       <ol className="flex items-end gap-1.5 h-20" aria-label="최근 게시물 조회">
         {posts.map((p, i) => {
