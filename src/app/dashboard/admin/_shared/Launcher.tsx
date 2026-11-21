@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconArrowRight, IconFolder } from "@tabler/icons-react";
+import { IconFolder } from "@tabler/icons-react";
 import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
 import { growth } from "@/lib/polaris";
-import { buildBlockers, BLOCKER_KIND_LABEL } from "@/lib/draft/blockers";
-import type { Lead, StoreRow, TaxInvoice } from "@/lib/draft/types";
+import { buildBlockers } from "@/lib/draft/blockers";
+import type { Lead, StoreMetric, StoreRow, TaxInvoice } from "@/lib/draft/types";
 import { focusRing, periodLocal, todayLocal } from "./ui";
 import { fetchJson } from "./fetchJson";
 import type { SatelliteStatus } from "./useSatelliteStatus";
@@ -13,6 +13,7 @@ import { usePolaris } from "./usePolaris";
 import { greetingFor, addressee } from "./greeting";
 import Satty from "./Satty";
 import LibraHelp from "./LibraHelp";
+import HomeStores from "./HomeStores";
 
 /**
  * 세틀라이트 메인 (1121 민열님 개편).
@@ -69,6 +70,9 @@ export default function Launcher({ available, extras = [], userName, username = 
   }, []);
   const blockers = useMemo(() => (astro ? buildBlockers(astro.stores, astro.leads, astro.invoices, periodLocal(), todayLocal()) : []), [astro]);
   const urgent = blockers.filter((b) => b.rank <= 1).length;
+  /** 매장별 이번 달 쿠폰 · 스탬프 — Probe 매장 지표와 같은 응답(usePolaris 와 같은 주소라 한 번만 부른다). null = 못 읽음 */
+  const [metrics, setMetrics] = useState<StoreMetric[] | null | undefined>(undefined);
+  useEffect(() => { fetchJson<{ stores: StoreMetric[] }>("/api/probe/overview").then((d) => setMetrics(d ? d.stores : null)); }, []);
 
   /* ── 마케팅 ── */
   const [mkt, setMkt] = useState<MarketingSummary | null | undefined>(undefined);
@@ -113,47 +117,10 @@ export default function Launcher({ available, extras = [], userName, username = 
       </section>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        {/* ② 파트너 매장 — 바로 대응 */}
+        {/* ② 파트너 매장 — 상권 탭 · 매장별 쿠폰 · 스탬프 · 할 일 (1121 2차) */}
         <section aria-labelledby="h-stores" className={`${tile} p-4 min-w-0`}>
-          <SectionHead id="h-stores" title="파트너 매장" note={astro ? `막힌 일 ${blockers.length}건${urgent && urgent < blockers.length ? ` · 급한 것 ${urgent}` : ""}` : "읽는 중…"} action={{ label: "영업 홈", onClick: () => go("astro-home") }} inner />
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <Mini label="입금 미확인" value={status?.billing?.unpaid} alert onClick={() => go("astro-billing")} />
-            <Mini label="멈춘 후보(7일+)" value={status?.leads?.stale} alert onClick={() => go("astro-leads")} />
-            <Mini label="이번 주 미팅" value={status?.leads?.meetings} onClick={() => go("astro-calendar")} />
-          </div>
-          {!astro ? (
-            <p className="text-[13px] text-gray-500 py-6 text-center">매장 · 후보 · 계산서를 읽는 중…</p>
-          ) : blockers.length === 0 ? (
-            <p className="text-[13px] text-gray-500 py-6 text-center">{astro.failed ? "일부를 읽지 못했습니다 — 막힌 게 없는 게 아니라 확인하지 못한 것입니다." : "막힌 일이 없습니다."}</p>
-          ) : (
-            <ul className="divide-y divide-black/[0.06] -mx-1 max-h-[19rem] overflow-y-auto">
-              {blockers.slice(0, 8).map((b) => (
-                <li key={b.id} className={`flex items-center gap-2.5 px-1 py-2.5 border-l-2 pl-2 ${b.rank <= 1 ? "border-l-red-400" : b.rank <= 2 ? "border-l-amber-400" : "border-l-transparent"}`}>
-                  <span className="shrink-0 text-[11px] font-semibold text-gray-500 w-10 sm:w-14">{BLOCKER_KIND_LABEL[b.kind]}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-semibold text-gray-900 truncate">{b.name}{b.note && <span className="ml-1.5 text-[11px] font-normal text-gray-400">{b.note}</span>}</span>
-                    <span className="block text-[12px] text-gray-600 truncate">{b.why}</span>
-                  </span>
-                  <button type="button" onClick={() => go(b.action.go)} className={`shrink-0 h-8 px-2.5 rounded-[9px] bg-black/[0.05] hover:bg-black/[0.08] text-[12px] font-semibold text-gray-800 inline-flex items-center gap-1 ${focusRing}`}>
-                    {b.action.label}<IconArrowRight size={13} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {blockers.length > 8 && <button type="button" onClick={() => go("astro-home")} className="mt-2 text-[12px] font-semibold text-navy hover:underline">나머지 {blockers.length - 8}건 영업 홈에서 보기</button>}
-          {pol.topStores && pol.topStores.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-black/[0.06]">
-              <p className="text-[11.5px] font-semibold text-gray-500 mb-1.5">이번 달 손님이 많이 쓴 매장 (쿠폰 + 스탬프)</p>
-              <div className="flex flex-wrap gap-1.5">
-                {pol.topStores.map((s) => (
-                  <button key={s.restaurant_id} type="button" onClick={() => go(`astro-ops?open=${s.restaurant_id}`)} className={`h-7 px-2.5 rounded-full bg-navy/[0.06] text-navy text-[12px] font-semibold hover:bg-navy/[0.1] ${focusRing}`}>
-                    {s.name} <span className="tabular-nums font-medium opacity-70">{s.coupon + s.stamp}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <SectionHead id="h-stores" title="파트너 매장" note={astro ? `할 일 ${blockers.filter((b) => b.kind !== "lead").length}건` : "읽는 중…"} action={{ label: "영업 홈", onClick: () => go("astro-home") }} inner />
+          <HomeStores stores={astro?.stores ?? null} metrics={metrics} blockers={blockers} leadStale={status?.leads?.stale} meetings={status?.leads?.meetings} onGo={go} />
         </section>
 
         {/* ③ 마케팅 — 인스타 매거진 성장 · 최근 동향 */}
