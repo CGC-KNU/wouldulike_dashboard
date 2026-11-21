@@ -82,7 +82,12 @@ const NAV: { key: Screen; label: string; leadOnly?: boolean; sepBefore?: boolean
  * 같은 PlanEditor 로 들어간다"는 별도 진입로일 뿐이다.
  */
 export default function PapillonShell({ onBack }: { onBack?: () => void } = {}) {
-  const [screen, setScreen] = useState<Screen>("calendar");
+  // ?screen=refs 처럼 바로 열 화면 — 메인 「레퍼런스에서 보기」(1121). 모르는 값이면 캘린더
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (typeof window === "undefined") return "calendar";
+    const s = new URLSearchParams(window.location.search).get("screen");
+    return s && NAV.some((n) => n.key === s) ? (s as Screen) : "calendar";
+  });
   const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
