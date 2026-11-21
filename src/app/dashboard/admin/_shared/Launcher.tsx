@@ -15,6 +15,7 @@ import Satty from "./Satty";
 import LibraHelp from "./LibraHelp";
 import HomeStores from "./HomeStores";
 import WorkBoard from "./WorkBoard";
+import HomeGoals from "./HomeGoals";
 
 /**
  * 세틀라이트 메인 (1121 민열님 개편).
@@ -64,7 +65,6 @@ export default function Launcher({ available, extras = [], userName, username = 
   /* ── Probe · 매장 숫자 — Polaris 가 하던 계산 그대로 ── */
   const pol = usePolaris(true);
   const wk = useMemo(() => Object.fromEntries(growth(pol.input, "week").map((g) => [g.key, g])), [pol.input]);
-  const mo = useMemo(() => Object.fromEntries(growth(pol.input, "month").map((g) => [g.key, g])), [pol.input]);
 
   /* ── 파트너 매장 막힌 일 — 영업 홈 「지금 막힌 것」과 같은 계산. fetchJson 이라 위 훅과 같은 주소는 한 번만 부른다 ── */
   const [astro, setAstro] = useState<{ stores: StoreRow[]; leads: Lead[]; invoices: TaxInvoice[]; failed: boolean } | null>(null);
@@ -75,6 +75,14 @@ export default function Launcher({ available, extras = [], userName, username = 
   }, [astroTick]);
   const blockers = useMemo(() => (astro ? buildBlockers(astro.stores, astro.leads, astro.invoices, periodLocal(), todayLocal()) : []), [astro]);
   const urgent = blockers.filter((b) => b.rank <= 1).length;
+  /** 실사용자(누적 가입자) — Probe 앱 지표의 signups_total. usePolaris 와 같은 주소라 한 번만 부른다 */
+  const [appUsers, setAppUsers] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    fetchJson<{ groups?: { metrics: { key: string; value: number | null }[] }[] }>("/api/probe/app", { timeout: 45000 }).then((d) => {
+      const v = d?.groups?.flatMap((g) => g.metrics).find((m) => m.key === "signups_total")?.value;
+      setAppUsers(typeof v === "number" ? v : undefined);
+    });
+  }, []);
   /** 매장별 이번 달 쿠폰 · 스탬프 — Probe 매장 지표와 같은 응답(usePolaris 와 같은 주소라 한 번만 부른다). null = 못 읽음 */
   const [metrics, setMetrics] = useState<StoreMetric[] | null | undefined>(undefined);
   useEffect(() => { fetchJson<{ stores: StoreMetric[] }>("/api/probe/overview").then((d) => setMetrics(d ? d.stores : null)); }, []);
@@ -109,16 +117,17 @@ export default function Launcher({ available, extras = [], userName, username = 
       </header>
 
       {/* ① Probe 핵심 숫자 */}
-      <section aria-labelledby="h-probe">
-        <SectionHead id="h-probe" title="현황" note={pol.probeLoading ? "앱 지표 읽는 중…" : "주간 비교는 4주 전 같은 7일 대비"} action={{ label: "Probe 열기", onClick: () => go("probe-home") }} />
-        <div className="sat-stagger grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          <Num label="파트너 매장" value={pol.loading ? undefined : pol.input.stores.total} unit="곳" delta={pctTxt(wk.stores?.pct)} sub={`유료 ${pol.loading ? "—" : pol.input.stores.paid}곳`} onClick={() => go("astro-ops")} />
-          <Num label="이번 달 입금" value={pol.loading ? undefined : pol.input.revenue.paid} money delta={pctTxt(mo.revenue?.pct)} sub={mo.revenue?.note ?? "전월 대비"} onClick={() => go("astro-billing")} />
-          <Num label="WAU" value={pol.input.app.wau} unit="명" delta={pctTxt(wk.wau?.pct)} sub={wk.wau?.note ?? "주간 활성 사용자"} onClick={() => go("probe-app")} />
-          <Num label="쿠폰 전환율" value={pol.input.coupon.rate} unit="%" sub="받은 쿠폰 중 사용" onClick={() => go("probe-app")} />
-          <Num label="첫 주 재방문" value={pol.input.app.retentionW1} unit="%" sub="가입 다음 주에 다시" onClick={() => go("probe-app")} />
-          <Num label="앱 → 매장" value={pol.input.app.openToStore} unit="%" sub="앱 연 사람 중 매장 방문" onClick={() => go("probe-app")} />
-        </div>
+      {/* ① 현황 — 목표 대비(1121 2차). 목표 표는 「목표 보기」 팝업 */}
+      <section aria-label="현황">
+        <HomeGoals stores={astro?.stores ?? null} metrics={metrics} users={appUsers} onGo={go} />
+        {/* 앱 지표는 목표 칸 밑에 한 줄로 — 목표 표에는 없지만 매주 보는 숫자 */}
+        <p className="mt-2 text-[12px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+          <span>WAU <b className="text-gray-800 tabular-nums">{pol.input.app.wau ?? "—"}</b>{pctTxt(wk.wau?.pct) && <span className="ml-1 tabular-nums">{pctTxt(wk.wau?.pct)}</span>}</span>
+          <span>쿠폰 전환율 <b className="text-gray-800 tabular-nums">{pol.input.coupon.rate ?? "—"}%</b></span>
+          <span>첫 주 재방문 <b className="text-gray-800 tabular-nums">{pol.input.app.retentionW1 ?? "—"}%</b></span>
+          <span>앱 → 매장 <b className="text-gray-800 tabular-nums">{pol.input.app.openToStore ?? "—"}%</b></span>
+          <span>이번 달 입금 <b className="text-gray-800 tabular-nums">{pol.loading ? "—" : `${won(pol.input.revenue.paid)}원`}</b></span>
+        </p>
       </section>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
@@ -222,22 +231,6 @@ function SectionHead({ id, title, note, action, inner }: { id: string; title: st
       <h2 id={id} className="text-[15px] font-bold text-gray-900 tracking-[-0.01em]">{title}{note && <span className="ml-2 text-[12px] font-medium text-gray-500">{note}</span>}</h2>
       {action && <button type="button" onClick={action.onClick} className={`shrink-0 text-[12px] font-semibold text-navy hover:underline rounded ${focusRing}`}>{action.label} →</button>}
     </div>
-  );
-}
-
-function Num({ label, value, unit, money, delta, sub, onClick }: { label: string; value: number | undefined; unit?: string; money?: boolean; delta?: string | null; sub?: string; onClick?: () => void }) {
-  const down = delta?.startsWith("-");
-  return (
-    <button type="button" onClick={onClick} className={`${tile} px-3.5 py-3 text-left min-w-0 hover:-translate-y-0.5 transition-transform duration-200 motion-reduce:transition-none ${focusRing}`}>
-      <span className="block text-[12px] font-semibold text-gray-500 truncate">{label}</span>
-      <span className="mt-1 flex items-baseline gap-1.5 min-w-0">
-        <span className="text-[22px] font-bold text-gray-900 tabular-nums tracking-[-0.02em] leading-none">{value === undefined ? "—" : money ? won(value) : nf.format(value)}</span>
-        {value !== undefined && unit && <span className="text-[12px] font-semibold text-gray-500">{unit}</span>}
-        {money && value !== undefined && <span className="text-[12px] font-semibold text-gray-500">원</span>}
-        {delta && <span className={`ml-auto text-[12px] font-bold tabular-nums ${down ? "text-red-600" : "text-emerald-700"}`}>{delta}</span>}
-      </span>
-      {sub && <span className="block mt-1 text-[11px] text-gray-500 truncate">{sub}</span>}
-    </button>
   );
 }
 
