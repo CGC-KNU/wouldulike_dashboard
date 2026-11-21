@@ -101,7 +101,7 @@ export const TOOLS: Record<ToolKey, ToolMeta> = {
     key: "aether",
     name: "Aether",
     subtitle: "관리·운영",
-    description: "푸시알림 · 식당알림 · 관리자 설정",
+    description: "푸시알림 · 식당알림 · 재무 · 관리자 설정",
     users: "재민",
     slack: { channel: "code-119" },
     icon: "/satellite/aether.svg",

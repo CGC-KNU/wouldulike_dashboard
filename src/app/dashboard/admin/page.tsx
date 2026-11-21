@@ -3,6 +3,10 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 import PapillonShell from "./satellite/PapillonShell";
 import ProductShell from "./ProductShell";
+import FinanceOverview from "./finance/FinanceOverview";
+import FinanceIncome from "./finance/FinanceIncome";
+import FinanceExpense from "./finance/FinanceExpense";
+import { canViewFinance } from "@/lib/finance/access";
 import ToolShell, { Dock } from "./_shared/ToolShell";
 import AstroHome from "./astro/AstroHome";
 import BenefitApprovals from "./astro/BenefitApprovals";
@@ -75,6 +79,10 @@ type Tab =
   | "restaurant-notifications"
   | "satellite"
   | "settings"
+  // Aether › 재무 — 민열 · 재민만
+  | "finance-overview"
+  | "finance-income"
+  | "finance-expense"
   // Astro(영업) 확장 — 2026-08-07 요구사항 3종을 담는 화면들
   | "astro-home"
   | "astro-calendar"
@@ -2120,6 +2128,10 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "notifications", label: "푸시알림", icon: "✉", allow: (me) => me.permissions.can_marketing },
   { key: "restaurant-notifications", label: "식당알림", icon: "⌂", allow: (me) => me.permissions.can_marketing },
   { key: "satellite", label: "세틀라이트", icon: "▦", allow: (me) => me.permissions.can_satellite },
+  // 재무(Aether) — 부서 권한이 아니라 사람으로 막는다: 민열 · 재민만. Next 라우트와 백엔드도 같은 규칙으로 한 번 더 막는다.
+  { key: "finance-overview", label: "재무 현황", icon: "₩", allow: (me) => canViewFinance(me.username) },
+  { key: "finance-income", label: "입금 내역", icon: "↙", allow: (me) => canViewFinance(me.username) },
+  { key: "finance-expense", label: "출금 관리", icon: "↗", allow: (me) => canViewFinance(me.username) },
   { key: "settings", label: "관리자 설정", icon: "⚙", allow: (me) => me.is_superadmin },
 
   // ── Astro 확장. 식당 관리와 같은 권한을 쓴다 — 영업이 보는 매장 정보의 다른 레이어일 뿐이다.
@@ -2199,9 +2211,10 @@ const ASTRO_NAV_GROUPS: { key: string; label: string; items: string[] }[] = [
   { key: "astro-partners", label: "파트너 관리", items: ["astro-ops", "astro-contracts", "astro-leads"] },
   { key: "astro-finance", label: "정산", items: ["astro-billing", "astro-tax", "astro-quotes"] },
 ];
-/** Aether — 예전 마케팅 탭. 캠페인 캘린더는 빼고 푸시알림(기본)과 식당알림만 둔다. */
+/** Aether — 예전 마케팅 탭. 캠페인 캘린더는 빼고 푸시알림(기본)과 식당알림만 둔다. 그 밑에 재무(민열 · 재민만). */
 const AETHER_NAV_GROUPS: { key: string; label: string; items: string[] }[] = [
   { key: "aether-alerts", label: "알림", items: ["notifications", "restaurant-notifications"] },
+  { key: "aether-finance", label: "재무", items: ["finance-overview", "finance-income", "finance-expense"] },
 ];
 function groupNav<T extends { key: string; label: string }>(items: T[], groups: { key: string; label: string; items: string[] }[]): (T & { children?: T[] })[] {
   if (!groups.length) return items;
@@ -2257,8 +2270,8 @@ const PRODUCTS: {
     key: "aether",
     name: "Aether",
     subtitle: "관리 및 운영",
-    description: "푸시알림 · 식당알림 · 관리자 설정",
-    tabs: ["notifications", "restaurant-notifications", "settings"],
+    description: "푸시알림 · 식당알림 · 재무 · 관리자 설정",
+    tabs: ["notifications", "restaurant-notifications", "finance-overview", "finance-income", "finance-expense", "settings"],
     ready: true,
   },
   {
@@ -2607,6 +2620,9 @@ export default function AdminHomePage() {
         >
           {activeTab === "notifications" && <MarketingTab />}
           {activeTab === "restaurant-notifications" && <RestaurantCalendarPanel />}
+          {activeTab === "finance-overview" && <FinanceOverview onGo={go} />}
+          {activeTab === "finance-income" && <FinanceIncome onGo={go} />}
+          {activeTab === "finance-expense" && <FinanceExpense onGo={go} />}
           {activeTab === "settings" && <SettingsTab />}
         </ProductShell>
       )}

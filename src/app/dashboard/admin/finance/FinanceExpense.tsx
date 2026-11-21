@@ -1,0 +1,229 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { IconCheck, IconPlus, IconRefresh, IconTrash } from "@tabler/icons-react";
+import { dueRows, dueTotals, periodOf, recentPeriods, won } from "@/lib/finance/calc";
+import { CYCLE_LABEL, EXPENSE_CATEGORIES, type ExpenseEntry, type ExpenseItem } from "@/lib/finance/types";
+import { Button, Card, Chip, DraftBadge, Empty, Field, Input, Kpi, Notice, PageHeader, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, periodLocal, rowClickable, todayLocal } from "../_shared/ui";
+import { useFinance } from "./useFinance";
+
+/**
+ * 재무 · 출금 관리.
+ *
+ * 계좌가 연결돼 있지 않아 **나간 돈은 사람이 적는다.** 그래서 장부를 두 층으로 둔다.
+ *   1) 고정 비용 항목 — 「어떤 비용이 나가는가」. 처음부터 깔린 기본 항목 + 새로 추가한 항목. 금액을 모르면 비워 둔다(0원이 아니다).
+ *   2) 출금 기록 — 「실제로 나간 돈」. 고정 비용의 그 달 지급이거나, 한 번 나간 비용.
+ * 이번 달 예정은 1)에서 2)가 아직 없는 것으로 계산한다 — 기록하면 예정에서 빠진다.
+ * 고친 사람은 서버가 찍는다. 잘못 적은 기록은 지울 수 있다.
+ */
+
+const monthLabel = (p: string) => `${p.slice(0, 4)}년 ${Number(p.slice(5))}월`;
+
+type EntryPanel = { entry: ExpenseEntry } | { item: ExpenseItem | null; period: string; due_on: string | null } | null;
+type ItemPanel = { item: ExpenseItem } | { item: null } | null;
+
+export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void }) {
+  const f = useFinance();
+  const thisPeriod = periodLocal();
+  const [period, setPeriod] = useState(thisPeriod);
+  const [entryPanel, setEntryPanel] = useState<EntryPanel>(null);
+  const [itemPanel, setItemPanel] = useState<ItemPanel>(null);
+  const today = todayLocal();
+
+  const periods = useMemo(() => recentPeriods(thisPeriod, 12).reverse(), [thisPeriod]);
+  const monthEntries = useMemo(() => f.entries.filter((e) => periodOf(e.paid_on) === period).sort((a, b) => (a.paid_on < b.paid_on ? 1 : -1)), [f.entries, period]);
+  const monthTotal = monthEntries.reduce((a, e) => a + e.amount, 0);
+  const due = useMemo(() => dueRows(f.items, f.entries, period, today), [f.items, f.entries, period, today]);
+  const dueSum = useMemo(() => dueTotals(due), [due]);
+  const noAmount = f.items.filter((i) => i.active && i.amount === null);
+
+  return (
+    <>
+      <PageHeader
+        title="출금 관리"
+        description="계좌가 연결돼 있지 않아 나간 돈은 직접 적습니다. 고정 비용 항목을 두고, 나갈 때마다 지급을 기록하세요."
+        actions={<>{f.draft && <DraftBadge note="백엔드 재무 앱이 아직 없어 임시 저장소를 보고 있습니다. 재시작하면 기록이 사라지니 실제 기록은 백엔드가 올라간 뒤에 적으세요." />}<Button icon={<IconRefresh />} onClick={f.reload} disabled={f.loading}>다시 읽기</Button><Button icon={<IconPlus />} onClick={() => setItemPanel({ item: null })}>항목 추가</Button><Button variant="primary" icon={<IconPlus />} onClick={() => setEntryPanel({ item: null, period, due_on: null })}>출금 기록</Button></>}
+      >
+        <div className="w-44"><Select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="월">{periods.map((p) => <option key={p} value={p}>{monthLabel(p)}</option>)}</Select></div>
+      </PageHeader>
+
+      {f.expenseError && <div className="mb-4"><Notice tone="red" title="출금 장부를 읽지 못했습니다">{f.expenseError} 비어 있는 것이 아니라 못 읽은 것입니다.</Notice></div>}
+      {!f.loading && !f.expenseError && noAmount.length > 0 && (
+        <div className="mb-4"><Notice tone="amber" title={`금액이 비어 있는 고정 비용 ${noAmount.length}건`}>{noAmount.map((i) => i.name).join(" · ")} — 금액을 모르면 예정 합계가 모자랍니다. 항목을 눌러 금액을 적으세요(모르면 비워 두세요, 0원으로 채우지 않습니다).</Notice></div>
+      )}
+
+      <div className="sat-stagger grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
+        <Kpi label={`${Number(period.slice(5))}월 출금`} value={f.expenseError ? "-" : won(monthTotal)} hint={`${monthEntries.length}건 기록`} />
+        <Kpi label="남은 예정" value={f.expenseError ? "-" : won(dueSum.amount)} hint={due.length === 0 ? "예정된 고정 비용 없음" : `${due.length}건${dueSum.unknown ? ` · 금액 미입력 ${dueSum.unknown}건` : ""}`} />
+        <Kpi label="고정 비용 항목" value={f.expenseError ? "-" : f.items.filter((i) => i.active).length} suffix="개" hint={`쉬는 항목 ${f.items.filter((i) => !i.active).length}개`} />
+      </div>
+
+      {f.loading && !f.items.length ? <Skeleton rows={6} cols={4} /> : (
+        <>
+          <Card className="mb-4" flush title={`${Number(period.slice(5))}월 예정`} description="고정 비용 중 이 달에 아직 기록이 없는 것. 냈다면 「지급 기록」을 누르세요.">
+            {due.length === 0 ? <Empty title="이 달 예정된 고정 비용이 없습니다" detail="모두 기록됐거나 항목이 쉬는 중입니다." /> : (
+              <Table minWidth="34rem">
+                <thead><tr><Th>항목</Th><Th width="7rem">지급일</Th><Th width="9rem" align="right">금액</Th><Th width="8rem" align="right">처리</Th></tr></thead>
+                <tbody>
+                  {due.map((d) => (
+                    <tr key={d.item.id}>
+                      <Td><span className="font-semibold text-gray-900">{d.item.name}</span><span className="block text-[12px] text-gray-500">{d.item.category}</span></Td>
+                      <Td className="text-[12px] text-gray-600 whitespace-nowrap">{d.due_on ? `${Number(d.due_on.slice(5, 7))}/${Number(d.due_on.slice(8))}` : "미정"}{d.overdue && <span className="ml-1.5"><Chip tone="red" dot>미기록</Chip></span>}</Td>
+                      <Td align="right" numeric className="font-semibold text-gray-900">{d.item.amount === null ? <Chip tone="amber">금액 미입력</Chip> : won(d.item.amount)}</Td>
+                      <Td align="right"><Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => setEntryPanel({ item: d.item, period, due_on: d.due_on })}>지급 기록</Button></Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </Card>
+
+          <Card className="mb-4" flush title={`${Number(period.slice(5))}월 출금 내역`} description="돈이 나간 날 기준. 행을 누르면 고치거나 지울 수 있습니다.">
+            {monthEntries.length === 0 ? <Empty title="이 달 출금 기록이 없습니다" detail="나간 돈이 있으면 「출금 기록」으로 적으세요." /> : (
+              <Table minWidth="38rem">
+                <thead><tr><Th width="5rem">날짜</Th><Th>내용</Th><Th width="7rem">분류</Th><Th width="9rem" align="right">금액</Th><Th width="6rem">기록</Th></tr></thead>
+                <tbody>
+                  {monthEntries.map((e) => (
+                    <tr key={e.id} className={rowClickable} onClick={() => setEntryPanel({ entry: e })}>
+                      <Td className="text-[12px] text-gray-600 whitespace-nowrap">{e.paid_on.slice(5).replace("-", "/")}</Td>
+                      <Td><span className="font-semibold text-gray-900">{e.name}</span>{e.memo && <span className="block text-[12px] text-gray-500 truncate max-w-[28ch]">{e.memo}</span>}</Td>
+                      <Td><Chip tone={e.item_id ? "navy" : "gray"}>{e.category}</Chip></Td>
+                      <Td align="right" numeric className="font-semibold text-gray-900">{won(e.amount)}</Td>
+                      <Td className="text-[12px] text-gray-500">{e.created_by ?? "-"}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </Card>
+
+          <Card flush title="고정 비용 항목" description="매달(또는 매년) 나가는 비용의 목록. 기본 항목은 처음부터 깔려 있고, 새로 나가는 비용은 「항목 추가」로 올립니다.">
+            {f.items.length === 0 ? <Empty title="항목이 없습니다" /> : (
+              <Table minWidth="38rem">
+                <thead><tr><Th>항목</Th><Th width="7rem">분류</Th><Th width="8rem">주기</Th><Th width="9rem" align="right">금액</Th></tr></thead>
+                <tbody>
+                  {f.items.map((i) => (
+                    <tr key={i.id} className={`${rowClickable} ${i.active ? "" : "opacity-60"}`} onClick={() => setItemPanel({ item: i })}>
+                      <Td><span className="font-semibold text-gray-900">{i.name}</span>{i.is_default && <span className="ml-1.5"><Chip tone="gray">기본</Chip></span>}{!i.active && <span className="ml-1.5"><Chip tone="amber">쉬는 중</Chip></span>}</Td>
+                      <Td className="text-[12px] text-gray-600">{i.category}</Td>
+                      <Td className="text-[12px] text-gray-600 whitespace-nowrap">{CYCLE_LABEL[i.cycle]}{i.pay_day ? ` · ${i.pay_day}일` : ""}</Td>
+                      <Td align="right" numeric className="font-semibold text-gray-900">{i.amount === null ? <Chip tone="amber">금액 미입력</Chip> : won(i.amount)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </Card>
+
+          <p className="text-[12px] text-gray-500 mt-3">식사권 대금의 사용 장수는 <button type="button" className="text-navy font-medium hover:underline" onClick={() => onGo?.("probe-mileage")}>Probe › 마일리지 추첨</button>에서 확인합니다.</p>
+        </>
+      )}
+
+      {entryPanel && <EntryForm key={"entry" in entryPanel ? entryPanel.entry.id : (entryPanel.item?.id ?? "new")} panel={entryPanel} today={today} f={f} onClose={() => setEntryPanel(null)} />}
+      {itemPanel && <ItemForm key={itemPanel.item?.id ?? "new"} panel={itemPanel} f={f} onClose={() => setItemPanel(null)} />}
+    </>
+  );
+}
+
+/** 출금 기록 패널 — 새로 적기(항목의 지급 포함) · 고치기 · 지우기. */
+function EntryForm({ panel, today, f, onClose }: { panel: NonNullable<EntryPanel>; today: string; f: ReturnType<typeof useFinance>; onClose: () => void }) {
+  const editing = "entry" in panel ? panel.entry : null;
+  const item = "item" in panel ? panel.item : null;
+  const dueOn = "due_on" in panel ? panel.due_on : null;
+  // 지급일이 이미 지났으면 그날로, 아직이면(또는 모르면) 오늘로 — 나간 날은 오늘 이후가 될 수 없다
+  const [paidOn, setPaidOn] = useState(editing?.paid_on ?? (dueOn && dueOn <= today ? dueOn : today));
+  const [period, setPeriod] = useState(editing?.period ?? ("period" in panel ? panel.period : today.slice(0, 7)));
+  const [name, setName] = useState(editing?.name ?? item?.name ?? "");
+  const [category, setCategory] = useState<string>(editing?.category ?? item?.category ?? "기타");
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : item?.amount != null ? String(item.amount) : "");
+  const [memo, setMemo] = useState(editing?.memo ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // 귀속 월을 사람이 건드리기 전까지는 나간 달을 따라간다 — 대부분 같은 달이다
+  const [periodTouched, setPeriodTouched] = useState(Boolean(editing) || Boolean(item));
+  useEffect(() => { if (!periodTouched && /^\d{4}-\d{2}-\d{2}$/.test(paidOn)) setPeriod(paidOn.slice(0, 7)); }, [paidOn, periodTouched]);
+
+  async function save() {
+    setBusy(true); setError(null);
+    const body = { paid_on: paidOn, period, name, category, amount, memo, item_id: editing ? editing.item_id : (item?.id ?? null) };
+    const err = editing ? await f.patchEntry(editing.id, body) : await f.addEntry(body);
+    setBusy(false);
+    if (err) setError(err); else onClose();
+  }
+  async function remove() {
+    if (!editing || !window.confirm(`「${editing.name}」 ${won(editing.amount)} 기록을 지울까요? 되돌릴 수 없습니다.`)) return;
+    setBusy(true); setError(null);
+    const err = await f.deleteEntry(editing.id);
+    setBusy(false);
+    if (err) setError(err); else onClose();
+  }
+
+  return (
+    <SlideOver open onClose={onClose} title={editing ? "출금 기록 고치기" : item ? `${item.name} 지급 기록` : "출금 기록"} subtitle={editing ? `${editing.created_by ?? ""} 기록` : item ? "고정 비용의 지급을 기록합니다" : "한 번 나간 비용이나 항목에 없는 지출을 적습니다"}
+      footer={<><Button variant="primary" icon={<IconCheck />} onClick={save} disabled={busy}>{busy ? "저장 중…" : "저장"}</Button>{editing && <Button variant="danger" icon={<IconTrash />} onClick={remove} disabled={busy}>지우기</Button>}<Button variant="ghost" onClick={onClose}>닫기</Button></>}>
+      {error && <Notice tone="red" title={error} />}
+      <Field label="내용" required><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="예: 6월 서버 비용" /></Field>
+      <Field label="금액(원)" required hint={item && item.amount === null ? "이 항목은 금액이 비어 있습니다. 여기서 적은 금액은 이 기록에만 들어갑니다." : undefined}><Input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 150000" /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="나간 날" required hint="오늘 이후는 적을 수 없습니다."><Input type="date" value={paidOn} max={today} onChange={(e) => setPaidOn(e.target.value)} /></Field>
+        <Field label="어느 달 몫" hint="나간 달과 다르면 바꾸세요."><Input type="month" value={period} onChange={(e) => { setPeriod(e.target.value); setPeriodTouched(true); }} /></Field>
+      </div>
+      <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+      <Field label="메모"><Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} maxLength={300} placeholder="청구서 번호, 계좌이체 메모 등" /></Field>
+    </SlideOver>
+  );
+}
+
+/** 고정 비용 항목 패널 — 추가 · 고치기 · 쉬게 하기 · (직접 추가한 것만) 지우기. */
+function ItemForm({ panel, f, onClose }: { panel: NonNullable<ItemPanel>; f: ReturnType<typeof useFinance>; onClose: () => void }) {
+  const it = panel.item;
+  const [name, setName] = useState(it?.name ?? "");
+  const [category, setCategory] = useState<string>(it?.category ?? "기타");
+  const [amount, setAmount] = useState(it?.amount != null ? String(it.amount) : "");
+  const [cycle, setCycle] = useState<string>(it?.cycle ?? "MONTHLY");
+  const [payDay, setPayDay] = useState(it?.pay_day ? String(it.pay_day) : "");
+  const [start, setStart] = useState(it?.start_period ?? periodLocal());
+  const [end, setEnd] = useState(it?.end_period ?? "");
+  const [memo, setMemo] = useState(it?.memo ?? "");
+  const [active, setActive] = useState(it?.active ?? true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true); setError(null);
+    const body = { name, category, amount: amount.trim() === "" ? null : amount, cycle, pay_day: payDay.trim() === "" ? null : payDay, start_period: start, end_period: end || null, memo, active };
+    const err = it ? await f.patchItem(it.id, body) : await f.addItem(body);
+    setBusy(false);
+    if (err) setError(err); else onClose();
+  }
+  async function remove() {
+    if (!it || !window.confirm(`「${it.name}」 항목을 지울까요? 되돌릴 수 없습니다.`)) return;
+    setBusy(true); setError(null);
+    const err = await f.deleteItem(it.id);
+    setBusy(false);
+    if (err) setError(err); else onClose();
+  }
+
+  return (
+    <SlideOver open onClose={onClose} title={it ? "고정 비용 항목" : "항목 추가"} subtitle={it?.is_default ? "기본 항목" : "새로 나가는 비용을 목록에 올립니다"}
+      footer={<><Button variant="primary" icon={<IconCheck />} onClick={save} disabled={busy}>{busy ? "저장 중…" : "저장"}</Button>{it && !it.is_default && <Button variant="danger" icon={<IconTrash />} onClick={remove} disabled={busy}>지우기</Button>}<Button variant="ghost" onClick={onClose}>닫기</Button></>}>
+      {error && <Notice tone="red" title={error} />}
+      <Field label="항목 이름" required><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="예: 디자인 툴 구독" /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+        <Field label="주기"><Select value={cycle} onChange={(e) => setCycle(e.target.value)}><option value="MONTHLY">매월</option><option value="YEARLY">매년</option></Select></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="금액(원)" hint="모르면 비워 두세요. 0원이 아니라 「미입력」으로 보입니다."><Input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 150000" /></Field>
+        <Field label="지급일(일)" hint="1~31, 모르면 비움"><Input inputMode="numeric" value={payDay} onChange={(e) => setPayDay(e.target.value)} placeholder="예: 10" /></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="시작 월" required><Input type="month" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+        <Field label="종료 월" hint="비우면 계속"><Input type="month" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+      </div>
+      <Field label="메모"><Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} maxLength={300} /></Field>
+      <label className="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer"><input type="checkbox" checked={!active} onChange={(e) => setActive(!e.target.checked)} className="w-4 h-4 accent-[#050072]" />이 항목은 쉬는 중 (예정에 올리지 않음)</label>
+      {it?.is_default && <p className="text-[12px] text-gray-500">기본 항목은 지우지 않고 쉬게만 합니다 — 지우면 다음에 열 때 다시 깔립니다.</p>}
+    </SlideOver>
+  );
+}

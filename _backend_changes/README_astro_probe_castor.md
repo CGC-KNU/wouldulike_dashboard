@@ -94,3 +94,23 @@ src/app/auth/preview/route.ts
 | `StoreOps.campus` | 초안 필드 (경북대·영남대·계명대) | `astro/models.py` StoreOps 에 `campus = CharField(choices=…)` — 이미 반영 |
 
 | `GET/POST /api/probe/reports`, `/[id]`, 공개 `/r/<token>` | 초안 저장소 `probe_reports` — **재배포 시 사라지므로 링크 발급을 서버가 막는다**(`DRAFT_DATA_DIR` 또는 `REPORT_STORE=persistent` 필요) | `StoreReport` 모델(id, token unique 40hex, restaurant FK, plan FK, status, title/summary/interpretation, snapshot JSON(화이트리스트), proposals JSON, created/approved/linked/sent/revoked, views) + `GET /api/probe/reports/by-token/<token>`(인증 없음, LINKED/SENT 만) + `POST …/view`. 커버는 PlanAsset preview_url 이 공개 URL 인지 확인, 아니면 랜덤 키로 S3 사본 |
+
+## Finance(재무) — 출금 장부
+
+Aether › 재무 탭의 **출금** 장부 원본. 입금은 여기 없다 — astro 앱(세금계산서 · 스팟 제작)이 원본이고 재무 화면이 읽기만 한다.
+계좌가 연결돼 있지 않아 출금은 사람이 적는다. **열람은 민열 · 재민 두 사람만**(계정 아이디 `minyeol` · `jaemin`).
+
+1. `finance/` 폴더를 `wouldulike_backend/` 루트에 복사
+2. `settings.py` — `INSTALLED_APPS` 에 `"finance"` 추가. 열람자를 바꾸려면 `FINANCE_VIEWERS = ("minyeol", "jaemin")` (없으면 이 값이 기본)
+3. `wouldulike_backend/urls.py` — `path("api/finance/", include("finance.urls"))`
+4. `python manage.py makemigrations finance && python manage.py migrate`
+
+| 프론트 경로 | 백엔드 경로 | 응답 |
+|---|---|---|
+| `GET/POST /api/finance/expenses` | `/api/finance/entries/`(+`/items/`) | `{items, entries}` / `{entry}` |
+| `PATCH/DELETE /api/finance/expenses/[id]` | `/api/finance/entries/<id>/` | `{entry}` / 204 |
+| `POST /api/finance/items`, `PATCH/DELETE /api/finance/items/[id]` | `/api/finance/items/…` | `{item}` / 204 |
+
+- 기본 항목은 프론트가 처음 열 때 `key`(예 `default:infra`)와 함께 POST 한다 — 같은 `key` 는 두 번 만들어지지 않는다(멱등).
+- 한 항목의 같은 달 지급은 한 번만(`UniqueConstraint`). 지급 기록이 달린 항목과 기본 항목은 지우지 못한다 — 쉬게 한다.
+- 올라가기 전에는 프론트가 초안 저장소로 떨어지고 화면에 「초안 데이터」 배지가 뜬다. **초안은 재시작하면 사라지니 실제 기록은 백엔드가 올라간 뒤에 적는다.**

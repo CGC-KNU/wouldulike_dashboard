@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { isPreview } from "./previewStores";
 import { koyebFetch } from "./koyeb";
+import { canViewFinance } from "../finance/access";
 
 /**
  * 초안 라우트의 인가 게이트.
@@ -88,6 +89,23 @@ export async function requireTool(need: Need): Promise<NextResponse | null> {
       ? Boolean(me.is_admin || me.is_superadmin)
       : Boolean(me.permissions?.can_restaurants || me.is_superadmin);
   if (!ok) return NextResponse.json({ detail: "이 기능에 대한 권한이 없습니다." }, { status: 403 });
+  return null;
+}
+
+/**
+ * 재무 라우트의 게이트 — **민열 · 재민 두 사람만** (`FINANCE_VIEWERS`).
+ * 부서 권한이나 슈퍼어드민으로는 열리지 않는다. 슈퍼어드민이 더 있어도 재무는 공동대표 둘의 화면이다.
+ * 판정은 표시 이름이 아니라 계정 아이디다(표시 이름은 관리자 설정에서 바뀐다).
+ */
+export async function requireFinance(): Promise<NextResponse | null> {
+  const token = (await cookies()).get("access_token")?.value;
+  if (isPreview() && isPreviewToken(token)) return null;
+  if (!token) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
+
+  const { me, down } = await whoami(token);
+  if (down) return NextResponse.json({ detail: "백엔드가 깨어나는 중입니다 — 몇 초 뒤 다시 시도해 주세요." }, { status: 503 });
+  if (!me) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
+  if (!canViewFinance(me.username)) return NextResponse.json({ detail: "재무는 대표만 볼 수 있습니다." }, { status: 403 });
   return null;
 }
 
