@@ -39,14 +39,14 @@ export default function AdminHeader() {
   return (
     /* 0914 민열님: 상단을 한 줄로. 애딧 콘솔처럼 얇고 조용하게 — 이름·역할은 왼쪽, 뷰 전환·사람은 오른쪽.
        '관리자 모드' 띠를 따로 두지 않고 뷰 전환 세그먼트가 그 역할을 한다. */
-    <header className="sticky top-0 z-40 h-14 bg-[#050072]/95 backdrop-blur-xl text-white border-b border-white/10 flex items-center gap-3 px-4">
+    <header className="sticky top-0 z-40 h-11 bg-[#050072]/95 backdrop-blur-xl text-white border-b border-white/10 flex items-center gap-3 px-4">
       {/* 마크와 이름을 누르면 메인(런처)으로 — 어느 툴에 있든 집으로 가는 길 */}
       <a href="/dashboard/admin" aria-label="메인으로"
          className="flex items-center gap-2 min-w-0 rounded-xl px-1.5 -mx-1.5 py-1 hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60">
-        <img src="/satellite/satellite_app.svg" alt="" width={26} height={26} className="w-[26px] h-[26px] rounded-[8px] shrink-0 ring-1 ring-white/25" aria-hidden="true" />
+        <img src="/satellite/satellite_app.svg" alt="" width={22} height={22} className="w-[22px] h-[22px] rounded-[7px] shrink-0 ring-1 ring-white/25" aria-hidden="true" />
         {/* 0914 민열님: 이 바의 이름은 **툴 이름**이다. 회사 이름은 설명으로 내린다 —
             "우주라이크"가 크게 박혀 있으면 이게 회사 홈인지 툴인지 구분이 안 됐다. */}
-        <span className="text-[15px] font-bold tracking-[-0.01em] shrink-0">세틀라이트</span>
+        <span className="text-[14px] font-bold tracking-[-0.01em] shrink-0">세틀라이트</span>
         <span className="hidden sm:inline text-[12px] font-medium text-white/45 shrink-0">우주라이크 업무 시스템</span>
       </a>
 
@@ -62,8 +62,11 @@ export default function AdminHeader() {
         <span className="hidden sm:block bg-white/10 rounded-full w-16 h-5 animate-pulse" />
       )}
 
+      {/* 가운데 — ‹ › · 검색 · 리브라. 지금 화면을 아는 page 가 HeaderTools 로 채운다(1121, 슬랙처럼) */}
+      <div id="sat-header-center" className="flex-1 min-w-0 flex justify-center px-2" />
+
       {/* 1121 민열님: 슬랙처럼 — 왼쪽 앱 레일이 떠 있으면(넓은 화면) 이 묶음은 레일 아래쪽으로 옮겨 간다(AppRail). */}
-      <div className="ml-auto flex items-center gap-2 shrink-0 lg:[body[data-rail='1']_&]:hidden">
+      <div className="flex items-center gap-2 shrink-0 lg:[body[data-rail='1']_&]:hidden">
         {/* 내 명함 — 이스터에그 (1002 민열님). 조용히 둔다: 아는 사람만 누른다. */}
         <BusinessCardButton />
         {/* 뷰 전환 — 애딧의 '광고주 전환 / 파트너 전환' 자리. 지금 어느 눈으로 보고 있는지가 늘 보인다. */}
