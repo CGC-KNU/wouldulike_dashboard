@@ -14,6 +14,7 @@ import { greetingFor, addressee } from "./greeting";
 import Satty from "./Satty";
 import LibraHelp from "./LibraHelp";
 import HomeStores from "./HomeStores";
+import WorkBoard from "./WorkBoard";
 
 /**
  * 세틀라이트 메인 (1121 민열님 개편).
@@ -204,6 +205,9 @@ export default function Launcher({ available, extras = [], userName, username = 
           {onPlayroom && <li><button type="button" onClick={onPlayroom} className={`h-9 px-3 rounded-full bg-white/80 border border-white/70 text-[12.5px] font-semibold text-gray-800 hover:border-navy/20 ${focusRing}`}>세티랑 놀기</button></li>}
         </ul>
       </section>
+      {/* 업무 대시보드 — 기능 조직 표 아홉 칸, 리브라가 월 · 금에 채운다 (1121) */}
+      <WorkBoard />
+
       <LibraHelp open={libraOpen} onClose={() => setLibraOpen(false)} channelUrl={slackUrl(TOOLS.libra)} />
 
       {/* Satty — 막힌 일이 많으면 지친다 */}
