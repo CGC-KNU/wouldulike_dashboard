@@ -1,6 +1,6 @@
 import { readDraft, writeDraft } from "../draft/store";
 import { DEFAULT_ITEMS } from "./defaults";
-import type { ExpenseEntry, ExpenseItem } from "./types";
+import type { AccountBalance, ExpenseEntry, ExpenseItem, FundingEvent } from "./types";
 
 /**
  * 재무 초안 저장소 — **백엔드(finance 앱)가 아직 없는 동안만** 쓴다.
@@ -10,18 +10,27 @@ import type { ExpenseEntry, ExpenseItem } from "./types";
 
 export const ITEMS_KEY = "finance_items";
 export const ENTRIES_KEY = "finance_entries";
+export const BALANCES_KEY = "finance_balances";
+export const FUNDINGS_KEY = "finance_fundings";
 
 export const currentPeriodKst = (now: number = Date.now()): string => new Date(now + 9 * 3600_000).toISOString().slice(0, 7);
 
 /** 기본 항목을 항목 모양으로 — 금액은 비어 있다. */
 export function defaultItem(d: (typeof DEFAULT_ITEMS)[number], id: string, period: string): ExpenseItem {
-  return { id, key: d.key, name: d.name, category: d.category, method: "FIXED", amount: null, cycle: d.cycle, pay_day: d.pay_day, start_period: period, end_period: null, active: true, is_default: true, memo: d.memo, updated_by: null, updated_at: null };
+  return { id, key: d.key, name: d.name, category: d.category, method: "FIXED", amount: null, cycle: d.cycle, pay_day: d.pay_day, behavior: d.behavior, account: d.account, start_period: period, end_period: null, active: true, is_default: true, memo: d.memo, updated_by: null, updated_at: null };
 }
 
 const seedItems = (): ExpenseItem[] => DEFAULT_ITEMS.map((d, i) => defaultItem(d, `default-${i + 1}`, currentPeriodKst()));
 
+/** 행동 태그가 생기기 전에 깔린 항목 — 기본 항목이면 기본값을, 아니면 미분류(null)를 채운다. */
+function withTags(i: ExpenseItem): ExpenseItem {
+  if (i.behavior !== undefined && i.account !== undefined) return i;
+  const d = DEFAULT_ITEMS.find((x) => x.key === i.key);
+  return { ...i, behavior: i.behavior ?? d?.behavior ?? null, account: i.account ?? d?.account ?? null };
+}
+
 export const readItems = (): ExpenseItem[] => {
-  const list = readDraft<ExpenseItem[]>(ITEMS_KEY, seedItems);
+  const list = readDraft<ExpenseItem[]>(ITEMS_KEY, seedItems).map(withTags);
   // 코드에 기본 항목이 새로 늘었으면 초안에도 깐다
   const have = new Set(list.map((i) => i.key).filter(Boolean));
   const missing = DEFAULT_ITEMS.filter((d) => !have.has(d.key));
@@ -31,5 +40,9 @@ export const readItems = (): ExpenseItem[] => {
 export const writeItems = (v: ExpenseItem[]) => writeDraft(ITEMS_KEY, v);
 export const readEntries = () => readDraft<ExpenseEntry[]>(ENTRIES_KEY, () => []);
 export const writeEntries = (v: ExpenseEntry[]) => writeDraft(ENTRIES_KEY, v);
+export const readBalances = () => readDraft<AccountBalance[]>(BALANCES_KEY, () => []);
+export const writeBalances = (v: AccountBalance[]) => writeDraft(BALANCES_KEY, v);
+export const readFundings = () => readDraft<FundingEvent[]>(FUNDINGS_KEY, () => []);
+export const writeFundings = (v: FundingEvent[]) => writeDraft(FUNDINGS_KEY, v);
 
 export const newId = (prefix: string) => `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`;

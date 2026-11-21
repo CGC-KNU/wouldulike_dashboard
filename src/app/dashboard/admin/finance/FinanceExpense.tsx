@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconCheck, IconPlus, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { dueRows, dueTotals, paidStoreCount, periodOf, recentPeriods, resolveAmount, won } from "@/lib/finance/calc";
-import { CYCLE_LABEL, EXPENSE_CATEGORIES, METHOD_HINT, METHOD_LABEL, type ExpenseEntry, type ExpenseItem, type ExpenseMethod } from "@/lib/finance/types";
+import { ACCOUNTS, ACCOUNT_LABEL, BEHAVIORS, BEHAVIOR_LABEL, CYCLE_LABEL, EXPENSE_CATEGORIES, METHOD_HINT, METHOD_LABEL, type ExpenseEntry, type ExpenseItem, type ExpenseMethod } from "@/lib/finance/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, Input, Kpi, Notice, PageHeader, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, periodLocal, rowClickable, todayLocal } from "../_shared/ui";
 import { useFinance } from "./useFinance";
 
@@ -11,8 +11,9 @@ import { useFinance } from "./useFinance";
  * 재무 · 출금 관리.
  *
  * 계좌가 연결돼 있지 않아 **나간 돈은 사람이 적는다.** 그래서 장부를 두 층으로 둔다.
- *   1) 고정 비용 항목 — 「어떤 비용이 나가는가」. 처음부터 깔린 기본 항목 + 새로 추가한 항목. 금액을 모르면 비워 둔다(0원이 아니다).
- *   2) 출금 기록 — 「실제로 나간 돈」. 고정 비용의 그 달 지급이거나, 한 번 나간 비용.
+ *   1) 반복 항목 — 「어떤 비용이 나가는가」. 처음부터 깔린 기본 항목 + 새로 추가한 항목. 금액을 모르면 비워 둔다(0원이 아니다).
+ *      항목마다 행동 방식(고정 · 변동 · 준변동 · 일회성)과 회계 위치(COGS · S&M · R&D · G&A)를 매긴다 — 출금 한 건에서는 못 바꾼다.
+ *   2) 출금 기록 — 「실제로 나간 돈」. 반복 항목의 그 달 지급이거나, 한 번 나간 비용.
  * 이번 달 예정은 1)에서 2)가 아직 없는 것으로 계산한다 — 기록하면 예정에서 빠진다.
  * 고친 사람은 서버가 찍는다. 잘못 적은 기록은 지울 수 있다.
  */
@@ -42,7 +43,7 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
     <>
       <PageHeader
         title="출금 관리"
-        description="계좌가 연결돼 있지 않아 나간 돈은 직접 적습니다. 고정 비용 항목을 두고, 나갈 때마다 지급을 기록하세요."
+        description="계좌가 연결돼 있지 않아 나간 돈은 직접 적습니다. 반복 항목을 두고, 나갈 때마다 지급을 기록하세요."
         actions={<>{f.draft && <DraftBadge note="백엔드 재무 앱이 아직 없어 임시 저장소를 보고 있습니다. 재시작하면 기록이 사라지니 실제 기록은 백엔드가 올라간 뒤에 적으세요." />}<Button icon={<IconRefresh />} onClick={f.reload} disabled={f.loading}>다시 읽기</Button><Button icon={<IconPlus />} onClick={() => setItemPanel({ item: null })}>항목 추가</Button><Button variant="primary" icon={<IconPlus />} onClick={() => setEntryPanel({ item: null, period, due_on: null })}>출금 기록</Button></>}
       >
         <div className="w-44"><Select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="월">{periods.map((p) => <option key={p} value={p}>{monthLabel(p)}</option>)}</Select></div>
@@ -53,19 +54,19 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
         <div className="mb-4"><Notice tone="amber" title="유료 식당 수를 읽지 못했습니다">「유료 식당 수 × 단가」 항목의 금액은 0원이 아니라 모름으로 보입니다. 파트너 매장 목록(백엔드)을 읽을 수 있을 때 다시 읽어 주세요.</Notice></div>
       )}
       {!f.loading && !f.expenseError && noAmount.length > 0 && (
-        <div className="mb-4"><Notice tone="amber" title={`금액이 비어 있는 고정 비용 ${noAmount.length}건`}>{noAmount.map((i) => i.name).join(" · ")} — 금액을 모르면 예정 합계가 모자랍니다. 항목을 눌러 금액을 적으세요(모르면 비워 두세요, 0원으로 채우지 않습니다).</Notice></div>
+        <div className="mb-4"><Notice tone="amber" title={`금액이 비어 있는 반복 항목 ${noAmount.length}건`}>{noAmount.map((i) => i.name).join(" · ")} — 금액을 모르면 예정 합계가 모자랍니다. 항목을 눌러 금액을 적으세요(모르면 비워 두세요, 0원으로 채우지 않습니다).</Notice></div>
       )}
 
       <div className="sat-stagger grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
         <Kpi label={`${Number(period.slice(5))}월 출금`} value={f.expenseError ? "-" : won(monthTotal)} hint={`${monthEntries.length}건 기록`} />
-        <Kpi label="남은 예정" value={f.expenseError ? "-" : won(dueSum.amount)} hint={due.length === 0 ? "예정된 고정 비용 없음" : `${due.length}건${dueSum.unknown ? ` · 금액 미입력 ${dueSum.unknown}건` : ""}`} />
-        <Kpi label="고정 비용 항목" value={f.expenseError ? "-" : f.items.filter((i) => i.active).length} suffix="개" hint={`쉬는 항목 ${f.items.filter((i) => !i.active).length}개`} />
+        <Kpi label="남은 예정" value={f.expenseError ? "-" : won(dueSum.amount)} hint={due.length === 0 ? "예정된 반복 항목 없음" : `${due.length}건${dueSum.unknown ? ` · 금액 미입력 ${dueSum.unknown}건` : ""}`} />
+        <Kpi label="반복 항목" value={f.expenseError ? "-" : f.items.filter((i) => i.active).length} suffix="개" hint={`쉬는 항목 ${f.items.filter((i) => !i.active).length}개${f.items.some((i) => i.active && (!i.behavior || !i.account)) ? ` · 미분류 ${f.items.filter((i) => i.active && (!i.behavior || !i.account)).length}개` : ""}`} />
       </div>
 
       {f.loading && !f.items.length ? <Skeleton rows={6} cols={4} /> : (
         <>
-          <Card className="mb-4" flush title={`${Number(period.slice(5))}월 예정`} description="고정 비용 중 이 달에 아직 기록이 없는 것. 냈다면 「지급 기록」을 누르세요.">
-            {due.length === 0 ? <Empty title="이 달 예정된 고정 비용이 없습니다" detail="모두 기록됐거나 항목이 쉬는 중입니다." /> : (
+          <Card className="mb-4" flush title={`${Number(period.slice(5))}월 예정`} description="반복 항목 중 이 달에 아직 기록이 없는 것. 냈다면 「지급 기록」을 누르세요.">
+            {due.length === 0 ? <Empty title="이 달 예정된 반복 항목이 없습니다" detail="모두 기록됐거나 항목이 쉬는 중입니다." /> : (
               <Table minWidth="34rem">
                 <thead><tr><Th>항목</Th><Th width="7rem">지급일</Th><Th width="9rem" align="right">금액</Th><Th width="8rem" align="right">처리</Th></tr></thead>
                 <tbody>
@@ -101,15 +102,16 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
             )}
           </Card>
 
-          <Card flush title="고정 비용 항목" description="매달(또는 매년) 나가는 비용의 목록. 기본 항목은 처음부터 깔려 있고, 새로 나가는 비용은 「항목 추가」로 올립니다.">
+          <Card flush title="반복 항목" description="매달(또는 매년) 나가는 비용의 목록. 성격(고정 · 변동 · 준변동 · 일회성)과 회계 위치는 항목에만 매깁니다.">
             {f.items.length === 0 ? <Empty title="항목이 없습니다" /> : (
-              <Table minWidth="46rem">
-                <thead><tr><Th>항목</Th><Th width="7rem">분류</Th><Th width="8rem">주기</Th><Th width="11rem">출금 방식</Th><Th width="9rem" align="right">금액</Th></tr></thead>
+              <Table minWidth="54rem">
+                <thead><tr><Th>항목</Th><Th width="7rem">분류</Th><Th width="8rem">성격</Th><Th width="8rem">주기</Th><Th width="11rem">출금 방식</Th><Th width="9rem" align="right">금액</Th></tr></thead>
                 <tbody>
                   {f.items.map((i) => (
                     <tr key={i.id} className={`${rowClickable} ${i.active ? "" : "opacity-60"}`} onClick={() => setItemPanel({ item: i })}>
                       <Td><span className="font-semibold text-gray-900">{i.name}</span>{i.is_default && <span className="ml-1.5"><Chip tone="gray">기본</Chip></span>}{!i.active && <span className="ml-1.5"><Chip tone="amber">쉬는 중</Chip></span>}</Td>
                       <Td className="text-[12px] text-gray-600">{i.category}</Td>
+                      <Td className="text-[12px] text-gray-600 whitespace-nowrap">{i.behavior || i.account ? `${i.behavior ? BEHAVIOR_LABEL[i.behavior] : "—"} · ${i.account ?? "—"}` : <Chip tone="amber">미분류</Chip>}</Td>
                       <Td className="text-[12px] text-gray-600 whitespace-nowrap">{CYCLE_LABEL[i.cycle]}{i.pay_day ? ` · ${i.pay_day}일` : ""}</Td>
                       <Td className="text-[12px] text-gray-600">{METHOD_LABEL[i.method ?? "FIXED"]}</Td>
                       <Td align="right" numeric className="font-semibold text-gray-900">{i.amount === null ? <Chip tone="amber">금액 미입력</Chip> : i.method === "PER_PAID_STORE" ? <>{paidCount === null ? <span className="text-[12px] font-normal text-gray-500">곳당 {won(i.amount)}</span> : won(i.amount * paidCount)}<span className="block text-[11px] font-normal text-gray-500">곳당 {won(i.amount)}{paidCount !== null && ` × ${paidCount}곳`}</span></> : won(i.amount)}</Td>
@@ -187,7 +189,7 @@ function EntryForm({ panel, today, paidCount, f, onClose }: { panel: NonNullable
   }
 
   return (
-    <SlideOver open onClose={onClose} title={editing ? "출금 기록 고치기" : item ? `${item.name} 지급 기록` : "출금 기록"} subtitle={editing ? `${editing.created_by ?? ""} 기록` : item ? "고정 비용의 지급을 기록합니다" : "한 번 나간 비용이나 항목에 없는 지출을 적습니다"}
+    <SlideOver open onClose={onClose} title={editing ? "출금 기록 고치기" : item ? `${item.name} 지급 기록` : "출금 기록"} subtitle={editing ? `${editing.created_by ?? ""} 기록` : item ? "반복 항목의 지급을 기록합니다" : "한 번 나간 비용이나 항목에 없는 지출을 적습니다"}
       footer={<><Button variant="primary" icon={<IconCheck />} onClick={save} disabled={busy}>{busy ? "저장 중…" : "저장"}</Button>{editing && <Button variant="danger" icon={<IconTrash />} onClick={remove} disabled={busy}>지우기</Button>}<Button variant="ghost" onClick={onClose}>닫기</Button></>}>
       {error && <Notice tone="red" title={error} />}
       <Field label="내용" required><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="예: 11월 식사권 대금" /></Field>
@@ -209,11 +211,12 @@ function EntryForm({ panel, today, paidCount, f, onClose }: { panel: NonNullable
       </div>
       <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
       <Field label="메모"><Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} maxLength={300} placeholder={perStore ? "비워 두면 「유료 식당 N곳 × 단가」가 남습니다" : "청구서 번호, 계좌이체 메모 등"} /></Field>
+      {!editing && !item && <p className="text-[12px] text-gray-500">항목 없이 적은 출금은 성격을 몰라 운영 번에도 들어갑니다. 일회성으로 빼려면 행동 방식이 「일회성」인 항목에서 기록하세요.</p>}
     </SlideOver>
   );
 }
 
-/** 고정 비용 항목 패널 — 추가 · 고치기 · 쉬게 하기 · (직접 추가한 것만) 지우기. */
+/** 반복 항목 패널 — 추가 · 고치기 · 쉬게 하기 · (직접 추가한 것만) 지우기. */
 function ItemForm({ panel, paidCount, period, f, onClose }: { panel: NonNullable<ItemPanel>; paidCount: number | null; period: string; f: ReturnType<typeof useFinance>; onClose: () => void }) {
   const it = panel.item;
   const [name, setName] = useState(it?.name ?? "");
@@ -226,6 +229,8 @@ function ItemForm({ panel, paidCount, period, f, onClose }: { panel: NonNullable
   const [end, setEnd] = useState(it?.end_period ?? "");
   const [memo, setMemo] = useState(it?.memo ?? "");
   const [active, setActive] = useState(it?.active ?? true);
+  const [behavior, setBehavior] = useState<string>(it?.behavior ?? "");
+  const [account, setAccount] = useState<string>(it?.account ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -234,7 +239,7 @@ function ItemForm({ panel, paidCount, period, f, onClose }: { panel: NonNullable
 
   async function save() {
     setBusy(true); setError(null);
-    const body = { name, category, method, amount: amount.trim() === "" ? null : amount, cycle, pay_day: payDay.trim() === "" ? null : payDay, start_period: start, end_period: end || null, memo, active };
+    const body = { name, category, method, amount: amount.trim() === "" ? null : amount, cycle, pay_day: payDay.trim() === "" ? null : payDay, start_period: start, end_period: end || null, behavior: behavior || null, account: account || null, memo, active };
     const err = it ? await f.patchItem(it.id, body) : await f.addItem(body);
     setBusy(false);
     if (err) setError(err); else onClose();
@@ -248,13 +253,17 @@ function ItemForm({ panel, paidCount, period, f, onClose }: { panel: NonNullable
   }
 
   return (
-    <SlideOver open onClose={onClose} title={it ? "고정 비용 항목" : "항목 추가"} subtitle={it?.is_default ? "기본 항목" : "새로 나가는 비용을 목록에 올립니다"}
+    <SlideOver open onClose={onClose} title={it ? "반복 항목" : "항목 추가"} subtitle={it?.is_default ? "기본 항목" : "새로 나가는 비용을 목록에 올립니다"}
       footer={<><Button variant="primary" icon={<IconCheck />} onClick={save} disabled={busy}>{busy ? "저장 중…" : "저장"}</Button>{it && !it.is_default && <Button variant="danger" icon={<IconTrash />} onClick={remove} disabled={busy}>지우기</Button>}<Button variant="ghost" onClick={onClose}>닫기</Button></>}>
       {error && <Notice tone="red" title={error} />}
       <Field label="항목 이름" required><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="예: 디자인 툴 구독" /></Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
         <Field label="주기"><Select value={cycle} onChange={(e) => setCycle(e.target.value)}><option value="MONTHLY">매월</option><option value="YEARLY">매년</option></Select></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="행동 방식" hint="매출이 0이면 이 비용도 0인가? 두 배면 두 배인가?"><Select value={behavior} onChange={(e) => setBehavior(e.target.value)}><option value="">미분류</option>{BEHAVIORS.map((b) => <option key={b} value={b}>{BEHAVIOR_LABEL[b]}</option>)}</Select></Field>
+        <Field label="회계 위치" hint="안 쓰면 점주가 서비스를 못 받는가? 그러면 COGS"><Select value={account} onChange={(e) => setAccount(e.target.value)}><option value="">미분류</option>{ACCOUNTS.map((a) => <option key={a} value={a}>{ACCOUNT_LABEL[a]}</option>)}</Select></Field>
       </div>
       <MethodSelect value={method} onChange={setMethod} />
       <div className="grid grid-cols-2 gap-3">

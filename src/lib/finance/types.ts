@@ -3,6 +3,8 @@
  *
  * 입금은 **읽기 전용**이다. 입금을 찍는 곳은 Astro(입금 현황 · 스팟 제작) 하나이고, 재무는 그 기록을 모아 볼 뿐이다.
  * 계좌가 연결돼 있지 않아 출금은 **사람이 직접 적는다** — 그 장부가 이 파일의 ExpenseItem · ExpenseEntry 다.
+ * 런웨이를 내려면 장부만으로는 모자라 두 가지를 더 적는다 — 계좌별 월말 잔고(AccountBalance)와 자금 조달(FundingEvent).
+ * 원본은 백엔드 AdminConfig 문서 `finance:ledger`(astro/finance.py)다.
  */
 
 export const EXPENSE_CATEGORIES = ["식사권", "인프라", "도구·구독", "마케팅·협찬", "제작", "인건비", "세금·수수료", "기타"] as const;
@@ -32,7 +34,20 @@ export type ExpenseCycle = "MONTHLY" | "YEARLY";
 export const CYCLE_LABEL: Record<ExpenseCycle, string> = { MONTHLY: "매월", YEARLY: "매년" };
 
 /**
- * 고정 비용 항목 — 「어떤 비용이 나가는가」의 목록.
+ * 행동 방식 — 매출 · 매장 수가 바뀔 때 이 비용이 어떻게 움직이는가(설계 04절). 항목에만 매기고 출금 한 건에서는 못 바꾼다.
+ * 출금 방식(FIXED · PER_PAID_STORE)과 다르다: 그건 금액을 정하는 법이고, 이건 비용의 성격이다.
+ */
+export type ExpenseBehavior = "FIXED" | "VARIABLE" | "SEMI_VARIABLE" | "ONE_OFF";
+export const BEHAVIORS: ExpenseBehavior[] = ["FIXED", "VARIABLE", "SEMI_VARIABLE", "ONE_OFF"];
+export const BEHAVIOR_LABEL: Record<ExpenseBehavior, string> = { FIXED: "고정", VARIABLE: "변동", SEMI_VARIABLE: "준변동", ONE_OFF: "일회성" };
+
+/** 회계 위치 — 손익에서 어느 줄에 가는가. PG 수수료 · 호스팅을 COGS 에 넣을지는 표준이 없어 한 번 정해 고정한다. */
+export type ExpenseAccount = "COGS" | "S&M" | "R&D" | "G&A";
+export const ACCOUNTS: ExpenseAccount[] = ["COGS", "S&M", "R&D", "G&A"];
+export const ACCOUNT_LABEL: Record<ExpenseAccount, string> = { COGS: "COGS · 매출원가", "S&M": "S&M · 판매·마케팅", "R&D": "R&D · 개발", "G&A": "G&A · 일반관리" };
+
+/**
+ * 반복 항목 — 「어떤 비용이 나가는가」의 목록(전에는 「고정 비용 항목」이라 불렀지만 식사권처럼 변동비도 섞여 있다).
  * `is_default` 는 처음부터 깔아 둔 기본 항목이다(지우지 않고 쉬게만 한다). 나머지는 사람이 추가한 항목.
  * 금액을 모르면 `null` — 0 원으로 채우지 않는다. 0 은 「무료」, null 은 「아직 모름」이다.
  */
@@ -52,6 +67,9 @@ export interface ExpenseItem {
   start_period: string;
   /** 이 달까지만 나간다 — 없으면 계속 */
   end_period: string | null;
+  /** 행동 방식 · 회계 위치 — 모르면 null(미분류). */
+  behavior: ExpenseBehavior | null;
+  account: ExpenseAccount | null;
   active: boolean;
   is_default: boolean;
   memo: string | null;
@@ -61,7 +79,7 @@ export interface ExpenseItem {
 
 /**
  * 출금 한 건 — 실제로 나간 돈의 기록.
- * `item_id` 가 있으면 고정 비용 항목의 그 달 지급이고, 없으면 한 번 나간 비용이다.
+ * `item_id` 가 있으면 반복 항목의 그 달 지급이고, 없으면 한 번 나간 비용이다.
  * `period` 는 **어느 달 몫인가**(귀속 월), `paid_on` 은 **돈이 나간 날**이다. 현금 흐름은 paid_on 으로 센다.
  */
 export interface ExpenseEntry {
@@ -80,13 +98,78 @@ export interface ExpenseEntry {
 export type IncomeSource = "invoice" | "spot";
 export const INCOME_SOURCE_LABEL: Record<IncomeSource, string> = { invoice: "월 이용료", spot: "스팟 제작" };
 
-/** 입금 한 건 — Astro 기록에서 읽은 것. 금액을 모르는 건은 null (합계에 넣지 않는다). */
+/**
+ * 입금 한 건 — Astro 기록에서 읽은 것. 금액을 모르는 건은 null (합계에 넣지 않는다).
+ * `amount` 는 통장에 들어온 돈(세금계산서면 공급가 + 세액), `supply` 는 매출로 세는 공급가, `tax` 는 다음 납부 때 나갈 부가세다.
+ * 스팟 제작은 가격 한 칸뿐이라 세액을 모른다(null) — 공급가 = 가격으로 본다.
+ */
 export interface IncomeEntry {
   id: string;
   paid_on: string; // YYYY-MM-DD
   amount: number | null;
+  supply: number | null;
+  tax: number | null;
   source: IncomeSource;
   name: string;
   /** "2026년 9월분" 같은 한 줄 설명 */
   detail: string | null;
+}
+
+/**
+ * 구독 청구 한 줄 — MRR 계산용. 발행됐거나 입금된 세금계산서(취소 · 반려 제외)를 귀속 월(period부터 months개월)로 편다.
+ * 입금 여부와 무관하다: MRR 은 청구 기준이다.
+ */
+export interface BillingLine {
+  id: string;
+  restaurant_id: number;
+  period: string; // YYYY-MM — 첫 달
+  months: number;
+  supply: number;
+}
+
+/**
+ * 계좌별 월말 잔고 — 통장을 보고 사람이 적는다. 장부(입금 − 출금 + 조달)로 굴린 잔고와 1만 원 넘게 다르면 「대사 필요」.
+ * `reconciled_by` 는 「통장과 맞춰 봤음」을 켠 사람 — 서버가 찍는다.
+ */
+export interface AccountBalance {
+  id: string;
+  account_name: string;
+  last4: string | null;
+  amount: number;
+  as_of: string; // YYYY-MM-DD 기준일
+  period: string; // YYYY-MM — as_of 의 달
+  reconciled: boolean;
+  reconciled_by: string | null;
+  reconciled_at: string | null;
+  memo: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+/**
+ * 자금 조달 — SAFE · 지원금 · 상금 · 대출. 영업 유입이 아니라서 **순번에 넣지 않는다.**
+ * 상태는 예정 → 확정 → 입금. 「입금」만 잔고에 들어간 돈으로 본다(장부 잔고 계산). 예정 · 확정은 기다리는 돈이다.
+ * 지원금처럼 쓸 곳이 정해진 돈(`restricted`)은 가용 현금에서 뺀다 — 남은 전용 잔액(`restricted_left`)을 모르면 금액 전체.
+ */
+export type FundingKind = "SAFE" | "GRANT" | "PRIZE" | "LOAN";
+export const FUNDING_KINDS: FundingKind[] = ["SAFE", "GRANT", "PRIZE", "LOAN"];
+export const FUNDING_KIND_LABEL: Record<FundingKind, string> = { SAFE: "SAFE", GRANT: "지원금", PRIZE: "상금", LOAN: "대출" };
+export type FundingStatus = "PLANNED" | "CONFIRMED" | "RECEIVED";
+export const FUNDING_STATUSES: FundingStatus[] = ["PLANNED", "CONFIRMED", "RECEIVED"];
+export const FUNDING_STATUS_LABEL: Record<FundingStatus, string> = { PLANNED: "예정", CONFIRMED: "확정", RECEIVED: "입금" };
+
+export interface FundingEvent {
+  id: string;
+  kind: FundingKind;
+  status: FundingStatus;
+  name: string;
+  amount: number | null;
+  expected_on: string | null;
+  received_on: string | null;
+  restricted: boolean;
+  restricted_left: number | null;
+  spend_deadline: string | null;
+  memo: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
 }
