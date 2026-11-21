@@ -67,10 +67,11 @@ export default function Launcher({ available, extras = [], userName, username = 
 
   /* ── 파트너 매장 막힌 일 — 영업 홈 「지금 막힌 것」과 같은 계산. fetchJson 이라 위 훅과 같은 주소는 한 번만 부른다 ── */
   const [astro, setAstro] = useState<{ stores: StoreRow[]; leads: Lead[]; invoices: TaxInvoice[]; failed: boolean } | null>(null);
+  const [astroTick, setAstroTick] = useState(0);   // 팝업에서 매장 정보를 고치면 다시 읽는다
   useEffect(() => {
-    Promise.all([fetchJson<{ stores: StoreRow[] }>("/api/astro/stores"), fetchJson<{ leads: Lead[] }>("/api/astro/leads"), fetchJson<{ invoices: TaxInvoice[] }>(`/api/astro/invoices?period=${periodLocal()}`)])
+    Promise.all([fetchJson<{ stores: StoreRow[] }>("/api/astro/stores", { fresh: astroTick > 0 }), fetchJson<{ leads: Lead[] }>("/api/astro/leads"), fetchJson<{ invoices: TaxInvoice[] }>(`/api/astro/invoices?period=${periodLocal()}`)])
       .then(([s, l, i]) => setAstro({ stores: s?.stores ?? [], leads: l?.leads ?? [], invoices: i?.invoices ?? [], failed: !s || !l || !i }));
-  }, []);
+  }, [astroTick]);
   const blockers = useMemo(() => (astro ? buildBlockers(astro.stores, astro.leads, astro.invoices, periodLocal(), todayLocal()) : []), [astro]);
   const urgent = blockers.filter((b) => b.rank <= 1).length;
   /** 매장별 이번 달 쿠폰 · 스탬프 — Probe 매장 지표와 같은 응답(usePolaris 와 같은 주소라 한 번만 부른다). null = 못 읽음 */
@@ -123,7 +124,7 @@ export default function Launcher({ available, extras = [], userName, username = 
         {/* ② 파트너 매장 — 상권 탭 · 매장별 쿠폰 · 스탬프 · 할 일 (1121 2차) */}
         <section aria-labelledby="h-stores" className={`${tile} p-4 min-w-0`}>
           <SectionHead id="h-stores" title="파트너 매장" note={astro ? `할 일 ${blockers.filter((b) => b.kind !== "lead").length}건` : "읽는 중…"} action={{ label: "Astro 열기", onClick: () => go("astro-home") }} inner />
-          <HomeStores stores={astro?.stores ?? null} metrics={metrics} blockers={blockers} leadStale={status?.leads?.stale} meetings={status?.leads?.meetings} onGo={go} />
+          <HomeStores stores={astro?.stores ?? null} metrics={metrics} blockers={blockers} leadStale={status?.leads?.stale} meetings={status?.leads?.meetings} onGo={go} actor={userName || username} onStoresChanged={() => setAstroTick((n) => n + 1)} />
         </section>
 
         {/* ③ 마케팅 — 인스타 매거진 성장 · 최근 동향 */}
