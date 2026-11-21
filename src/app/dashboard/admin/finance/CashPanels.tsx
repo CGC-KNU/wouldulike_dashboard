@@ -4,7 +4,7 @@ import { useState } from "react";
 import { IconCheck, IconPlus, IconTrash } from "@tabler/icons-react";
 import { won, type BalanceSnapshot, type ReconcileState } from "@/lib/finance/calc";
 import { FUNDING_KINDS, FUNDING_KIND_LABEL, FUNDING_STATUSES, FUNDING_STATUS_LABEL, type AccountBalance, type FundingEvent, type FundingKind, type FundingStatus } from "@/lib/finance/types";
-import { Button, Card, Chip, Empty, Field, Input, Notice, Select, SlideOver, Textarea, rowClickable, todayLocal, type ChipTone } from "../_shared/ui";
+import { Button, Card, Chip, Field, Input, Notice, Select, SlideOver, Textarea, rowClickable, todayLocal, type ChipTone } from "../_shared/ui";
 import type { FinanceData } from "./useFinance";
 
 /**
@@ -22,9 +22,9 @@ export function BalanceCard({ f, snap, rec }: { f: FinanceData; snap: BalanceSna
   const accounts = [...new Set(f.balances.map((b) => b.account_name))];
 
   return (
-    <Card flush title={snap ? `월말 잔고 · ${Number(snap.period.slice(5))}월` : "월말 잔고"} description="통장을 보고 계좌별로 적습니다. 장부와 1만 원 넘게 다르면 「대사 필요」." actions={<Button size="sm" icon={<IconPlus />} onClick={() => setPanel({ row: null })}>잔고 입력</Button>}>
+    <Card flush title={snap ? `월말 잔고 · ${Number(snap.period.slice(5))}월` : "월말 잔고"} description="계좌별 월말 잔고 · 장부와 1만 원 넘게 다르면 대사 필요" actions={<Button size="sm" icon={<IconPlus />} onClick={() => setPanel({ row: null })}>잔고 입력</Button>}>
       {!snap ? (
-        <Empty title="적은 월말 잔고가 없습니다" detail="달마다 마지막 날 통장 잔고를 계좌별로 적으면 가용 현금과 런웨이가 계산됩니다." />
+        <p className="px-4 py-4 text-[13px] text-gray-500">아직 없습니다. 달마다 마지막 날 통장 잔고를 계좌별로 적으면 가용 현금 · 런웨이가 계산됩니다.</p>
       ) : (
         <>
           <ul>
@@ -116,9 +116,9 @@ export function FundingCard({ f }: { f: FinanceData }) {
   const rows = [...f.fundings].sort((a, b) => (a.received_on ?? a.expected_on ?? "9999").localeCompare(b.received_on ?? b.expected_on ?? "9999"));
 
   return (
-    <Card flush title="자금 조달" description="SAFE · 지원금 · 상금 · 대출. 순번에 넣지 않고, 「입금」만 잔고에 들어간 돈으로 봅니다." actions={<Button size="sm" icon={<IconPlus />} onClick={() => setPanel({ row: null })}>조달 추가</Button>}>
+    <Card flush title="자금 조달" description="SAFE · 지원금 · 상금 · 대출 · 「입금」만 잔고에 넣음" actions={<Button size="sm" icon={<IconPlus />} onClick={() => setPanel({ row: null })}>조달 추가</Button>}>
       {rows.length === 0 ? (
-        <Empty title="적은 조달이 없습니다" detail="기다리는 SAFE · 지원금이 있으면 「예정」으로 올려 두세요. 입금되면 상태를 바꿉니다." />
+        <p className="px-4 py-4 text-[13px] text-gray-500">아직 없습니다. 기다리는 SAFE · 지원금이 있으면 「예정」으로 올려 두고, 입금되면 상태를 바꿉니다.</p>
       ) : (
         <ul>
           {rows.map((r) => (
