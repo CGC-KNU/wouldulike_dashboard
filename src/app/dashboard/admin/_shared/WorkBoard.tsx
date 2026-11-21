@@ -71,7 +71,7 @@ export default function WorkBoard() {
         <div className="min-w-[880px] grid grid-cols-[190px_repeat(3,minmax(0,1fr))] gap-2.5">
           <div />
           {FUNCS.map(({ key, name, lead, Icon }) => (
-            <div key={key} className="flex items-center gap-2.5 px-3 py-2 rounded-[14px] bg-white/70 border border-white">
+            <div key={key} className="flex items-center gap-2.5 px-3 py-2 rounded-[14px] bg-white/70 border border-white/70">
               <span className="w-8 h-8 rounded-[10px] grid place-items-center text-white bg-[linear-gradient(135deg,#3B37C8,#050072)] shadow-[0_6px_14px_-8px_rgba(5,0,114,0.7)]"><Icon size={16} stroke={2} aria-hidden="true" /></span>
               <span className="min-w-0">
                 <span className="block text-[14px] font-bold text-gray-900 leading-tight">{name}</span>
@@ -119,7 +119,7 @@ function PersonCell({ meta, cell, loading, on, onOpen }: { meta: Meta; cell?: Ce
   const empty = !cell || (!n.plan && !n.done && !n.issues && !cell.status);
   return (
     <button type="button" onClick={() => onOpen(meta)} aria-label={`${meta.who} 업무 보기`}
-      className={`group text-left rounded-[16px] bg-white/90 backdrop-blur border px-3.5 py-3 min-w-0 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-22px_rgba(5,0,114,0.5)] ${on ? "border-navy/40 ring-2 ring-navy/15" : "border-white"} ${focusRing}`}>
+      className={`group text-left rounded-[16px] bg-white/85 backdrop-blur border px-3.5 py-3 min-w-0 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-22px_rgba(5,0,114,0.5)] ${on ? "border-navy/40 ring-2 ring-navy/15" : "border-white/70"} ${focusRing}`}>
       <div className="flex items-center gap-2.5">
         <span className="w-9 h-9 rounded-full grid place-items-center text-[14px] font-bold text-white bg-[linear-gradient(135deg,#6366E0,#1512a3)] shrink-0">{meta.who.slice(0, 1)}</span>
         <span className="min-w-0 flex-1">

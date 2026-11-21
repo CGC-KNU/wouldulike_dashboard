@@ -114,7 +114,7 @@ export default function HomeStores({ stores, metrics, blockers, leadStale, meeti
       <p className="mt-1 text-[11px] text-gray-400">매장 이름을 누르면 쿠폰 · 스탬프를 보고 바로 고칠 수 있습니다.</p>
       <div className="mt-1.5 -mx-1 max-h-[24rem] overflow-y-auto">
         <table className="w-full text-[12.5px]">
-          <thead className="sticky top-0 bg-white/95 backdrop-blur z-[1]">
+          <thead className="sticky top-0 bg-white z-[1]">
             <tr className="text-[11px] text-gray-500">
               <th scope="col" className="text-left font-semibold py-1.5 px-1">매장</th>
               <th scope="col" className="text-right font-semibold py-1.5 px-1 w-12">쿠폰</th>
