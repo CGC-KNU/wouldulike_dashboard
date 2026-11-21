@@ -2496,7 +2496,8 @@ export default function AdminHomePage() {
   const rail = availableProducts.length > 1 ? (
     <AppRail items={railItems} active={selectedProduct} onHome={backToProducts} onSelect={(k) => selectProduct(k as Product)} badge={railBadge}
       libra={{ channelUrl: slackUrl(TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra), channel: (TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra).slack.channel,
-        context: selectedProduct ? (PRODUCTS.find((p) => p.key === selectedProduct)?.name ?? "") : "메인" }} />
+        context: selectedProduct ? (PRODUCTS.find((p) => p.key === selectedProduct)?.name ?? "") : "메인" }}
+      user={{ name: me.display_name || me.username, title: me.title, role: me.department_label }} />
   ) : null;
 
   /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
@@ -2534,7 +2535,7 @@ export default function AdminHomePage() {
     <div className={rail ? "lg:pl-[76px]" : ""}>
     {rail}
     <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-3 px-1">
+      <div className={`flex items-center justify-between mb-3 px-1 ${rail ? "lg:hidden" : ""}`}>
         {showProductPicker ? (
           <button
             onClick={backToProducts}
@@ -2564,7 +2565,7 @@ export default function AdminHomePage() {
       </div>
 
       {showProductPicker && (
-        <p className="text-[10px] font-semibold text-periwinkle uppercase tracking-widest mb-1 px-1">
+        <p className={`text-[10px] font-semibold text-periwinkle uppercase tracking-widest mb-1 px-1 ${rail ? "lg:hidden" : ""}`}>
           {productMeta.name} · {productMeta.subtitle}
         </p>
       )}

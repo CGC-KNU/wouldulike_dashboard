@@ -36,7 +36,9 @@ function ago(iso: string | null): string {
   return `${Math.floor(h / 24)}일 전`;
 }
 
-export default function NotificationBell() {
+/** placement="rail" — 왼쪽 레일 아래쪽에서 열 때(1121). 목록을 오른쪽 위로 펼치고 버튼을 레일 크기로 */
+export default function NotificationBell({ placement = "header" }: { placement?: "header" | "rail" } = {}) {
+  const rail = placement === "rail";
   const [rows, setRows] = useState<Req[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
@@ -81,9 +83,9 @@ export default function NotificationBell() {
         aria-haspopup="true"
         aria-label={count > 0 ? `알림 ${count}건` : "알림"}
         title={count > 0 ? `처리할 신청 ${count}건` : "알림"}
-        className="relative w-8 h-8 rounded-lg flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        className={`relative ${rail ? "w-9 h-9 rounded-[11px]" : "w-8 h-8 rounded-lg"} flex items-center justify-center text-white/55 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60`}
       >
-        <IconBell size={16} stroke={2} aria-hidden="true" />
+        <IconBell size={rail ? 19 : 16} stroke={2} aria-hidden="true" />
         {count > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-[#E0A23C] text-[9.5px] font-bold text-white flex items-center justify-center tabular-nums">
             {count > 9 ? "9+" : count}
@@ -94,7 +96,7 @@ export default function NotificationBell() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-10 w-[290px] max-w-[calc(100vw-2rem)] bg-white rounded-[14px] border border-black/[0.08] shadow-[0_16px_48px_-16px_rgba(5,0,114,0.45)] overflow-hidden z-50"
+          className={`absolute ${rail ? "left-full bottom-0 ml-3" : "right-0 top-10"} w-[290px] max-w-[calc(100vw-2rem)] bg-white rounded-[14px] border border-black/[0.08] shadow-[0_16px_48px_-16px_rgba(5,0,114,0.45)] overflow-hidden z-50`}
         >
           <div className="px-3.5 py-2.5 border-b border-black/[0.06]">
             <p className="text-[12.5px] font-bold text-gray-900">처리할 것</p>
