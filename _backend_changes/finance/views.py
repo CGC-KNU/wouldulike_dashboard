@@ -2,7 +2,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 
 from django.conf import settings
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -29,6 +29,20 @@ CATEGORIES = {"식사권", "인프라", "도구·구독", "마케팅·협찬", "
 MAX_AMOUNT = 10_000_000_000
 
 
+def admin_username(request) -> str:
+    """
+    대시보드 로그인한 사람의 계정 아이디.
+
+    ⚠️ `request.user` 가 아니다. 대시보드 JWT 는 공용 사용자 하나에 붙고, 누구인지는 토큰의 `admin_username` 클레임에 있다
+    (dashboard/views.py 의 /admin/me/ 와 같은 읽기). request.user.get_username() 으로 판정하면 모두가 같은 사람이 된다.
+    """
+    auth = getattr(request, "auth", None) or {}
+    try:
+        return str(auth.get("admin_username") or auth.get("username") or "").strip()
+    except AttributeError:
+        return ""
+
+
 class IsFinanceViewer(BasePermission):
     message = "재무는 대표만 볼 수 있습니다."
 
@@ -37,7 +51,7 @@ class IsFinanceViewer(BasePermission):
         if not (u and u.is_authenticated):
             return False
         allowed = {a.lower() for a in getattr(settings, "FINANCE_VIEWERS", DEFAULT_VIEWERS)}
-        return u.get_username().lower() in allowed
+        return admin_username(request).lower() in allowed
 
 
 def today_kst() -> date:
@@ -67,7 +81,7 @@ def category(v):
 
 
 def actor(request, data):
-    return data.get("updated_by") or data.get("created_by") or request.user.get_username()
+    return (data.get("updated_by") or data.get("created_by") or admin_username(request))[:50]
 
 
 # ── 항목 ───────────────────────────────────────────────
@@ -156,7 +170,9 @@ def items(request):
     if not obj.start_period:
         return err("시작 월을 입력하세요.")
     try:
-        obj.save()
+        # savepoint — 중복으로 실패해도 바깥 트랜잭션(ATOMIC_REQUESTS 등)이 깨지지 않아야 아래에서 다시 읽을 수 있다
+        with transaction.atomic():
+            obj.save()
     except IntegrityError:  # key 가 동시에 두 번 들어온 경우
         return Response({"item": item_json(FinanceItem.objects.get(key=key))})
     return Response({"item": item_json(obj)}, status=status.HTTP_201_CREATED)
@@ -250,7 +266,7 @@ def entries(request):
         return Response({"entries": [entry_json(e) for e in qs]})
 
     d = request.data
-    obj = FinanceEntry(created_by=d.get("created_by") or request.user.get_username())
+    obj = FinanceEntry(created_by=(d.get("created_by") or admin_username(request))[:50])
     try:
         apply_entry(obj, d)
     except ValueError as e:
@@ -260,7 +276,8 @@ def entries(request):
     if not obj.period:
         obj.period = obj.paid_on.strftime("%Y-%m")
     try:
-        obj.save()
+        with transaction.atomic():
+            obj.save()
     except IntegrityError:
         return err("이 항목의 같은 달 지급은 이미 기록돼 있습니다.", status.HTTP_409_CONFLICT)
     return Response({"entry": entry_json(obj)}, status=status.HTTP_201_CREATED)
@@ -280,7 +297,8 @@ def entry_detail(request, entry_id: int):
 
     try:
         apply_entry(obj, request.data)
-        obj.save()
+        with transaction.atomic():
+            obj.save()
     except ValueError as e:
         return err(str(e))
     except IntegrityError:
