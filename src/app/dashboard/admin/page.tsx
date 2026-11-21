@@ -46,6 +46,7 @@ import CastorExperiments from "./castor/CastorExperiments";
 import "./castor/castor.css";
 import Launcher from "./_shared/Launcher";
 import CommandPalette from "./_shared/CommandPalette";
+import AppRail from "./_shared/AppRail";
 import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
 import { useSatelliteStatus, navBadges } from "./_shared/useSatelliteStatus";
 import { useWeekIssues } from "./_shared/useWeekIssues";
@@ -2488,10 +2489,21 @@ export default function AdminHomePage() {
   /* ─── 놀이방 — 툴 셸도 도크도 없다. 방 하나가 화면을 다 쓴다. ─── */
   if (activeTab === "playroom") return <Playroom onBack={backToProducts} />;
 
+  /* ─── 왼쪽 앱 레일 (1121 민열님: 슬랙처럼 왼쪽에) — lg 이상에서만 보인다. 메인 · 툴 어디서든 같은 자리 ─── */
+  const railItems = availableProducts.filter((p) => p.ready && p.key !== "orbit" && p.key !== "atlas").map((p) => ({ key: p.key, name: p.name }));
+  const railBadge = (k: string) => (k === "astro" ? (satStatus?.billing?.unpaid ?? 0) + (satStatus?.leads?.stale ?? 0)
+    : k === "probe" && satStatus?.probe ? satStatus.probe.due + satStatus.probe.held : 0);
+  const rail = availableProducts.length > 1 ? (
+    <AppRail items={railItems} active={selectedProduct} onHome={backToProducts} onSelect={(k) => selectProduct(k as Product)} badge={railBadge}
+      libra={{ channelUrl: slackUrl(TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra), channel: (TOOLS[(selectedProduct ?? "libra") as ToolKey] ?? TOOLS.libra).slack.channel,
+        context: selectedProduct ? (PRODUCTS.find((p) => p.key === selectedProduct)?.name ?? "") : "메인" }} />
+  ) : null;
+
   /* ─── 제품 선택 화면 (대시보드 진입점) — 런처 ─── */
   if (!selectedProduct) {
     return (
-      <>
+      <div className={rail ? "lg:pl-[76px]" : ""}>
+        {rail}
         <CommandPalette tabs={PRODUCTS.flatMap((p) => p.tabs.map((t) => ({ key: t, label: TABS.find((x) => x.key === t)?.label ?? t, product: p.name }))).filter((t) => visibleTabs.some((v) => v.key === t.key))} go={go} />
         <Launcher
           available={availableProducts.filter((p) => p.ready && p.key !== "drive" && p.key !== "playroom").map((p) => p.key as ToolKey)}
@@ -2504,7 +2516,7 @@ export default function AdminHomePage() {
           status={satStatus}
           onGo={go}
         />
-      </>
+      </div>
     );
   }
 
@@ -2519,6 +2531,8 @@ export default function AdminHomePage() {
   const showProductPicker = availableProducts.length > 1;
 
   return (
+    <div className={rail ? "lg:pl-[76px]" : ""}>
+    {rail}
     <div className="px-4 pt-4 pb-20 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-3 px-1">
         {showProductPicker ? (
@@ -2666,6 +2680,7 @@ export default function AdminHomePage() {
       )}
 
       {selectedProduct === "drive" && <DriveScreen />}
+    </div>
     </div>
   );
 }
