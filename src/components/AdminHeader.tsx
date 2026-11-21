@@ -62,7 +62,8 @@ export default function AdminHeader() {
         <span className="hidden sm:block bg-white/10 rounded-full w-16 h-5 animate-pulse" />
       )}
 
-      <div className="ml-auto flex items-center gap-2 shrink-0">
+      {/* 1121 민열님: 슬랙처럼 — 왼쪽 앱 레일이 떠 있으면(넓은 화면) 이 묶음은 레일 아래쪽으로 옮겨 간다(AppRail). */}
+      <div className="ml-auto flex items-center gap-2 shrink-0 lg:[body[data-rail='1']_&]:hidden">
         {/* 내 명함 — 이스터에그 (1002 민열님). 조용히 둔다: 아는 사람만 누른다. */}
         <BusinessCardButton />
         {/* 뷰 전환 — 애딧의 '광고주 전환 / 파트너 전환' 자리. 지금 어느 눈으로 보고 있는지가 늘 보인다. */}
