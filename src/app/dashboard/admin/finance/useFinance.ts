@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ExpenseEntry, ExpenseItem, IncomeEntry } from "@/lib/finance/types";
+import type { ExpenseEntry, ExpenseItem, IncomeEntry, PaidStore } from "@/lib/finance/types";
 
 /**
  * 재무 세 화면(현황 · 입금 · 출금)이 같이 쓰는 데이터 훅.
@@ -22,6 +22,7 @@ export interface EntryInput {
 export interface ItemInput {
   name?: string;
   category?: string;
+  method?: string;
   amount?: number | string | null;
   cycle?: string;
   pay_day?: number | string | null;
@@ -40,6 +41,8 @@ export function useFinance() {
   const [income, setIncome] = useState<IncomeEntry[]>([]);
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [entries, setEntries] = useState<ExpenseEntry[]>([]);
+  /** 유료 식당 — 「유료 식당 수 × 단가」의 곱할 수. null 은 못 읽음(0곳이 아니다). */
+  const [paidStores, setPaidStores] = useState<PaidStore[] | null>(null);
   const [draft, setDraft] = useState(false);
   const [loading, setLoading] = useState(true);
   /** 못 읽은 것과 비어 있는 것을 가른다 — 못 읽었으면 0 이 아니라 모름이다. */
@@ -64,9 +67,10 @@ export function useFinance() {
     }
 
     if (e?.ok) {
-      const d = (await e.json().catch(() => ({}))) as { items?: ExpenseItem[]; entries?: ExpenseEntry[]; draft?: boolean };
+      const d = (await e.json().catch(() => ({}))) as { items?: ExpenseItem[]; entries?: ExpenseEntry[]; paid_stores?: PaidStore[] | null; draft?: boolean };
       setItems(d.items ?? []);
       setEntries(d.entries ?? []);
+      setPaidStores(d.paid_stores ?? null);
       setExpenseError(null);
       isDraft = isDraft || Boolean(d.draft);
     } else {
@@ -96,7 +100,7 @@ export function useFinance() {
   );
 
   return {
-    income, items, entries, draft, loading, incomeError, expenseError, reload: load,
+    income, items, entries, paidStores, draft, loading, incomeError, expenseError, reload: load,
     addEntry: (b: EntryInput) => write("POST", "/api/finance/expenses", b, "기록하지 못했습니다."),
     patchEntry: (id: string, b: Partial<EntryInput>) => write("PATCH", `/api/finance/expenses/${encodeURIComponent(id)}`, b, "저장하지 못했습니다."),
     deleteEntry: (id: string) => write("DELETE", `/api/finance/expenses/${encodeURIComponent(id)}`, undefined, "지우지 못했습니다."),

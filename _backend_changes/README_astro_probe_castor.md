@@ -112,5 +112,6 @@ Aether › 재무 탭의 **출금** 장부 원본. 입금은 여기 없다 — a
 | `POST /api/finance/items`, `PATCH/DELETE /api/finance/items/[id]` | `/api/finance/items/…` | `{item}` / 204 |
 
 - 기본 항목은 프론트가 처음 열 때 `key`(예 `default:infra`)와 함께 POST 한다 — 같은 `key` 는 두 번 만들어지지 않는다(멱등).
+- `FinanceItem.method` — 출금 방식: `FIXED`(amount 가 나가는 금액) · `PER_PAID_STORE`(amount 는 식당 1곳당 단가, 나가는 돈 = 단가 × 그 달 유료 식당 수). 곱셈은 프론트가 하고 기록(`FinanceEntry`)에는 계산된 금액이 박힌다. 유료 식당 수는 Astro 입금 현황과 같은 기준(제휴 · Boost/Premium · 테스트 제외).
 - 한 항목의 같은 달 지급은 한 번만(`UniqueConstraint`). 지급 기록이 달린 항목과 기본 항목은 지우지 못한다 — 쉬게 한다.
 - 올라가기 전에는 프론트가 초안 저장소로 떨어지고 화면에 「초안 데이터」 배지가 뜬다. **초안은 재시작하면 사라지니 실제 기록은 백엔드가 올라간 뒤에 적는다.**

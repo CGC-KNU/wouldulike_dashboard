@@ -1,4 +1,4 @@
-import { EXPENSE_CATEGORIES, type ExpenseCategory, type ExpenseCycle, type ExpenseEntry, type ExpenseItem } from "./types";
+import { EXPENSE_CATEGORIES, type ExpenseCategory, type ExpenseCycle, type ExpenseEntry, type ExpenseItem, type ExpenseMethod } from "./types";
 
 /**
  * 재무 입력 검사 — 라우트가 백엔드·초안 어느 쪽에 쓰기 전에 같은 규칙으로 거른다.
@@ -47,6 +47,11 @@ export function checkItem(body: Body, partial: boolean): Checked<Partial<Expense
     out.name = name;
   }
   if (!partial || "category" in body) out.category = category(body.category);
+  if (!partial || "method" in body) {
+    const m = body.method ?? "FIXED";
+    if (m !== "FIXED" && m !== "PER_PAID_STORE") return bad("출금 방식은 고정 금액 · 유료 식당 수 × 단가 중 하나입니다.");
+    out.method = m as ExpenseMethod;
+  }
   if (!partial || "amount" in body) {
     const m = money(body.amount, true);
     if (!m.ok) return m;

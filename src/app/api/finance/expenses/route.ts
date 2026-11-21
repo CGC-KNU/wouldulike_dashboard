@@ -4,10 +4,12 @@ import { remoteGet, remoteSend } from "@/lib/draft/remote";
 import { DEFAULT_ITEMS } from "@/lib/finance/defaults";
 import { currentPeriodKst, newId, readEntries, readItems, writeEntries } from "@/lib/finance/store";
 import { checkEntry, todayKst } from "@/lib/finance/validate";
+import { readPaidStores } from "@/lib/finance/paidStores";
 import type { ExpenseEntry, ExpenseItem } from "@/lib/finance/types";
 
 /**
- * 재무 · 출금 — 목록과 한 건 기록.
+ * 재무 · 출금 — 목록과 한 건 기록. 목록에는 「유료 식당 수 × 단가」 방식에 곱할 유료 식당(`paid_stores`)도 같이 실린다 —
+ * 못 읽었으면 null(0곳이 아니다).
  *
  * 원본은 **백엔드 DB**(finance 앱)다. 계좌가 연결돼 있지 않아 출금은 사람이 직접 적는다 —
  * 고정 비용 항목(기본값 + 추가한 것)과, 실제로 나간 돈의 기록(항목의 그 달 지급 또는 한 번 나간 비용).
@@ -18,7 +20,7 @@ export async function GET() {
   const deny = await requireFinance();
   if (deny) return deny;
 
-  const [ri, re] = await Promise.all([remoteGet<{ items: ExpenseItem[] }>("/api/finance/items/"), remoteGet<{ entries: ExpenseEntry[] }>("/api/finance/entries/")]);
+  const [ri, re, paid_stores] = await Promise.all([remoteGet<{ items: ExpenseItem[] }>("/api/finance/items/"), remoteGet<{ entries: ExpenseEntry[] }>("/api/finance/entries/"), readPaidStores()]);
   if (ri.handled || re.handled) {
     for (const r of [ri, re]) if (!r.ok) return NextResponse.json(r.data ?? { detail: "출금 장부를 읽지 못했습니다." }, { status: r.status || 502 });
     const items = [...(ri.data?.items ?? [])];
@@ -29,9 +31,9 @@ export async function GET() {
       const r = await remoteSend<{ item: ExpenseItem }>("POST", "/api/finance/items/", { ...d, amount: null, start_period: period, active: true, is_default: true });
       if (r.ok && r.data?.item) items.push(r.data.item);
     }
-    return NextResponse.json({ items, entries: re.data?.entries ?? [], draft: false });
+    return NextResponse.json({ items, entries: re.data?.entries ?? [], paid_stores, draft: false });
   }
-  return NextResponse.json({ items: readItems(), entries: readEntries(), draft: true });
+  return NextResponse.json({ items: readItems(), entries: readEntries(), paid_stores, draft: true });
 }
 
 /** POST — 나간 돈 한 건 기록. */

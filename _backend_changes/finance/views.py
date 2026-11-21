@@ -74,7 +74,7 @@ def actor(request, data):
 
 def item_json(i: FinanceItem) -> dict:
     return {
-        "id": str(i.id), "key": i.key, "name": i.name, "category": i.category, "amount": i.amount,
+        "id": str(i.id), "key": i.key, "name": i.name, "category": i.category, "method": i.method, "amount": i.amount,
         "cycle": i.cycle, "pay_day": i.pay_day, "start_period": i.start_period,
         "end_period": i.end_period or None, "active": i.active, "is_default": i.is_default,
         "memo": i.memo or None, "updated_by": i.updated_by or None,
@@ -82,7 +82,7 @@ def item_json(i: FinanceItem) -> dict:
     }
 
 
-ITEM_FIELDS = ["name", "category", "amount", "cycle", "pay_day", "start_period", "end_period", "active", "memo"]
+ITEM_FIELDS = ["name", "category", "method", "amount", "cycle", "pay_day", "start_period", "end_period", "active", "memo"]
 
 
 def apply_item(obj: FinanceItem, d: dict):
@@ -94,6 +94,10 @@ def apply_item(obj: FinanceItem, d: dict):
         obj.name = name
     if "category" in d:
         obj.category = category(d["category"])
+    if "method" in d:
+        if d["method"] not in ("FIXED", "PER_PAID_STORE"):
+            raise ValueError("출금 방식은 고정 금액 · 유료 식당 수 × 단가 중 하나입니다.")
+        obj.method = d["method"]
     if "amount" in d:
         obj.amount = money(d["amount"], True)
     if "cycle" in d:

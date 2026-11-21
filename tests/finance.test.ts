@@ -1,17 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { byCategory, changePct, dueRows, dueTotals, invoiceIncome, itemAppliesIn, monthlySeries, recentPeriods, spotIncome, unknownIncomeCount, wonShort } from "../src/lib/finance/calc";
+import { byCategory, changePct, dueRows, dueTotals, invoiceIncome, itemAppliesIn, monthlySeries, paidStoreCount, recentPeriods, resolveAmount, spotIncome, unknownIncomeCount, wonShort } from "../src/lib/finance/calc";
 import { canViewFinance } from "../src/lib/finance/access";
 import { checkEntry, checkItem, todayKst } from "../src/lib/finance/validate";
 import { DEFAULT_ITEMS } from "../src/lib/finance/defaults";
-import type { ExpenseEntry, ExpenseItem, IncomeEntry } from "../src/lib/finance/types";
+import type { ExpenseEntry, ExpenseItem, IncomeEntry, PaidStore } from "../src/lib/finance/types";
 import type { TaxInvoice } from "../src/lib/draft/types";
 import type { SpotJob } from "../src/lib/draft/spot";
 
 /** 재무 — 순수 로직. 열람 권한 · 입금 집계 · 예정 출금 · 입력 검사. */
 
 const item = (o: Partial<ExpenseItem> = {}): ExpenseItem => ({
-  id: "i1", key: null, name: "서버", category: "인프라", amount: 100_000, cycle: "MONTHLY", pay_day: 10,
+  id: "i1", key: null, name: "서버", category: "인프라", method: "FIXED", amount: 100_000, cycle: "MONTHLY", pay_day: 10,
   start_period: "2026-01", end_period: null, active: true, is_default: false, memo: null, updated_by: null, updated_at: null, ...o,
 });
 const entry = (o: Partial<ExpenseEntry> = {}): ExpenseEntry => ({
@@ -157,4 +157,57 @@ test("항목 검사: 금액은 비우면 모름(null), 0 은 무료, 종료가 �
 test("todayKst 는 UTC 가 아직 어제여도 한국 날짜", () => {
   // 2026-11-20 16:30 UTC = 2026-11-21 01:30 KST
   assert.equal(todayKst(Date.UTC(2026, 10, 20, 16, 30)), "2026-11-21");
+});
+
+const stores = (...starts: (string | null)[]): PaidStore[] => starts.map((start, i) => ({ id: i + 1, name: `매장${i + 1}`, start }));
+
+test("유료 식당 수: 청구 시작 월이 그 달보다 뒤인 매장은 아직 안 센다, 시작이 없으면 처음부터", () => {
+  const s = stores(null, "2026-09", "2026-11", "2026-12");
+  assert.equal(paidStoreCount(s, "2026-08"), 1);
+  assert.equal(paidStoreCount(s, "2026-11"), 3);
+  assert.equal(paidStoreCount(s, "2026-12"), 4);
+});
+
+test("유료 식당 수: 못 읽었으면(null) 0 곳이 아니라 모름, 읽었는데 비었으면 0", () => {
+  assert.equal(paidStoreCount(null, "2026-11"), null);
+  assert.equal(paidStoreCount([], "2026-11"), 0);
+});
+
+test("출금 방식: 고정은 금액 그대로, 유료 식당 수 방식은 단가 × 곳 수", () => {
+  assert.equal(resolveAmount({ method: "FIXED", amount: 50_000 }, 12), 50_000);
+  assert.equal(resolveAmount({ method: "PER_PAID_STORE", amount: 3_000 }, 12), 36_000);
+  assert.equal(resolveAmount({ method: "PER_PAID_STORE", amount: 3_000 }, 0), 0, "0곳이면 0원 — 모름이 아니다");
+});
+
+test("출금 방식: 단가나 곳 수를 모르면 0 이 아니라 null", () => {
+  assert.equal(resolveAmount({ method: "PER_PAID_STORE", amount: null }, 12), null);
+  assert.equal(resolveAmount({ method: "PER_PAID_STORE", amount: 3_000 }, null), null);
+  assert.equal(resolveAmount({ method: "FIXED", amount: null }, 12), null);
+  // 고정 금액은 유료 식당 수를 못 읽어도 상관없다
+  assert.equal(resolveAmount({ method: "FIXED", amount: 10 }, null), 10);
+});
+
+test("예정 출금: 유료 식당 수 방식은 그 달 곳 수를 곱해 합계에 들어간다", () => {
+  const items = [item({ amount: 100_000 }), item({ id: "i2", name: "식사권", method: "PER_PAID_STORE", amount: 3_000 })];
+  const rows = dueRows(items, [], "2026-11", "2026-11-01", 12);
+  assert.deepEqual(rows.map((r) => [r.item.id, r.amount, r.count]), [["i1", 100_000, null], ["i2", 36_000, 12]]);
+  assert.deepEqual(dueTotals(rows), { amount: 136_000, unknown: 0 });
+});
+
+test("예정 출금: 식당 수를 못 읽으면 곱하는 항목만 모름으로 세고 합계에서 뺀다", () => {
+  const items = [item({ amount: 100_000 }), item({ id: "i2", method: "PER_PAID_STORE", amount: 3_000 })];
+  const rows = dueRows(items, [], "2026-11", "2026-11-01", null);
+  assert.deepEqual(dueTotals(rows), { amount: 100_000, unknown: 1 });
+});
+
+test("항목 검사: 출금 방식은 둘 중 하나, 안 주면 고정 금액", () => {
+  const d = checkItem({ name: "툴", start_period: "2026-11" }, false);
+  assert.ok(d.ok && d.value.method === "FIXED");
+  const p = checkItem({ name: "툴", start_period: "2026-11", method: "PER_PAID_STORE", amount: 3000 }, false);
+  assert.ok(p.ok && p.value.method === "PER_PAID_STORE");
+  assert.equal(checkItem({ name: "툴", start_period: "2026-11", method: "PER_STORE" }, false).ok, false);
+  assert.equal(checkItem({ method: "NOPE" }, true).ok, false);
+  // 부분 수정에서 방식을 안 보내면 건드리지 않는다
+  const only = checkItem({ amount: 10 }, true);
+  assert.ok(only.ok && !("method" in only.value));
 });

@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IconCheck, IconPlus, IconRefresh, IconTrash } from "@tabler/icons-react";
-import { dueRows, dueTotals, periodOf, recentPeriods, won } from "@/lib/finance/calc";
-import { CYCLE_LABEL, EXPENSE_CATEGORIES, type ExpenseEntry, type ExpenseItem } from "@/lib/finance/types";
+import { dueRows, dueTotals, paidStoreCount, periodOf, recentPeriods, resolveAmount, won } from "@/lib/finance/calc";
+import { CYCLE_LABEL, EXPENSE_CATEGORIES, METHOD_HINT, METHOD_LABEL, type ExpenseEntry, type ExpenseItem, type ExpenseMethod } from "@/lib/finance/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, Input, Kpi, Notice, PageHeader, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, periodLocal, rowClickable, todayLocal } from "../_shared/ui";
 import { useFinance } from "./useFinance";
 
@@ -33,7 +33,8 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
   const periods = useMemo(() => recentPeriods(thisPeriod, 12).reverse(), [thisPeriod]);
   const monthEntries = useMemo(() => f.entries.filter((e) => periodOf(e.paid_on) === period).sort((a, b) => (a.paid_on < b.paid_on ? 1 : -1)), [f.entries, period]);
   const monthTotal = monthEntries.reduce((a, e) => a + e.amount, 0);
-  const due = useMemo(() => dueRows(f.items, f.entries, period, today), [f.items, f.entries, period, today]);
+  const paidCount = paidStoreCount(f.paidStores, period);
+  const due = useMemo(() => dueRows(f.items, f.entries, period, today, paidCount), [f.items, f.entries, period, today, paidCount]);
   const dueSum = useMemo(() => dueTotals(due), [due]);
   const noAmount = f.items.filter((i) => i.active && i.amount === null);
 
@@ -48,6 +49,9 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
       </PageHeader>
 
       {f.expenseError && <div className="mb-4"><Notice tone="red" title="출금 장부를 읽지 못했습니다">{f.expenseError} 비어 있는 것이 아니라 못 읽은 것입니다.</Notice></div>}
+      {!f.loading && !f.expenseError && f.paidStores === null && f.items.some((i) => i.active && i.method === "PER_PAID_STORE") && (
+        <div className="mb-4"><Notice tone="amber" title="유료 식당 수를 읽지 못했습니다">「유료 식당 수 × 단가」 항목의 금액은 0원이 아니라 모름으로 보입니다. 파트너 매장 목록(백엔드)을 읽을 수 있을 때 다시 읽어 주세요.</Notice></div>
+      )}
       {!f.loading && !f.expenseError && noAmount.length > 0 && (
         <div className="mb-4"><Notice tone="amber" title={`금액이 비어 있는 고정 비용 ${noAmount.length}건`}>{noAmount.map((i) => i.name).join(" · ")} — 금액을 모르면 예정 합계가 모자랍니다. 항목을 눌러 금액을 적으세요(모르면 비워 두세요, 0원으로 채우지 않습니다).</Notice></div>
       )}
@@ -69,7 +73,7 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
                     <tr key={d.item.id}>
                       <Td><span className="font-semibold text-gray-900">{d.item.name}</span><span className="block text-[12px] text-gray-500">{d.item.category}</span></Td>
                       <Td className="text-[12px] text-gray-600 whitespace-nowrap">{d.due_on ? `${Number(d.due_on.slice(5, 7))}/${Number(d.due_on.slice(8))}` : "미정"}{d.overdue && <span className="ml-1.5"><Chip tone="red" dot>미기록</Chip></span>}</Td>
-                      <Td align="right" numeric className="font-semibold text-gray-900">{d.item.amount === null ? <Chip tone="amber">금액 미입력</Chip> : won(d.item.amount)}</Td>
+                      <Td align="right" numeric className="font-semibold text-gray-900">{d.amount === null ? <Chip tone="amber">{d.item.amount === null ? "금액 미입력" : "식당 수 못 읽음"}</Chip> : won(d.amount)}{d.item.method === "PER_PAID_STORE" && d.item.amount !== null && d.count !== null && <span className="block text-[11px] font-normal text-gray-500">{won(d.item.amount)} × 유료 {d.count}곳</span>}</Td>
                       <Td align="right"><Button size="sm" variant="primary" icon={<IconCheck />} onClick={() => setEntryPanel({ item: d.item, period, due_on: d.due_on })}>지급 기록</Button></Td>
                     </tr>
                   ))}
@@ -99,15 +103,16 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
 
           <Card flush title="고정 비용 항목" description="매달(또는 매년) 나가는 비용의 목록. 기본 항목은 처음부터 깔려 있고, 새로 나가는 비용은 「항목 추가」로 올립니다.">
             {f.items.length === 0 ? <Empty title="항목이 없습니다" /> : (
-              <Table minWidth="38rem">
-                <thead><tr><Th>항목</Th><Th width="7rem">분류</Th><Th width="8rem">주기</Th><Th width="9rem" align="right">금액</Th></tr></thead>
+              <Table minWidth="46rem">
+                <thead><tr><Th>항목</Th><Th width="7rem">분류</Th><Th width="8rem">주기</Th><Th width="11rem">출금 방식</Th><Th width="9rem" align="right">금액</Th></tr></thead>
                 <tbody>
                   {f.items.map((i) => (
                     <tr key={i.id} className={`${rowClickable} ${i.active ? "" : "opacity-60"}`} onClick={() => setItemPanel({ item: i })}>
                       <Td><span className="font-semibold text-gray-900">{i.name}</span>{i.is_default && <span className="ml-1.5"><Chip tone="gray">기본</Chip></span>}{!i.active && <span className="ml-1.5"><Chip tone="amber">쉬는 중</Chip></span>}</Td>
                       <Td className="text-[12px] text-gray-600">{i.category}</Td>
                       <Td className="text-[12px] text-gray-600 whitespace-nowrap">{CYCLE_LABEL[i.cycle]}{i.pay_day ? ` · ${i.pay_day}일` : ""}</Td>
-                      <Td align="right" numeric className="font-semibold text-gray-900">{i.amount === null ? <Chip tone="amber">금액 미입력</Chip> : won(i.amount)}</Td>
+                      <Td className="text-[12px] text-gray-600">{METHOD_LABEL[i.method ?? "FIXED"]}</Td>
+                      <Td align="right" numeric className="font-semibold text-gray-900">{i.amount === null ? <Chip tone="amber">금액 미입력</Chip> : i.method === "PER_PAID_STORE" ? <>{paidCount === null ? <span className="text-[12px] font-normal text-gray-500">곳당 {won(i.amount)}</span> : won(i.amount * paidCount)}<span className="block text-[11px] font-normal text-gray-500">곳당 {won(i.amount)}{paidCount !== null && ` × ${paidCount}곳`}</span></> : won(i.amount)}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -119,14 +124,26 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
         </>
       )}
 
-      {entryPanel && <EntryForm key={"entry" in entryPanel ? entryPanel.entry.id : (entryPanel.item?.id ?? "new")} panel={entryPanel} today={today} f={f} onClose={() => setEntryPanel(null)} />}
-      {itemPanel && <ItemForm key={itemPanel.item?.id ?? "new"} panel={itemPanel} f={f} onClose={() => setItemPanel(null)} />}
+      {entryPanel && <EntryForm key={"entry" in entryPanel ? entryPanel.entry.id : (entryPanel.item?.id ?? "new")} panel={entryPanel} today={today} paidCount={paidCount} f={f} onClose={() => setEntryPanel(null)} />}
+      {itemPanel && <ItemForm key={itemPanel.item?.id ?? "new"} panel={itemPanel} paidCount={paidCount} period={period} f={f} onClose={() => setItemPanel(null)} />}
     </>
   );
 }
 
+const METHODS: ExpenseMethod[] = ["FIXED", "PER_PAID_STORE"];
+const num = (v: string): number | null => { const n = Number(v.replace(/[,\s원]/g, "")); return v.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : null; };
+
+/** 출금 방식 드롭다운 — 항목 패널과 기록 패널이 같이 쓴다. */
+function MethodSelect({ value, onChange }: { value: ExpenseMethod; onChange: (m: ExpenseMethod) => void }) {
+  return (
+    <Field label="출금 방식" hint={METHOD_HINT[value]}>
+      <Select value={value} onChange={(e) => onChange(e.target.value as ExpenseMethod)}>{METHODS.map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}</Select>
+    </Field>
+  );
+}
+
 /** 출금 기록 패널 — 새로 적기(항목의 지급 포함) · 고치기 · 지우기. */
-function EntryForm({ panel, today, f, onClose }: { panel: NonNullable<EntryPanel>; today: string; f: ReturnType<typeof useFinance>; onClose: () => void }) {
+function EntryForm({ panel, today, paidCount, f, onClose }: { panel: NonNullable<EntryPanel>; today: string; paidCount: number | null; f: ReturnType<typeof useFinance>; onClose: () => void }) {
   const editing = "entry" in panel ? panel.entry : null;
   const item = "item" in panel ? panel.item : null;
   const dueOn = "due_on" in panel ? panel.due_on : null;
@@ -135,7 +152,11 @@ function EntryForm({ panel, today, f, onClose }: { panel: NonNullable<EntryPanel
   const [period, setPeriod] = useState(editing?.period ?? ("period" in panel ? panel.period : today.slice(0, 7)));
   const [name, setName] = useState(editing?.name ?? item?.name ?? "");
   const [category, setCategory] = useState<string>(editing?.category ?? item?.category ?? "기타");
-  const [amount, setAmount] = useState(editing ? String(editing.amount) : item?.amount != null ? String(item.amount) : "");
+  // 출금 방식 — 기록에는 계산된 금액만 남는다(방식은 이 패널에서 금액을 만드는 도구). 항목에서 왔으면 그 항목의 방식을 따른다.
+  const [method, setMethod] = useState<ExpenseMethod>(item?.method ?? "FIXED");
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : item && item.method === "FIXED" && item.amount != null ? String(item.amount) : "");
+  const [unit, setUnit] = useState(item && item.method === "PER_PAID_STORE" && item.amount != null ? String(item.amount) : "");
+  const [stores, setStores] = useState(paidCount !== null ? String(paidCount) : "");
   const [memo, setMemo] = useState(editing?.memo ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,9 +164,16 @@ function EntryForm({ panel, today, f, onClose }: { panel: NonNullable<EntryPanel
   const [periodTouched, setPeriodTouched] = useState(Boolean(editing) || Boolean(item));
   useEffect(() => { if (!periodTouched && /^\d{4}-\d{2}-\d{2}$/.test(paidOn)) setPeriod(paidOn.slice(0, 7)); }, [paidOn, periodTouched]);
 
+  const perStore = !editing && method === "PER_PAID_STORE";
+  const u = num(unit), n = num(stores);
+  const computed = u !== null && n !== null ? u * n : null;
+
   async function save() {
     setBusy(true); setError(null);
-    const body = { paid_on: paidOn, period, name, category, amount, memo, item_id: editing ? editing.item_id : (item?.id ?? null) };
+    if (perStore && computed === null) { setBusy(false); setError("단가와 유료 식당 수를 숫자로 적으세요."); return; }
+    // 곱해서 만든 금액은 기록에 그대로 박힌다 — 나중에 유료 식당이 늘고 줄어도 이 기록은 변하지 않는다. 어떻게 나온 금액인지는 메모에 남긴다.
+    const note = perStore && !memo.trim() ? `유료 식당 ${n}곳 × ${won(u ?? 0)}` : memo;
+    const body = { paid_on: paidOn, period, name, category, amount: perStore ? computed ?? 0 : amount, memo: note, item_id: editing ? editing.item_id : (item?.id ?? null) };
     const err = editing ? await f.patchEntry(editing.id, body) : await f.addEntry(body);
     setBusy(false);
     if (err) setError(err); else onClose();
@@ -162,23 +190,35 @@ function EntryForm({ panel, today, f, onClose }: { panel: NonNullable<EntryPanel
     <SlideOver open onClose={onClose} title={editing ? "출금 기록 고치기" : item ? `${item.name} 지급 기록` : "출금 기록"} subtitle={editing ? `${editing.created_by ?? ""} 기록` : item ? "고정 비용의 지급을 기록합니다" : "한 번 나간 비용이나 항목에 없는 지출을 적습니다"}
       footer={<><Button variant="primary" icon={<IconCheck />} onClick={save} disabled={busy}>{busy ? "저장 중…" : "저장"}</Button>{editing && <Button variant="danger" icon={<IconTrash />} onClick={remove} disabled={busy}>지우기</Button>}<Button variant="ghost" onClick={onClose}>닫기</Button></>}>
       {error && <Notice tone="red" title={error} />}
-      <Field label="내용" required><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="예: 6월 서버 비용" /></Field>
-      <Field label="금액(원)" required hint={item && item.amount === null ? "이 항목은 금액이 비어 있습니다. 여기서 적은 금액은 이 기록에만 들어갑니다." : undefined}><Input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 150000" /></Field>
+      <Field label="내용" required><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="예: 11월 식사권 대금" /></Field>
+      {!editing && <MethodSelect value={method} onChange={setMethod} />}
+      {perStore ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="식당 1곳당 단가(원)" required><Input inputMode="numeric" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="예: 3000" /></Field>
+            <Field label="유료 식당 수(곳)" required hint={paidCount === null ? "유료 식당 수를 읽지 못해 직접 적어야 합니다." : `${period.slice(5)}월 기준 현재 ${paidCount}곳. 다르면 고치세요.`}><Input inputMode="numeric" value={stores} onChange={(e) => setStores(e.target.value)} /></Field>
+          </div>
+          <div className="rounded-xl bg-navy/[0.04] px-3.5 py-3 text-[13px] text-gray-700" aria-live="polite">나갈 돈 <b className="text-gray-900 tabular-nums text-[15px]">{computed === null ? "-" : won(computed)}</b>{computed !== null && <span className="text-gray-500"> = {won(u ?? 0)} × {n}곳</span>}</div>
+        </>
+      ) : (
+        <Field label="금액(원)" required hint={item && item.method === "FIXED" && item.amount === null ? "이 항목은 금액이 비어 있습니다. 여기서 적은 금액은 이 기록에만 들어갑니다." : undefined}><Input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 150000" /></Field>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="나간 날" required hint="오늘 이후는 적을 수 없습니다."><Input type="date" value={paidOn} max={today} onChange={(e) => setPaidOn(e.target.value)} /></Field>
         <Field label="어느 달 몫" hint="나간 달과 다르면 바꾸세요."><Input type="month" value={period} onChange={(e) => { setPeriod(e.target.value); setPeriodTouched(true); }} /></Field>
       </div>
       <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
-      <Field label="메모"><Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} maxLength={300} placeholder="청구서 번호, 계좌이체 메모 등" /></Field>
+      <Field label="메모"><Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} maxLength={300} placeholder={perStore ? "비워 두면 「유료 식당 N곳 × 단가」가 남습니다" : "청구서 번호, 계좌이체 메모 등"} /></Field>
     </SlideOver>
   );
 }
 
 /** 고정 비용 항목 패널 — 추가 · 고치기 · 쉬게 하기 · (직접 추가한 것만) 지우기. */
-function ItemForm({ panel, f, onClose }: { panel: NonNullable<ItemPanel>; f: ReturnType<typeof useFinance>; onClose: () => void }) {
+function ItemForm({ panel, paidCount, period, f, onClose }: { panel: NonNullable<ItemPanel>; paidCount: number | null; period: string; f: ReturnType<typeof useFinance>; onClose: () => void }) {
   const it = panel.item;
   const [name, setName] = useState(it?.name ?? "");
   const [category, setCategory] = useState<string>(it?.category ?? "기타");
+  const [method, setMethod] = useState<ExpenseMethod>(it?.method ?? "FIXED");
   const [amount, setAmount] = useState(it?.amount != null ? String(it.amount) : "");
   const [cycle, setCycle] = useState<string>(it?.cycle ?? "MONTHLY");
   const [payDay, setPayDay] = useState(it?.pay_day ? String(it.pay_day) : "");
@@ -189,9 +229,12 @@ function ItemForm({ panel, f, onClose }: { panel: NonNullable<ItemPanel>; f: Ret
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const perStore = method === "PER_PAID_STORE";
+  const preview = resolveAmount({ method, amount: num(amount) }, paidCount);
+
   async function save() {
     setBusy(true); setError(null);
-    const body = { name, category, amount: amount.trim() === "" ? null : amount, cycle, pay_day: payDay.trim() === "" ? null : payDay, start_period: start, end_period: end || null, memo, active };
+    const body = { name, category, method, amount: amount.trim() === "" ? null : amount, cycle, pay_day: payDay.trim() === "" ? null : payDay, start_period: start, end_period: end || null, memo, active };
     const err = it ? await f.patchItem(it.id, body) : await f.addItem(body);
     setBusy(false);
     if (err) setError(err); else onClose();
@@ -213,10 +256,17 @@ function ItemForm({ panel, f, onClose }: { panel: NonNullable<ItemPanel>; f: Ret
         <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
         <Field label="주기"><Select value={cycle} onChange={(e) => setCycle(e.target.value)}><option value="MONTHLY">매월</option><option value="YEARLY">매년</option></Select></Field>
       </div>
+      <MethodSelect value={method} onChange={setMethod} />
       <div className="grid grid-cols-2 gap-3">
-        <Field label="금액(원)" hint="모르면 비워 두세요. 0원이 아니라 「미입력」으로 보입니다."><Input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 150000" /></Field>
+        <Field label={perStore ? "식당 1곳당 단가(원)" : "금액(원)"} hint="모르면 비워 두세요. 0원이 아니라 「미입력」으로 보입니다."><Input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={perStore ? "예: 3000" : "예: 150000"} /></Field>
         <Field label="지급일(일)" hint="1~31, 모르면 비움"><Input inputMode="numeric" value={payDay} onChange={(e) => setPayDay(e.target.value)} placeholder="예: 10" /></Field>
       </div>
+      {perStore && (
+        <div className="rounded-xl bg-navy/[0.04] px-3.5 py-3 text-[13px] text-gray-700" aria-live="polite">
+          {paidCount === null ? "유료 식당 수를 읽지 못해 나갈 돈을 계산할 수 없습니다." : <>{Number(period.slice(5))}월 유료 식당 <b className="text-gray-900">{paidCount}곳</b>{preview !== null && <> → 나갈 돈 <b className="text-gray-900 tabular-nums text-[15px]">{won(preview)}</b></>}</>}
+          <span className="block text-[12px] text-gray-500 mt-1">유료 식당은 입금 현황과 같은 기준입니다(제휴 중 · Boost/Premium · 테스트 매장 제외). 달마다 수가 바뀌면 나갈 돈도 따라 바뀝니다.</span>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="시작 월" required><Input type="month" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
         <Field label="종료 월" hint="비우면 계속"><Input type="month" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>

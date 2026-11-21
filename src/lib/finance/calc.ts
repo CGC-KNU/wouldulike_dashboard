@@ -1,6 +1,6 @@
 import { addPeriod, type TaxInvoice } from "../draft/types";
 import type { SpotJob } from "../draft/spot";
-import type { ExpenseCategory, ExpenseEntry, ExpenseItem, IncomeEntry } from "./types";
+import type { ExpenseCategory, ExpenseEntry, ExpenseItem, IncomeEntry, PaidStore } from "./types";
 
 /**
  * 재무 계산 — 화면 셋(현황 · 입금 · 출금)이 같은 함수를 쓴다. 같은 숫자를 두 곳에서 다르게 세지 않게.
@@ -109,8 +109,29 @@ export function itemAppliesIn(item: ExpenseItem, period: string): boolean {
   return true;
 }
 
+/**
+ * 그 달의 유료 식당 수. 청구 시작 월이 그 달보다 뒤인 매장은 아직 안 센다.
+ * ⚠️ 매장의 **지금** 상태(제휴 · 플랜)로 세므로 지난 달 숫자는 그때와 다를 수 있다 — 그래서 지급을 기록할 때 계산된 금액을
+ * 기록에 **그대로 박는다**(기록은 이후 매장이 바뀌어도 변하지 않는다). 못 읽었으면 null.
+ */
+export function paidStoreCount(stores: PaidStore[] | null, period: string): number | null {
+  if (!stores) return null;
+  return stores.filter((s) => !s.start || s.start <= period).length;
+}
+
+/** 출금 방식대로 나갈 돈을 계산한다. 단가를 모르거나(null), 곱할 수를 모르면 null(모름) — 0 으로 채우지 않는다. */
+export function resolveAmount(item: Pick<ExpenseItem, "method" | "amount">, paidCount: number | null): number | null {
+  if (item.amount === null) return null;
+  if (item.method === "PER_PAID_STORE") return paidCount === null ? null : item.amount * paidCount;
+  return item.amount;
+}
+
 export interface DueRow {
   item: ExpenseItem;
+  /** 방식대로 계산한 나갈 돈 — 모르면 null */
+  amount: number | null;
+  /** 유료 식당 수 방식일 때 곱한 수(아니면 null) */
+  count: number | null;
   /** 나가기로 한 날 — pay_day 를 모르면 null */
   due_on: string | null;
   overdue: boolean;
@@ -128,20 +149,20 @@ function lastDay(period: string): number {
  * 그 달에 나가야 하는데 아직 기록이 없는 고정 비용 — 「이번 달 예정」.
  * 기록이 있으면(같은 항목 · 같은 귀속 월) 예정에서 빠진다. 지급일이 오늘보다 앞이면 `overdue`(미기록).
  */
-export function dueRows(items: ExpenseItem[], entries: ExpenseEntry[], period: string, today: string): DueRow[] {
+export function dueRows(items: ExpenseItem[], entries: ExpenseEntry[], period: string, today: string, paidCount: number | null = null): DueRow[] {
   const done = new Set(entries.filter((e) => e.item_id && e.period === period).map((e) => e.item_id));
   return items
     .filter((it) => itemAppliesIn(it, period) && !done.has(it.id))
     .map((item) => {
       const due_on = item.pay_day ? `${period}-${pad(Math.min(item.pay_day, lastDay(period)))}` : null;
-      return { item, due_on, overdue: due_on !== null && due_on < today };
+      return { item, amount: resolveAmount(item, paidCount), count: item.method === "PER_PAID_STORE" ? paidCount : null, due_on, overdue: due_on !== null && due_on < today };
     })
     .sort((a, b) => (a.due_on ?? "9999").localeCompare(b.due_on ?? "9999") || a.item.name.localeCompare(b.item.name, "ko"));
 }
 
 /** 예정 합계 — 금액을 아는 항목만. 모르는 항목 수는 따로 돌려줘 화면이 「N건은 금액 미입력」이라고 말한다. */
 export function dueTotals(rows: DueRow[]): { amount: number; unknown: number } {
-  return { amount: sum(rows.map((r) => r.item.amount)), unknown: rows.filter((r) => r.item.amount === null).length };
+  return { amount: sum(rows.map((r) => r.amount)), unknown: rows.filter((r) => r.amount === null).length };
 }
 
 /** 원 단위 표기 — 화면 어디서나 같은 모양. */

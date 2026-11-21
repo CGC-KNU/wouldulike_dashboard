@@ -13,12 +13,16 @@ class FinanceItem(models.Model):
     """
 
     CYCLE = (("MONTHLY", "매월"), ("YEARLY", "매년"))
+    # 출금 방식 — FIXED: amount 가 나가는 금액 / PER_PAID_STORE: amount 는 식당 1곳당 단가, 나가는 돈 = 단가 × 그 달 유료 식당 수
+    # (곱하는 계산은 프론트가 한다. 유료 식당 수는 매장 DB 의 지금 상태에서 오고, 기록(FinanceEntry)에는 계산된 금액이 박힌다.)
+    METHOD = (("FIXED", "고정 금액"), ("PER_PAID_STORE", "유료 식당 수 × 단가"))
 
     # 기본 항목의 고정 이름표("default:infra"). 같은 기본 항목이 두 번 깔리지 않게 하는 열쇠 — 직접 추가한 항목은 NULL.
     key = models.CharField(max_length=40, unique=True, null=True, blank=True)
     name = models.CharField(max_length=60)
     category = models.CharField(max_length=20, default="기타")
-    amount = models.PositiveBigIntegerField(null=True, blank=True)
+    method = models.CharField(max_length=16, choices=METHOD, default="FIXED")
+    amount = models.PositiveBigIntegerField(null=True, blank=True)  # FIXED=금액 · PER_PAID_STORE=곳당 단가
     cycle = models.CharField(max_length=8, choices=CYCLE, default="MONTHLY")
     pay_day = models.PositiveSmallIntegerField(null=True, blank=True)  # 1~31
     start_period = models.CharField(max_length=7)  # YYYY-MM

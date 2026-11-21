@@ -15,7 +15,7 @@ export const currentPeriodKst = (now: number = Date.now()): string => new Date(n
 
 /** 기본 항목을 항목 모양으로 — 금액은 비어 있다. */
 export function defaultItem(d: (typeof DEFAULT_ITEMS)[number], id: string, period: string): ExpenseItem {
-  return { id, key: d.key, name: d.name, category: d.category, amount: null, cycle: d.cycle, pay_day: d.pay_day, start_period: period, end_period: null, active: true, is_default: true, memo: d.memo, updated_by: null, updated_at: null };
+  return { id, key: d.key, name: d.name, category: d.category, method: "FIXED", amount: null, cycle: d.cycle, pay_day: d.pay_day, start_period: period, end_period: null, active: true, is_default: true, memo: d.memo, updated_by: null, updated_at: null };
 }
 
 const seedItems = (): ExpenseItem[] => DEFAULT_ITEMS.map((d, i) => defaultItem(d, `default-${i + 1}`, currentPeriodKst()));

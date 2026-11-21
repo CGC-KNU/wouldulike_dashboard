@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { IconArrowRight, IconRefresh } from "@tabler/icons-react";
-import { byCategory, changePct, dueRows, dueTotals, monthlySeries, periodOf, recentPeriods, sortByDateDesc, unknownIncomeCount, won } from "@/lib/finance/calc";
+import { byCategory, changePct, dueRows, dueTotals, monthlySeries, paidStoreCount, periodOf, recentPeriods, sortByDateDesc, unknownIncomeCount, won } from "@/lib/finance/calc";
 import { INCOME_SOURCE_LABEL } from "@/lib/finance/types";
 import { Button, Card, Chip, DraftBadge, Empty, Kpi, Notice, PageHeader, Select, Skeleton, periodLocal, todayLocal } from "../_shared/ui";
 import FlowChart from "./FlowChart";
@@ -30,7 +30,8 @@ export default function FinanceOverview({ onGo }: { onGo?: (tab: string) => void
   const series = useMemo(() => monthlySeries(f.income, f.entries, recentPeriods(period, 6)), [f.income, f.entries, period]);
   const cur = series[series.length - 1];
   const prev = series[series.length - 2];
-  const due = useMemo(() => dueRows(f.items, f.entries, period, today), [f.items, f.entries, period, today]);
+  const paidCount = paidStoreCount(f.paidStores, period);
+  const due = useMemo(() => dueRows(f.items, f.entries, period, today, paidCount), [f.items, f.entries, period, today, paidCount]);
   const dueSum = useMemo(() => dueTotals(due), [due]);
   const cats = useMemo(() => byCategory(f.entries, period), [f.entries, period]);
   const catMax = Math.max(1, ...cats.map((c) => c.amount));
@@ -87,11 +88,11 @@ export default function FinanceOverview({ onGo }: { onGo?: (tab: string) => void
                     <li key={d.item.id} className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-black/[0.05] last:border-0">
                       <div className="min-w-0">
                         <p className="text-[13px] font-semibold text-gray-900 truncate">{d.item.name}</p>
-                        <p className="text-[12px] text-gray-500 mt-0.5">{d.due_on ? `${Number(d.due_on.slice(5, 7))}/${Number(d.due_on.slice(8))} 지급` : "지급일 미정"}</p>
+                        <p className="text-[12px] text-gray-500 mt-0.5">{d.due_on ? `${Number(d.due_on.slice(5, 7))}/${Number(d.due_on.slice(8))} 지급` : "지급일 미정"}{d.item.method === "PER_PAID_STORE" && (d.count !== null && d.item.amount !== null ? ` · 곳당 ${won(d.item.amount)} × 유료 ${d.count}곳` : " · 유료 식당 수 × 단가")}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {d.overdue && <Chip tone="red" dot>미기록</Chip>}
-                        {d.item.amount === null ? <Chip tone="amber">금액 미입력</Chip> : <span className="text-[13px] font-semibold tabular-nums text-gray-900">{won(d.item.amount)}</span>}
+                        {d.amount === null ? <Chip tone="amber">{d.item.amount === null ? "금액 미입력" : "식당 수 못 읽음"}</Chip> : <span className="text-[13px] font-semibold tabular-nums text-gray-900">{won(d.amount)}</span>}
                       </div>
                     </li>
                   ))}

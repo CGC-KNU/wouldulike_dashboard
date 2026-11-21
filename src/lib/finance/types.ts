@@ -8,6 +8,26 @@
 export const EXPENSE_CATEGORIES = ["식사권", "인프라", "도구·구독", "마케팅·협찬", "제작", "인건비", "세금·수수료", "기타"] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
+/**
+ * 출금 방식 — 금액을 어떻게 정하는가. 드롭다운으로 고른다.
+ *   FIXED          그냥 출금액: 적은 금액이 곧 나가는 돈.
+ *   PER_PAID_STORE 유료 식당 수 × 단가: 적은 금액은 「식당 1곳당 단가」이고, 나가는 돈 = 단가 × 그 달 유료 식당 수.
+ * 방식을 더하려면 여기에 키를 하나 더하고 calc.ts 의 resolveAmount 에 한 줄을 더하면 된다.
+ */
+export type ExpenseMethod = "FIXED" | "PER_PAID_STORE";
+export const METHOD_LABEL: Record<ExpenseMethod, string> = { FIXED: "고정 금액", PER_PAID_STORE: "유료 식당 수 × 단가" };
+export const METHOD_HINT: Record<ExpenseMethod, string> = {
+  FIXED: "적은 금액이 그대로 나갑니다.",
+  PER_PAID_STORE: "식당 1곳당 단가를 적으면, 유료 식당 수만큼 곱해 나갈 돈을 계산합니다.",
+};
+
+/** 유료 식당 한 곳 — 수를 셀 때 필요한 것만. `start` 는 청구 시작 월(없으면 처음부터 센다). */
+export interface PaidStore {
+  id: number;
+  name: string;
+  start: string | null;
+}
+
 export type ExpenseCycle = "MONTHLY" | "YEARLY";
 export const CYCLE_LABEL: Record<ExpenseCycle, string> = { MONTHLY: "매월", YEARLY: "매년" };
 
@@ -22,6 +42,8 @@ export interface ExpenseItem {
   key: string | null;
   name: string;
   category: ExpenseCategory;
+  method: ExpenseMethod;
+  /** FIXED 면 나가는 금액, PER_PAID_STORE 면 식당 1곳당 단가. 모르면 null. */
   amount: number | null;
   cycle: ExpenseCycle;
   /** 매월 며칠에 나가는가(1~31). 모르면 null. */
