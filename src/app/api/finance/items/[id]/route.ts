@@ -6,7 +6,7 @@ import { checkItem } from "@/lib/finance/validate";
 import type { ExpenseItem } from "@/lib/finance/types";
 
 /**
- * 고정 비용 항목 고치기 · 지우기.
+ * 반복 항목 고치기 · 지우기.
  * 기본 항목은 **지우지 않고 쉬게만** 한다(active=false) — 지우면 다음 접속 때 다시 깔린다.
  * 지급 기록이 하나라도 달린 항목도 지우지 않는다: 지난 달 장부의 항목 이름이 사라지면 안 된다. 쉬게 하면 된다.
  */

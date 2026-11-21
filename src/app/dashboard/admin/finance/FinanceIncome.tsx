@@ -28,6 +28,9 @@ export default function FinanceIncome({ onGo }: { onGo?: (tab: string) => void }
   const rows = useMemo(() => inPeriod.filter((i) => source === "all" || i.source === source), [inPeriod, source]);
   const known = rows.filter((r) => r.amount !== null);
   const total = known.reduce((a, r) => a + (r.amount ?? 0), 0);
+  // 매출은 공급가로 센다 — 받은 부가세는 다음 납부 때 나갈 돈이다
+  const supply = known.reduce((a, r) => a + (r.supply ?? 0), 0);
+  const tax = known.reduce((a, r) => a + (r.tax ?? 0), 0);
   const unknown = rows.length - known.length;
   const count = (s: SourceFilter) => (s === "all" ? inPeriod.length : inPeriod.filter((i) => i.source === s).length);
 
@@ -46,8 +49,9 @@ export default function FinanceIncome({ onGo }: { onGo?: (tab: string) => void }
 
       {f.incomeError && <div className="mb-4"><Notice tone="red" title="입금 내역을 읽지 못했습니다">{f.incomeError} 비어 있는 것이 아니라 못 읽은 것입니다.</Notice></div>}
 
-      <div className="sat-stagger grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
-        <Kpi label="입금 합계" value={f.incomeError ? "-" : won(total)} hint={period === "all" ? "전체 기간" : monthLabel(period)} />
+      <div className="sat-stagger grid grid-cols-2 xl:grid-cols-4 gap-2.5 mb-4">
+        <Kpi label="입금(공급가)" value={f.incomeError ? "-" : won(supply)} hint={f.incomeError ? undefined : `통장 합계 ${won(total)} · ${period === "all" ? "전체 기간" : monthLabel(period)}`} />
+        <Kpi label="받은 부가세" value={f.incomeError ? "-" : won(tax)} hint="매출이 아니라 납부할 돈(예수금)" />
         <Kpi label="입금 건수" value={f.incomeError ? "-" : rows.length} suffix="건" hint={known.length === rows.length ? undefined : `금액을 아는 ${known.length}건만 합산`} />
         <Kpi label="금액 미정" value={f.incomeError ? "-" : unknown} suffix="건" tone="alert" hint={unknown ? "스팟 제작 가격이 비어 있음" : "모든 입금의 금액을 압니다"} />
       </div>
@@ -60,14 +64,16 @@ export default function FinanceIncome({ onGo }: { onGo?: (tab: string) => void }
         {f.loading && !f.income.length ? <Skeleton rows={6} cols={4} /> : rows.length === 0 ? (
           <Empty title="이 조건의 입금이 없습니다" detail="Astro에서 입금을 확인한 건만 올라옵니다. 청구는 나갔는데 입금이 안 찍혔다면 입금 현황에서 확인하세요." />
         ) : (
-          <Table minWidth="34rem">
-            <thead><tr><Th width="5rem">날짜</Th><Th>내용</Th><Th width="7rem">구분</Th><Th width="9rem" align="right">금액</Th></tr></thead>
+          <Table minWidth="44rem">
+            <thead><tr><Th width="5rem">날짜</Th><Th>내용</Th><Th width="7rem">구분</Th><Th width="8rem" align="right">공급가</Th><Th width="7rem" align="right">세액</Th><Th width="9rem" align="right">입금액</Th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id}>
                   <Td className="text-[12px] text-gray-600 whitespace-nowrap">{r.paid_on.slice(2).replace(/-/g, ".")}</Td>
                   <Td><span className="font-semibold text-gray-900">{r.name}</span>{r.detail && <span className="block text-[12px] text-gray-500">{r.detail}</span>}</Td>
                   <Td><Chip tone={r.source === "invoice" ? "blue" : "navy"}>{INCOME_SOURCE_LABEL[r.source]}</Chip></Td>
+                  <Td align="right" numeric className="text-gray-700">{r.supply === null ? "—" : won(r.supply)}</Td>
+                  <Td align="right" numeric className="text-gray-500">{r.tax === null ? "—" : won(r.tax)}</Td>
                   <Td align="right" numeric className="font-semibold text-gray-900">{r.amount === null ? <Chip tone="amber">금액 미정</Chip> : won(r.amount)}</Td>
                 </tr>
               ))}

@@ -5,7 +5,7 @@ import { currentPeriodKst, newId, readItems, writeItems } from "@/lib/finance/st
 import { checkItem } from "@/lib/finance/validate";
 import type { ExpenseItem } from "@/lib/finance/types";
 
-/** 고정 비용 항목 추가 — 「새로 나가는 비용」을 목록에 올린다. 기본 항목은 처음에 깔려 있다. */
+/** 반복 항목 추가 — 「새로 나가는 비용」을 목록에 올린다. 기본 항목은 처음에 깔려 있다. */
 export async function POST(req: NextRequest) {
   const deny = await requireFinance();
   if (deny) return deny;

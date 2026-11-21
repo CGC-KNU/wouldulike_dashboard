@@ -1,4 +1,4 @@
-import { EXPENSE_CATEGORIES, type ExpenseCategory, type ExpenseCycle, type ExpenseEntry, type ExpenseItem, type ExpenseMethod } from "./types";
+import { ACCOUNTS, BEHAVIORS, EXPENSE_CATEGORIES, FUNDING_KINDS, FUNDING_STATUSES, type AccountBalance, type ExpenseAccount, type ExpenseBehavior, type ExpenseCategory, type ExpenseCycle, type ExpenseEntry, type ExpenseItem, type ExpenseMethod, type FundingEvent, type FundingKind, type FundingStatus } from "./types";
 
 /**
  * 재무 입력 검사 — 라우트가 백엔드·초안 어느 쪽에 쓰기 전에 같은 규칙으로 거른다.
@@ -36,7 +36,7 @@ function money(v: unknown, allowNull: boolean): Checked<number | null> {
 
 type Body = Record<string, unknown>;
 
-/** 고정 비용 항목 — 만들 때(`partial=false`)는 이름이 필수, 고칠 때는 온 칸만 본다. */
+/** 반복 항목 — 만들 때(`partial=false`)는 이름이 필수, 고칠 때는 온 칸만 본다. */
 export function checkItem(body: Body, partial: boolean): Checked<Partial<ExpenseItem>> {
   const out: Partial<ExpenseItem> = {};
 
@@ -80,6 +80,19 @@ export function checkItem(body: Body, partial: boolean): Checked<Partial<Expense
     if (e === null || e === undefined || e === "") out.end_period = null;
     else if (!isPeriod(e)) return bad("종료 월은 YYYY-MM 형식이어야 합니다.");
     else out.end_period = e;
+  }
+  // 행동 방식 · 회계 위치 — 항목에만 있다. 비우면 미분류(null).
+  if (!partial || "behavior" in body) {
+    const b = body.behavior;
+    if (b === null || b === undefined || b === "") out.behavior = null;
+    else if (!(BEHAVIORS as string[]).includes(b as string)) return bad("행동 방식은 고정 · 변동 · 준변동 · 일회성 중 하나입니다.");
+    else out.behavior = b as ExpenseBehavior;
+  }
+  if (!partial || "account" in body) {
+    const a = body.account;
+    if (a === null || a === undefined || a === "") out.account = null;
+    else if (!(ACCOUNTS as string[]).includes(a as string)) return bad("회계 위치는 COGS · S&M · R&D · G&A 중 하나입니다.");
+    else out.account = a as ExpenseAccount;
   }
   if ("active" in body) out.active = Boolean(body.active);
   if ("memo" in body) {
@@ -131,4 +144,101 @@ export function checkEntry(body: Body, partial: boolean, today: string): Checked
     out.memo = memo || null;
   }
   return { ok: true, value: out };
+}
+
+const memoOf = (v: unknown): Checked<string | null> => {
+  const memo = typeof v === "string" ? v.trim() : "";
+  return memo.length > 300 ? bad("메모는 300자 이하여야 합니다.") : { ok: true, value: memo || null };
+};
+
+/** 월말 잔고 — 0원은 있을 수 있다(빈 통장). 기준일은 오늘 이후가 될 수 없다. */
+export function checkBalance(body: Body, partial: boolean, today: string): Checked<Partial<AccountBalance>> {
+  const out: Partial<AccountBalance> = {};
+  if (!partial || "account_name" in body) {
+    const name = typeof body.account_name === "string" ? body.account_name.trim() : "";
+    if (!name) return bad("계좌 이름을 입력하세요.");
+    if (name.length > 40) return bad("계좌 이름은 40자 이하여야 합니다.");
+    out.account_name = name;
+  }
+  if (!partial || "last4" in body) {
+    const v = typeof body.last4 === "string" || typeof body.last4 === "number" ? String(body.last4).trim() : "";
+    if (v && !/^\d{4}$/.test(v)) return bad("계좌 끝 4자리는 숫자 4개입니다.");
+    out.last4 = v || null;
+  }
+  if (!partial || "amount" in body) {
+    const m = money(body.amount, false);
+    if (!m.ok) return bad(m.detail.replace("금액", "잔고"));
+    out.amount = m.value as number;
+  }
+  if (!partial || "as_of" in body) {
+    if (!isDate(body.as_of)) return bad("기준일은 YYYY-MM-DD 형식이어야 합니다.");
+    if (body.as_of > today) return bad("기준일은 오늘 이후가 될 수 없습니다.");
+    out.as_of = body.as_of;
+    out.period = body.as_of.slice(0, 7);
+  }
+  if ("reconciled" in body) out.reconciled = Boolean(body.reconciled);
+  if ("memo" in body) {
+    const m = memoOf(body.memo);
+    if (!m.ok) return m;
+    out.memo = m.value;
+  }
+  return { ok: true, value: out };
+}
+
+/** 자금 조달 — 「입금」이면 금액 · 입금일이 있어야 한다(한쪽만 고칠 때는 라우트가 합쳐서 다시 본다: checkFundingWhole). */
+export function checkFunding(body: Body, partial: boolean, today: string): Checked<Partial<FundingEvent>> {
+  const out: Partial<FundingEvent> = {};
+  const optDate = (k: string, label: string): Checked<string | null> => {
+    const v = body[k];
+    if (v === null || v === undefined || v === "") return { ok: true, value: null };
+    return isDate(v) ? { ok: true, value: v } : bad(`${label}은 YYYY-MM-DD 형식이어야 합니다.`);
+  };
+  if (!partial || "kind" in body) {
+    if (!(FUNDING_KINDS as string[]).includes(body.kind as string)) return bad("종류는 SAFE · 지원금 · 상금 · 대출 중 하나입니다.");
+    out.kind = body.kind as FundingKind;
+  }
+  if (!partial || "status" in body) {
+    const st = body.status ?? "PLANNED";
+    if (!(FUNDING_STATUSES as string[]).includes(st as string)) return bad("상태는 예정 · 확정 · 입금 중 하나입니다.");
+    out.status = st as FundingStatus;
+  }
+  if (!partial || "name" in body) {
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name) return bad("이름을 입력하세요.");
+    if (name.length > 60) return bad("이름은 60자 이하여야 합니다.");
+    out.name = name;
+  }
+  if (!partial || "amount" in body) {
+    const m = money(body.amount, true);
+    if (!m.ok) return m;
+    out.amount = m.value;
+  }
+  for (const [k, label] of [["expected_on", "예정일"], ["received_on", "입금일"], ["spend_deadline", "집행 마감"]] as const) {
+    if (!partial || k in body) {
+      const d = optDate(k, label);
+      if (!d.ok) return d;
+      out[k] = d.value;
+    }
+  }
+  if (out.received_on && out.received_on > today) return bad("입금일은 오늘 이후가 될 수 없습니다.");
+  if (!partial || "restricted" in body) out.restricted = Boolean(body.restricted);
+  if (!partial || "restricted_left" in body) {
+    const m = money(body.restricted_left, true);
+    if (!m.ok) return bad(m.detail.replace("금액", "남은 전용 잔액"));
+    out.restricted_left = m.value;
+  }
+  if ("memo" in body) {
+    const m = memoOf(body.memo);
+    if (!m.ok) return m;
+    out.memo = m.value;
+  }
+  return { ok: true, value: out };
+}
+
+/** 합친 뒤에 보는 규칙 — 입금이면 금액 · 입금일 필수, 남은 전용 잔액은 금액을 넘지 않는다. */
+export function checkFundingWhole(f: Partial<FundingEvent>): string | null {
+  if (f.status === "RECEIVED" && f.amount == null) return "입금된 조달은 금액이 있어야 합니다.";
+  if (f.status === "RECEIVED" && !f.received_on) return "입금된 조달은 입금일이 있어야 합니다.";
+  if (f.restricted_left != null && f.amount != null && f.restricted_left > f.amount) return "남은 전용 잔액이 조달 금액보다 큽니다.";
+  return null;
 }

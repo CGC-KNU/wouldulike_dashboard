@@ -5,7 +5,7 @@ import { remoteGet } from "@/lib/draft/remote";
 import { seedInvoices } from "@/lib/draft/seed";
 import type { TaxInvoice } from "@/lib/draft/types";
 import type { SpotJob } from "@/lib/draft/spot";
-import { invoiceIncome, sortByDateDesc, spotIncome } from "@/lib/finance/calc";
+import { billingLines, invoiceIncome, sortByDateDesc, spotIncome } from "@/lib/finance/calc";
 
 /**
  * 재무 · 입금 내역 — **읽기 전용**.
@@ -13,6 +13,7 @@ import { invoiceIncome, sortByDateDesc, spotIncome } from "@/lib/finance/calc";
  * 입금을 찍는 곳은 Astro 하나다(입금 현황 · 스팟 제작). 여기서는 그 기록을 모아서 돌려줄 뿐이고,
  * 입금을 새로 쓰는 길은 만들지 않았다 — 두 화면이 다른 숫자를 말하지 않게.
  * 원본은 Astro 와 같은 읽기 경로를 그대로 쓴다: 백엔드(astro 앱)가 답하면 그쪽, 아니면 초안 저장소.
+ * `billing` 은 MRR 용 구독 청구 줄(발행 · 입금된 계산서의 귀속 월 · 공급가) — 입금 여부와 무관한 청구 기준이다.
  */
 export async function GET() {
   const deny = await requireFinance();
@@ -33,6 +34,7 @@ export async function GET() {
 
   return NextResponse.json({
     income: sortByDateDesc([...invoiceIncome(invoices), ...spotIncome(spotList)]),
+    billing: billingLines(invoices),
     // 초안 저장소를 읽었으면 알린다 — 실데이터와 섞여 보이면 안 된다
     draft: !inv.handled || !spots.handled,
   });

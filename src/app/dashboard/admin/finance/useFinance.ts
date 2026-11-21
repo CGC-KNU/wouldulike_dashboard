@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ExpenseEntry, ExpenseItem, IncomeEntry, PaidStore } from "@/lib/finance/types";
+import type { AccountBalance, BillingLine, ExpenseEntry, ExpenseItem, FundingEvent, IncomeEntry, PaidStore } from "@/lib/finance/types";
 
 /**
  * 재무 세 화면(현황 · 입금 · 출금)이 같이 쓰는 데이터 훅.
@@ -28,7 +28,31 @@ export interface ItemInput {
   pay_day?: number | string | null;
   start_period?: string;
   end_period?: string | null;
+  behavior?: string | null;
+  account?: string | null;
   active?: boolean;
+  memo?: string;
+}
+
+export interface BalanceInput {
+  account_name?: string;
+  last4?: string | null;
+  amount?: number | string;
+  as_of?: string;
+  reconciled?: boolean;
+  memo?: string;
+}
+
+export interface FundingInput {
+  kind?: string;
+  status?: string;
+  name?: string;
+  amount?: number | string | null;
+  expected_on?: string | null;
+  received_on?: string | null;
+  restricted?: boolean;
+  restricted_left?: number | string | null;
+  spend_deadline?: string | null;
   memo?: string;
 }
 
@@ -39,6 +63,9 @@ async function detailOf(res: Response, fallback: string): Promise<string> {
 
 export function useFinance() {
   const [income, setIncome] = useState<IncomeEntry[]>([]);
+  const [billing, setBilling] = useState<BillingLine[]>([]);
+  const [balances, setBalances] = useState<AccountBalance[]>([]);
+  const [fundings, setFundings] = useState<FundingEvent[]>([]);
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [entries, setEntries] = useState<ExpenseEntry[]>([]);
   /** 유료 식당 — 「유료 식당 수 × 단가」의 곱할 수. null 은 못 읽음(0곳이 아니다). */
@@ -48,18 +75,23 @@ export function useFinance() {
   /** 못 읽은 것과 비어 있는 것을 가른다 — 못 읽었으면 0 이 아니라 모름이다. */
   const [incomeError, setIncomeError] = useState<string | null>(null);
   const [expenseError, setExpenseError] = useState<string | null>(null);
+  /** 월말 잔고 · 자금 조달 — 못 읽으면 가용 현금 · 런웨이는 모름이다. */
+  const [cashError, setCashError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [i, e] = await Promise.all([
+    const [i, e, b, fu] = await Promise.all([
       fetch("/api/finance/income", { cache: "no-store" }).catch(() => null),
       fetch("/api/finance/expenses", { cache: "no-store" }).catch(() => null),
+      fetch("/api/finance/balances", { cache: "no-store" }).catch(() => null),
+      fetch("/api/finance/fundings", { cache: "no-store" }).catch(() => null),
     ]);
     let isDraft = false;
 
     if (i?.ok) {
-      const d = (await i.json().catch(() => ({}))) as { income?: IncomeEntry[]; draft?: boolean };
+      const d = (await i.json().catch(() => ({}))) as { income?: IncomeEntry[]; billing?: BillingLine[]; draft?: boolean };
       setIncome(d.income ?? []);
+      setBilling(d.billing ?? []);
       setIncomeError(null);
       isDraft = isDraft || Boolean(d.draft);
     } else {
@@ -75,6 +107,18 @@ export function useFinance() {
       isDraft = isDraft || Boolean(d.draft);
     } else {
       setExpenseError(e ? await detailOf(e, "출금 장부를 읽지 못했습니다.") : "출금 장부를 읽지 못했습니다.");
+    }
+
+    if (b?.ok && fu?.ok) {
+      const db = (await b.json().catch(() => ({}))) as { balances?: AccountBalance[]; draft?: boolean };
+      const df = (await fu.json().catch(() => ({}))) as { fundings?: FundingEvent[]; draft?: boolean };
+      setBalances(db.balances ?? []);
+      setFundings(df.fundings ?? []);
+      setCashError(null);
+      isDraft = isDraft || Boolean(db.draft) || Boolean(df.draft);
+    } else {
+      const bad = b && !b.ok ? b : fu && !fu.ok ? fu : null;
+      setCashError(bad ? await detailOf(bad, "월말 잔고 · 자금 조달을 읽지 못했습니다.") : "월말 잔고 · 자금 조달을 읽지 못했습니다.");
     }
 
     setDraft(isDraft);
@@ -100,13 +144,19 @@ export function useFinance() {
   );
 
   return {
-    income, items, entries, paidStores, draft, loading, incomeError, expenseError, reload: load,
+    income, billing, items, entries, balances, fundings, paidStores, draft, loading, incomeError, expenseError, cashError, reload: load,
     addEntry: (b: EntryInput) => write("POST", "/api/finance/expenses", b, "기록하지 못했습니다."),
     patchEntry: (id: string, b: Partial<EntryInput>) => write("PATCH", `/api/finance/expenses/${encodeURIComponent(id)}`, b, "저장하지 못했습니다."),
     deleteEntry: (id: string) => write("DELETE", `/api/finance/expenses/${encodeURIComponent(id)}`, undefined, "지우지 못했습니다."),
     addItem: (b: ItemInput) => write("POST", "/api/finance/items", b, "추가하지 못했습니다."),
     patchItem: (id: string, b: ItemInput) => write("PATCH", `/api/finance/items/${encodeURIComponent(id)}`, b, "저장하지 못했습니다."),
     deleteItem: (id: string) => write("DELETE", `/api/finance/items/${encodeURIComponent(id)}`, undefined, "지우지 못했습니다."),
+    addBalance: (b: BalanceInput) => write("POST", "/api/finance/balances", b, "저장하지 못했습니다."),
+    patchBalance: (id: string, b: BalanceInput) => write("PATCH", `/api/finance/balances/${encodeURIComponent(id)}`, b, "저장하지 못했습니다."),
+    deleteBalance: (id: string) => write("DELETE", `/api/finance/balances/${encodeURIComponent(id)}`, undefined, "지우지 못했습니다."),
+    addFunding: (b: FundingInput) => write("POST", "/api/finance/fundings", b, "저장하지 못했습니다."),
+    patchFunding: (id: string, b: FundingInput) => write("PATCH", `/api/finance/fundings/${encodeURIComponent(id)}`, b, "저장하지 못했습니다."),
+    deleteFunding: (id: string) => write("DELETE", `/api/finance/fundings/${encodeURIComponent(id)}`, undefined, "지우지 못했습니다."),
   };
 }
 
