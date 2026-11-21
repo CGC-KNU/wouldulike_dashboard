@@ -5,6 +5,7 @@ import { IconArrowRight } from "@tabler/icons-react";
 import { BLOCKER_KIND_LABEL, type Blocker } from "@/lib/draft/blockers";
 import type { StoreMetric, StoreRow } from "@/lib/draft/types";
 import { focusRing } from "./ui";
+import StoreBenefitModal from "./StoreBenefitModal";
 
 /**
  * 메인 「파트너 매장」 칸 (1121 민열님 2차: "덜 직관적 — 매장별 쿠폰 · 스탬프 처리량이 바로 보이게, 상권(대학)별 탭").
@@ -24,10 +25,14 @@ interface Row {
   todo?: Blocker; todoCount: number;
 }
 
-export default function HomeStores({ stores, metrics, blockers, leadStale, meetings, onGo }: {
+export default function HomeStores({ stores, metrics, blockers, leadStale, meetings, onGo, actor, onStoresChanged }: {
   stores: StoreRow[] | null; metrics: StoreMetric[] | null | undefined; blockers: Blocker[];
   leadStale?: number; meetings?: number; onGo: (t: string) => void;
+  /** 쿠폰 · 스탬프 팝업에서 영업 기록을 저장할 때 「누가」 */
+  actor: string; onStoresChanged?: () => void;
 }) {
+  /** 매장 이름을 누르면 그 매장 쿠폰 · 스탬프 팝업 (1121) */
+  const [benefitOf, setBenefitOf] = useState<number | null>(null);
   const [campus, setCampus] = useState<string>("전체");
   const [sort, setSort] = useState<Sort>("use");
 
@@ -106,6 +111,7 @@ export default function HomeStores({ stores, metrics, blockers, leadStale, meeti
           ))}
         </div>
       </div>
+      <p className="mt-1 text-[11px] text-gray-400">매장 이름을 누르면 쿠폰 · 스탬프를 보고 바로 고칠 수 있습니다.</p>
       <div className="mt-1.5 -mx-1 max-h-[24rem] overflow-y-auto">
         <table className="w-full text-[12.5px]">
           <thead className="sticky top-0 bg-white/95 backdrop-blur z-[1]">
@@ -125,7 +131,7 @@ export default function HomeStores({ stores, metrics, blockers, leadStale, meeti
               return (
                 <tr key={r.id} className={urgent ? "bg-red-500/[0.035]" : ""}>
                   <td className={`py-2 px-1 min-w-0 border-l-2 ${urgent ? "border-l-red-400" : r.todo ? "border-l-amber-300" : "border-l-transparent"}`}>
-                    <button type="button" onClick={() => onGo(`astro-ops?open=${r.id}`)} className={`text-left hover:underline ${focusRing} rounded`}>
+                    <button type="button" onClick={() => setBenefitOf(r.id)} title="쿠폰 · 스탬프 보기 · 고치기" className={`text-left hover:underline decoration-dotted underline-offset-2 ${focusRing} rounded`}>
                       <span className="font-semibold text-gray-900">{r.name}</span>
                     </button>
                     <span className="ml-1.5 text-[10.5px] font-semibold text-gray-400">{r.paid ? "유료" : "무료"}{campus === "전체" ? ` · ${r.campus}` : ""}{r.hidden ? " · 앱 숨김" : ""}</span>
@@ -162,6 +168,7 @@ export default function HomeStores({ stores, metrics, blockers, leadStale, meeti
           이번 주 미팅 {meetings ?? "—"} →
         </button>
       </div>
+      <StoreBenefitModal store={stores.find((s) => s.restaurant_id === benefitOf) ?? null} actor={actor} onClose={() => setBenefitOf(null)} onGo={onGo} onSaved={onStoresChanged} />
     </div>
   );
 }
