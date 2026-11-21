@@ -33,7 +33,10 @@ interface MarketingSummary {
   growth_7d: number | null; growth_28d: number | null; spark: number[];
   trends: { name: string; use: string; refs: { handle: string; permalink: string }[] }[]; trend_src: "ai" | "tags"; trends_at: string | null;
   hot: { handle: string; name: string; followers: number | null; eng_rate: number | null }[];
+  /** 우리 최근 게시물 — 오래된 것부터. views 는 7일차(basis D7) 아니면 지금까지 누적. vs_median 은 D7 끼리만 */
+  posts?: RecentOwnPost[];
 }
+interface RecentOwnPost { posted_at: string; format: string; topic: string; permalink: string; views: number | null; saved: number | null; likes: number | null; basis: string; age_days: number; vs_median: number | null }
 interface Momentum { available: boolean; delta_pct?: number; direction?: "up" | "down" | "flat"; format?: string; recent_median?: number; n?: number; min_n?: number }
 
 const nf = new Intl.NumberFormat("ko-KR");
@@ -132,6 +135,7 @@ export default function Launcher({ available, extras = [], userName, username = 
             <Mini label="게시물 조회 흐름" value={mom?.available ? `${(mom.delta_pct ?? 0) > 0 ? "+" : ""}${mom.delta_pct}%` : undefined} sub={mom === undefined ? "읽는 중" : mom?.available ? "카드뉴스 최근 절반 vs 앞 절반" : "표본 모으는 중"} />
           </div>
           {mkt?.spark && mkt.spark.length > 2 && <Spark values={mkt.spark} />}
+          {mkt?.posts && mkt.posts.length > 0 && <PostFlow posts={mkt.posts} onMore={() => go("satellite?screen=post-list")} />}
           <div className="mt-3 pt-3 border-t border-black/[0.06]">
             <div className="flex items-baseline justify-between gap-2 mb-1.5">
               <p className="text-[11.5px] font-semibold text-gray-500">요즘 F&B 동향 {mkt?.trend_src === "tags" && "· 늘어난 해시태그"}</p>
@@ -255,5 +259,45 @@ function Spark({ values }: { values: number[] }) {
       <polyline points={pts} fill="none" stroke="#3B37C8" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       <circle cx={w} cy={pts.split(" ").pop()!.split(",")[1]} r="3" fill="#3B37C8" />
     </svg>
+  );
+}
+
+/**
+ * 우리 최근 게시물 흐름(1121) — 막대 하나가 한 편, 왼쪽이 오래된 것. 높이 = 조회.
+ * 7일차가 찬 글은 진한 남색, 아직 차는 중(누적)인 글은 옅게 — 둘을 같은 잣대로 보면 새 글이 늘 못나 보인다.
+ */
+function PostFlow({ posts, onMore }: { posts: RecentOwnPost[]; onMore: () => void }) {
+  const max = Math.max(1, ...posts.map((p) => p.views ?? 0));
+  const last = posts[posts.length - 1];
+  return (
+    <div className="mt-3 pt-3 border-t border-black/[0.06]">
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <p className="text-[11.5px] font-semibold text-gray-500">우리 최근 게시물 {posts.length}편 · 조회 <span className="font-normal">(진한 막대 = 7일차 · 옅은 막대 = 아직 차는 중)</span></p>
+        <button type="button" onClick={onMore} className={`shrink-0 text-[12px] font-semibold text-navy hover:underline rounded ${focusRing}`}>게시물 상세</button>
+      </div>
+      <ol className="flex items-end gap-1.5 h-20" aria-label="최근 게시물 조회">
+        {posts.map((p, i) => {
+          const h = p.views === null ? 4 : Math.max(4, Math.round(((p.views ?? 0) / max) * 72));
+          const d7 = p.basis === "D7";
+          return (
+            <li key={i} className="flex-1 min-w-0 h-full flex flex-col justify-end">
+              <a href={p.permalink || undefined} target="_blank" rel="noreferrer" title={`${p.posted_at.slice(5, 10).replace("-", "/")} · ${p.topic}\n조회 ${p.views === null ? "아직 없음" : nf.format(p.views)}${p.saved !== null ? ` · 저장 ${p.saved}` : ""}${d7 ? " · 7일차" : ` · 게시 ${p.age_days}일째 누적`}${p.vs_median !== null ? ` · 평소의 ${p.vs_median}배` : ""}`}
+                className={`block w-full rounded-t-[5px] ${d7 ? "bg-[#3B37C8]" : "bg-[#3B37C8]/35"} hover:opacity-80 ${focusRing}`} style={{ height: h }}>
+                <span className="sr-only">{p.topic} 조회 {p.views ?? "없음"}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="flex gap-1.5 mt-1">
+        {posts.map((p, i) => <span key={i} className="flex-1 min-w-0 text-center text-[10px] text-gray-400 tabular-nums">{p.posted_at.slice(5, 10).replace("-", "/")}</span>)}
+      </div>
+      {last && (
+        <p className="mt-1.5 text-[12px] text-gray-600 truncate">
+          최근 · <a href={last.permalink || undefined} target="_blank" rel="noreferrer" className="font-semibold text-gray-900 hover:underline">{last.topic || "(제목 없음)"}</a>
+          {" "}조회 {last.views === null ? "—" : nf.format(last.views)}{last.basis !== "D7" && ` (${last.age_days}일째)`}
+        </p>
+      )}
+    </div>
   );
 }
