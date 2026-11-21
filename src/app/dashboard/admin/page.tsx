@@ -2501,7 +2501,6 @@ export default function AdminHomePage() {
           userTitle={me.title}
           onSelect={(key) => selectProduct(key as Product)}
           onPlayroom={() => selectProduct("playroom")}
-          onOrbit={(id) => { setOrbitPick(id ?? null); selectProduct("orbit"); }}
           status={satStatus}
           onGo={go}
         />

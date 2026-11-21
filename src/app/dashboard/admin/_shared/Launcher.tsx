@@ -1,160 +1,292 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { IconFolder } from "@tabler/icons-react";
-import { TOOLS, TOOL_ORDER, slackUrl, type ToolKey, type ToolMeta } from "@/lib/satellite";
-import { focusRing } from "./ui";
+import { useEffect, useMemo, useState } from "react";
+import { IconArrowRight, IconFolder } from "@tabler/icons-react";
+import { TOOLS, slackUrl, type ToolKey } from "@/lib/satellite";
+import { growth } from "@/lib/polaris";
+import { buildBlockers, BLOCKER_KIND_LABEL } from "@/lib/draft/blockers";
+import type { Lead, StoreRow, TaxInvoice } from "@/lib/draft/types";
+import { focusRing, periodLocal, todayLocal } from "./ui";
+import { fetchJson } from "./fetchJson";
 import type { SatelliteStatus } from "./useSatelliteStatus";
-import WeekIssues from "./WeekIssues";
+import { usePolaris } from "./usePolaris";
 import { greetingFor, addressee } from "./greeting";
-import Polaris from "./Polaris";
 import Satty from "./Satty";
 import LibraHelp from "./LibraHelp";
-import OrbitCard from "../orbit/OrbitCard";
 
 /**
- * 세틀라이트 런처.
+ * 세틀라이트 메인 (1121 민열님 개편).
  *
- * 1011 민열님: 맨 위 Orbit(큰 일) + 이번 주(높이 고정) → 도구 한 줄(설명 없이) → 「그 밖」 줄(Atlas · Drive · 세티 · Libra).
- * Libra 를 누르면 슬랙으로 넘기지 않고 사용법 팝업(LibraHelp).
+ *   1. Orbit · Atlas · Polaris 는 메인에서 뺀다.
+ *   2. **현황이 맨 처음** — Probe 핵심 숫자 · 파트너 매장(막힌 일을 버튼 하나로) · 마케팅(인스타 매거진 성장 · 최근 동향)
+ *   3. 앱은 일 이름으로 묶어 한 줄씩 — 앱 이름은 작게, 바로 들어간다.
  *
- * 0911(민열님): 툴 고르는 칸을 더 예쁘게, 갤러리 형태로. Libra 는 고르는 대상이 아니라 **전체를 보조하는 층**이라 하단 스트립.
- * Castor 는 VE(Visual Engineer) 영입 후 재검토 → '보류' 로 표시하되 열리긴 한다.
- *
- * 카드 한 장 = 앱 아이콘(툴_아이콘 앱판) · 이름 · 한 줄 · 살아있는 숫자. 숫자는 각 툴 API 를 가볍게 찔러 온다.
- * 못 읽으면 자리를 비운다 — 0 을 지어내지 않는다. 장식은 없고 위계는 크기와 무게, 아이콘의 색면 하나로만 낸다.
+ * 숫자 계산은 원래 있던 것을 그대로 쓴다 — Probe · 매장은 usePolaris(lib/polaris growth), 막힌 일은 Astro 영업 홈과 같은 buildBlockers.
+ * 못 읽은 칸은 0 이 아니라 「—」. 마케팅 요약은 백엔드 refs/summary(우리 팔로워 기록 · F&B 유행) + overview/performance(게시물 조회 흐름).
  */
 
-const STATUS: Record<ToolMeta["status"], { label: string; cls: string }> = {
-  live: { label: "가동 중", cls: "text-emerald-600" },
-  draft: { label: "초안", cls: "text-amber-600" },
-  hold: { label: "보류 · VE 영입 후", cls: "text-gray-400" },
-  external: { label: "슬랙", cls: "text-gray-400" },
-};
-
-/** 세틀라이트 툴이 아니면서 런처에서 열어야 하는 제품(예: Drive — 파일 저장소). 카드 대신 하단 스트립. */
 export interface LauncherExtra { key: string; name: string; subtitle?: string; description?: string }
 
-const extraCls = "w-full h-full text-left rounded-[14px] border border-white/70 bg-white/70 backdrop-blur px-3 py-2 flex items-center gap-2.5 hover:border-navy/20 transition-colors";
+interface MarketingSummary {
+  followers: number | null; media_count: number | null; since: string | null;
+  growth_7d: number | null; growth_28d: number | null; spark: number[];
+  trends: { name: string; use: string; refs: { handle: string; permalink: string }[] }[]; trend_src: "ai" | "tags"; trends_at: string | null;
+  hot: { handle: string; name: string; followers: number | null; eng_rate: number | null }[];
+}
+interface Momentum { available: boolean; delta_pct?: number; direction?: "up" | "down" | "flat"; format?: string; recent_median?: number; n?: number; min_n?: number }
 
-export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, onPlayroom, onOrbit, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onPlayroom?: () => void; onSelect: (key: string) => void; onOrbit?: (id?: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
-  // Atlas 는 도구가 아니라 회사 소개라 「그 밖」 줄로, Orbit 은 맨 위 카드로 간다 (1011)
-  const tools = TOOL_ORDER.map((k) => TOOLS[k]).filter((t) => t.status !== "external" && t.key !== "atlas" && t.key !== "orbit" && available.includes(t.key));
+const nf = new Intl.NumberFormat("ko-KR");
+const won = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000) / 10}만` : nf.format(n));
+const pctTxt = (p: number | null | undefined) => (p === null || p === undefined ? null : `${p > 0 ? "+" : ""}${p}%`);
+const tile = `bg-white/85 backdrop-blur rounded-[16px] border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)]`;
+
+/** 앱 묶음 — 일 이름이 먼저, 앱 이름은 꼬리표 (QA 1121 III). */
+const GROUPS: { label: string; keys: ToolKey[] }[] = [
+  { label: "영업 · 매장", keys: ["astro", "hubble"] },
+  { label: "콘텐츠 · 마케팅", keys: ["papillon"] },
+  { label: "데이터", keys: ["probe"] },
+  { label: "개발", keys: ["aether", "castor"] },
+];
+
+export default function Launcher({ available, extras = [], userName, username = "", userTitle, onSelect, onPlayroom, status, onGo }: { available: ToolKey[]; extras?: LauncherExtra[]; userName: string; username?: string; userTitle?: string | null; onPlayroom?: () => void; onSelect: (key: string) => void; status?: SatelliteStatus | null; onGo?: (target: string) => void }) {
+  const go = (t: string) => onGo?.(t);
   const [libraOpen, setLibraOpen] = useState(false);
-  const libra = TOOLS.libra;
-  /**
-   * 인사말은 **처음 그릴 때 한 번만** 정한다 (민열님 0919). 다시 그릴 때마다 계산하면
-   * 자정이나 정각을 넘기는 순간 글자가 슬쩍 바뀌어 눈에 걸린다.
-   */
-  // 서버(Vercel, UTC)에서 만들면 밤에 "좋은 아침"이 나온다 — 브라우저 시계로 붙은 뒤 한 번 정한다 (0919).
+  // 서버(UTC)에서 만들면 밤에 "좋은 아침" — 브라우저 시계로 붙은 뒤 한 번 정한다 (0919)
   const [greet, setGreet] = useState<string | null>(null);
   useEffect(() => { setGreet(greetingFor()); }, []);
-  /** 이번 주 일정 건수 — WeekIssues 가 세어서 알려 준다. Satty 의 '피곤' 판정에 쓴다. */
-  const [weekCount, setWeekCount] = useState(0);
   const who = addressee(username, userName);
 
+  /* ── Probe · 매장 숫자 — Polaris 가 하던 계산 그대로 ── */
+  const pol = usePolaris(true);
+  const wk = useMemo(() => Object.fromEntries(growth(pol.input, "week").map((g) => [g.key, g])), [pol.input]);
+  const mo = useMemo(() => Object.fromEntries(growth(pol.input, "month").map((g) => [g.key, g])), [pol.input]);
+
+  /* ── 파트너 매장 막힌 일 — 영업 홈 「지금 막힌 것」과 같은 계산. fetchJson 이라 위 훅과 같은 주소는 한 번만 부른다 ── */
+  const [astro, setAstro] = useState<{ stores: StoreRow[]; leads: Lead[]; invoices: TaxInvoice[]; failed: boolean } | null>(null);
+  useEffect(() => {
+    Promise.all([fetchJson<{ stores: StoreRow[] }>("/api/astro/stores"), fetchJson<{ leads: Lead[] }>("/api/astro/leads"), fetchJson<{ invoices: TaxInvoice[] }>(`/api/astro/invoices?period=${periodLocal()}`)])
+      .then(([s, l, i]) => setAstro({ stores: s?.stores ?? [], leads: l?.leads ?? [], invoices: i?.invoices ?? [], failed: !s || !l || !i }));
+  }, []);
+  const blockers = useMemo(() => (astro ? buildBlockers(astro.stores, astro.leads, astro.invoices, periodLocal(), todayLocal()) : []), [astro]);
+  const urgent = blockers.filter((b) => b.rank <= 1).length;
+
+  /* ── 마케팅 ── */
+  const [mkt, setMkt] = useState<MarketingSummary | null | undefined>(undefined);
+  const [mom, setMom] = useState<Momentum | null | undefined>(undefined);
+  useEffect(() => {
+    fetchJson<MarketingSummary>("/api/satellite/refs/summary").then(setMkt);
+    fetchJson<{ momentum_by_format?: Momentum[] }>("/api/satellite/overview/performance").then((d) =>
+      setMom(d ? (d.momentum_by_format ?? []).find((m) => m.format === "carousel") ?? null : null));
+  }, []);
+
+  const groups = GROUPS.map((g) => ({ ...g, tools: g.keys.filter((k) => available.includes(k)).map((k) => TOOLS[k]) })).filter((g) => g.tools.length);
+  const badge = (k: ToolKey) => (k === "astro" ? (status?.billing?.unpaid ?? 0) + (status?.leads?.stale ?? 0)
+    : k === "probe" && status?.probe ? status.probe.due + status.probe.held : 0);
+
   return (
-    <div className="max-w-6xl mx-auto px-5 pt-10 pb-16">
-      <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
+    <div className="max-w-6xl mx-auto px-5 pt-8 pb-16">
+      <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[13px] font-semibold text-navy tracking-wide inline-flex items-center gap-1.5">
-            {/* 세틀라이트 마크 — 상단 바·탭 아이콘과 같은 도형 */}
             <img src="/satellite/satellite_app.svg" alt="" width={18} height={18} className="w-[18px] h-[18px] rounded-[5px]" aria-hidden="true" />
             Satellite
           </p>
-          <h1 className="text-[34px] md:text-[40px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.1] mt-1 text-balance">
+          <h1 className="text-[28px] md:text-[32px] font-bold text-gray-900 tracking-[-0.02em] leading-[1.15] mt-1 text-balance">
             {greet ?? "안녕하세요"}, <span className="bg-[linear-gradient(90deg,#050072,#6366E0)] bg-clip-text text-transparent">{who.name}</span>{who.suffix}.
-            {/* 직함은 이름 뒤 한 칸. 크기를 낮춰 이름이 먼저 읽히게 둔다 (민열님 0919). */}
-            {userTitle && <span className="ml-2 align-middle text-[14px] md:text-[15px] font-bold text-gray-500 tracking-[-0.01em]">{userTitle}</span>}
+            {userTitle && <span className="ml-2 align-middle text-[14px] font-bold text-gray-500 tracking-[-0.01em]">{userTitle}</span>}
           </h1>
-          <p className="text-[15px] text-gray-500 mt-2">오늘 볼 도구를 고르세요. 카드의 숫자는 <span className="text-gray-700 font-medium">지금 막힌 일</span>입니다.</p>
         </div>
+        <p className="hidden sm:block text-[12.5px] text-gray-500">어디서든 <kbd className="px-1.5 py-0.5 rounded-md bg-black/[0.06] text-[11px] font-semibold text-gray-700">⌘K</kbd> 로 매장 · 화면 찾기</p>
       </header>
 
-      {/* 1011 민열님: 맨 위 = Orbit(큰 일) + 이번 주. 이번 주를 왼쪽 열에 두면 일정이 많을 때 끝없이 늘어나
-          아래가 밀렸다 — 이제 두 칸 높이를 묶고 넘치면 카드 안에서 스크롤한다. 폰에서는 Orbit → 이번 주 순서로 선다. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 lg:h-[17rem]">
-        <div className="min-h-0 h-[22rem] lg:h-auto"><OrbitCard onOpen={(id) => onOrbit?.(id)} /></div>
-        <div className="min-h-0 max-h-[22rem] lg:max-h-none"><WeekIssues onGo={onGo} onCount={setWeekCount} fill /></div>
+      {/* ① Probe 핵심 숫자 */}
+      <section aria-labelledby="h-probe">
+        <SectionHead id="h-probe" title="현황" note={pol.probeLoading ? "앱 지표 읽는 중…" : "주간 비교는 4주 전 같은 7일 대비"} action={{ label: "Probe 열기", onClick: () => go("probe-home") }} />
+        <div className="sat-stagger grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          <Num label="파트너 매장" value={pol.loading ? undefined : pol.input.stores.total} unit="곳" delta={pctTxt(wk.stores?.pct)} sub={`유료 ${pol.loading ? "—" : pol.input.stores.paid}곳`} onClick={() => go("astro-ops")} />
+          <Num label="이번 달 입금" value={pol.loading ? undefined : pol.input.revenue.paid} money delta={pctTxt(mo.revenue?.pct)} sub={mo.revenue?.note ?? "전월 대비"} onClick={() => go("astro-billing")} />
+          <Num label="WAU" value={pol.input.app.wau} unit="명" delta={pctTxt(wk.wau?.pct)} sub={wk.wau?.note ?? "주간 활성 사용자"} onClick={() => go("probe-app")} />
+          <Num label="쿠폰 전환율" value={pol.input.coupon.rate} unit="%" sub="받은 쿠폰 중 사용" onClick={() => go("probe-app")} />
+          <Num label="첫 주 재방문" value={pol.input.app.retentionW1} unit="%" sub="가입 다음 주에 다시" onClick={() => go("probe-app")} />
+          <Num label="앱 → 매장" value={pol.input.app.openToStore} unit="%" sub="앱 연 사람 중 매장 방문" onClick={() => go("probe-app")} />
+        </div>
+      </section>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        {/* ② 파트너 매장 — 바로 대응 */}
+        <section aria-labelledby="h-stores" className={`${tile} p-4 min-w-0`}>
+          <SectionHead id="h-stores" title="파트너 매장" note={astro ? `막힌 일 ${blockers.length}건${urgent && urgent < blockers.length ? ` · 급한 것 ${urgent}` : ""}` : "읽는 중…"} action={{ label: "영업 홈", onClick: () => go("astro-home") }} inner />
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <Mini label="입금 미확인" value={status?.billing?.unpaid} alert onClick={() => go("astro-billing")} />
+            <Mini label="멈춘 후보(7일+)" value={status?.leads?.stale} alert onClick={() => go("astro-leads")} />
+            <Mini label="이번 주 미팅" value={status?.leads?.meetings} onClick={() => go("astro-calendar")} />
+          </div>
+          {!astro ? (
+            <p className="text-[13px] text-gray-500 py-6 text-center">매장 · 후보 · 계산서를 읽는 중…</p>
+          ) : blockers.length === 0 ? (
+            <p className="text-[13px] text-gray-500 py-6 text-center">{astro.failed ? "일부를 읽지 못했습니다 — 막힌 게 없는 게 아니라 확인하지 못한 것입니다." : "막힌 일이 없습니다."}</p>
+          ) : (
+            <ul className="divide-y divide-black/[0.06] -mx-1 max-h-[19rem] overflow-y-auto">
+              {blockers.slice(0, 8).map((b) => (
+                <li key={b.id} className={`flex items-center gap-2.5 px-1 py-2.5 border-l-2 pl-2 ${b.rank <= 1 ? "border-l-red-400" : b.rank <= 2 ? "border-l-amber-400" : "border-l-transparent"}`}>
+                  <span className="shrink-0 text-[11px] font-semibold text-gray-500 w-10 sm:w-14">{BLOCKER_KIND_LABEL[b.kind]}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-semibold text-gray-900 truncate">{b.name}{b.note && <span className="ml-1.5 text-[11px] font-normal text-gray-400">{b.note}</span>}</span>
+                    <span className="block text-[12px] text-gray-600 truncate">{b.why}</span>
+                  </span>
+                  <button type="button" onClick={() => go(b.action.go)} className={`shrink-0 h-8 px-2.5 rounded-[9px] bg-black/[0.05] hover:bg-black/[0.08] text-[12px] font-semibold text-gray-800 inline-flex items-center gap-1 ${focusRing}`}>
+                    {b.action.label}<IconArrowRight size={13} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {blockers.length > 8 && <button type="button" onClick={() => go("astro-home")} className="mt-2 text-[12px] font-semibold text-navy hover:underline">나머지 {blockers.length - 8}건 영업 홈에서 보기</button>}
+          {pol.topStores && pol.topStores.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-black/[0.06]">
+              <p className="text-[11.5px] font-semibold text-gray-500 mb-1.5">이번 달 손님이 많이 쓴 매장 (쿠폰 + 스탬프)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {pol.topStores.map((s) => (
+                  <button key={s.restaurant_id} type="button" onClick={() => go(`astro-ops?open=${s.restaurant_id}`)} className={`h-7 px-2.5 rounded-full bg-navy/[0.06] text-navy text-[12px] font-semibold hover:bg-navy/[0.1] ${focusRing}`}>
+                    {s.name} <span className="tabular-nums font-medium opacity-70">{s.coupon + s.stamp}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ③ 마케팅 — 인스타 매거진 성장 · 최근 동향 */}
+        <section aria-labelledby="h-mkt" className={`${tile} p-4 min-w-0`}>
+          <SectionHead id="h-mkt" title="마케팅 · 인스타 매거진" note="@w_ouldulike" action={{ label: "Papillon", onClick: () => go("satellite") }} inner />
+          <div className="grid grid-cols-3 gap-2">
+            <Mini label="팔로워" value={mkt?.followers ?? undefined} sub={mkt === undefined ? "읽는 중" : mkt?.growth_28d !== null && mkt?.growth_28d !== undefined ? `28일 ${pctTxt(mkt.growth_28d)}` : mkt?.growth_7d !== null && mkt?.growth_7d !== undefined ? `7일 ${pctTxt(mkt.growth_7d)}` : "성장률은 기록 쌓는 중"} />
+            <Mini label="7일 도달" value={pol.input.reach.last7} sub={wk.reach?.pct !== null && wk.reach?.pct !== undefined ? `4주 전 대비 ${pctTxt(wk.reach.pct)}` : wk.reach?.note ?? ""} title={wk.reach?.hint} />
+            <Mini label="게시물 조회 흐름" value={mom?.available ? `${(mom.delta_pct ?? 0) > 0 ? "+" : ""}${mom.delta_pct}%` : undefined} sub={mom === undefined ? "읽는 중" : mom?.available ? "카드뉴스 최근 절반 vs 앞 절반" : "표본 모으는 중"} />
+          </div>
+          {mkt?.spark && mkt.spark.length > 2 && <Spark values={mkt.spark} />}
+          <div className="mt-3 pt-3 border-t border-black/[0.06]">
+            <div className="flex items-baseline justify-between gap-2 mb-1.5">
+              <p className="text-[11.5px] font-semibold text-gray-500">요즘 F&B 동향 {mkt?.trend_src === "tags" && "· 늘어난 해시태그"}</p>
+              <button type="button" onClick={() => go("satellite?screen=refs")} className="text-[12px] font-semibold text-navy hover:underline">레퍼런스에서 보기</button>
+            </div>
+            {!mkt?.trends?.length ? (
+              <p className="text-[12.5px] text-gray-500">{mkt === undefined ? "읽는 중…" : "아직 정리된 동향이 없습니다 — 매일 새벽 갱신됩니다."}</p>
+            ) : (
+              <ol className="space-y-1.5">
+                {mkt.trends.map((t, i) => (
+                  <li key={i} className="text-[13px] leading-snug">
+                    <span className="font-semibold text-gray-900">{t.name}</span>
+                    {t.use && <span className="block text-[12px] text-gray-600 line-clamp-2">{t.use}</span>}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {mkt?.hot && mkt.hot.length > 0 && (
+              <p className="mt-2.5 text-[12px] text-gray-500">뜨는 계정 · {mkt.hot.map((h) => (
+                <a key={h.handle} href={`https://instagram.com/${h.handle}`} target="_blank" rel="noreferrer" className="text-navy font-semibold hover:underline mr-2">@{h.handle}</a>
+              ))}</p>
+            )}
+          </div>
+        </section>
       </div>
 
-      {/* 도구 — 앱 아이콘 · 이름 · 상태만(1011: 회색 설명 뺌). 한 줄에 여섯. */}
-      <p className="mt-6 mb-2 text-[12px] font-bold text-gray-500 tracking-[0.02em]">도구</p>
-      <ul aria-label="도구" className="sat-stagger grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        {tools.map((t) => {
-          const st = STATUS[t.status];
-          const hold = t.status === "hold";
-          /**
-           * 막힌 것 — 사이드바 배지·세티와 같은 `status`(useSatelliteStatus)에서 센다. 런처가 따로 부르지 않는다(1013).
-           *   Astro = 입금 안 된 유료 매장 + 7일 넘게 멈춘 후보 · Probe = 리포트 만들 때(14일차) + 이번 달 보류 회차
-           * 전에는 런처가 같은 주소를 fetchJson 밖에서 또 불렀다 — 겹친 요청이 백엔드를 503 으로 만든 0919 와 같은 모양.
-           */
-          const blocked = t.key === "astro" ? (status?.billing?.unpaid ?? 0) + (status?.leads?.stale ?? 0)
-            : t.key === "probe" && status?.probe ? status.probe.due + status.probe.held : 0;
-          return (
-            <li key={t.key} className="min-w-0">
-              <button
-                type="button"
-                onClick={() => onSelect(t.key)}
-                aria-label={`${t.name} 열기`}
-                title={t.description}
-                className={`group w-full text-left bg-white/85 backdrop-blur rounded-[16px] px-3 py-2.5 border border-white/70 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_14px_30px_-26px_rgba(5,0,114,0.5)] transition-[transform,box-shadow] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-24px_rgba(5,0,114,0.45)] active:translate-y-0 motion-reduce:transition-none flex items-center gap-2.5 min-w-0 ${focusRing} ${hold ? "opacity-70 hover:opacity-100" : ""}`}
-              >
-                <img src={`/satellite/${t.key}_app.svg`} alt="" width={36} height={36} className="w-9 h-9 rounded-[11px] shrink-0 shadow-[0_6px_16px_-10px_rgba(5,0,114,0.6)]" aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-bold text-gray-900 tracking-[-0.015em] leading-tight truncate">{t.name}</span>
-                  <span className="block text-[11px] font-medium text-gray-500 truncate">{t.subtitle}</span>
-                </span>
-                {/* 막힌 게 있으면 숫자, 없으면 상태 점 하나. */}
-                {blocked > 0
-                  ? <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11.5px] font-bold tabular-nums grid place-content-center">{blocked}</span>
-                  : <span className={`shrink-0 w-2 h-2 rounded-full ${t.status === "live" ? "bg-emerald-500" : t.status === "draft" ? "bg-amber-500" : "bg-gray-300"}`} title={st.label} aria-label={st.label} />}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-
-      {/* 그 밖 — 도구가 아닌 것(조직 · 파일 · 쉬는 곳 · 슬랙 비서)은 줄을 바꿔 작게 (1011 민열님). */}
-      <p className="mt-5 mb-2 text-[12px] font-bold text-gray-500 tracking-[0.02em]">그 밖</p>
-      <ul aria-label="그 밖" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-        {available.includes("atlas") && (
-          <li className="min-w-0"><button type="button" onClick={() => onSelect("atlas")} className={`${extraCls} ${focusRing}`}>
-            <img src="/satellite/atlas_app.svg" alt="" width={30} height={30} className="w-[30px] h-[30px] rounded-[9px] shrink-0" aria-hidden="true" />
-            <span className="min-w-0"><span className="block text-[13px] font-bold text-gray-900">Atlas</span><span className="block text-[11px] text-gray-500 truncate">조직도 · 미션 · 연혁</span></span>
+      {/* ④ 앱 — 일 이름으로 묶어 바로 들어가기 */}
+      <section aria-labelledby="h-apps" className="mt-7">
+        <SectionHead id="h-apps" title="바로 가기" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {groups.map((g) => (
+            <div key={g.label} className={`${tile} p-2.5 min-w-0`}>
+              <p className="px-1 pb-1.5 text-[11.5px] font-bold text-gray-500">{g.label}</p>
+              <ul className="space-y-1">
+                {g.tools.map((t) => {
+                  const n = badge(t.key);
+                  return (
+                    <li key={t.key}>
+                      <button type="button" onClick={() => onSelect(t.key)} title={t.description}
+                        className={`w-full flex items-center gap-2.5 rounded-[11px] px-1.5 py-1.5 hover:bg-navy/[0.05] text-left ${focusRing} ${t.status === "hold" ? "opacity-70" : ""}`}>
+                        <img src={`/satellite/${t.key}_app.svg`} alt="" width={30} height={30} className="w-[30px] h-[30px] rounded-[9px] shrink-0" aria-hidden="true" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[13px] font-bold text-gray-900 truncate">{t.subtitle}</span>
+                          <span className="block text-[11px] text-gray-500 truncate">{t.name}{t.status === "hold" ? " · 보류" : ""}</span>
+                        </span>
+                        {n > 0 && <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold tabular-nums grid place-content-center">{n}</span>}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <ul aria-label="그 밖" className="mt-2.5 flex flex-wrap gap-2">
+          {extras.map((e) => (
+            <li key={e.key}><button type="button" onClick={() => onSelect(e.key)} className={`h-9 px-3 rounded-full bg-white/80 border border-white/70 text-[12.5px] font-semibold text-gray-800 inline-flex items-center gap-1.5 hover:border-navy/20 ${focusRing}`}>
+              <IconFolder size={15} aria-hidden="true" />{e.name}
+            </button></li>
+          ))}
+          <li><button type="button" onClick={() => setLibraOpen(true)} className={`h-9 px-3 rounded-full bg-[linear-gradient(135deg,rgba(43,190,155,0.10),rgba(127,233,203,0.18))] border border-libra/30 text-[12.5px] font-semibold text-libra-deep ${focusRing}`}>
+            {TOOLS.libra.name} 사용법
           </button></li>
-        )}
-        {extras.map((e) => (
-          <li key={e.key} className="min-w-0"><button type="button" onClick={() => onSelect(e.key)} className={`${extraCls} ${focusRing}`}>
-            <span className="w-[30px] h-[30px] rounded-[9px] shrink-0 bg-navy text-white grid place-items-center" aria-hidden="true"><IconFolder size={16} /></span>
-            <span className="min-w-0"><span className="block text-[13px] font-bold text-gray-900">{e.name}</span><span className="block text-[11px] text-gray-500 truncate">{e.subtitle}</span></span>
-          </button></li>
-        ))}
-        {onPlayroom && (
-          <li className="min-w-0"><button type="button" onClick={onPlayroom} className={`${extraCls} ${focusRing}`}>
-            <span aria-hidden="true" className="w-[30px] h-[30px] rounded-[9px] shrink-0 bg-[linear-gradient(135deg,#7C7EF0,#2B28B8)] flex items-center justify-center">
-              <svg viewBox="0 0 160 160" className="w-5 h-5"><circle cx="80" cy="88" r="46" fill="#fff" opacity=".95" /><circle cx="66" cy="82" r="6" fill="#2B28B8" /><circle cx="94" cy="82" r="6" fill="#2B28B8" /><rect x="72" y="30" width="16" height="14" rx="6" fill="#fff" opacity=".95" /></svg>
-            </span>
-            <span className="min-w-0"><span className="block text-[13px] font-bold text-gray-900">세티랑 놀기</span><span className="block text-[11px] text-gray-500 truncate">밥 주고 놀아 주기</span></span>
-          </button></li>
-        )}
-        <li className="min-w-0"><button type="button" onClick={() => setLibraOpen(true)} className={`${extraCls} !bg-[linear-gradient(135deg,rgba(43,190,155,0.10),rgba(127,233,203,0.18))] !border-libra/30 hover:!border-libra ${focusRing}`}>
-          <span aria-hidden="true" className="w-[30px] h-[30px] rounded-[9px] shrink-0 bg-[linear-gradient(135deg,#7FE9CB,#2BBE9B)] flex items-center justify-center">
-            <span className="block w-5 h-5 bg-white" style={{ WebkitMaskImage: "url(/satellite/libra.svg)", maskImage: "url(/satellite/libra.svg)", WebkitMaskSize: "contain", maskSize: "contain", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center" }} />
-          </span>
-          <span className="min-w-0"><span className="block text-[13px] font-bold text-libra-deep">{libra.name}</span><span className="block text-[11px] text-gray-500 truncate">슬랙 사용법</span></span>
-        </button></li>
-      </ul>
-      <LibraHelp open={libraOpen} onClose={() => setLibraOpen(false)} channelUrl={slackUrl(libra)} />
+          {onPlayroom && <li><button type="button" onClick={onPlayroom} className={`h-9 px-3 rounded-full bg-white/80 border border-white/70 text-[12.5px] font-semibold text-gray-800 hover:border-navy/20 ${focusRing}`}>세티랑 놀기</button></li>}
+        </ul>
+      </section>
+      <LibraHelp open={libraOpen} onClose={() => setLibraOpen(false)} channelUrl={slackUrl(TOOLS.libra)} />
 
-      {/* Polaris 현황 판 — 후보 깔때기·당월 청구·스팟·최근 후보를 뺐다 (민열님 0919).
-          남는 건 숫자로 성장을 말하는 것뿐이다. 부품과 계산은 Polaris.tsx · lib/polaris.ts 에 있다. */}
-      <Polaris onGo={onGo} />
-
-      {/* Satty — 기능을 해치지 않는 여백(우하단)에 산다. 숫자가 좋으면 기뻐하고 막히면 지친다 (민열님 0919). */}
-      <Satty status={status} weekItems={weekCount} onGo={onGo} />
-
-      <p className="text-[12px] text-gray-400 mt-6">Castor 는 Visual Engineer 합류 후 다시 봅니다.</p>
+      {/* Satty — 막힌 일이 많으면 지친다 */}
+      <Satty status={status} weekItems={urgent} onGo={onGo} />
     </div>
+  );
+}
+
+function SectionHead({ id, title, note, action, inner }: { id: string; title: string; note?: string; action?: { label: string; onClick: () => void }; inner?: boolean }) {
+  return (
+    <div className={`flex items-baseline justify-between gap-3 ${inner ? "mb-3" : "mb-2.5"}`}>
+      <h2 id={id} className="text-[15px] font-bold text-gray-900 tracking-[-0.01em]">{title}{note && <span className="ml-2 text-[12px] font-medium text-gray-500">{note}</span>}</h2>
+      {action && <button type="button" onClick={action.onClick} className={`shrink-0 text-[12px] font-semibold text-navy hover:underline rounded ${focusRing}`}>{action.label} →</button>}
+    </div>
+  );
+}
+
+function Num({ label, value, unit, money, delta, sub, onClick }: { label: string; value: number | undefined; unit?: string; money?: boolean; delta?: string | null; sub?: string; onClick?: () => void }) {
+  const down = delta?.startsWith("-");
+  return (
+    <button type="button" onClick={onClick} className={`${tile} px-3.5 py-3 text-left min-w-0 hover:-translate-y-0.5 transition-transform duration-200 motion-reduce:transition-none ${focusRing}`}>
+      <span className="block text-[12px] font-semibold text-gray-500 truncate">{label}</span>
+      <span className="mt-1 flex items-baseline gap-1.5 min-w-0">
+        <span className="text-[22px] font-bold text-gray-900 tabular-nums tracking-[-0.02em] leading-none">{value === undefined ? "—" : money ? won(value) : nf.format(value)}</span>
+        {value !== undefined && unit && <span className="text-[12px] font-semibold text-gray-500">{unit}</span>}
+        {money && value !== undefined && <span className="text-[12px] font-semibold text-gray-500">원</span>}
+        {delta && <span className={`ml-auto text-[12px] font-bold tabular-nums ${down ? "text-red-600" : "text-emerald-700"}`}>{delta}</span>}
+      </span>
+      {sub && <span className="block mt-1 text-[11px] text-gray-500 truncate">{sub}</span>}
+    </button>
+  );
+}
+
+function Mini({ label, value, sub, alert, onClick, title }: { label: string; value: number | string | undefined; sub?: string; alert?: boolean; onClick?: () => void; title?: string }) {
+  const hot = alert && typeof value === "number" && value > 0;
+  const body = (
+    <>
+      <span className="block text-[11.5px] font-semibold text-gray-500 truncate">{label}</span>
+      <span className={`block text-[18px] font-bold tabular-nums leading-tight ${hot ? "text-red-600" : "text-gray-900"}`}>{value === undefined ? "—" : typeof value === "number" ? nf.format(value) : value}</span>
+      {sub && <span className="block text-[11px] text-gray-500 truncate">{sub}</span>}
+    </>
+  );
+  const cls = `rounded-[12px] px-3 py-2 text-left min-w-0 ${hot ? "bg-red-500/[0.06]" : "bg-black/[0.03]"}`;
+  return onClick
+    ? <button type="button" onClick={onClick} title={title} className={`${cls} hover:bg-black/[0.06] ${focusRing}`}>{body}</button>
+    : <div className={cls} title={title}>{body}</div>;
+}
+
+/** 팔로워 28일 — 점 하나하나가 하루. 축 없이 흐름만. */
+function Spark({ values }: { values: number[] }) {
+  const w = 280, h = 36, min = Math.min(...values), max = Math.max(...values), span = Math.max(1, max - min);
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${h - 3 - ((v - min) / span) * (h - 6)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-2 w-full h-9" role="img" aria-label={`팔로워 최근 ${values.length}일 흐름 ${nf.format(values[0])}에서 ${nf.format(values[values.length - 1])}`}>
+      <polyline points={pts} fill="none" stroke="#3B37C8" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={w} cy={pts.split(" ").pop()!.split(",")[1]} r="3" fill="#3B37C8" />
+    </svg>
   );
 }
