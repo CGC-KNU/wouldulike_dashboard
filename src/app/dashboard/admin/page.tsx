@@ -42,6 +42,7 @@ import dynamic from "next/dynamic";
 const HubbleMap = dynamic(() => import("./hubble/HubbleMap"), { ssr: false });
 import HubbleWatch from "./hubble/HubbleWatch";
 import OrbitBoard from "./orbit/OrbitBoard";
+import PolarisMap from "./_shared/PolarisMap";
 import CastorScreen from "./castor/CastorScreen";
 import CastorResearch from "./castor/CastorResearch";
 import CastorRefs from "./castor/CastorRefs";
@@ -113,6 +114,7 @@ type Tab =
   | "hubble-map"
   | "hubble-watch"
   | "orbit-board"
+  | "polaris-map"
   | "castor-home"
   | "castor-map"
   | "castor-flow"
@@ -2168,6 +2170,8 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
   { key: "hubble-map", label: "지도", icon: "◎", allow: (me) => me.permissions.can_restaurants },
   { key: "hubble-watch", label: "이번 주 변동", icon: "◷", allow: (me) => me.permissions.can_restaurants },
   { key: "orbit-board", label: "보드", icon: "◎", allow: () => true },
+  // Polaris 방향 지도(1122) — 5개년 방향 · 인사이트 · 판단 필요. 전략 문서라 관리자만
+  { key: "polaris-map", label: "방향 지도", icon: "★", allow: (me) => me.is_admin || me.is_superadmin },
 
   // ── Castor. 앱 구조를 바꾸는 제안을 만드는 곳이라 관리자만 본다.
   { key: "castor-home", label: "홈", icon: "⌂", allow: (me) => me.is_admin || me.is_superadmin },
@@ -2198,7 +2202,7 @@ const TABS: { key: Tab; label: string; icon: string; allow: (me: AdminMe) => boo
  * 다운로드 받을 수 있게"). 목록 맨 끝에 추가해 선택 화면에서 맨 우측(그리드가 꽉 차면
  * 다음 줄 첫 칸)에 나온다.
  */
-type Product = "papillon" | "astro" | "hubble" | "aether" | "probe" | "castor" | "atlas" | "orbit" | "drive" | "playroom";
+type Product = "papillon" | "astro" | "hubble" | "aether" | "probe" | "castor" | "atlas" | "orbit" | "polaris" | "drive" | "playroom";
 
 /**
  * Astro 사이드바 묶음 (민열님 0928). 순서는 요청 그대로:
@@ -2300,6 +2304,14 @@ const PRODUCTS: {
     subtitle: "큰 일 현황",
     description: "여러 팀이 걸친 큰 일 · 4단계 보드 · 슬랙 소식",
     tabs: ["orbit-board"],
+    ready: true,
+  },
+  {
+    key: "polaris",
+    name: "Polaris",
+    subtitle: "방향 지도",
+    description: "5개년 방향 지도 · 매일 인사이트 · 판단 필요 · 내 생각 · 아이디어 메모",
+    tabs: ["polaris-map"],
     ready: true,
   },
   {
@@ -2657,7 +2669,7 @@ export default function AdminHomePage() {
 
       {activeTab &&
         activeTab !== "satellite" &&
-        (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "orbit" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
+        (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "orbit" || selectedProduct === "polaris" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
         <ToolShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
           navItems={selectedProduct === "probe" ? probeNav(productTabs) : groupNav(productTabs.map((t) => ({ key: t.key, label: t.label })), selectedProduct === "astro" ? ASTRO_NAV_GROUPS : [])}
@@ -2709,6 +2721,7 @@ export default function AdminHomePage() {
           {activeTab === "hubble-map" && <HubbleMap actor={actorName} onOpenLead={() => { selectProduct("astro"); setTimeout(() => go("astro-leads"), 0); }} />}
           {activeTab === "hubble-watch" && <HubbleWatch />}
           {activeTab === "orbit-board" && <OrbitBoard actor={actorName} initial={orbitPick} />}
+          {activeTab === "polaris-map" && <PolarisMap />}
           {activeTab === "castor-home" && <CastorHome onGo={(t) => setActiveTab(t as Tab)} />}
           {(activeTab === "atlas-team" || activeTab === "atlas-mission" || activeTab === "atlas-tools" || activeTab === "atlas-history") && (
             <Atlas tab={activeTab} onGo={(t) => { if (t === "launcher") backToProducts(); else if (PRODUCTS.some((p) => p.key === t)) selectProduct(t as Product); else go(t); }} />
