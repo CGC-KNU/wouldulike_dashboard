@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { IconExternalLink, IconRefresh } from "@tabler/icons-react";
 import ImageUploader from "@/components/ImageUploader";
-import { Button, Chip, Field, Input, Notice, Skeleton, Textarea } from "../_shared/ui";
+import { CHURN_REASONS, CHURN_REASON_LABEL, type ChurnReason } from "@/lib/finance/types";
+import { Button, Chip, Field, Input, Notice, Select, Skeleton, Textarea } from "../_shared/ui";
 
 /**
  * 파트너 매장 상세 안의 **식당 관리** 블록.
@@ -47,6 +48,7 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
   const [busy, setBusy] = useState(false);
   /** 계약 종료는 앱에 바로 보이는 변화라 화면 안에서 한 번 더 확인받는다. */
   const [ending, setEnding] = useState(false);
+  const [reason, setReason] = useState<ChurnReason | "">("");
   /** 앱 목록에서 빼 둔 상태. 제휴를 끄는 것과 다르다 — 일반 식당 탭에도 안 나온다. */
   const [hiddenFromApp, setHiddenFromApp] = useState(false);
   const [hiding, setHiding] = useState(false);
@@ -128,7 +130,10 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
         return;
       }
       await onEnd?.();
+      // 해지 사유(1122) — 제휴는 이미 꺼졌으니 실패해도 종료는 그대로, 말만 한다
+      const ch = reason ? await fetch("/api/astro/churn", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ restaurant_id: id, reason }) }).catch(() => null) : null;
       setEnding(false);
+      if (reason && !ch?.ok) { setMsg({ tone: "red", text: "계약 종료로 옮겼지만 해지 사유를 남기지 못했습니다. 재무 유지율에서 빠질 수 있습니다." }); onChanged?.(); return; }
       setMsg({ tone: "blue", text: "계약 종료로 옮겼습니다. 파트너 매장의 '계약 종료' 칸에서 볼 수 있고, 재계약하면 그대로 되돌아옵니다." });
       onChanged?.();
     } catch {
@@ -319,8 +324,9 @@ export default function StoreAppSection({ id, isAffiliate, onChanged, onEnd, onP
               <li>청구·입금·홈 큐·일정에서 빠집니다.</li>
               <li>기록은 지우지 않습니다. 재계약하면 그대로 되살아납니다.</li>
             </ul>
-            <div className="flex gap-2 mt-2.5">
-              <Button size="sm" variant="danger" disabled={busy} onClick={endContract}>{busy ? "옮기는 중…" : "네, 계약 종료로 옮깁니다"}</Button>
+            <div className="flex flex-wrap gap-2 mt-2.5">
+              <span className="w-32"><Select value={reason} onChange={(e) => setReason(e.target.value as ChurnReason | "")} aria-label="해지 사유"><option value="">해지 사유</option>{CHURN_REASONS.map((r) => <option key={r} value={r}>{CHURN_REASON_LABEL[r]}</option>)}</Select></span>
+              <Button size="sm" variant="danger" disabled={busy || !reason} onClick={endContract}>{busy ? "옮기는 중…" : "네, 계약 종료로 옮깁니다"}</Button>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEnding(false)}>취소</Button>
             </div>
           </div>

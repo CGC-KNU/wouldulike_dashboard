@@ -28,6 +28,8 @@ export interface PaidStore {
   id: number;
   name: string;
   start: string | null;
+  /** Astro 운영값의 캠퍼스(경북대 · 영남대 · 계명대) — 상권 침투율용. 모르면 null. */
+  campus?: string | null;
 }
 
 export type ExpenseCycle = "MONTHLY" | "YEARLY";
@@ -93,7 +95,20 @@ export interface ExpenseEntry {
   memo: string | null;
   created_by: string | null;
   created_at: string | null;
+  /** 매입 세액(1122) — 부가세 순납부 = 받은 세액 − 이것. 옛 기록 · 모름은 없음(null). */
+  tax?: number | null;
+  /** 선택 태그(1122) — 입점(매장 1곳 들일 때 한 번 드는 돈) · 상권 진입(새 상권 열 때). 없으면 태그 없음. */
+  tag?: EntryTag | null;
+  /** 입점 태그일 때 어느 매장인지(고르면) */
+  store_id?: number | null;
+  /** 상권 태그일 때 어느 상권인지(필수) · 입점 태그면 선택 */
+  campus?: string | null;
 }
+
+export type EntryTag = "onboarding" | "campus";
+export const ENTRY_TAGS: EntryTag[] = ["onboarding", "campus"];
+export const ENTRY_TAG_LABEL: Record<EntryTag, string> = { onboarding: "입점", campus: "상권 진입" };
+export const CAMPUSES = ["경북대", "영남대", "계명대"] as const;
 
 export type IncomeSource = "invoice" | "spot";
 export const INCOME_SOURCE_LABEL: Record<IncomeSource, string> = { invoice: "월 이용료", spot: "스팟 제작" };
@@ -172,4 +187,53 @@ export interface FundingEvent {
   memo: string | null;
   updated_by: string | null;
   updated_at: string | null;
+}
+
+/* ═══════════ 재무 지표(1122) — 백엔드 /api/finance/records/ 와 그 둘레에서 모은 것 ═══════════ */
+
+export type ChurnReason = "CLOSED" | "VOLUNTARY" | "PAYMENT_FAILED" | "OTHER";
+export const CHURN_REASONS: ChurnReason[] = ["CLOSED", "VOLUNTARY", "PAYMENT_FAILED", "OTHER"];
+export const CHURN_REASON_LABEL: Record<ChurnReason, string> = { CLOSED: "폐업", VOLUNTARY: "자발", PAYMENT_FAILED: "결제 실패", OTHER: "기타" };
+
+/** 해지 한 줄(astro:churn) — 계약 종료 때 남긴다. `start` 는 그 매장의 유료 시작 월(해지 뒤엔 다시 셀 수 없어 같이 남긴다). */
+export interface ChurnRow { restaurant_id: number; ended_on: string; reason: ChurnReason; start: string | null; tier: string | null; memo?: string | null; by?: string; at?: string }
+/** 플랜 변경 한 줄(astro:plan_history) — 2026-11-22 부터 쌓인다. from 이 null 이면 처음 정한 플랜. */
+export interface PlanChange { restaurant_id: number; from: string | null; to: string; at: string; by?: string }
+
+export type PlanCostKey = "FIXED" | "SEMI_VARIABLE" | "VARIABLE" | "ONE_OFF";
+export interface PlanMonth { period: string; revenue: number | null; cost: Partial<Record<PlanCostKey, number | null>> }
+/** 런웨이 모델 계획값(finance:plan) — 실적 · 계획 숫자라 백엔드에만 있다. */
+export interface PlanDoc { version?: string | null; scenario?: string | null; note?: string | null; months: PlanMonth[]; updated_at?: string }
+
+export interface MarketFigure { value: number | null; basis?: string | null; source?: string | null; confirmed?: boolean }
+/** 시장 규모(finance:market) — 정본 확정 전이면 confirmed=false. */
+export interface MarketDoc { tam?: MarketFigure; sam?: MarketFigure; som?: MarketFigure; boost_annual?: number | null; sam_sidos?: string[]; note?: string | null; updated_at?: string }
+
+export interface FinanceRecords {
+  /** 달 → 영업에 쓴 분(후보 · 매장) */
+  sales_minutes: Record<string, { lead: number; store: number }>;
+  /** 영업 시간 기록이 처음 쌓인 날 — 없으면 null(기록 시작 전) */
+  sales_since: string | null;
+  churn: ChurnRow[];
+  plan_history: PlanChange[];
+  settings: { hour_rate: number };
+  plan: PlanDoc | null;
+  market: MarketDoc | null;
+}
+
+/** 학기 목표 표(home:goals) — 메인 「목표 보기」와 같은 문서 */
+export interface GoalsDoc { columns: string[]; focus: number; rows: { key: string; label: string; values: string[]; target: number | null; unit: string }[] }
+
+/** 허블 상권 요약 — 침투율 · TAM/SAM 재계산용 숫자만(매장 원장은 싣지 않는다) */
+export interface HubbleSummary { campuses: { campus: string; n: number }[]; total: number; count: number; bySido: Record<string, number> }
+
+export interface MetricsInputs {
+  records: FinanceRecords | null;
+  goals: GoalsDoc | null;
+  /** 후보 단계별 수 — 못 읽으면 null */
+  funnel: Record<string, number> | null;
+  /** 제휴 중인 무료 매장 — 전환율 분모 · 침투율(파트너)용 */
+  free: { id: number; campus: string | null }[] | null;
+  hubble: HubbleSummary | null;
+  draft: boolean;
 }

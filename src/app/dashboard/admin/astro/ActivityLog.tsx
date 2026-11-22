@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { IconMessage, IconPhone, IconBrandMessenger, IconUsers, IconMapPin } from "@tabler/icons-react";
 import type { Activity, ActivityKind } from "@/lib/draft/types";
-import { Button, Textarea, agoLabel, focusRing } from "../_shared/ui";
+import { Button, Input, Textarea, agoLabel, focusRing } from "../_shared/ui";
 
 /**
  * 활동 기록기. Pitchr 리드 상세에서 가장 잘 만든 부분을 그대로 가져왔다.
@@ -11,6 +11,7 @@ import { Button, Textarea, agoLabel, focusRing } from "../_shared/ui";
  * **입력기가 항상 펼쳐져 있다.** "기록 추가" 버튼을 누른 뒤 입력하게 하면 아무도 안 쓴다.
  * 종류(메모/전화/카톡/미팅/방문)는 탭이고, 본문은 한 줄이면 Enter, 길면 Shift+Enter 로 줄바꿈.
  * 제휴 매장 소통이 전부 카톡이라 자동 수집이 안 되므로(2026-09-09 확인), 수기 입력의 마찰을 0 으로 만드는 게 답이다.
+ * 「쓴 시간(분)」은 선택 칸이다(1122) — 적으면 재무 현황의 CAC(영업 시간 × 시간 단가)에 들어간다. 비워도 기록은 된다.
  */
 
 const KINDS: { key: ActivityKind; Icon: typeof IconMessage }[] = [
@@ -35,6 +36,7 @@ export default function ActivityLog({
   const [items, setItems] = useState<Activity[]>([]);
   const [kind, setKind] = useState<ActivityKind>("메모");
   const [body, setBody] = useState("");
+  const [minutes, setMinutes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,19 +52,25 @@ export default function ActivityLog({
   async function submit() {
     const text = body.trim();
     if (!text || saving) return;
+    const mins = minutes.trim() === "" ? null : Number(minutes);
+    if (mins !== null && (!Number.isInteger(mins) || mins < 1 || mins > 600)) {
+      setError("쓴 시간은 1~600분 사이 숫자로 적어 주세요.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/astro/activities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_type: targetType, target_id: targetId, kind, body: text, author: actor }),
+        body: JSON.stringify({ target_type: targetType, target_id: targetId, kind, body: text, author: actor, ...(mins !== null ? { minutes: mins } : {}) }),
       });
       if (!res.ok) {
         setError("기록하지 못했습니다. 다시 눌러 주세요.");
         return;
       }
       setBody("");
+      setMinutes("");
       load();
       onLogged?.();
     } catch {
@@ -112,9 +120,12 @@ export default function ActivityLog({
         />
         <div className="flex items-center justify-between mt-2">
           <span className="text-[12px] text-gray-400">Enter 로 기록 · Shift+Enter 줄바꿈</span>
-          <Button size="sm" variant="primary" onClick={submit} disabled={!body.trim() || saving}>
-            {saving ? "기록 중…" : "기록"}
-          </Button>
+          <span className="flex items-center gap-1.5">
+            <span className="w-16"><Input inputMode="numeric" value={minutes} onChange={(e) => setMinutes(e.target.value.replace(/\D/g, ""))} placeholder="분" aria-label="쓴 시간(분)" title="쓴 시간(분) — 선택. 재무 CAC 에 들어갑니다" /></span>
+            <Button size="sm" variant="primary" onClick={submit} disabled={!body.trim() || saving}>
+              {saving ? "기록 중…" : "기록"}
+            </Button>
+          </span>
         </div>
         {error && (
           <p className="text-[12px] text-red-600 mt-1.5" role="alert">
@@ -134,7 +145,7 @@ export default function ActivityLog({
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] text-gray-800 leading-relaxed break-words">{a.body}</p>
                   <p className="text-[11px] text-gray-400 mt-0.5">
-                    {a.kind} · {a.author} · {agoLabel(a.created_at)}
+                    {a.kind} · {a.author} · {agoLabel(a.created_at)}{a.minutes ? ` · ${a.minutes}분` : ""}
                   </p>
                 </div>
               </li>

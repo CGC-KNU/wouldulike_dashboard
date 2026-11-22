@@ -4,6 +4,7 @@ import { proxyBody } from "@/lib/apiProxy";
 import { remoteGet, remoteSend } from "@/lib/draft/remote";
 import { clearBackendCache } from "@/lib/draft/toolProxy";
 import { notifyAstro } from "@/lib/slack";
+import { isChurnReason, recordChurn } from "@/lib/finance/churn";
 import type { Lead, StoreOps } from "@/lib/draft/types";
 
 /**
@@ -16,7 +17,8 @@ import type { Lead, StoreOps } from "@/lib/draft/types";
  *   ① 앱 매장의 제휴를 끈다 → 파트너 매장·계약 탭 목록에서 빠지고 앱에서 혜택이 사라진다
  *   ② 운영값에 종료일을 남긴다 → 파트너 매장 탭 '계약 종료' 칸에서 다시 볼 수 있다
  *   ③ 이 매장에 이어진 후보가 있으면 '보류' 로 옮기고 메모에 날짜를 적는다 → 후보 탭에서도 빠진다
- * ①이 실패하면 거기서 멈추고 실패라고 말한다. ②③은 최선 노력이되 결과를 응답에 적는다.
+ *   ④ 해지 사유(폐업 · 자발 · 결제 실패 · 기타)를 남긴다(1122) → 재무 현황 3개월 유지율 · 이탈
+ * ①이 실패하면 거기서 멈추고 실패라고 말한다. ②③④는 최선 노력이되 결과를 응답에 적는다.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const deny = await requireTool("restaurants");
@@ -24,7 +26,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const rid = Number(id);
   if (!Number.isFinite(rid)) return NextResponse.json({ detail: "매장 번호가 아닙니다." }, { status: 400 });
-  const { actor } = (await req.json().catch(() => ({}))) as { actor?: string };
+  const { actor, reason } = (await req.json().catch(() => ({}))) as { actor?: string; reason?: unknown };
+  if (reason !== undefined && !isChurnReason(reason)) return NextResponse.json({ detail: "해지 사유가 올바르지 않습니다." }, { status: 400 });
   const who = actor?.trim() || "unknown";
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10); // KST
 
@@ -56,6 +59,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     leadOk = r.ok;
   }
 
+  // ④ 해지 사유 — 종료일은 ②와 같은 날
+  const churnOk = isChurnReason(reason) ? await recordChurn(rid, reason, ends ?? today) : null;
+
   await notifyAstro(`:no_entry: *계약 종료* — 매장 #${rid}${leadName ? ` (${leadName})` : ""} · 종료일 ${ends ?? today} · ${who}`);
-  return NextResponse.json({ ok: true, restaurant_id: rid, contract_ends_on: ends ?? today, ops_ok: ops.ok, lead: lead ? { id: lead.id, name: lead.name, moved: leadOk } : null });
+  return NextResponse.json({ ok: true, restaurant_id: rid, contract_ends_on: ends ?? today, ops_ok: ops.ok, churn_ok: churnOk, lead: lead ? { id: lead.id, name: lead.name, moved: leadOk } : null });
 }

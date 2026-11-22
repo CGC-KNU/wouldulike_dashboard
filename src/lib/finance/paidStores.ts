@@ -16,6 +16,14 @@ import type { PaidStore } from "./types";
  * 나갈 돈이 0원으로 보이는 것이 가장 위험하다.
  */
 export async function readPaidStores(): Promise<PaidStore[] | null> {
+  return (await readAffiliates())?.paid ?? null;
+}
+
+/**
+ * 제휴 중인 매장 — 유료와 무료를 같이(1122 재무 지표). 무료는 전환율 분모 · 상권 침투율(파트너)에 쓴다.
+ * 유료의 정의는 위와 같다. 캠퍼스는 Astro 운영값(없으면 앱 매장 칸).
+ */
+export async function readAffiliates(): Promise<{ paid: PaidStore[]; free: { id: number; campus: string | null }[] } | null> {
   const backend = await fetchBackendJson<{ restaurants?: BackendRestaurant[] }>("/api/dashboard/restaurants/", "include_inactive=1");
   const restaurants = backend?.restaurants ?? (isPreview() ? previewRestaurants() : null);
   if (!restaurants) return null;
@@ -24,11 +32,14 @@ export async function readPaidStores(): Promise<PaidStore[] | null> {
   const opsList = remote.handled && remote.ok ? (remote.data?.ops ?? []) : readDraft<StoreOps[]>("astro_store_ops", seedStoreOps);
   const ops = new Map(opsList.map((o) => [o.id, { ...emptyStoreOps(o.id), ...o }]));
 
-  return restaurants
-    .filter((r) => r.is_affiliate !== false && isPaidTier(r.tier) && !ops.get(r.restaurant_id)?.is_test)
-    .map((r) => {
+  const live = restaurants.filter((r) => r.is_affiliate !== false && !ops.get(r.restaurant_id)?.is_test);
+  const campusOf = (r: BackendRestaurant) => ops.get(r.restaurant_id)?.campus || r.campus || null;
+  return {
+    paid: live.filter((r) => isPaidTier(r.tier)).map((r) => {
       const o = ops.get(r.restaurant_id);
       const start = o?.billing_start_period || (o?.contract_started_on ? o.contract_started_on.slice(0, 7) : null);
-      return { id: r.restaurant_id, name: r.name, start: start || null };
-    });
+      return { id: r.restaurant_id, name: r.name, start: start || null, campus: campusOf(r) };
+    }),
+    free: live.filter((r) => !isPaidTier(r.tier)).map((r) => ({ id: r.restaurant_id, campus: campusOf(r) })),
+  };
 }
