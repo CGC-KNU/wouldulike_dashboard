@@ -7,6 +7,7 @@ import { BURN_BASIS_LABEL, burnSummary, wonShort, byCategory, changePct, dueRows
 import { INCOME_SOURCE_LABEL } from "@/lib/finance/types";
 import { Button, Card, Chip, DraftBadge, Empty, Notice, PageHeader, Segmented, Select, Skeleton, periodLocal, todayLocal } from "../_shared/ui";
 import { BalanceCard, FundingCard } from "./CashPanels";
+import FinanceMetrics from "./FinanceMetrics";
 import FlowChart from "./FlowChart";
 import { useFinance } from "./useFinance";
 
@@ -14,7 +15,7 @@ import { useFinance } from "./useFinance";
  * 재무 · 현황 — 대표 둘이 열면 처음 보는 화면.
  *
  * 위에서 아래로: 런웨이 넷(가용 현금 · 순번 · 런웨이 · MRR) → 그달 장부(입금 · 출금 · 순입금 · 남은 예정 · 부가세 예수금)
- * → 월말 잔고 · 자금 조달 입력 → 6개월 막대 → 예정 출금 · 분류별 출금 → 최근 거래.
+ * → 지표 20개 네 묶음(FinanceMetrics, 1122) → 월말 잔고 · 자금 조달 입력 → 6개월 막대 → 예정 출금 · 분류별 출금 → 최근 거래.
  * 런웨이 산식은 설계 보고서(1121 에테르 재무장표) 부록 A 그대로다 — calc.ts 의 burnSummary · runwayOf 등.
  * 모르는 값은 0 이 아니라 「—」이고, 그 자리에 무엇을 넣으면 계산되는지 적는다.
  * 큰 숫자 하나로 끝내지 않고 「막힌 것」(미기록 지급, 금액 미입력)을 같은 화면에서 먼저 보이게 한다.
@@ -166,6 +167,9 @@ export default function FinanceOverview({ onGo }: { onGo?: (tab: string) => void
               </table>
             </div>
           </Card>
+
+          {/* ③ 지표 20개 — 매장 1곳 단위 · 성장 · 유지 · 현금 · 계획 · 시장 · 상권 (1122) */}
+          <FinanceMetrics f={f} period={period} closed={closed} thisPeriod={thisPeriod} runway={runway} grossBurn={ledgerOk ? burn.gross : null} onGo={onGo} />
 
           <div id="cash-panels" className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-5 items-start scroll-mt-20">
             <BalanceCard f={f} snap={snap} rec={rec} />

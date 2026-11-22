@@ -312,6 +312,8 @@ export interface Activity {
   body: string;
   author: string;
   created_at: string;
+  /** 쓴 시간(분, 1122) — 재무 CAC 의 영업 시간. 백엔드 AdminConfig astro:sales_time 에 따로 쌓인다. 안 적었으면 없음. */
+  minutes?: number;
 }
 
 /**

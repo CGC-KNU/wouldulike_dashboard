@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconCheck, IconPlus, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { dueRows, dueTotals, paidStoreCount, periodOf, recentPeriods, resolveAmount, won } from "@/lib/finance/calc";
-import { ACCOUNTS, ACCOUNT_LABEL, BEHAVIORS, BEHAVIOR_LABEL, CYCLE_LABEL, EXPENSE_CATEGORIES, METHOD_HINT, METHOD_LABEL, type ExpenseEntry, type ExpenseItem, type ExpenseMethod } from "@/lib/finance/types";
+import { ACCOUNTS, ACCOUNT_LABEL, BEHAVIORS, BEHAVIOR_LABEL, CAMPUSES, CYCLE_LABEL, ENTRY_TAGS, ENTRY_TAG_LABEL, EXPENSE_CATEGORIES, METHOD_HINT, METHOD_LABEL, type EntryTag, type ExpenseEntry, type ExpenseItem, type ExpenseMethod } from "@/lib/finance/types";
 import { Button, Card, Chip, DraftBadge, Empty, Field, Input, Kpi, Notice, PageHeader, Select, Skeleton, SlideOver, Table, Td, Textarea, Th, periodLocal, rowClickable, todayLocal } from "../_shared/ui";
 import { useFinance } from "./useFinance";
 
@@ -91,9 +91,9 @@ export default function FinanceExpense({ onGo }: { onGo?: (tab: string) => void 
                   {monthEntries.map((e) => (
                     <tr key={e.id} className={rowClickable} onClick={() => setEntryPanel({ entry: e })}>
                       <Td className="text-[12px] text-gray-600 whitespace-nowrap">{e.paid_on.slice(5).replace("-", "/")}</Td>
-                      <Td><span className="font-semibold text-gray-900">{e.name}</span>{e.memo && <span className="block text-[12px] text-gray-500 truncate max-w-[28ch]">{e.memo}</span>}</Td>
+                      <Td><span className="font-semibold text-gray-900">{e.name}</span>{e.tag && <span className="ml-1.5"><Chip tone="blue">{ENTRY_TAG_LABEL[e.tag]}{e.campus ? ` · ${e.campus}` : ""}</Chip></span>}{e.memo && <span className="block text-[12px] text-gray-500 truncate max-w-[28ch]">{e.memo}</span>}</Td>
                       <Td><Chip tone={e.item_id ? "navy" : "gray"}>{e.category}</Chip></Td>
-                      <Td align="right" numeric className="font-semibold text-gray-900">{won(e.amount)}</Td>
+                      <Td align="right" numeric className="font-semibold text-gray-900">{won(e.amount)}{typeof e.tax === "number" && <span className="block text-[11px] font-normal text-gray-500">세액 {won(e.tax)}</span>}</Td>
                       <Td className="text-[12px] text-gray-500">{e.created_by ?? "-"}</Td>
                     </tr>
                   ))}
@@ -160,6 +160,11 @@ function EntryForm({ panel, today, paidCount, f, onClose }: { panel: NonNullable
   const [unit, setUnit] = useState(item && item.method === "PER_PAID_STORE" && item.amount != null ? String(item.amount) : "");
   const [stores, setStores] = useState(paidCount !== null ? String(paidCount) : "");
   const [memo, setMemo] = useState(editing?.memo ?? "");
+  // 매입 세액 · 선택 태그(1122) — 부가세 순납부 · 입점 비용 · 상권 진입 비용이 여기서 나온다
+  const [tax, setTax] = useState(editing?.tax != null ? String(editing.tax) : "");
+  const [tag, setTag] = useState<EntryTag | "">(editing?.tag ?? "");
+  const [storeId, setStoreId] = useState(editing?.store_id != null ? String(editing.store_id) : "");
+  const [campus, setCampus] = useState(editing?.campus ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 귀속 월을 사람이 건드리기 전까지는 나간 달을 따라간다 — 대부분 같은 달이다
@@ -175,7 +180,10 @@ function EntryForm({ panel, today, paidCount, f, onClose }: { panel: NonNullable
     if (perStore && computed === null) { setBusy(false); setError("단가와 유료 식당 수를 숫자로 적으세요."); return; }
     // 곱해서 만든 금액은 기록에 그대로 박힌다 — 나중에 유료 식당이 늘고 줄어도 이 기록은 변하지 않는다. 어떻게 나온 금액인지는 메모에 남긴다.
     const note = perStore && !memo.trim() ? `유료 식당 ${n}곳 × ${won(u ?? 0)}` : memo;
-    const body = { paid_on: paidOn, period, name, category, amount: perStore ? computed ?? 0 : amount, memo: note, item_id: editing ? editing.item_id : (item?.id ?? null) };
+    const body = {
+      paid_on: paidOn, period, name, category, amount: perStore ? computed ?? 0 : amount, memo: note, item_id: editing ? editing.item_id : (item?.id ?? null),
+      tax: tax.trim() === "" ? null : tax, tag: tag || null, store_id: tag === "onboarding" && storeId ? Number(storeId) : null, campus: tag ? campus || null : null,
+    };
     const err = editing ? await f.patchEntry(editing.id, body) : await f.addEntry(body);
     setBusy(false);
     if (err) setError(err); else onClose();
@@ -209,7 +217,18 @@ function EntryForm({ panel, today, paidCount, f, onClose }: { panel: NonNullable
         <Field label="나간 날" required hint="오늘 이후는 적을 수 없습니다."><Input type="date" value={paidOn} max={today} onChange={(e) => setPaidOn(e.target.value)} /></Field>
         <Field label="어느 달 몫" hint="나간 달과 다르면 바꾸세요."><Input type="month" value={period} onChange={(e) => { setPeriod(e.target.value); setPeriodTouched(true); }} /></Field>
       </div>
-      <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="분류"><Select value={category} onChange={(e) => setCategory(e.target.value)}>{EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+        <Field label="세액(원)" hint="세금계산서 · 카드 영수증의 부가세. 없으면 비움"><Input inputMode="numeric" value={tax} onChange={(e) => setTax(e.target.value)} placeholder="예: 13636" /></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="태그" hint="입점 = 매장 1곳 들일 때 한 번 · 상권 진입 = 새 상권 열 때"><Select value={tag} onChange={(e) => setTag(e.target.value as EntryTag | "")}><option value="">없음</option>{ENTRY_TAGS.map((t) => <option key={t} value={t}>{ENTRY_TAG_LABEL[t]}</option>)}</Select></Field>
+        {tag === "onboarding" ? (
+          <Field label="매장" hint="고르지 않아도 됩니다"><Select value={storeId} onChange={(e) => setStoreId(e.target.value)}><option value="">고르지 않음</option>{(f.paidStores ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+        ) : tag === "campus" ? (
+          <Field label="상권" required><Select value={campus} onChange={(e) => setCampus(e.target.value)}><option value="">고르세요</option>{CAMPUSES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></Field>
+        ) : <div />}
+      </div>
       <Field label="메모"><Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} maxLength={300} placeholder={perStore ? "비워 두면 「유료 식당 N곳 × 단가」가 남습니다" : "청구서 번호, 계좌이체 메모 등"} /></Field>
       {!editing && !item && <p className="text-[12px] text-gray-500">항목 없이 적은 출금은 성격을 몰라 운영 번에도 들어갑니다. 일회성으로 빼려면 행동 방식이 「일회성」인 항목에서 기록하세요.</p>}
     </SlideOver>

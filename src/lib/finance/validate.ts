@@ -1,4 +1,4 @@
-import { ACCOUNTS, BEHAVIORS, EXPENSE_CATEGORIES, FUNDING_KINDS, FUNDING_STATUSES, type AccountBalance, type ExpenseAccount, type ExpenseBehavior, type ExpenseCategory, type ExpenseCycle, type ExpenseEntry, type ExpenseItem, type ExpenseMethod, type FundingEvent, type FundingKind, type FundingStatus } from "./types";
+import { ACCOUNTS, BEHAVIORS, CAMPUSES, ENTRY_TAGS, EXPENSE_CATEGORIES, FUNDING_KINDS, FUNDING_STATUSES, type AccountBalance, type ExpenseAccount, type ExpenseBehavior, type ExpenseCategory, type ExpenseCycle, type ExpenseEntry, type ExpenseItem, type EntryTag, type ExpenseMethod, type FundingEvent, type FundingKind, type FundingStatus } from "./types";
 
 /**
  * 재무 입력 검사 — 라우트가 백엔드·초안 어느 쪽에 쓰기 전에 같은 규칙으로 거른다.
@@ -143,7 +143,43 @@ export function checkEntry(body: Body, partial: boolean, today: string): Checked
     if (memo.length > 300) return bad("메모는 300자 이하여야 합니다.");
     out.memo = memo || null;
   }
+  // 매입 세액 · 선택 태그(1122) — 온 칸만 본다. 비우면 null.
+  if ("tax" in body) {
+    const m = money(body.tax, true);
+    if (!m.ok) return bad(m.detail.replace("금액", "세액"));
+    out.tax = m.value;
+  }
+  if ("tag" in body) {
+    const t = body.tag;
+    if (t === null || t === undefined || t === "") out.tag = null;
+    else if (!(ENTRY_TAGS as string[]).includes(t as string)) return bad("태그는 입점 · 상권 진입 중 하나입니다.");
+    else out.tag = t as EntryTag;
+  }
+  if ("store_id" in body) {
+    const v = body.store_id;
+    if (v === null || v === undefined || v === "") out.store_id = null;
+    else if (!Number.isInteger(Number(v))) return bad("매장 번호가 올바르지 않습니다.");
+    else out.store_id = Number(v);
+  }
+  if ("campus" in body) {
+    const c = body.campus;
+    if (c === null || c === undefined || c === "") out.campus = null;
+    else if (!(CAMPUSES as readonly string[]).includes(c as string)) return bad("상권은 경북대 · 영남대 · 계명대 중 하나입니다.");
+    else out.campus = c as string;
+  }
+  // 한 요청 안에서 볼 수 있는 것만 — 고칠 때 합친 뒤 규칙은 서버가 다시 본다
+  if (out.tax != null && out.amount != null && out.tax > out.amount) return bad("세액이 출금액보다 큽니다.");
+  if (out.tag === "campus" && !out.campus && (!partial || "campus" in body)) return bad("상권 태그는 상권을 골라야 합니다.");
+  if ("tag" in out && out.tag !== "onboarding" && out.store_id != null) return bad("매장은 입점 태그에만 고를 수 있습니다.");
   return { ok: true, value: out };
+}
+
+/** 재무 설정 — 영업 시간 단가(원/시간). */
+export function checkSettings(body: Body): Checked<{ hour_rate: number }> {
+  const m = money(body.hour_rate, false);
+  if (!m.ok) return bad(m.detail.replace("금액", "시간 단가"));
+  if ((m.value as number) > 1_000_000) return bad("시간 단가가 너무 큽니다(시간당 100만 원 이하).");
+  return { ok: true, value: { hour_rate: m.value as number } };
 }
 
 const memoOf = (v: unknown): Checked<string | null> => {

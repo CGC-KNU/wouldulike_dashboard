@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AccountBalance, BillingLine, ExpenseEntry, ExpenseItem, FundingEvent, IncomeEntry, PaidStore } from "@/lib/finance/types";
+import type { AccountBalance, BillingLine, ExpenseEntry, ExpenseItem, FundingEvent, IncomeEntry, MetricsInputs, PaidStore } from "@/lib/finance/types";
 
 /**
  * 재무 세 화면(현황 · 입금 · 출금)이 같이 쓰는 데이터 훅.
@@ -17,6 +17,10 @@ export interface EntryInput {
   amount: number | string;
   memo?: string;
   item_id?: string | null;
+  tax?: number | string | null;
+  tag?: string | null;
+  store_id?: number | null;
+  campus?: string | null;
 }
 
 export interface ItemInput {
@@ -77,15 +81,19 @@ export function useFinance() {
   const [expenseError, setExpenseError] = useState<string | null>(null);
   /** 월말 잔고 · 자금 조달 — 못 읽으면 가용 현금 · 런웨이는 모름이다. */
   const [cashError, setCashError] = useState<string | null>(null);
+  /** 지표 입력(1122) — 영업 시간 · 해지 · 플랜 변경 · 계획값 · 시장 · 목표 · 후보 · 허블. 못 읽으면 null(지표는 「—」). */
+  const [metrics, setMetrics] = useState<MetricsInputs | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [i, e, b, fu] = await Promise.all([
+    const [i, e, b, fu, mx] = await Promise.all([
       fetch("/api/finance/income", { cache: "no-store" }).catch(() => null),
       fetch("/api/finance/expenses", { cache: "no-store" }).catch(() => null),
       fetch("/api/finance/balances", { cache: "no-store" }).catch(() => null),
       fetch("/api/finance/fundings", { cache: "no-store" }).catch(() => null),
+      fetch("/api/finance/metrics", { cache: "no-store" }).catch(() => null),
     ]);
+    setMetrics(mx?.ok ? ((await mx.json().catch(() => null)) as MetricsInputs | null) : null);
     let isDraft = false;
 
     if (i?.ok) {
@@ -130,7 +138,7 @@ export function useFinance() {
   }, [load]);
 
   const write = useCallback(
-    async (method: "POST" | "PATCH" | "DELETE", url: string, body: unknown, fallback: string): Promise<string | null> => {
+    async (method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, body: unknown, fallback: string): Promise<string | null> => {
       try {
         const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
         if (!res.ok) return await detailOf(res, fallback);
@@ -144,7 +152,8 @@ export function useFinance() {
   );
 
   return {
-    income, billing, items, entries, balances, fundings, paidStores, draft, loading, incomeError, expenseError, cashError, reload: load,
+    income, billing, items, entries, balances, fundings, paidStores, metrics, draft, loading, incomeError, expenseError, cashError, reload: load,
+    saveSettings: (b: { hour_rate: number | string }) => write("PUT", "/api/finance/settings", b, "저장하지 못했습니다."),
     addEntry: (b: EntryInput) => write("POST", "/api/finance/expenses", b, "기록하지 못했습니다."),
     patchEntry: (id: string, b: Partial<EntryInput>) => write("PATCH", `/api/finance/expenses/${encodeURIComponent(id)}`, b, "저장하지 못했습니다."),
     deleteEntry: (id: string) => write("DELETE", `/api/finance/expenses/${encodeURIComponent(id)}`, undefined, "지우지 못했습니다."),

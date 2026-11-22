@@ -116,7 +116,7 @@ export async function remoteGet<T>(path: string, search?: string): Promise<Remot
  * 메모리에만 남는 것이 가장 위험하다. 백엔드가 설정돼 있는데 못 닿으면 그대로 에러를 올린다.
  */
 export async function remoteSend<T>(
-  method: "POST" | "PATCH" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body?: unknown
 ): Promise<RemoteResult<T>> {
