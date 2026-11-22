@@ -50,7 +50,7 @@ export default function PolarisMap() {
   return (
     <div className="relative">
       <div className="flex items-center justify-end gap-3 mb-2 text-[12px] text-gray-500">
-        {doc?.pushed_at && !old && <span>리브라가 올린 시각 {doc.pushed_at.slice(5, 16).replace("T", " ")}</span>}
+        {doc?.pushed_at && !old && <span>리브라가 올린 시각 {new Date(doc.pushed_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}
         <button type="button" onClick={() => setOld((v) => !v)}
           className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-semibold">
           {old ? "방향 지도로" : "예전 현황 판"}
