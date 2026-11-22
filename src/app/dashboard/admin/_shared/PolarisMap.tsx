@@ -24,7 +24,7 @@ function build(doc: Doc): string {
     .replace("<head>", '<head><script>window.POLARIS_API="/api/polaris"</script>');
 }
 
-export default function PolarisMap() {
+export default function PolarisMap({ full = false }: { full?: boolean } = {}) {
   const [doc, setDoc] = useState<Doc | null>(null);
   const [err, setErr] = useState("");
   const [old, setOld] = useState(false);
@@ -48,15 +48,17 @@ export default function PolarisMap() {
   }, [load]);
 
   return (
-    <div className="relative">
-      <div className="flex items-center justify-end gap-3 mb-2 text-[12px] text-gray-500">
+    <div className={full ? "relative h-full w-full" : "relative"}>
+      <div className={full
+        ? "absolute left-1/2 -translate-x-1/2 bottom-3 z-10 flex items-center gap-2 text-[11px] text-gray-500 bg-white/90 border border-gray-200 rounded-lg px-2 py-1 shadow-sm"
+        : "flex items-center justify-end gap-3 mb-2 text-[12px] text-gray-500"}>
         {doc?.pushed_at && !old && <span>리브라가 올린 시각 {new Date(doc.pushed_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>}
         <button type="button" onClick={() => setOld((v) => !v)}
           className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-semibold">
           {old ? "방향 지도로" : "예전 현황 판"}
         </button>
       </div>
-      {old ? <Polaris /> : err ? (
+      {old ? (full ? <div className="h-full overflow-auto px-4 pt-4 pb-20 max-w-6xl mx-auto"><Polaris /></div> : <Polaris />) : err ? (
         <p className="text-sm text-red-600 py-10 text-center">지도를 읽지 못했습니다 — {err}</p>
       ) : !doc ? (
         <p className="text-sm text-gray-400 py-10 text-center">불러오는 중…</p>
@@ -64,7 +66,8 @@ export default function PolarisMap() {
         <p className="text-sm text-gray-500 py-10 text-center">아직 리브라가 지도를 올리지 않았습니다.</p>
       ) : (
         <iframe title="Polaris 방향 지도" srcDoc={build(doc)}
-          className="w-full rounded-xl border border-gray-200 bg-white" style={{ height: "calc(100vh - 150px)", minHeight: 560 }} />
+          className={full ? "block w-full h-full border-0 bg-white" : "w-full rounded-xl border border-gray-200 bg-white"}
+          style={full ? undefined : { height: "calc(100vh - 150px)", minHeight: 560 }} />
       )}
     </div>
   );

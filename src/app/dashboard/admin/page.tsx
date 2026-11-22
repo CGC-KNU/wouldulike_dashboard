@@ -2626,6 +2626,12 @@ export default function AdminHomePage() {
       {/* 탭 컨텐츠 — 다섯 제품이 이제 같은 사이드바(ToolShell)를 쓴다 (민열님 0914).
           Papillon 은 PapillonShell, Aether 는 ProductShell 을 거치는데 둘 다 안에서 ToolShell 을 부른다.
           화면 구성과 기능은 그대로고 메뉴 생김새만 통일했다. */}
+      {/* Polaris 방향 지도 — 툴 사이드바 없이 레일 · 위쪽 줄 사이 전체 화면 (민열님 1122) */}
+      {selectedProduct === "polaris" && activeTab === "polaris-map" && (
+        <div className="fixed inset-x-0 lg:left-[64px] top-11 bottom-0 z-20 bg-[#f7f5ee]">
+          <PolarisMap full />
+        </div>
+      )}
       {activeTab === "satellite" && <PapillonShell onBack={showProductPicker ? backToProducts : undefined} />}
 
 
@@ -2669,7 +2675,7 @@ export default function AdminHomePage() {
 
       {activeTab &&
         activeTab !== "satellite" &&
-        (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "orbit" || selectedProduct === "polaris" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
+        (selectedProduct === "astro" || selectedProduct === "hubble" || selectedProduct === "orbit" || selectedProduct === "probe" || selectedProduct === "castor" || selectedProduct === "atlas") && (
         <ToolShell
           product={{ key: productMeta.key, name: productMeta.name, subtitle: productMeta.subtitle }}
           navItems={selectedProduct === "probe" ? probeNav(productTabs) : groupNav(productTabs.map((t) => ({ key: t.key, label: t.label })), selectedProduct === "astro" ? ASTRO_NAV_GROUPS : [])}
@@ -2721,7 +2727,6 @@ export default function AdminHomePage() {
           {activeTab === "hubble-map" && <HubbleMap actor={actorName} onOpenLead={() => { selectProduct("astro"); setTimeout(() => go("astro-leads"), 0); }} />}
           {activeTab === "hubble-watch" && <HubbleWatch />}
           {activeTab === "orbit-board" && <OrbitBoard actor={actorName} initial={orbitPick} />}
-          {activeTab === "polaris-map" && <PolarisMap />}
           {activeTab === "castor-home" && <CastorHome onGo={(t) => setActiveTab(t as Tab)} />}
           {(activeTab === "atlas-team" || activeTab === "atlas-mission" || activeTab === "atlas-tools" || activeTab === "atlas-history") && (
             <Atlas tab={activeTab} onGo={(t) => { if (t === "launcher") backToProducts(); else if (PRODUCTS.some((p) => p.key === t)) selectProduct(t as Product); else go(t); }} />
