@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconFolder, IconHome, IconMoodSmile } from "@tabler/icons-react";
+import { IconFolder, IconHome, IconMoodSmile, IconStar } from "@tabler/icons-react";
 import NotificationBell from "@/components/NotificationBell";
 import { BusinessCardButton } from "@/components/BusinessCard";
 import { useThemeToggle } from "@/components/ThemeClock";
@@ -21,7 +21,7 @@ export interface RailItem { key: string; name: string }
 export interface RailUser { name: string; title?: string | null; role?: string | null }
 
 /** 일 순서 — 영업 · 마케팅이 위, 개발이 아래 */
-const ORDER = ["astro", "hubble", "papillon", "probe", "aether", "castor", "playroom"];   // Drive 는 뺌(1121)
+const ORDER = ["astro", "hubble", "papillon", "probe", "aether", "castor", "polaris", "playroom"];   // Polaris 방향 지도(1122)   // Drive 는 뺌(1121)
 const NAME: Record<string, string> = { drive: "Drive", playroom: "세티" };
 const APP_ICON = new Set(["papillon", "astro", "hubble", "aether", "probe", "castor"]);
 
@@ -52,7 +52,7 @@ export default function AppRail({ items, active, onHome, onSelect, badge, user }
           <RailButton key={t.key} label={NAME[t.key] ?? t.name} on={active === t.key} onClick={() => onSelect(t.key)} count={badge?.(t.key) ?? 0}>
             {APP_ICON.has(t.key)
               ? <img src={`/satellite/${t.key}_app.svg`} alt="" width={32} height={32} className="w-8 h-8 rounded-[9px]" aria-hidden="true" />
-              : <span className="w-8 h-8 rounded-[9px] grid place-items-center bg-white/10 text-white">{t.key === "playroom" ? <IconMoodSmile size={17} stroke={1.9} aria-hidden="true" /> : <IconFolder size={18} stroke={1.9} aria-hidden="true" />}</span>}
+              : <span className="w-8 h-8 rounded-[9px] grid place-items-center bg-white/10 text-white">{t.key === "playroom" ? <IconMoodSmile size={17} stroke={1.9} aria-hidden="true" /> : t.key === "polaris" ? <IconStar size={17} stroke={1.9} aria-hidden="true" /> : <IconFolder size={18} stroke={1.9} aria-hidden="true" />}</span>}
           </RailButton>
         ))}
       </div>
