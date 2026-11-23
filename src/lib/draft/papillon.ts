@@ -39,12 +39,26 @@ export async function fetchPapillonMonths(months = 3): Promise<{ reachable: bool
   return { reachable: true, plans: [...plans.values()], sponsorships: [...sps.values()] };
 }
 
-/** 매장 이름이 글자 안에 들어 있는지. 짧은 이름(2자 이하)은 오탐이 많아 정확 일치만 본다. */
+/** 짧은 이름 바로 뒤에 붙어도 되는 조사 — 「난탄에서」 「핵밥이랑」 */
+const PARTICLE = /^(의|에서|에|은|는|이|가|을|를|과|와|도|랑|이랑|만)$/;
+const WORD_SPLIT = /[\s()（）[\]{}·,./!?~'"「」『』<>|:;+&#@-]+/;
+
+/**
+ * 매장 이름이 글자 안에 들어 있는지.
+ * 짧은 이름(지점명을 뗀 뒤 2자 이하 — 「난탄 경대북문점」 → 난탄)은 글자 속에서 찾으면 오탐이 많아 **낱말로** 들어 있을 때만 본다
+ * (제목 전체가 그 이름 · 띄어 쓴 낱말 · 낱말 + 조사). 1123 전에는 제목 전체가 같을 때만 봐서
+ * 「난탄 …」 게시물이 매장 리포트 목록에도, 인스타 추이 「제휴 매장」에도 안 잡혔다(민찬 1123).
+ */
 export function mentions(text: string, storeName: string): boolean {
   const n = normName(storeName);
   if (!n) return false;
   const t = normName(text);
-  return n.length <= 2 ? t === n : t.includes(n);
+  if (n.length > 2) return t.includes(n);
+  if (t === n) return true;
+  return text.split(WORD_SPLIT).some((w) => {
+    const k = normName(w);
+    return k === n || (k.startsWith(n) && PARTICLE.test(k.slice(n.length)));
+  });
 }
 
 export function sliceForStore(all: Awaited<ReturnType<typeof fetchPapillonMonths>>, storeName: string): PapillonSlice {
