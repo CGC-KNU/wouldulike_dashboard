@@ -2532,7 +2532,7 @@ export default function AdminHomePage() {
   if (activeTab === "playroom") return <Playroom onBack={backToProducts} />;
 
   /* ─── 왼쪽 앱 레일 (1121 민열님: 슬랙처럼 왼쪽에) — lg 이상에서만 보인다. 메인 · 툴 어디서든 같은 자리 ─── */
-  const railItems = availableProducts.filter((p) => p.ready && p.key !== "orbit" && p.key !== "atlas" && p.key !== "drive").map((p) => ({ key: p.key, name: p.name }));
+  const railItems = availableProducts.filter((p) => p.ready && p.key !== "orbit" && p.key !== "atlas").map((p) => ({ key: p.key, name: p.name })); // Drive 는 레일 앱들 맨 아래(AppRail ORDER 마지막)
   const railBadge = (k: string) => (k === "astro" ? (satStatus?.billing?.unpaid ?? 0) + (satStatus?.leads?.stale ?? 0)
     : k === "probe" && satStatus?.probe ? satStatus.probe.due + satStatus.probe.held : 0);
   const libraCtx = {

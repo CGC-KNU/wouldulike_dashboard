@@ -21,7 +21,7 @@ export interface RailItem { key: string; name: string }
 export interface RailUser { name: string; title?: string | null; role?: string | null }
 
 /** 일 순서 — 영업 · 마케팅이 위, 개발이 아래 */
-const ORDER = ["astro", "hubble", "papillon", "probe", "aether", "castor", "polaris", "playroom"];   // Polaris 방향 지도(1122)   // Drive 는 뺌(1121)
+const ORDER = ["astro", "hubble", "papillon", "probe", "aether", "castor", "polaris", "playroom", "drive"];   // Polaris 방향 지도(1122) · Drive 는 앱들 맨 아래(1123)
 const NAME: Record<string, string> = { drive: "Drive", playroom: "세티" };
 const APP_ICON = new Set(["papillon", "astro", "hubble", "aether", "probe", "castor"]);
 
