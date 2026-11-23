@@ -1,7 +1,8 @@
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import { isD7ReportToRefresh } from "@/lib/draft/reportRefresh";
-import { fetchPapillonMonths, fetchPerformance, fixedPlanStores, isPartnerContent, mentions, partnerNames, sponsorStores } from "@/lib/draft/papillon";
+import { fetchPapillonMonths, fetchPerformance } from "@/lib/draft/papillon";
+import { matchPlanStores } from "@/lib/draft/partnerMatch";
 import { normName } from "@/lib/draft/sheet";
 import { listReports } from "@/lib/draft/reportStore";
 import { metricsOf } from "@/lib/draft/snapshot";
@@ -89,29 +90,11 @@ export async function buildInsights(): Promise<InsightsResult> {
   }
 
   type Plan = (typeof pap.plans)[number];
-  const same = (name: string, r: BackendRestaurant) => mentions(name, r.name) || mentions(r.name, name);
+  // 어느 매장 게시물인가는 partnerMatch 하나에서 — 인스타 추이의 제휴 · 제휴 아님(1123)과 같은 규칙
   const candidates: { r: BackendRestaurant | null; label: string; by: StoreInsight["matched_by"]; plan: Plan }[] = [];
   for (const plan of [...pap.plans].sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date))) {
     if (plan.status === "draft") continue; // 주제만 적힌 기획 — 올라갈 게 없다
-    const marked = isPartnerContent(plan.topic);
-    const names = partnerNames(plan.topic);
-    const seen = new Set<number>();
-    const add = (r: BackendRestaurant, by: StoreInsight["matched_by"]) => { if (!seen.has(r.restaurant_id)) { seen.add(r.restaurant_id); candidates.push({ r, label: r.name, by, plan }); } };
-    for (const r of restaurants) if (names.some((n) => same(n, r))) add(r, "marker");
-    for (const r of restaurants) if (mentions(plan.topic, r.name)) add(r, marked ? "marker" : "name");
-    // 제목에 이름이 없는 여러 매장 게시물 — 정해 둔 매장 전부. 앱에 없는 곳은 협찬 매장으로(리포트 가능, 앱 지표만 없다)
-    const fixed = fixedPlanStores(plan.topic);
-    if (fixed.length) {
-      for (const r of restaurants) if (fixed.some((n) => same(n, r))) add(r, "name");
-      for (const n of fixed) if (!restaurants.some((r) => same(n, r))) candidates.push({ r: null, label: n, by: "sponsor", plan });
-      continue;
-    }
-    if (!marked) {
-      if (seen.size === 0) for (const n of sponsorStores(plan.topic, pap.sponsorships)) candidates.push({ r: null, label: n, by: "sponsor", plan });
-      continue;
-    }
-    for (const n of names) if (!restaurants.some((r) => same(n, r))) candidates.push({ r: null, label: n, by: "marker", plan });
-    if (names.length === 0 && seen.size === 0) candidates.push({ r: null, label: "제휴식당 (괄호에 이름 없음)", by: "marker", plan });
+    for (const m of matchPlanStores(plan.topic, restaurants, pap.sponsorships)) candidates.push({ ...m, plan });
   }
 
   // 성과는 게시물(기획)마다 한 번. 최근 기획부터 30개까지

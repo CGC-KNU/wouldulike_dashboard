@@ -10,6 +10,8 @@ import MonthlyReports from "./MonthlyReports";
 import { fetchJson, rememberJson } from "../_shared/fetchJson";
 import { Fold, PanelSection, TagChip, Unknown, md, takeParam } from "./kit";
 import type { ReportMetric, ReportStatus, StoreReport } from "@/lib/draft/types";
+import type { SummaryPayload, TrendPoint } from "@/app/api/probe/insights/summary/route";
+import { otherPostsForList } from "@/lib/draft/insightsTrend";
 import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notice, PageHeader, Skeleton, SlideOver, Stepper, Table, Td, Textarea, Th, agoLabel, focusRing, rowClickable, type ChipTone } from "../_shared/ui";
 
 /**
@@ -26,6 +28,10 @@ import { Button, Card, Chip, DraftBadge, Empty, Field, FilterPills, Input, Notic
  *  그 전에 승인·링크까지만 간 옛 리포트(APPROVED·LINKED)는 「카톡 보냄 표시」 버튼 하나로 끝낸다. 이미 나간 링크는 그대로 열리고 회수할 수 있다.
  *  1021: 보낸 리포트는 사유를 적어 되돌릴 수 있다 — 게시물이 「리포트 없음」으로 돌아가 새로 만든다.)
  * 스냅샷 숫자는 읽기 전용. 문구를 고치면 승인은 무효가 되고 다시 승인해야 한다.
+ *
+ * 1123 민찬: 「제휴 아님」 칸 — 같은 표에 제휴 매장이 아닌 게시물(일반 큐레이션 · 기획 없이 올린 게시물)도 본다. 리포트는 만들지 않는다.
+ * 줄은 인스타 추이(/api/probe/insights/summary)의 점에서 온다 — 나누는 규칙이 이 목록과 같다(lib/draft/partnerMatch).
+ * 숫자는 그 점의 스냅샷(14일차, 없으면 지금까지 쌓인 값)이다.
  */
 
 interface Post {
@@ -59,13 +65,17 @@ const TODO_STAGES = new Set<Stage>(["make", "draft", "send"]);
 const stageOf = (p: Post, r: StoreReport | null): Stage => (r ? (r.status === "DRAFT" ? "draft" : r.status === "SENT" ? "sent" : "send") : !p.available ? "blocked" : p.due ? "make" : "wait");
 
 interface Item { p: Post; r: StoreReport | null; stage: Stage }
+type StageFilter = Stage | "todo" | "all" | "other";
+const FORMAT_KO: Record<string, string> = { carousel: "카드뉴스", reel: "릴스", image: "이미지" };
 
 export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   const [tab, setTab] = useState<"posts" | "monthly">(() => (takeParam("rtab") === "monthly" ? "monthly" : "posts"));
   // ── Papillon 에서 온 게시물
   const [posts, setPosts] = useState<PostsPayload | null>(null);
   const [postsLoading, setPostsLoading] = useState(true);
-  const [stageFilter, setStageFilter] = useState<Stage | "todo" | "all">(() => { const v = takeParam("stage"); return v === "make" || v === "draft" || v === "send" || v === "sent" || v === "all" ? v : "todo"; });
+  const [stageFilter, setStageFilter] = useState<StageFilter>(() => { const v = takeParam("stage"); return v === "make" || v === "draft" || v === "send" || v === "sent" || v === "all" || v === "other" ? v : "todo"; });
+  // ── 제휴 아닌 게시물(1123) — null 은 읽는 중, false 는 못 읽음 · 못 나눔(빈 목록과 다르다)
+  const [others, setOthers] = useState<{ rows: TrendPoint[]; day: number } | null | false>(null);
   const [openPost, setOpenPost] = useState<string | null>(null);
   // ── 리포트
   const [list, setList] = useState<StoreReport[] | null>(null);
@@ -80,7 +90,8 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
   // 처음 열 때는 fetchJson 으로 — 런처 현황 · Probe 홈이 방금 읽었거나 읽는 중인 것과 합친다(1027). 못 읽으면 null(아래 빨간 안내).
   const loadPosts = useCallback((fresh: boolean) => { setPostsLoading(true); fetchJson<PostsPayload>(`/api/probe/insights${fresh ? "?fresh=1" : ""}`, { fresh }).then((d) => { if (fresh) rememberJson("/api/probe/insights", d); setPosts(d); }).finally(() => setPostsLoading(false)); }, []);
   const loadList = useCallback((fresh: boolean) => { fetchJson<{ reports?: StoreReport[]; draft_note?: string }>("/api/probe/reports", { fresh }).then((d) => { setList(d?.reports ?? []); setNote(d?.draft_note); }); }, []);
-  const load = useCallback((fresh = true) => { loadPosts(fresh); loadList(fresh); }, [loadPosts, loadList]);
+  const loadOthers = useCallback((fresh: boolean) => { fetchJson<SummaryPayload>("/api/probe/insights/summary", { fresh }).then((d) => { const rows = d?.trend ? otherPostsForList(d.trend) : null; setOthers(rows && d?.trend ? { rows, day: d.trend.day } : false); }); }, []);
+  const load = useCallback((fresh = true) => { loadPosts(fresh); loadList(fresh); loadOthers(fresh); }, [loadPosts, loadList, loadOthers]);
   useEffect(() => load(false), [load]);
 
   const allPosts = posts?.insights ?? [];
@@ -153,7 +164,7 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
     } finally { setMaking(null); if (tab && !opened) tab.close(); }
   }
 
-  const pill = (key: Stage | "todo" | "all", label: string, n: number) => (
+  const pill = (key: StageFilter, label: string, n: number | string) => (
     <button key={key} type="button" onClick={() => setStageFilter(key)} aria-pressed={stageFilter === key}
       className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] text-[12px] font-semibold touch-manipulation ${focusRing} ${stageFilter === key ? "bg-navy/[0.07] text-navy" : "bg-black/[0.05] text-gray-700 hover:bg-black/[0.08]"}`}>
       {label}<span className={`tabular-nums ${stageFilter === key ? "text-navy/70" : "text-gray-500"}`}>{n}</span>
@@ -186,8 +197,10 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
               {(["make", "draft", "send", "sent"] as Stage[]).map((k, i) => <span key={k} className="inline-flex items-center gap-1.5">{i > 0 && <span className="text-gray-400" aria-hidden="true">›</span>}{pill(k, STAGE[k].label, count(k))}</span>)}
               <span className="w-px h-5 bg-gray-200 mx-1" aria-hidden="true" />
               {pill("all", "전체", items.length)}
+              <span className="w-px h-5 bg-gray-200 mx-1" aria-hidden="true" />
+              {pill("other", "제휴 아님", others ? others.rows.length : others === null ? "…" : "—")}
             </div>
-            {postsLoading && !posts ? <Skeleton rows={4} cols={6} /> : visible.length === 0 ? (
+            {stageFilter === "other" ? <OtherPosts others={others} /> : postsLoading && !posts ? <Skeleton rows={4} cols={6} /> : visible.length === 0 ? (
               <Empty title={stageFilter === "todo" ? "지금 할 일이 없습니다" : "해당하는 게시물이 없습니다"} detail="Papillon 기획 제목 끝에 '(정든밤 포함)'처럼 적으면 발행 즉시 여기 잡힙니다. 「전체」에서 시기와 상관없이 만들 수 있습니다." />
             ) : (
               <Table minWidth="46rem">
@@ -237,6 +250,42 @@ export default function Reports({ onGo }: { onGo?: (tab: string) => void }) {
       {openP && <PostPanel p={openP} onClose={() => setOpenPost(null)} onMake={(force) => make(openP, force)} making={making === postKey(openP)} askForce={askForce === postKey(openP)} onOpenReport={(id) => { setOpenPost(null); setOpenId(id); }} />}
       {open && <ReportEditor r={open} onClose={() => setOpenId(null)} onChanged={() => load()} />}
     </>
+  );
+}
+
+/**
+ * 「제휴 아님」 — 제휴 매장이 아닌 게시물(1123). 리포트를 만들지 않으니 단계 · 다음 행동 대신 「인스타에서 보기」.
+ * 기획 없이 올린 게시물은 제목이 없어 캡션 대신 「기획 없음」이라고 적는다(캡션은 이 응답에 없다).
+ */
+function OtherPosts({ others }: { others: { rows: TrendPoint[]; day: number } | null | false }) {
+  if (others === null) return <Skeleton rows={4} cols={6} />;
+  if (others === false) return <div className="p-4"><Notice tone="amber" title="제휴 아닌 게시물을 읽지 못했습니다">인스타 추이 응답을 못 읽었거나 제휴 매장 게시물을 가르지 못했습니다 — 없다는 뜻이 아닙니다. 「다시 읽기」를 눌러 주세요.</Notice></div>;
+  if (!others.rows.length) return <Empty title="석 달 안에 제휴 아닌 게시물이 없습니다" detail="기획 제목에 「(… 포함)」 · 매장 이름 · 협찬이 없거나 기획 없이 올린 게시물이 여기 뜹니다." />;
+  const { rows, day } = others;
+  const now = Date.now();
+  const val = (p: TrendPoint, v: number | null | undefined) => (typeof v === "number"
+    ? <span className="font-semibold text-gray-900 tabular-nums" title={p.basis === "timely" ? `${day}일차 값` : "지금까지 쌓인 값"}>{v.toLocaleString()}</span>
+    : <Unknown why={p.basis === "none" ? "아직 수치가 없습니다" : "백엔드 배포 전이라 값이 없습니다"} />);
+  return (
+    <Table minWidth="46rem">
+      <thead><tr><Th>게시물</Th><Th width="5.5rem">게시</Th><Th width="9rem">구분</Th><Th width="6rem" align="right">저장</Th><Th width="6rem" align="right">도달</Th><Th width="8rem" align="right">보기</Th></tr></thead>
+      <tbody>
+        {rows.map((p) => {
+          const age = Math.floor((now - Date.parse(p.posted_at)) / 86_400_000);
+          const open = () => { if (p.permalink) window.open(p.permalink, "_blank", "noopener"); };
+          return (
+            <tr key={p.id} className={p.permalink ? rowClickable : undefined} onClick={open}>
+              <Td><span className="font-semibold text-gray-900 block truncate max-w-[20rem]">{p.topic || "기획 없음"}</span><span className="block text-[11px] text-gray-500">{FORMAT_KO[p.format] ?? p.format}{p.topic ? "" : " · 인스타에서 바로 올림"}</span></Td>
+              <Td className="text-[12px] text-gray-600 whitespace-nowrap">{md(p.posted_at)}<span className="block text-[11px] text-gray-500">{age}일차</span></Td>
+              <Td><Chip tone="gray">제휴 아님</Chip></Td>
+              <Td align="right">{val(p, p.saved)}</Td>
+              <Td align="right">{val(p, p.reach)}</Td>
+              <Td align="right">{p.permalink ? <span onClick={(e) => e.stopPropagation()} className="inline-flex"><a href={p.permalink} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost" icon={<IconBrandInstagram />}>인스타</Button></a></span> : <span className="text-[12px] text-gray-500">—</span>}</Td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </Table>
   );
 }
 

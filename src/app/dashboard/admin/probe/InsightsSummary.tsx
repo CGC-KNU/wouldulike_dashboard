@@ -1,9 +1,9 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Card, Empty, Kpi, Notice, Skeleton, Table, Td, Th, periodLocal } from "../_shared/ui";
+import { Card, Empty, FilterPills, Kpi, Notice, Skeleton, Table, Td, Th, periodLocal } from "../_shared/ui";
 import type { SummaryPayload, Trend, TrendMonth, TrendPoint } from "@/app/api/probe/insights/summary/route";
-import { DOT_MONTHS, axisTicks, compactKo, dayRange, monthBounds, monthTick, niceMax } from "@/lib/draft/insightsTrend";
+import { DOT_MONTHS, TREND_GROUP_KO, axisTicks, compactKo, dayRange, groupCounts, monthBounds, monthTick, niceMax, trendForGroup, type TrendGroup } from "@/lib/draft/insightsTrend";
 import { flowOf } from "@/lib/bigquery/liveShape";
 import { Fold, FlowTag } from "./kit";
 
@@ -22,6 +22,10 @@ import { Fold, FlowTag } from "./kit";
  *
  * 1116 민찬(간단하게): 그림은 그대로 두고 글을 줄였다 — 계정 도달의 4주 전 대비를 표지 하나로(많음 · 비슷 · 적음은 사실이지 판정이 아니다),
  * 범례는 이름만, 점 읽는 법 · 월별 표는 접어 둔다.
+ *
+ * 1123 민찬: 제휴 매장 게시물과 아닌 게시물을 나눠 본다 — 맨 위 「전체 · 제휴 매장 · 제휴 아님」. 나누는 규칙은 매장 리포트 목록과 같다
+ * (기획 제목에 「(… 포함)」 · 앱 매장 이름 · 협찬 · 묶음 제목이 있으면 제휴, 기획이 없으면 제휴 아님 — lib/draft/partnerMatch).
+ * 묶음을 바꿔도 그림 모양 · 가로축은 그대로이고 숫자만 그 묶음 것이다. 계정 도달은 계정 전체 값이라 묶음을 따르지 않는다.
  */
 
 /** 포맷 순서는 고정 — 색이 포맷을 따라간다. 기간이 바뀌어도 카드뉴스는 늘 같은 색이다. */
@@ -37,6 +41,7 @@ export default function InsightsSummary({ reloadKey = 0, onLoading }: { reloadKe
   const [loading, setLoading] = useState(true);
   /** 계정 도달 7일 — null 은 읽는 중 · false 는 못 읽음(0 이 아니라 모름) */
   const [reach, setReach] = useState<{ now: number | null; ago: number | null } | null | false>(null);
+  const [group, setGroup] = useState<TrendGroup>("all");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -69,9 +74,22 @@ export default function InsightsSummary({ reloadKey = 0, onLoading }: { reloadKe
       ) : (
         // 다시 읽는 동안 그림을 지우지 않고 흐리게 둔다 — 자리가 튀지 않게
         <div className={`transition-opacity ${loading ? "opacity-60" : ""}`}>
-          <TrendView trend={data.trend} reach={reach} />
+          <GroupPicker trend={data.trend} group={group} onChange={setGroup} />
+          <TrendView trend={trendForGroup(data.trend, group)} reach={reach} group={data.trend.split?.ok ? group : "all"} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** 전체 · 제휴 매장 · 제휴 아님 — 나누지 못했으면 이유만 한 줄 */
+function GroupPicker({ trend, group, onChange }: { trend: Trend; group: TrendGroup; onChange: (g: TrendGroup) => void }) {
+  const c = groupCounts(trend);
+  if (!c) return <p className="mb-3 text-[12px] text-gray-500">{trend.split?.reason ?? "제휴 매장 게시물을 가르지 못했습니다."} 지금은 전체만 봅니다.</p>;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <FilterPills soft label="게시물 묶음" value={group} onChange={onChange} options={(["all", "partner", "other"] as TrendGroup[]).map((k) => ({ key: k, label: TREND_GROUP_KO[k], count: c[k] }))} />
+      <span className="text-[12px] text-gray-500">기획 제목에 「(… 포함)」 · 매장 이름 · 협찬이 있으면 제휴 매장, 기획 없이 올린 게시물은 제휴 아님</span>
     </div>
   );
 }
@@ -82,7 +100,8 @@ function medianOf(months: TrendMonth[], f: string): { label: string; n: number; 
   return m ? { label: m.label, n: m.by_format[f].timely, v: m.by_format[f].views_median as number } : null;
 }
 
-function TrendView({ trend, reach }: { trend: Trend; reach: { now: number | null; ago: number | null } | null | false }) {
+function TrendView({ trend, reach, group }: { trend: Trend; reach: { now: number | null; ago: number | null } | null | false; group: TrendGroup }) {
+  const tag = group === "all" ? "" : ` · ${TREND_GROUP_KO[group]}`;
   const { recent, months, points, counts, day } = trend;
   const present = FORMATS.filter((f) => months.some((m) => m.by_format[f]));
 
@@ -104,24 +123,24 @@ function TrendView({ trend, reach }: { trend: Trend; reach: { now: number | null
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-        <Kpi label="최근 4주 발행" value={recent.posts} suffix="건" hint={`카드뉴스 ${recent.by_format.carousel ?? 0} · 릴스 ${recent.by_format.reel ?? 0}${recent.by_format.image ? ` · 기타 ${recent.by_format.image}` : ""}`} />
+        <Kpi label={`최근 4주 발행${tag}`} value={recent.posts} suffix="건" hint={`카드뉴스 ${recent.by_format.carousel ?? 0} · 릴스 ${recent.by_format.reel ?? 0}${recent.by_format.image ? ` · 기타 ${recent.by_format.image}` : ""}`} />
         <Kpi label="계정 도달 (7일)" value={reach === null ? "…" : reachNow === null ? "미확인" : reachNow.toLocaleString()} suffix={reachNow !== null ? "명" : undefined}
-          hint={reach === null ? "읽는 중" : reachNow === null ? "Meta 가 값을 주지 않았습니다 — 0 이 아니라 모름" : reachAgo !== null ? `4주 전 7일 ${reachAgo.toLocaleString()}명` : "같은 사람은 한 번"}
+          hint={reach === null ? "읽는 중" : reachNow === null ? "Meta 가 값을 주지 않았습니다 — 0 이 아니라 모름" : `${reachAgo !== null ? `4주 전 7일 ${reachAgo.toLocaleString()}명` : "같은 사람은 한 번"}${group === "all" ? "" : " · 계정 전체 값"}`}
           extra={reachFlow ? (
             <FlowTag flow={reachFlow} className="mt-2">{reachFlow === "same" ? `4주 전과 비슷 (${pct})` : `4주 전보다 ${pct}`}</FlowTag>
           ) : undefined} />
-        <SplitKpi label={`${day}일차 조회 중앙값 · 형식별`} items={["carousel", "reel"].map((f) => { const m = medianOf(months, f); return { label: FORMAT_KO[f], color: COLOR[f], value: m ? m.v : null, sub: m ? `${m.label} · ${m.n}건` : `${day}일차 5건부터` }; })} />
+        <SplitKpi label={`${day}일차 조회 중앙값 · 형식별${tag}`} items={["carousel", "reel"].map((f) => { const m = medianOf(months, f); return { label: FORMAT_KO[f], color: COLOR[f], value: m ? m.v : null, sub: m ? `${m.label} · ${m.n}건` : `${day}일차 5건부터` }; })} />
       </div>
 
       <Card
-        title="월별 발행 수"
+        title={`월별 발행 수${tag}`}
         description={`${months[0]?.label ?? ""} ~ ${months[months.length - 1]?.label ?? ""}${trend.archived_excluded ? ` · 인스타에서 지운 ${trend.archived_excluded}건은 뺐습니다` : ""} · 이번 달은 오늘까지라 옅게`}
         actions={<Legend items={present.map((f) => ({ key: f, label: FORMAT_KO[f], swatch: <span className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: COLOR[f] }} /> }))} />}
       >
         {months.length ? <VolumeChart months={months} formats={present} /> : <Empty title="발행된 게시물이 없습니다" />}
       </Card>
 
-      <Card title="게시물 한 편 조회수" description={`최근 ${DOT_MONTHS}개월 · 점 하나가 게시물 하나 · 높을수록 많이 본 게시물 · 누르면 인스타에서 열립니다`}>
+      <Card title={`게시물 한 편 조회수${tag}`} description={`최근 ${DOT_MONTHS}개월 · 점 하나가 게시물 하나 · 높을수록 많이 본 게시물 · 누르면 인스타에서 열립니다`}>
         <div className="mb-3">
           <Legend
             items={[

@@ -68,3 +68,92 @@ export function monthTick(period: string, i: number, count: number): string | nu
 export function compactKo(v: number): string {
   return v >= 10_000 ? new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(v) : v.toLocaleString("ko-KR");
 }
+
+// ── 제휴 · 제휴 아님 (1123 민찬) ─────────────────────────────────────────────
+
+export type TrendGroup = "all" | "partner" | "other";
+export const TREND_GROUP_KO: Record<TrendGroup, string> = { all: "전체", partner: "제휴 매장", other: "제휴 아님" };
+
+/** 백엔드 performance_summary 와 같은 값 — 표본이 이보다 적으면 중앙값을 내지 않는다, 「최근 4주」 */
+const MIN_FOR_MEDIAN = 5;
+const RECENT_DAYS = 28;
+
+/** 백엔드 `_median` 과 같은 값 — 짝수면 가운데 둘의 평균을 파이썬 round(반올림 짝수)로 */
+export function medianLikeBackend(values: number[]): number | null {
+  if (!values.length) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  if (s.length % 2) return s[mid];
+  const v = (s[mid - 1] + s[mid]) / 2;
+  const f = Math.floor(v);
+  return v - f === 0.5 ? (f % 2 === 0 ? f : f + 1) : Math.round(v);
+}
+
+const kstMonth = (iso: string) => new Date(Date.parse(iso) + 9 * 3600_000).toISOString().slice(0, 7);
+
+/**
+ * 한 묶음(제휴 매장 · 제휴 아님)만의 추이. 「전체」는 백엔드 값 그대로 돌려준다.
+ *
+ * 달 목록은 전체와 같게 둔다(첫 게시 달 ~ 이번 달) — 묶음을 바꿔도 막대 · 점 그림의 가로축이 그대로여야 견줘 볼 수 있다.
+ * 발행 수 · 형식별 건수 · N일차 중앙값(제때 잰 것 5건부터)은 백엔드와 같은 규칙으로 점에서 다시 센다 —
+ * 점은 보관 안 된 게시물 전부라 백엔드가 센 것과 같은 모집단이다. 지운 게시물 수는 묶음을 알 수 없어 0 으로 둔다.
+ * 나누지 못한 응답(split.ok 아님)이면 묶음을 고를 수 없으니 전체를 돌려준다.
+ */
+export function trendForGroup(t: Trend, group: TrendGroup, now: number = Date.now()): Trend {
+  if (group === "all" || !t.split?.ok) return t;
+  const want = group === "partner";
+  const points = t.points.filter((p) => Boolean(p.partner) === want);
+  const posts = new Map<string, Record<string, number>>();
+  const views = new Map<string, number[]>();
+  for (const p of points) {
+    const m = kstMonth(p.posted_at);
+    const c = posts.get(m) ?? {};
+    c[p.format] = (c[p.format] ?? 0) + 1;
+    posts.set(m, c);
+    if (p.basis === "timely") {
+      const k = `${m}|${p.format}`;
+      views.set(k, [...(views.get(k) ?? []), p.views ?? 0]);
+    }
+  }
+  const months = t.months.map((m) => {
+    const c = posts.get(m.period) ?? {};
+    const by_format: Trend["months"][number]["by_format"] = {};
+    for (const f of Object.keys(c).sort()) {
+      const vals = views.get(`${m.period}|${f}`) ?? [];
+      by_format[f] = { posts: c[f], timely: vals.length, views_median: vals.length >= MIN_FOR_MEDIAN ? medianLikeBackend(vals) : null };
+    }
+    return { ...m, posts: Object.values(c).reduce((a, b) => a + b, 0), by_format };
+  });
+  const since = now - RECENT_DAYS * 86_400_000;
+  const recentBy: Record<string, number> = {};
+  for (const p of points) if (Date.parse(p.posted_at) >= since) recentBy[p.format] = (recentBy[p.format] ?? 0) + 1;
+  const counts = { timely: 0, late: 0, pending: 0, none: 0 };
+  for (const p of points) counts[p.basis] += 1;
+  return {
+    ...t,
+    months,
+    recent: { days: t.recent.days, posts: Object.values(recentBy).reduce((a, b) => a + b, 0), by_format: recentBy },
+    points,
+    counts,
+    archived_excluded: 0,
+  };
+}
+
+/** 묶음별 게시물 수 — 고르는 칸 옆 숫자. 나누지 못했으면 null */
+export function groupCounts(t: Trend): Record<TrendGroup, number> | null {
+  if (!t.split?.ok) return null;
+  const partner = t.points.filter((p) => p.partner).length;
+  return { all: t.points.length, partner, other: t.points.length - partner };
+}
+
+/**
+ * 매장 리포트 목록의 「제휴 아님」 줄(1123) — 목록과 같은 기간(Papillon 석 달: 이번 달 + 앞 두 달, KST)의 제휴 아닌 게시물, 최근 것부터.
+ * 나누지 못한 응답이면 null — 빈 목록(「없음」)과 구별한다.
+ */
+export function otherPostsForList(t: Trend, now: number = Date.now()): TrendPoint[] | null {
+  if (!t.split?.ok) return null;
+  const [y, m] = kstMonth(new Date(now).toISOString()).split("-").map(Number);
+  const back = new Date(Date.UTC(y, m - 1 - 2, 1));
+  const start = monthBounds(`${back.getUTCFullYear()}-${String(back.getUTCMonth() + 1).padStart(2, "0")}`)[0];
+  return t.points.filter((p) => !p.partner && Date.parse(p.posted_at) >= start).sort((a, b) => b.posted_at.localeCompare(a.posted_at));
+}
