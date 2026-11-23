@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { axisTicks, compactKo, dayRange, monthBounds, monthTick, niceMax, normalizeTrend, type RawTrend } from "../src/lib/draft/insightsTrend";
+import { axisTicks, compactKo, dayRange, groupCounts, medianLikeBackend, monthBounds, monthTick, niceMax, normalizeTrend, otherPostsForList, trendForGroup, type RawTrend } from "../src/lib/draft/insightsTrend";
+import type { Trend, TrendPoint } from "../src/app/api/probe/insights/summary/route";
 
 /** 인스타 성과 추이 화면의 축 계산 — 틀려도 그림에서 잘 안 보이는 것들. */
 
@@ -61,4 +62,84 @@ test("N일차로 인정하는 나이 — 백엔드 timely_bounds 와 같다", ()
   assert.equal(dayRange(14), "14~16일");
   assert.equal(dayRange(7), "7~9일");
   assert.equal(dayRange(1), "1~2일", "1일차는 여유가 1일");
+});
+
+// ── 제휴 · 제휴 아님 (1123) ──
+
+const gpt = (id: number, posted_at: string, partner: boolean, basis: TrendPoint["basis"], views: number | null, format = "carousel"): TrendPoint =>
+  ({ id, posted_at, format, permalink: "", basis, views, measured_days: 14.1, partner, topic: partner ? "x (라라더 포함)" : "", plan_id: partner ? id : null });
+
+function splitTrend(points: TrendPoint[]): Trend {
+  return {
+    day: 14,
+    months: [
+      { period: "2026-09", label: "2026년 9월", posts: points.length, by_format: {} },
+      { period: "2026-10", label: "2026년 10월", posts: 0, by_format: {} },
+    ],
+    recent: { days: 28, posts: 0, by_format: {} },
+    points,
+    counts: { timely: 0, late: 0, pending: 0, none: 0 },
+    archived_excluded: 2,
+    split: { ok: true },
+  };
+}
+
+test("중앙값은 백엔드 _median 과 같다 — 짝수면 파이썬 round(반올림 짝수)", () => {
+  assert.equal(medianLikeBackend([]), null);
+  assert.equal(medianLikeBackend([3, 1, 2]), 2);
+  assert.equal(medianLikeBackend([1, 4]), 2, "2.5 → 2 (파이썬 round)");
+  assert.equal(medianLikeBackend([2, 5]), 4, "3.5 → 4");
+  assert.equal(medianLikeBackend([1, 2]), 2, "1.5 → 2");
+  assert.equal(medianLikeBackend([10, 13]), 12, "11.5 → 12");
+});
+
+test("묶음을 고르면 발행 수 · 중앙값을 그 묶음 점으로 다시 센다, 달 목록은 그대로", () => {
+  const ps = [
+    ...[100, 200, 300, 400, 500].map((v, i) => gpt(i + 1, `2026-09-0${i + 1}T10:00:00+09:00`, false, "timely", v)),
+    gpt(6, "2026-09-06T10:00:00+09:00", false, "late", 99_999),
+    gpt(7, "2026-09-07T10:00:00+09:00", true, "timely", 7_000),
+    gpt(8, "2026-09-08T10:00:00+09:00", true, "pending", 50, "reel"),
+  ];
+  const t = splitTrend(ps);
+  const other = trendForGroup(t, "other", Date.parse("2026-09-20T00:00:00+09:00")); // 4주 전 = 8/23 — 9월 게시물 전부
+  assert.deepEqual(other.months.map((m) => m.period), ["2026-09", "2026-10"], "가로축이 그대로");
+  assert.equal(other.months[0].posts, 6);
+  assert.deepEqual(other.months[0].by_format.carousel, { posts: 6, timely: 5, views_median: 300 }, "늦게 잰 값은 중앙값에 안 든다");
+  assert.deepEqual(other.months[1].by_format, {});
+  assert.equal(other.points.length, 6);
+  assert.deepEqual(other.counts, { timely: 5, late: 1, pending: 0, none: 0 });
+  assert.equal(other.archived_excluded, 0, "지운 게시물은 묶음을 모른다");
+  assert.deepEqual(other.recent, { days: 28, posts: 6, by_format: { carousel: 6 } });
+
+  const partner = trendForGroup(t, "partner", Date.parse("2026-10-01T00:00:00+09:00"));
+  assert.equal(partner.months[0].posts, 2);
+  assert.deepEqual(partner.months[0].by_format.carousel, { posts: 1, timely: 1, views_median: null }, "5건 미만은 중앙값 없음");
+  assert.deepEqual(partner.months[0].by_format.reel, { posts: 1, timely: 0, views_median: null });
+  assert.deepEqual(groupCounts(t), { all: 8, partner: 2, other: 6 });
+  assert.equal(trendForGroup(t, "all"), t, "전체는 백엔드 값 그대로");
+});
+
+test("나누지 못한 응답이면 묶음을 골라도 전체, 숫자 칸 없음", () => {
+  const t = { ...splitTrend([gpt(1, "2026-09-01T10:00:00+09:00", false, "timely", 1)]), split: { ok: false, reason: "x" } };
+  assert.equal(trendForGroup(t, "other"), t);
+  assert.equal(groupCounts(t), null);
+});
+
+test("달은 KST 로 — 10/1 00:30 KST 게시물은 10월", () => {
+  const t = splitTrend([gpt(1, "2026-10-01T00:30:00+09:00", false, "timely", 1)]);
+  const g = trendForGroup(t, "other");
+  assert.equal(g.months[0].posts, 0);
+  assert.equal(g.months[1].posts, 1);
+});
+
+test("매장 리포트 「제휴 아님」 줄 — 이번 달 + 앞 두 달(KST), 최근 것부터, 제휴는 빼고", () => {
+  const t = splitTrend([
+    gpt(1, "2026-08-31T23:30:00+09:00", false, "timely", 1), // 석 달 밖
+    gpt(2, "2026-09-01T00:10:00+09:00", false, "late", 2),
+    gpt(3, "2026-11-20T10:00:00+09:00", false, "pending", 3),
+    gpt(4, "2026-10-10T10:00:00+09:00", true, "timely", 4),
+  ]);
+  const rows = otherPostsForList(t, Date.parse("2026-11-23T12:00:00+09:00"));
+  assert.deepEqual(rows?.map((p) => p.id), [3, 2]);
+  assert.equal(otherPostsForList({ ...t, split: { ok: false } }), null, "못 나눴으면 「없음」이 아니라 모름");
 });
