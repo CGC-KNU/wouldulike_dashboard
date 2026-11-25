@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
+import { freshCache } from "@/lib/draft/freshCache";
 import { requireTool } from "@/lib/draft/guard";
 import { readGa4Now } from "@/lib/ga4/realtime";
 import type { Ga4Now } from "@/lib/ga4/realtimeShape";
@@ -11,7 +11,7 @@ import type { Ga4Now } from "@/lib/ga4/realtimeShape";
  * 1분 캐시로 여러 사람이 탭을 열어도 GA4 토큰(프로젝트 시간당 한도)을 한 번만 쓴다. 성공만 캐시된다.
  */
 
-const cachedNow = unstable_cache(
+const cachedNow = freshCache(
   async (): Promise<Ga4Now> => {
     const r = await readGa4Now();
     if (!r.ok) throw new Error(r.detail ?? r.reason);

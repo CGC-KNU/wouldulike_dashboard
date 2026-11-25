@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { freshCache } from "@/lib/draft/freshCache";
 import { readGa4AppMetrics, readLastEventDate, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
 import { readCouponFunnel, readCouponUseFunnel, type CouponFunnel, type CouponUseFunnel } from "@/lib/bigquery/couponFunnel";
 import type { BackendFetch } from "./appReport";
@@ -51,9 +51,9 @@ const readUse = async (start: string, end: string, through: string) => unwrap(aw
 const LONG = 7 * 24 * 3600;
 const SHORT = 3 * 3600;
 const cache = {
-  ga4: { long: unstable_cache(readGa4, ["app-series-ga4-v2"], { revalidate: LONG }), short: unstable_cache(readGa4, ["app-series-ga4-v2s"], { revalidate: SHORT }) },
-  coupons: { long: unstable_cache(readCoupons, ["app-series-coupons-v2"], { revalidate: LONG }), short: unstable_cache(readCoupons, ["app-series-coupons-v2s"], { revalidate: SHORT }) },
-  use: { long: unstable_cache(readUse, ["app-series-use-v1"], { revalidate: LONG }), short: unstable_cache(readUse, ["app-series-use-v1s"], { revalidate: SHORT }) },
+  ga4: { long: freshCache(readGa4, ["app-series-ga4-v2"], { revalidate: LONG }), short: freshCache(readGa4, ["app-series-ga4-v2s"], { revalidate: SHORT }) },
+  coupons: { long: freshCache(readCoupons, ["app-series-coupons-v2"], { revalidate: LONG }), short: freshCache(readCoupons, ["app-series-coupons-v2s"], { revalidate: SHORT }) },
+  use: { long: freshCache(readUse, ["app-series-use-v1"], { revalidate: LONG }), short: freshCache(readUse, ["app-series-use-v1s"], { revalidate: SHORT }) },
 };
 
 /** 동시에 n 개까지만 돌린다 — 순서는 그대로 */

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
+import { freshCache } from "@/lib/draft/freshCache";
 import { requireTool } from "@/lib/draft/guard";
 import { readSearchConsole, type SearchConsoleData } from "@/lib/gsc/searchConsole";
 
@@ -9,7 +9,7 @@ import { readSearchConsole, type SearchConsoleData } from "@/lib/gsc/searchConso
  * Search Console 은 하루 단위로 늦게 들어와 6시간 캐시한다. 성공만 캐시된다.
  */
 
-const cached = unstable_cache(
+const cached = freshCache(
   async (): Promise<SearchConsoleData> => {
     const r = await readSearchConsole();
     if (!r.ok) throw new Error(r.detail ?? r.reason);
