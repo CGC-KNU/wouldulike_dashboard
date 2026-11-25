@@ -128,7 +128,7 @@ export default function PartnerHome({ data, ridParam, promo }: { data: PartnerHo
             {store.stamp_count && <li>· 스탬프 {store.stamp_count}개 카드</li>}
             {/* 보상은 여러 칸일 수 있다. 한 줄에 이어 붙이면 "스탬프 3개 → 1개 → …" 처럼 화살표가 겹친다. */}
             {store.stamp_reward && <li className="pl-2.5 text-gray-500">{store.stamp_reward}</li>}
-            {!store.coupon_basic && !store.coupon_limited && !store.stamp_count && <li className="text-gray-400">혜택이 아직 안 적혔습니다 — <Link href={`/dashboard/owner/restaurant?tab=coupon${ridParam ? `&${ridParam.slice(1)}` : ""}`} className="text-navy font-semibold">혜택 탭</Link>에서 등록</li>}
+            {!store.coupon_basic && !store.coupon_limited && !store.stamp_count && <li className="text-gray-400">혜택이 아직 안 적혔습니다 — <Link href={`/dashboard/owner/restaurant?tab=coupon${ridParam ? `&${ridParam.slice(1)}` : ""}`} className="text-navy font-semibold">쿠폰/스탬프 관리</Link>에서 변경 신청</li>}
           </ul>
           {(promo.poster_url || promo.qr_url) && (
             <div className="mt-3 flex gap-1.5">
