@@ -102,7 +102,8 @@ const kstMonth = (iso: string) => new Date(Date.parse(iso) + 9 * 3600_000).toISO
 export function trendForGroup(t: Trend, group: TrendGroup, now: number = Date.now()): Trend {
   if (group === "all" || !t.split?.ok) return t;
   const want = group === "partner";
-  const points = t.points.filter((p) => Boolean(p.partner) === want);
+  // partner 가 null(모름 — 기획 기록 전 게시물)이면 어느 묶음에도 안 넣는다
+  const points = t.points.filter((p) => p.partner === want);
   const posts = new Map<string, Record<string, number>>();
   const views = new Map<string, number[]>();
   for (const p of points) {
@@ -139,11 +140,25 @@ export function trendForGroup(t: Trend, group: TrendGroup, now: number = Date.no
   };
 }
 
-/** 묶음별 게시물 수 — 고르는 칸 옆 숫자. 나누지 못했으면 null */
-export function groupCounts(t: Trend): Record<TrendGroup, number> | null {
+/**
+ * 기획 기록이 생기기 전 게시물은 「모름」(partner = null) — 1125 민찬.
+ *
+ * 기획(Papillon) 기록은 2026-08-20 게시물부터 있다. 그 전 게시물에 기획이 없는 건 「인스타에서 바로 올림」이 아니라
+ * 「기록이 없던 때」라서, 제휴 아님으로 세면 6~8월 점이 전부 제휴 아님이 된다. 기준은 날짜를 박지 않고
+ * 기획이 붙은 가장 이른 게시물로 잡는다. 그 뒤에 기획 없이 올린 게시물은 그대로 제휴 아님이다.
+ */
+export function unknownBeforePlans(points: TrendPoint[]): { points: TrendPoint[]; since: string | null } {
+  const since = points.filter((p) => p.plan_id != null).map((p) => p.posted_at).sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null;
+  const first = since === null ? Infinity : Date.parse(since);
+  return { since, points: points.map((p) => (p.plan_id == null && Date.parse(p.posted_at) < first ? { ...p, partner: null } : p)) };
+}
+
+/** 묶음별 게시물 수 — 고르는 칸 옆 숫자 + 어느 쪽인지 모르는 수(기획 기록 전). 나누지 못했으면 null */
+export function groupCounts(t: Trend): (Record<TrendGroup, number> & { unknown: number }) | null {
   if (!t.split?.ok) return null;
-  const partner = t.points.filter((p) => p.partner).length;
-  return { all: t.points.length, partner, other: t.points.length - partner };
+  const partner = t.points.filter((p) => p.partner === true).length;
+  const other = t.points.filter((p) => p.partner === false).length;
+  return { all: t.points.length, partner, other, unknown: t.points.length - partner - other };
 }
 
 /**
@@ -155,5 +170,5 @@ export function otherPostsForList(t: Trend, now: number = Date.now()): TrendPoin
   const [y, m] = kstMonth(new Date(now).toISOString()).split("-").map(Number);
   const back = new Date(Date.UTC(y, m - 1 - 2, 1));
   const start = monthBounds(`${back.getUTCFullYear()}-${String(back.getUTCMonth() + 1).padStart(2, "0")}`)[0];
-  return t.points.filter((p) => !p.partner && Date.parse(p.posted_at) >= start).sort((a, b) => b.posted_at.localeCompare(a.posted_at));
+  return t.points.filter((p) => p.partner === false && Date.parse(p.posted_at) >= start).sort((a, b) => b.posted_at.localeCompare(a.posted_at));
 }

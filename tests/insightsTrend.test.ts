@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { axisTicks, compactKo, dayRange, groupCounts, medianLikeBackend, monthBounds, monthTick, niceMax, normalizeTrend, otherPostsForList, trendForGroup, type RawTrend } from "../src/lib/draft/insightsTrend";
+import { axisTicks, compactKo, dayRange, groupCounts, medianLikeBackend, monthBounds, monthTick, niceMax, normalizeTrend, otherPostsForList, trendForGroup, unknownBeforePlans, type RawTrend } from "../src/lib/draft/insightsTrend";
 import type { Trend, TrendPoint } from "../src/app/api/probe/insights/summary/route";
 
 /** 인스타 성과 추이 화면의 축 계산 — 틀려도 그림에서 잘 안 보이는 것들. */
@@ -115,7 +115,7 @@ test("묶음을 고르면 발행 수 · 중앙값을 그 묶음 점으로 다시
   assert.equal(partner.months[0].posts, 2);
   assert.deepEqual(partner.months[0].by_format.carousel, { posts: 1, timely: 1, views_median: null }, "5건 미만은 중앙값 없음");
   assert.deepEqual(partner.months[0].by_format.reel, { posts: 1, timely: 0, views_median: null });
-  assert.deepEqual(groupCounts(t), { all: 8, partner: 2, other: 6 });
+  assert.deepEqual(groupCounts(t), { all: 8, partner: 2, other: 6, unknown: 0 });
   assert.equal(trendForGroup(t, "all"), t, "전체는 백엔드 값 그대로");
 });
 
@@ -142,4 +142,29 @@ test("매장 리포트 「제휴 아님」 줄 — 이번 달 + 앞 두 달(KST)
   const rows = otherPostsForList(t, Date.parse("2026-11-23T12:00:00+09:00"));
   assert.deepEqual(rows?.map((p) => p.id), [3, 2]);
   assert.equal(otherPostsForList({ ...t, split: { ok: false } }), null, "못 나눴으면 「없음」이 아니라 모름");
+});
+
+test("기획 기록 전 게시물은 모름 — 어느 묶음에도 안 들고 수만 따로(1125)", () => {
+  // 기획 없는 6/1 · 8/19, 기획 붙은 첫 게시물 8/20(제휴 아님 제목), 그 뒤 기획 없이 올린 9/1, 제휴 9/2
+  const raw = [
+    gpt(1, "2026-06-01T10:00:00+09:00", false, "late", 1),
+    gpt(2, "2026-08-19T10:00:00+09:00", false, "late", 2),
+    { ...gpt(3, "2026-08-20T10:00:00+09:00", false, "timely", 3), plan_id: 3, topic: "중간고사" },
+    gpt(4, "2026-09-01T10:00:00+09:00", false, "timely", 4),
+    gpt(5, "2026-09-02T10:00:00+09:00", true, "timely", 5),
+  ];
+  const { points, since } = unknownBeforePlans(raw);
+  assert.equal(since, "2026-08-20T10:00:00+09:00");
+  assert.deepEqual(points.map((p) => p.partner), [null, null, false, false, true]);
+  const t = splitTrend(points);
+  assert.deepEqual(groupCounts(t), { all: 5, partner: 1, other: 2, unknown: 2 });
+  assert.deepEqual(trendForGroup(t, "other").points.map((p) => p.id), [3, 4]);
+  assert.deepEqual(trendForGroup(t, "partner").points.map((p) => p.id), [5]);
+  assert.deepEqual(otherPostsForList(t, Date.parse("2026-09-30T12:00:00+09:00"))?.map((p) => p.id), [4, 3]);
+});
+
+test("기획이 하나도 없으면 전부 모름", () => {
+  const { points, since } = unknownBeforePlans([gpt(1, "2026-09-01T10:00:00+09:00", false, "late", 1)]);
+  assert.equal(since, null);
+  assert.equal(points[0].partner, null);
 });

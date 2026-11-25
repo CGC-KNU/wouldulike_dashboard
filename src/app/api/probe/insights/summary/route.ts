@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
-import { normalizeTrend, type RawTrend } from "@/lib/draft/insightsTrend";
+import { normalizeTrend, unknownBeforePlans, type RawTrend } from "@/lib/draft/insightsTrend";
 import { isPartnerPost } from "@/lib/draft/partnerMatch";
 import { isPreview, previewRestaurants } from "@/lib/draft/previewStores";
 import type { BackendRestaurant } from "@/lib/draft/types";
@@ -62,8 +62,11 @@ export interface TrendPoint {
   /** Papillon 기획 — 없으면 null · "" (인스타에서 바로 올린 게시물) */
   plan_id?: number | null;
   topic?: string;
-  /** 제휴 매장 게시물인가 — 이 라우트가 붙인다. split.ok 가 false 면 믿지 않는다 */
-  partner?: boolean;
+  /**
+   * 제휴 매장 게시물인가 — 이 라우트가 붙인다. split.ok 가 false 면 믿지 않는다.
+   * null = 모름: 기획 기록이 생기기 전(첫 기획 게시물보다 앞)에 올라와 기획이 없는 게시물 — 제휴였는지 알 길이 없다(1125).
+   */
+  partner?: boolean | null;
 }
 export interface TrendMonth {
   period: string;
@@ -82,8 +85,8 @@ export interface Trend {
   counts: Record<TrendPoint["basis"], number>;
   /** 인스타에서 지워진(보관된) 게시물 — 발행 수에서 뺐다 */
   archived_excluded: number;
-  /** 제휴 · 제휴 아님을 나눴는가(1123). 못 나눴으면 이유 */
-  split?: { ok: boolean; reason?: string };
+  /** 제휴 · 제휴 아님을 나눴는가(1123). 못 나눴으면 이유. since = 기획 기록이 시작된 첫 게시물 시각(그 전은 모름) */
+  split?: { ok: boolean; reason?: string; since?: string };
 }
 export interface SummaryPayload {
   generated_at: string;
@@ -121,5 +124,7 @@ function splitTrend(t: Trend, sponsorNames: string[] | undefined, restaurants: B
   if (!restaurants) return { ...t, split: { ok: false, reason: "앱 매장 표를 읽지 못해 제휴 매장 게시물을 가르지 못했습니다." } };
   const affiliates = restaurants.filter((r) => r.is_affiliate !== false);
   const sponsorships = sponsorNames.map((store_name) => ({ store_name }));
-  return { ...t, points: t.points.map((p) => ({ ...p, partner: p.plan_id != null && isPartnerPost(p.topic, affiliates, sponsorships) })), split: { ok: true } };
+  const marked = t.points.map((p) => ({ ...p, partner: p.plan_id != null && isPartnerPost(p.topic, affiliates, sponsorships) }));
+  const { points, since } = unknownBeforePlans(marked);
+  return { ...t, points, split: { ok: true, ...(since ? { since } : {}) } };
 }
