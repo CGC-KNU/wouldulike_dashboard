@@ -5,11 +5,21 @@ export interface PromotionBucket {
   views: number | null; reach: number | null; posts: number; measured_posts: number;
   status: string; captured_at: string | null;
 }
+/** 게시물 한 건의 최신 스냅샷 (백엔드 partner_metrics.post_row, 1124). 못 잰 값은 null — 0 이 아니다. */
+export interface PromotionPost {
+  posted_at: string; title: string; format: "carousel" | "reel" | "image" | string; permalink: string | null;
+  views: number | null; reach: number | null; likes: number | null; saved: number | null;
+  shares: number | null; comments: number | null;
+  captured_at: string | null; status: "ok" | "stale" | "pending" | string;
+  /** 이 매장으로 리포트 링크가 실제로 나간 게시물 */
+  report_sent: boolean;
+}
 export interface HomeMetrics {
   since: string | null; as_of: string;
   coupon_used: { month: number | null; total: number | null };
   stamp: { month: number | null; total: number | null; enabled: boolean };
-  promotion?: { month: PromotionBucket | null; total: PromotionBucket | null; status?: string };
+  /** posts 는 구 백엔드엔 없다 — 없으면 화면이 그 칸을 그리지 않는다(순차 배포 호환). */
+  promotion?: { month: PromotionBucket | null; total: PromotionBucket | null; status?: string; posts?: PromotionPost[] };
   instagram?: Partial<PromotionBucket>;
   store_views?: OwnerStoreViews;
 }
