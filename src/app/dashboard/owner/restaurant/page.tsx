@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import ImageUploader from "@/components/ImageUploader";
 import { Spinner } from "@/app/dashboard/admin/_shared/ui";
 import BenefitChangeRequest from "./BenefitChangeRequest";
@@ -93,15 +94,7 @@ const FIELD_META: {
   { key: "promotion_text", label: "프로모션 문구",       placeholder: "예: 오늘 하루 전 메뉴 10% 할인! (식당 상세 화면 식당명 아래 표시됩니다)", multiline: true },
 ];
 
-function useRid() {
-  const [rid, setRid] = useState<string | null | undefined>(undefined);
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    setRid(p.get("rid"));
-  }, []);
-  return rid;
-}
-function ridQ(rid: string | null) { return rid ? `?rid=${rid}` : ""; }
+function ridQ(rid: string | null) { return rid ? `?rid=${encodeURIComponent(rid)}` : ""; }
 
 /**
  * 사장님께 보일 한 줄. **백엔드 원문을 그대로 보여 주지 않는다** —
@@ -394,16 +387,24 @@ function StampRuleViewOnly({ rid }: { rid: string | null }) {
    메인 페이지
 ═══════════════════════════════════════════════ */
 export default function RestaurantPage() {
-  const rid = useRid();
-  const rq  = ridQ(rid ?? null);
+  const searchParams = useSearchParams();
+  const rid = searchParams.get("rid");
+  const activeTab = searchParams.get("tab") === "coupon" ? "coupon" : "info";
+  return <RestaurantManagement key={rid} rid={rid} activeTab={activeTab} />;
+}
 
-  const [activeTab, setActiveTab] = useState<"info" | "coupon">("info");
+type ManagementTab = "info" | "coupon";
 
-  // ?tab=coupon URL 파라미터 읽기
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    if (p.get("tab") === "coupon") setActiveTab("coupon");
-  }, []);
+function RestaurantManagement({ rid, activeTab }: { rid: string | null; activeTab: ManagementTab }) {
+  const rq = ridQ(rid);
+
+  function selectTab(tab: ManagementTab) {
+    if (tab === activeTab) return;
+    const url = new URL(window.location.href);
+    if (tab === "coupon") url.searchParams.set("tab", "coupon");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url);
+  }
 
   const [info, setInfo]           = useState<RestaurantInfo | null>(null);
   const [draft, setDraft]         = useState<Partial<RestaurantInfo>>({});
@@ -414,10 +415,7 @@ export default function RestaurantPage() {
   const [error, setError]         = useState("");
   const originalRef               = useRef<RestaurantInfo | null>(null);
 
-  const ridReady = rid !== undefined;
-
   useEffect(() => {
-    if (!ridReady) return;
     fetch(`/api/dashboard/restaurant${rq}`)
       .then((r) => r.json())
       .then((data) => {
@@ -427,7 +425,7 @@ export default function RestaurantPage() {
       })
       .catch(() => setError("식당 정보를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
-  }, [ridReady, rq]);
+  }, [rq]);
 
   useEffect(() => {
     fetch("/api/dashboard/categories")
@@ -463,7 +461,7 @@ export default function RestaurantPage() {
     finally { setSaving(false); }
   };
 
-  if (!ridReady || loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Spinner size={24} />
@@ -479,11 +477,13 @@ export default function RestaurantPage() {
       </div>
 
       {/* 탭 스위처 */}
-      <div className="flex bg-gray-100 rounded-2xl p-1 mb-5">
-        {([["info", "식당정보 수정"], ["coupon", "쿠폰 & 스탬프"]] as const).map(([tab, label]) => (
+      <div role="group" aria-label="매장 관리" className="flex bg-gray-100 rounded-2xl p-1 mb-5">
+        {([["info", "매장 관리"], ["coupon", "쿠폰/스탬프 관리"]] as const).map(([tab, label]) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            type="button"
+            aria-pressed={activeTab === tab}
+            onClick={() => selectTab(tab)}
             className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${
               activeTab === tab ? "bg-white text-navy shadow-sm" : "text-gray-400 hover:text-gray-600"
             }`}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { IconBuildingStore, IconFileDescription, IconGift, IconHome, IconPhoto, IconReceipt2, IconChevronRight, IconDeviceMobile } from "@tabler/icons-react";
+import { IconBuildingStore, IconFileDescription, IconHome, IconPhoto, IconReceipt2, IconChevronRight, IconDeviceMobile } from "@tabler/icons-react";
 import { useViewMode } from "@/contexts/ViewModeContext";
 
 /**
@@ -15,14 +15,12 @@ import { useViewMode } from "@/contexts/ViewModeContext";
  * 넘어올 때마다 다른 제품처럼 읽히고, 점주에게 보여 줄 때도 급조한 티가 난다.
  */
 
-/** 0919 민열님: 홈·매장·혜택·콘텐츠·리포트·플랜 여섯 — 폰 하단 바와 같은 순서. */
 const NAV = [
-  { base: "/dashboard/owner", label: "홈", exact: true, Icon: IconHome, q: "" },
-  { base: "/dashboard/owner/restaurant", label: "매장 정보", exact: true, Icon: IconBuildingStore, q: "" },
-  { base: "/dashboard/owner/restaurant", label: "혜택 (쿠폰·스탬프)", exact: true, Icon: IconGift, q: "tab=coupon" },
-  { base: "/dashboard/owner/content", label: "콘텐츠", exact: false, Icon: IconPhoto, q: "" },
-  { base: "/dashboard/owner/reports", label: "리포트", exact: false, Icon: IconFileDescription, q: "" },
-  { base: "/dashboard/owner/plan", label: "플랜", exact: false, Icon: IconReceipt2, q: "" },
+  { base: "/dashboard/owner", label: "홈", exact: true, Icon: IconHome },
+  { base: "/dashboard/owner/restaurant", label: "매장", exact: true, Icon: IconBuildingStore },
+  { base: "/dashboard/owner/content", label: "콘텐츠", exact: false, Icon: IconPhoto },
+  { base: "/dashboard/owner/reports", label: "리포트", exact: false, Icon: IconFileDescription },
+  { base: "/dashboard/owner/plan", label: "플랜", exact: false, Icon: IconReceipt2 },
 ] as const;
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white";
@@ -31,9 +29,7 @@ export default function SideNav({ offsetTop = false }: { offsetTop?: boolean }) 
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const rid = searchParams.get("rid");
-  const tab = searchParams.get("tab") ?? "";
-  // 매장·혜택은 같은 주소에 탭만 다르다 — 켜진 칸을 tab 으로 가른다
-  const withQ = (base: string, q: string) => { const parts = [q, rid ? `rid=${rid}` : ""].filter(Boolean); return parts.length ? `${base}?${parts.join("&")}` : base; };
+  const ridQuery = rid ? `?rid=${encodeURIComponent(rid)}` : "";
   const { toggle } = useViewMode();
 
   return (
@@ -49,13 +45,12 @@ export default function SideNav({ offsetTop = false }: { offsetTop?: boolean }) 
 
         <nav className="flex-1 p-2">
           <ul className="flex flex-col gap-0.5">
-            {NAV.map(({ base, label, exact, Icon, q }) => {
-              const here = exact ? pathname === base : pathname.startsWith(base);
-              const on = here && (q ? tab === "coupon" : tab !== "coupon");
+            {NAV.map(({ base, label, exact, Icon }) => {
+              const on = exact ? pathname === base : pathname.startsWith(base);
               return (
                 <li key={label}>
                   <Link
-                    href={withQ(base, q)}
+                    href={`${base}${ridQuery}`}
                     aria-current={on ? "page" : undefined}
                     className={`w-full flex items-center gap-2.5 h-9 px-3 rounded-[10px] text-[13px] font-semibold transition-[background-color,color,box-shadow] duration-150 ${focusRing} ${
                       on
