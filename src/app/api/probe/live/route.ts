@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
+import { freshCache } from "@/lib/draft/freshCache";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { readGa4Live, type Ga4Live } from "@/lib/bigquery/liveMetrics";
@@ -25,7 +25,7 @@ export interface LiveDb {
   last_event_at: string | null;
 }
 
-const cachedGa4 = unstable_cache(
+const cachedGa4 = freshCache(
   async (): Promise<Ga4Live> => {
     const r = await readGa4Live();
     if (!r.ok) throw new Error(r.detail ?? r.reason);

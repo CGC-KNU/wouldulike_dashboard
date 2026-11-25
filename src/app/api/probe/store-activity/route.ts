@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
+import { freshCache } from "@/lib/draft/freshCache";
 import { requireTool } from "@/lib/draft/guard";
 import { credentialsFromEnv, readLastEventDate } from "@/lib/bigquery/appMetrics";
 import { readStoreActivity, type StoreActivityData } from "@/lib/bigquery/storeActivity";
@@ -16,7 +16,7 @@ import { readStoreActivity, type StoreActivityData } from "@/lib/bigquery/storeA
 
 const monthStart = () => `${new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 7).replace("-", "")}01`;
 
-const cached = unstable_cache(
+const cached = freshCache(
   async (start: string): Promise<StoreActivityData | null> => {
     const last = await readLastEventDate();
     if (!last) throw new Error("확정 테이블(events_YYYYMMDD)이 없습니다");

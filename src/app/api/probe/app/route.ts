@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
+import { freshCache } from "@/lib/draft/freshCache";
 import { requireTool } from "@/lib/draft/guard";
 import { fetchBackendJson } from "@/lib/draft/toolProxy";
 import { credentialsFromEnv, readGa4AppMetrics, readWau, type Ga4AppMetrics } from "@/lib/bigquery/appMetrics";
@@ -61,7 +61,7 @@ const SOURCE_KO: Record<string, string> = {
 };
 
 // 성공만 캐시된다 — 실패는 throw 로 빠져나가 캐시에 남지 않는다
-const cachedGa4 = unstable_cache(
+const cachedGa4 = freshCache(
   async (): Promise<Ga4AppMetrics> => {
     const r = await readGa4AppMetrics();
     if (!r.ok) throw new Error(r.detail ?? r.reason);
@@ -75,7 +75,7 @@ const cachedGa4 = unstable_cache(
  * 「매장 상세 → 쿠폰 발급」 — GA4 안에서 이어진다(DB 불필요). 창은 GA4 칸과 같은 7일로 맞춘다.
  * 성공만 캐시되는 것은 위와 같다.
  */
-const cachedS2C = unstable_cache(
+const cachedS2C = freshCache(
   async (start: string, end: string): Promise<StoreToCoupon> => {
     const r = await readStoreToCoupon(process.env, { start, end });
     if (!r.ok) throw new Error(r.detail ?? r.reason);
@@ -86,7 +86,7 @@ const cachedS2C = unstable_cache(
 );
 
 /** 온보딩 완료율 — GA4 한 곳에서 이어진다. 창은 GA4 칸과 같은 7일. 성공만 캐시. */
-const cachedOnboarding = unstable_cache(
+const cachedOnboarding = freshCache(
   async (start: string, end: string): Promise<OnboardingFunnel> => {
     const r = await readOnboardingFunnel(process.env, { start, end });
     if (!r.ok) throw new Error(r.detail ?? r.reason);
@@ -120,7 +120,7 @@ async function storeToCoupon(g: Ga4AppMetrics | null): Promise<StoreToCoupon | n
  * 4주 전 같은 7일의 WAU — 메인 Polaris 성장률의 비교 기준(「4주 전 / 전월」). 지난 창은 바뀌지 않아 하루 캐시한다.
  * Probe 앱 지표 화면은 이 값을 그리지 않는다.
  */
-const cachedWau = unstable_cache(
+const cachedWau = freshCache(
   async (end: string) => {
     const r = await readWau(end);
     if (!r) throw new Error("no_key");
