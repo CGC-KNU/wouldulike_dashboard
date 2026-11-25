@@ -82,6 +82,12 @@ export default function InsightsSummary({ reloadKey = 0, onLoading }: { reloadKe
   );
 }
 
+/** "2026-08-20T…+09:00" → "8/20" (KST) */
+const kstDay = (iso: string) => {
+  const d = new Date(Date.parse(iso) + 9 * 3_600_000);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+};
+
 /** 전체 · 제휴 매장 · 제휴 아님 — 나누지 못했으면 이유만 한 줄 */
 function GroupPicker({ trend, group, onChange }: { trend: Trend; group: TrendGroup; onChange: (g: TrendGroup) => void }) {
   const c = groupCounts(trend);
@@ -89,7 +95,10 @@ function GroupPicker({ trend, group, onChange }: { trend: Trend; group: TrendGro
   return (
     <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
       <FilterPills soft label="게시물 묶음" value={group} onChange={onChange} options={(["all", "partner", "other"] as TrendGroup[]).map((k) => ({ key: k, label: TREND_GROUP_KO[k], count: c[k] }))} />
-      <span className="text-[12px] text-gray-500">기획 제목에 「(… 포함)」 · 매장 이름 · 협찬이 있으면 제휴 매장, 기획 없이 올린 게시물은 제휴 아님</span>
+      <span className="text-[12px] text-gray-500">
+        기획 제목에 「(… 포함)」 · 매장 이름 · 협찬이 있으면 제휴 매장, 기획 없이 올린 게시물은 제휴 아님
+        {c.unknown > 0 && trend.split?.since ? ` · ${kstDay(trend.split.since)} 전 ${c.unknown.toLocaleString()}건은 기획 기록이 없어 어느 쪽에도 넣지 않았습니다(전체에만)` : ""}
+      </span>
     </div>
   );
 }
