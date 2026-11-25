@@ -57,6 +57,7 @@ const SOURCE_KO: Record<string, string> = {
   SIGNUP_WELCOME: "가입 환영", STAMP_REWARD: "스탬프 보상", BULK_EVENT: "일괄 지급", REFERRAL: "친구 초대",
   EVENT_REWARD_SIGNUP: "이벤트 가입 보상", FLASH_8PM: "밤 8시 플래시", FINAL_EXAM_EVENT: "시험기간 이벤트",
   LIMITED_BONUS: "한정 보너스", LIMITED_CAMPAIGN: "한정 쿠폰 받기", KNUSCSEPT_EVENT: "학생회 추천코드",
+  RAFFLE_WIN: "식사권 당첨", QR_VISIT: "QR 방문",
   unknown: "발급 경로 기록 없음", other: "기타",
 };
 
@@ -171,7 +172,7 @@ export async function GET() {
   // 백엔드와 BigQuery 는 서로 기다리지 않는다 — 줄 세우면 잠든 백엔드를 깨우는 시간에 GA4 조회(로컬 약 10초)가 더해져
   // 메인 Polaris 의 25초 제한을 넘긴다.
   const [stats, { data: g, error: gErr }] = await Promise.all([
-    fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; generated_at?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string }> | null }>("/api/dashboard/admin/app-stats/"),
+    fetchBackendJson<{ stats?: Record<string, number | null>; since?: string; generated_at?: string; coupon_by_source?: Record<string, { issued: number; redeemed: number; expiring?: number; label?: string; via_code?: boolean }> | null }>("/api/dashboard/admin/app-stats/"),
     ga4(),
   ]);
   const s = stats?.stats ?? null;
@@ -182,7 +183,7 @@ export async function GET() {
     return nums.length === ks.length ? nums.reduce((a, v) => a + v, 0) : null;
   };
   // 쿠폰 발급 경로 — 「발급 → 사용」이 자동 지급 쿠폰에 묻히지 않게 상위 경로를 설명에 적는다
-  const bySource: [string, { issued: number; redeemed: number; expiring?: number; label?: string }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
+  const bySource: [string, { issued: number; redeemed: number; expiring?: number; label?: string; via_code?: boolean }][] = Object.entries(stats?.coupon_by_source ?? {}).sort((a, b) => b[1].issued - a[1].issued);
   const issuedTotal = bySource.reduce((a, [, v]) => a + v.issued, 0);
   const top = bySource[0];
   // 캠페인 이름(백엔드) → 우리가 아는 이름 → 코드. 모르는 코드를 숨기지는 않는다.
@@ -193,8 +194,11 @@ export async function GET() {
   const rateList = bySource.filter(([, v]) => v.issued >= 10).slice(0, 4).map(([k, v]) => `${ko(k)} ${Math.round((v.redeemed / v.issued) * 1000) / 10}%`).join(" · ");
   // 코드 입력(추천코드·학생회 코드)으로 받은 쿠폰의 비중 — 「발급」이 자동·코드 경로에 얼마나 기대는지.
   // 9월엔 발급 780건 중 489건이 추천코드 자동 지급이었고 그중 쓰인 건 1장이었다.
+  // 어느 경로가 코드 입력인지는 백엔드가 코드 표로 판별해 via_code 로 준다(1125) — 여기에 코드 이름을 박아 두니
+  // 11월 학생회 코드가 빠져 0% 로 나왔다. 옛 백엔드(via_code 없음)면 아래 목록으로 떨어진다.
   const CODE_SOURCES = ["REFERRAL", "KNUSCSEPT_EVENT"];
-  const codeParts = bySource.filter(([k, v]) => CODE_SOURCES.includes(k) && v.issued > 0);
+  const hasViaCode = bySource.some(([, v]) => v.via_code !== undefined);
+  const codeParts = bySource.filter(([k, v]) => (hasViaCode ? v.via_code === true : CODE_SOURCES.includes(k)) && v.issued > 0);
   const codeIssued = codeParts.reduce((a, [, v]) => a + v.issued, 0);
   const codeRedeemed = codeParts.reduce((a, [, v]) => a + v.redeemed, 0);
   const signupsTotal = n("signups_total");

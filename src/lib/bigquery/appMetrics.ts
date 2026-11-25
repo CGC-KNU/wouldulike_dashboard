@@ -19,6 +19,9 @@ import { BigQuery } from "@google-cloud/bigquery";
 export const ISSUE_KEY_SOURCES = new Set([
   "SIGNUP_WELCOME", "BULK_EVENT", "REFERRAL", "EVENT_REWARD_SIGNUP", "STAMP_REWARD",
   "FLASH_8PM", "FINAL_EXAM_EVENT", "LIMITED_BONUS", "LIMITED_CAMPAIGN", "unknown", "other",
+  // 1125 — 앱이 10/11·10/12 부터 보내는 두 값. 목록에 없어서 「캠페인 자동 지급」으로 세고 있었다.
+  // 식사권 당첨(RAFFLE_WIN:) · QR 방문 쿠폰(QR_VISIT_COUPON:) 은 사용자가 한 일로 받은 쿠폰이다(백엔드 _issue_source 와 같은 이름).
+  "RAFFLE_WIN", "QR_VISIT",
 ]);
 
 export const isCampaignSource = (src: string) => !ISSUE_KEY_SOURCES.has(src);
