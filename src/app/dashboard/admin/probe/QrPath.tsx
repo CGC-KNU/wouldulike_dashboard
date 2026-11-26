@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { IconRefresh } from "@tabler/icons-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { Button, Card, FilterPills, Notice, PageHeader, Table, Td, Th } from "../_shared/ui";
-import { AsOf, BAR_NOW, BAR_PAST, Fold, FlowCard, MetricBox, md } from "./kit";
+import { AsOf, BAR_INK, BAR_NOW, BAR_PAST, Fold, FlowCard, MetricBox, md } from "./kit";
 import { flowOf } from "@/lib/bigquery/liveShape";
+import type { QrScans } from "@/lib/ga4/qrScans";
 
 /**
  * Probe · 매장 QR — 매장 QR(스티커·스탠드)로 온 손님이 앱·웹 중 어디서 무엇을 했는지 (1125 민찬).
@@ -13,7 +14,8 @@ import { flowOf } from "@/lib/bigquery/liveShape";
  * 숫자는 모두 백엔드 /api/probe/qr-path/(probe/qr_path.py)가 앱 DB 에서 센다 — GA4 를 섞지 않는다.
  *   · QR 방문 적립은 멱등 키로 앱·웹을 가른다(9/13 부터 같은 규칙).
  *   · 웹 스탬프 · 웹 가입은 백엔드 #224(11/25) 뒤 행부터 표시가 있다 — 그 전 기간이면 알림을 띄운다.
- *   · 하루 한도에 걸렸거나 로그인 전에 끝난 스캔은 DB 에 행이 없어 여기선 안 보인다.
+ *   · 하루 한도에 걸렸거나 로그인 전에 끝난 스캔, 웹 화면만 연 손님은 DB 에 행이 없다 — 「QR 찍은 뒤」 칸이
+ *     GA4 로 따로 읽는다(/api/probe/qr/scans, lib/ga4/qrScans.ts, 어제까지). 두 요청은 따로라 한쪽이 실패해도 다른 쪽은 보인다.
  * 견준 말은 바로 앞 같은 길이 기간과 — flowOf(±2√합) 라 작은 차이는 「비슷」이다.
  */
 
@@ -67,17 +69,56 @@ function DayBars({ days, pick, color, label }: { days: Day[]; pick: (d: Day) => 
   );
 }
 
+/** 가로 막대 줄 — 맨 위 값이 100%. 값이 null 이면 「미확인」 */
+function Steps({ rows }: { rows: { label: string; n: number | null; note?: string; dim?: boolean }[] }) {
+  const top = Math.max(1, rows[0]?.n ?? 0);
+  return (
+    <ul className="space-y-2">
+      {rows.map((r) => (
+        <li key={r.label}>
+          <div className="flex items-baseline justify-between gap-2 text-[13px]">
+            <span className={r.dim ? "text-gray-500" : "text-gray-700"}>{r.label}</span>
+            <span className="tabular-nums font-semibold text-gray-900">
+              {r.n === null ? "미확인" : r.n.toLocaleString()}
+              {r.note && <span className="ml-1.5 font-normal text-gray-500">{r.note}</span>}
+            </span>
+          </div>
+          <div className="h-2 mt-1 rounded-full bg-black/[0.05] overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${((r.n ?? 0) / top) * 100}%`, background: r.dim ? BAR_PAST : BAR_INK }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function QrPath() {
   const [range, setRange] = useState<RangeKey>("posted");
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scans, setScans] = useState<QrScans | null>(null);
+  const [scanErr, setScanErr] = useState<string | null>(null);
+
+  const loadScans = useCallback(async (start: string, end: string) => {
+    setScans(null);
+    setScanErr(null);
+    try {
+      const r = await fetch(`/api/probe/qr/scans?${new URLSearchParams({ start, end })}`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.detail ?? `응답 ${r.status}`);
+      setScans(j as QrScans);
+    } catch (e) {
+      setScanErr(e instanceof Error ? e.message : "읽지 못했습니다");
+    }
+  }, []);
 
   const load = useCallback(async (k: RangeKey) => {
     setLoading(true);
     setErr(null);
     try {
       const { start, end } = rangeOf(k);
+      void loadScans(start, end);
       const r = await fetch(`/api/probe/qr?${new URLSearchParams({ start, end })}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.detail ?? `응답 ${r.status}`);
@@ -88,7 +129,7 @@ export default function QrPath() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadScans]);
   useEffect(() => { void load(range); }, [range, load]);
 
   const span = data ? `${md(data.start)}~${md(data.end)}` : "";
@@ -96,12 +137,27 @@ export default function QrPath() {
   const webNow = data ? data.visits_web + data.stamps_web : null;
   const webPrev = data ? data.previous.visits_web + data.previous.stamps_web : 0;
   const marksLate = data ? data.start < data.web_marks_since : false;
+  const app = scans?.app ?? null;
+  const web = scans?.web ?? null;
+  const gaSpan = scans?.window ? `${md(scans.window.start)}~${md(scans.window.end)}` : "";
+  const appErr = scanErr ?? scans?.errors.app ?? null;
+  const webErr = scanErr ?? scans?.errors.web ?? null;
+  // 매장별 표 — DB 행에 GA4 만 있는 매장(찍었지만 적립이 안 된 곳 · 웹 화면만 열린 곳)을 덧붙인다
+  const storeRows = (() => {
+    if (!data) return [];
+    const rows = data.store_rows.map((s) => ({ ...s }));
+    const known = new Set(rows.map((r) => String(r.restaurant_id)));
+    const extra = new Set([...Object.keys(app?.stores ?? {}), ...Object.keys(web?.stores ?? {})].filter((k) => !known.has(k)));
+    for (const k of extra) rows.push({ restaurant_id: Number(k), name: `매장 ${k}`, visits_app: 0, visits_web: 0, stamps_web: 0, coupons_issued: 0, coupons_redeemed: 0 });
+    return rows;
+  })();
+  const gaCell = (v: number | undefined, ok: boolean) => (!ok ? "—" : (v ?? 0).toLocaleString());
 
   return (
     <>
       <PageHeader
         title="매장 QR"
-        description="매장에 붙인 QR(스티커·스탠드)로 온 손님이 앱과 웹 중 어디서 무엇을 했는지 봅니다. 앱 DB 값이고, 테스트 계정은 빠져 있습니다."
+        description="매장에 붙인 QR(스티커·스탠드)로 온 손님이 앱과 웹 중 어디서 무엇을 했는지 봅니다. 앱 DB 와 GA4(찍은 뒤 칸)를 같이 쓰고, 테스트 계정은 빠져 있습니다."
         actions={<><AsOf at={data?.as_of} /><Button icon={<IconRefresh />} onClick={() => void load(range)} disabled={loading}>다시 읽기</Button></>}
       />
 
@@ -133,6 +189,41 @@ export default function QrPath() {
         </FlowCard>
       </div>
 
+      <Card className="mb-4" title="QR 찍은 뒤 · GA4" description={scans?.window ? `${gaSpan} · 어제까지 · 적립이 안 된 스캔과 웹 화면만 연 손님까지 봅니다` : "어제까지 · 적립이 안 된 스캔과 웹 화면만 연 손님까지 봅니다"}>
+        {scans && !scans.window ? (
+          <p className="text-[13px] text-gray-500">GA4 는 어제까지라 오늘만 고른 기간에는 셀 날이 없습니다.</p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[14px] border border-black/[0.06] p-3.5">
+              <p className="text-[14px] font-semibold text-gray-900 mb-0.5">앱에서 QR 로 식당 화면이 열림</p>
+              <p className="text-[12px] text-gray-500 mb-3">{app ? `${app.devices.toLocaleString()}대 기기 · 공유 링크 · 테스트 기기 뺌` : "\u00a0"}</p>
+              {appErr ? <Notice tone="red" title="앱 스캔을 읽지 못했습니다">{appErr} — 0 이 아니라 모름입니다.</Notice>
+                : !app ? <div className="h-28 rounded-lg bg-black/[0.03] animate-pulse" />
+                : <Steps rows={[
+                    { label: "찍음", n: app.scans },
+                    { label: "적립됨", n: app.credited, note: pct(app.credited, app.scans) },
+                    { label: "하루 한도에 걸림", n: app.daily_limit, dim: true },
+                    { label: "로그인 전에 끝남", n: app.not_logged_in, dim: true },
+                    ...(app.other ? [{ label: `그 밖 (${app.other_reasons.join(" · ") || "이유 없음"})`, n: app.other, dim: true }] : []),
+                  ]} />}
+            </div>
+            <div className="rounded-[14px] border border-black/[0.06] p-3.5">
+              <p className="text-[14px] font-semibold text-gray-900 mb-0.5">앱이 없어 웹 스탬프로 감</p>
+              <p className="text-[12px] text-gray-500 mb-3">{web ? `화면을 연 사람 ${web.viewers.toLocaleString()}명 · 11/25 15:53 부터 셉니다` : "\u00a0"}</p>
+              {webErr ? <Notice tone="red" title="웹 스탬프를 읽지 못했습니다">{webErr} — 0 이 아니라 모름입니다.</Notice>
+                : !web ? <div className="h-28 rounded-lg bg-black/[0.03] animate-pulse" />
+                : <Steps rows={[
+                    { label: "화면 열람", n: web.views },
+                    { label: "카카오 로그인 시작", n: web.login_start, note: pct(web.login_start, web.views) },
+                    { label: "로그인 완료", n: web.login_done, note: pct(web.login_done, web.views) },
+                    { label: "스탬프 · 쿠폰 받음", n: web.earned, note: pct(web.earned, web.views) },
+                    { label: "앱 설치 누름", n: web.install_click, dim: true },
+                  ]} />}
+            </div>
+          </div>
+        )}
+      </Card>
+
       {data && (
         <Card className="mb-4">
           <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
@@ -145,19 +236,21 @@ export default function QrPath() {
       )}
 
       {data && (
-        <Card className="mb-4" title="매장별" description={`${span} · 많은 순 · QR 기록이 있는 매장만`}>
-          {data.store_rows.length === 0 ? (
+        <Card className="mb-4" title="매장별" description={`${span} · 많은 순 · QR 기록이 있는 매장만 · 「찍음」·「웹 열람」은 GA4(어제까지)`}>
+          {storeRows.length === 0 ? (
             <p className="text-[13px] text-gray-500">이 기간에는 QR 기록이 없습니다.</p>
           ) : (
             <Table minWidth="34rem">
               <thead>
-                <tr><Th>매장</Th><Th align="right">앱 QR</Th><Th align="right">웹 QR</Th><Th align="right">웹 스탬프</Th><Th align="right">QR 쿠폰 받음</Th><Th align="right">씀</Th></tr>
+                <tr><Th>매장</Th><Th align="right">앱 찍음</Th><Th align="right">앱 적립</Th><Th align="right">웹 열람</Th><Th align="right">웹 QR</Th><Th align="right">웹 스탬프</Th><Th align="right">QR 쿠폰 받음</Th><Th align="right">씀</Th></tr>
               </thead>
               <tbody>
-                {data.store_rows.map((s) => (
+                {storeRows.map((s) => (
                   <tr key={s.restaurant_id}>
                     <Td>{s.name}</Td>
+                    <Td align="right" numeric>{gaCell(app?.stores[String(s.restaurant_id)]?.scans, !!app)}</Td>
                     <Td align="right" numeric>{s.visits_app.toLocaleString()}</Td>
+                    <Td align="right" numeric>{gaCell(web?.stores[String(s.restaurant_id)]?.views, !!web)}</Td>
                     <Td align="right" numeric>{s.visits_web.toLocaleString()}</Td>
                     <Td align="right" numeric>{s.stamps_web.toLocaleString()}</Td>
                     <Td align="right" numeric>{s.coupons_issued.toLocaleString()}</Td>
@@ -173,10 +266,12 @@ export default function QrPath() {
       <Fold label="숫자 읽는 법">
         <ul className="text-[12px] text-gray-600 leading-relaxed list-disc pl-4 space-y-1">
           <li>QR 을 찍으면 브릿지가 앱이 있는 손님은 앱 식당 화면으로, 없는 손님은 웹 스탬프로 보냅니다(11/16 부터).</li>
-          <li>「앱 QR」·「웹 QR」은 QR 방문 적립이 된 건수입니다. 앱과 웹은 요청 키 모양으로 가릅니다. 하루 한도에 걸렸거나 로그인 전에 끝난 스캔은 적립 기록이 없어 여기엔 안 잡힙니다.</li>
+          <li>「앱 QR」·「웹 QR」은 QR 방문 적립이 된 건수입니다(앱 DB). 앱과 웹은 요청 키 모양으로 가릅니다.</li>
+          <li>「QR 찍은 뒤」 칸과 표의 「앱 찍음」·「웹 열람」은 GA4 입니다(어제까지). 하루 한도에 걸린 스캔, 로그인 전에 끝난 스캔(앱을 깔았지만 로그인 안 한 손님), 웹 화면만 열고 간 손님은 DB 에 안 남아 여기서만 보입니다. 테스트 기기와 확인용 방문(src=qa_test)은 뺐습니다.</li>
+          <li>GA4 「적립됨」과 DB 「앱 적립」은 보통 같고, 어긋나면 앱이 이벤트를 못 보냈거나(오프라인) DB 쪽 테스트 계정 기준이 다른 것입니다.</li>
           <li>「웹 스탬프」는 웹 화면에서 PIN 으로 찍은 스탬프, 「웹에서 가입」은 웹 스탬프에서 카카오로 처음 가입한 사람입니다. 둘 다 11/25 부터 표시가 남습니다.</li>
           <li>QR 쿠폰은 하루짜리라 안 쓰면 다음 날 쿠폰함에서 지워집니다. 지우기 직전에 따로 적어 두어 「받음」은 줄지 않습니다(11/25 전에 지워진 것은 못 셉니다).</li>
-          <li>앞 기간은 바로 앞 같은 길이 기간이고, 차이가 작으면 「비슷」으로 봅니다(±2√합). 앱 DB 값만 쓰고 GA4 는 섞지 않았습니다.</li>
+          <li>앞 기간은 바로 앞 같은 길이 기간이고, 차이가 작으면 「비슷」으로 봅니다(±2√합). 숫자 칸 넷과 두 흐름 칸은 앱 DB 값입니다.</li>
         </ul>
       </Fold>
     </>
