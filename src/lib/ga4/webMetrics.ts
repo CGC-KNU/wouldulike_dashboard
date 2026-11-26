@@ -26,7 +26,10 @@ const BATCH = `https://analyticsdata.googleapis.com/v1beta/properties/${WEB_PROP
 type Expr = Record<string, unknown>;
 const eq = (fieldName: string, value: string): Expr => ({ filter: { fieldName, stringFilter: { matchType: "EXACT", value } } });
 const and = (...expressions: Expr[]): Expr => ({ andGroup: { expressions } });
-const WEB = eq("platform", "web");
+// 웹 스탬프(매장 QR → 앱 없는 손님, wouldulike-experience) 스트림. 같은 속성의 웹 스트림이라 빼지 않으면 홈 숫자에 섞인다(1125 GA ID 고친 뒤).
+// 그쪽 숫자는 lib/ga4/qrScans.ts 가 따로 읽는다.
+export const WEB_STAMP_STREAM = "16327134283";
+const WEB = and(eq("platform", "web"), { notExpression: eq("streamId", WEB_STAMP_STREAM) });
 const KR = eq("countryId", "KR");
 const WEB_KR = and(WEB, KR);
 const WEB_ABROAD = and(WEB, { notExpression: KR });
