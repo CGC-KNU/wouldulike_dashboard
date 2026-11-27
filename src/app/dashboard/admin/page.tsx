@@ -552,6 +552,9 @@ function RestaurantDrawer({
 ═══════════════════════════════════════════════════ */
 const TEST_KAKAO_ID = 4424485763;
 
+// 백엔드 accounts.User.CAMPUS_CHOICES 와 같은 값. 빈 문자열 = 대학가 제한 없음(전체).
+const PUSH_CAMPUSES = ["경북대", "영남대", "계명대"] as const;
+
 interface PushNotification {
   id: number;
   title: string;
@@ -562,6 +565,7 @@ interface PushNotification {
   sent: boolean;
   sent_at: string | null;
   target_kakao_ids: number[] | null;
+  target_campus?: string | null;
   test_only: boolean;
   send_success?: number;
   send_failure?: number;
@@ -778,6 +782,8 @@ function MarketingTab() {
   const [deepLink, setDeepLink] = useState("");
   const [scheduledTime, setScheduledTime] = useState(nowKSTInput);
   const [testOnly, setTestOnly] = useState(true);
+  const [campus, setCampus] = useState("");
+  const [campusCounts, setCampusCounts] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [formErr, setFormErr] = useState("");
 
@@ -802,6 +808,17 @@ function MarketingTab() {
 
   // 푸시 알림은 잠금 해제 후에만 로드
   useEffect(() => { if (pushUnlocked) load(); }, [pushUnlocked, load]);
+
+  useEffect(() => {
+    if (!pushUnlocked) return;
+    fetch("/api/dashboard/admin/notifications/campus-audience")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { campus: string; count: number }[]) => {
+        if (!Array.isArray(rows)) return;
+        setCampusCounts(Object.fromEntries(rows.map((r) => [r.campus, r.count])));
+      })
+      .catch(() => {});
+  }, [pushUnlocked]);
 
   const anySending = notifications.some((n) => n.sending);
   useEffect(() => {
@@ -860,6 +877,7 @@ function MarketingTab() {
           deep_link: deepLink.trim() || null,
           scheduled_time: utcIso,
           test_only: testOnly,
+          campus: campus || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -951,13 +969,45 @@ function MarketingTab() {
         <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${
           testOnly ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-red-50 text-red-600 border border-red-200"
         }`}>
-          <span>{testOnly ? `🧪 테스트 모드 — 카카오 ID ${TEST_KAKAO_ID}에게만 발송됩니다` : "⚠️ 전체 발송 모드 — 앱 전체 사용자에게 발송됩니다"}</span>
+          <span>
+            {testOnly
+              ? `🧪 테스트 모드 — 카카오 ID ${TEST_KAKAO_ID}에게만 발송됩니다${campus ? ` (대학가 ${campus}는 저장만 되고, 테스트 발송은 대학가와 무관하게 갑니다)` : ""}`
+              : campus
+                ? `⚠️ ${campus} 발송 모드 — 대학가를 ${campus}로 등록한 회원에게만 발송됩니다`
+                : "⚠️ 전체 발송 모드 — 앱 전체 사용자에게 발송됩니다"}
+          </span>
           <button
             onClick={() => setTestOnly((v) => !v)}
             className={`ml-auto shrink-0 relative w-9 h-5 rounded-full transition-colors ${testOnly ? "bg-amber-400" : "bg-red-500"}`}
           >
             <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${testOnly ? "translate-x-0.5" : "translate-x-4"}`} />
           </button>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">발송 대상 대학가</label>
+          <div className="flex flex-wrap gap-1.5">
+            {["", ...PUSH_CAMPUSES].map((c) => (
+              <button
+                key={c || "all"}
+                type="button"
+                onClick={() => setCampus(c)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  campus === c
+                    ? "bg-navy text-white border-navy"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-periwinkle"
+                }`}
+              >
+                {c || "전체"}
+                {c && campusCounts[c] !== undefined && (
+                  <span className={campus === c ? "text-white/70" : "text-gray-400"}> · {campusCounts[c].toLocaleString()}명</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">
+            대학가를 고르면 앱에서 그 대학가로 등록한 회원(과 연결된 기기)에게만 갑니다. 대학가를 등록하지 않은 회원·비로그인 게스트는 받지 않습니다. 숫자는 푸시를 받을 수 있는 회원 수입니다.
+          </p>
         </div>
 
         <div>
@@ -1045,8 +1095,13 @@ function MarketingTab() {
                       )}
                       {n.test_only ? (
                         <span className="text-[10px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">테스트</span>
+                      ) : n.target_campus ? (
+                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{n.target_campus} 발송</span>
                       ) : (
                         <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">전체발송</span>
+                      )}
+                      {n.test_only && n.target_campus && (
+                        <span className="text-[10px] bg-periwinkle/10 text-periwinkle px-2 py-0.5 rounded-full">{n.target_campus}</span>
                       )}
                     </div>
                     <p className="text-sm font-semibold text-gray-800 truncate">{n.title}</p>
